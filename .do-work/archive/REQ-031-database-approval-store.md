@@ -1,19 +1,14 @@
 # REQ-031: Database ApprovalStore
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.79622
-**Claimed at:** 2026-07-27T05:04:27Z
-**Heartbeat:** 2026-07-27T05:04:27Z
-<!-- claimed-end -->
 
 **UR:** UR-004
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-029
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:e62c94f tests:DatabaseApprovalStore+core
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** L
@@ -30,13 +25,13 @@ Implement a production `ApprovalStore` backed by the approvals table (Eloquent m
 
 ## Acceptance Criteria
 
-- [ ] Class implements `Contracts\ApprovalStore` and lives under a clear Persistence (or Database) namespace
-- [ ] put/find/update round-trip record shape compatible with ApprovalManager
-- [ ] compareAndUpdate only mutates when status matches expected (no double-apply on race)
-- [ ] claimLease respects free/expired lease and expected status (returns null when lease held)
-- [ ] findByStatus returns matching rows
-- [ ] Unit tests cover happy + race/mismatch + lease held paths with mocks/fakes (no live DB required)
-- [ ] Does not break existing InMemoryApprovalStore tests
+- [x] Class implements `Contracts\ApprovalStore` and lives under a clear Persistence (or Database) namespace
+- [x] put/find/update round-trip record shape compatible with ApprovalManager
+- [x] compareAndUpdate only mutates when status matches expected (no double-apply on race)
+- [x] claimLease respects free/expired lease and expected status (returns null when lease held)
+- [x] findByStatus returns matching rows
+- [x] Unit tests cover happy + race/mismatch + lease held paths with mocks/fakes (no live DB required)
+- [x] Does not break existing InMemoryApprovalStore tests
 
 ## Verification Steps
 
@@ -57,3 +52,10 @@ Implement a production `ApprovalStore` backed by the approvals table (Eloquent m
 
 - packages/laravel-capabilities/src/Support/InMemoryApprovalStore.php
 - docs/spec.md D-006
+
+
+## Outputs
+
+- packages/laravel-capabilities/src/Persistence/DatabaseApprovalStore.php — DB-oriented approval store
+- packages/laravel-capabilities/src/Persistence/TableGateway.php — injectable gateway
+- packages/laravel-capabilities/src/Persistence/ArrayTableGateway.php — unit test gateway
