@@ -50,6 +50,7 @@ final class CatalogPresenter
             'description' => $definition->description,
             'surfaces' => $definition->effectiveSurfaces($this->registry->globallyEnabledSurfaces()),
             'readOnly' => $definition->readOnly,
+            'idempotent' => $definition->idempotent,
             'input_schema' => $inputSchema,
             'output_schema' => $outputSchema,
             'schema_version' => $definition->schemaVersion,
@@ -71,6 +72,7 @@ final class CatalogPresenter
             'surfaces' => $definition->effectiveSurfaces($this->registry->globallyEnabledSurfaces()),
             'schema_version' => $definition->schemaVersion,
             'readOnly' => $definition->readOnly,
+            'idempotent' => $definition->idempotent,
         ];
     }
 }

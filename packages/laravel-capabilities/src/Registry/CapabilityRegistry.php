@@ -15,6 +15,7 @@ use Rawphp\Capabilities\Discovery\AttributeDiscoverer;
 use Rawphp\Capabilities\Events\CapabilityApprovalRequested;
 use Rawphp\Capabilities\Events\CapabilityFailed;
 use Rawphp\Capabilities\Events\CapabilityInvoked;
+use Rawphp\Capabilities\Idempotency\RequestHash;
 use Rawphp\Capabilities\Pipeline\IdempotencyGuard;
 use Rawphp\Capabilities\Pipeline\InvokeState;
 use Rawphp\Capabilities\Pipeline\PipelineStages;
@@ -939,18 +940,27 @@ final class CapabilityRegistry
         $key = isset($state->options['idempotency_key'])
             ? (string) $state->options['idempotency_key']
             : null;
+        if ($key === '') {
+            $key = null;
+        }
         $state->idempotencyKey = $key;
-        $state->requestHash = hash('sha256', json_encode($state->rawInput, JSON_THROW_ON_ERROR));
+        $state->requestHash = RequestHash::of($state->rawInput);
 
-        if ($key === null || $key === '' || ! $state->definition->shouldUseIdempotency()) {
-            return null;
+        // Policy before any store interaction (required key / format / warn missing).
+        $policy = $this->idempotencyGuard->assertKeyPolicy(
+            $state->definition,
+            $key,
+            is_string($state->options['caller'] ?? null) ? (string) $state->options['caller'] : 'http',
+        );
+        if ($policy !== null) {
+            // Drop illegal/missing-required key so failure path does not attempt store.
+            $state->idempotencyKey = null;
+
+            return $policy;
         }
 
-        if ($state->definition->idempotent === CapabilityDefinition::IDEMPOTENT_REQUIRED && ($key === null || $key === '')) {
-            return CapabilityResult::failure(
-                code: 'validation_failed',
-                message: 'Idempotency key is required for this capability.',
-            );
+        if ($key === null || ! $state->definition->shouldUseIdempotency()) {
+            return null;
         }
 
         /** @var CapabilityContext $ctx */
