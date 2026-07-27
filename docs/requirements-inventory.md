@@ -14,13 +14,15 @@ Policy: **unit tests only**, no DB, mocks/fakes, **≥95% coverage** when implem
 - edge: 977
 - go: 267
 
-Regenerate:
+Regenerate (safe — does not wipe implemented tests):
 
 ```bash
 python3 tools/generate_requirement_stubs.py
 ```
 
-Do not hand-edit generated test stubs; extend the catalog in the generator and re-run.
+Only missing files and pure AUTO-GENERATED stubs are rewritten; implemented suites
+(no AUTO-GENERATED marker) are skipped with a written/skipped count on stdout/stderr.
+Extend the catalog in the generator and re-run; do not hand-edit pure stubs.
 
 ## Core (`packages/laravel-capabilities`)
 
@@ -5452,7 +5454,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 
 ## CLI (`packages/capabilities-cli`)
 
-### `cmd/capabilities/main_todo_test.go` (7)
+### `cmd/capabilities/main_test.go` (7)
 
 - [ ] TestBinarynameiscapabilities [D-016]
 - [ ] TestHelplistsauthcatalogrunmcpapprovals [D-016]
@@ -5462,7 +5464,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestRootcommandrequiressubcommand [D-016]
 - [ ] TestVersioncommandexists [D-016]
 
-### `internal/api/api_todo_test.go` (12)
+### `internal/api/api_test.go` (12)
 
 - [ ] TestClientpoststosinglecapabilityhttpapi [D-009]
 - [ ] TestClientsendsbearerfromkeychain [D-009]
@@ -5477,7 +5479,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestClientdoesnotsendxcapabilitiescallerasauthority [D-009]
 - [ ] TestClientbaseurlfromprofile [D-009]
 
-### `internal/auth/auth_todo_test.go` (10)
+### `internal/auth/auth_test.go` (10)
 
 - [ ] TestAuthloginstorestokeninkeychainnotprompt [CLI-AUTH]
 - [ ] TestAuthstatusshowsprofilebaseurl [CLI-AUTH]
@@ -5490,7 +5492,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestAuthmissingtokenreturnsexitcode3 [CLI-AUTH]
 - [ ] TestAuthloginfetchesschemasintocache [CLI-AUTH]
 
-### `internal/catalog/catalog_todo_test.go` (11)
+### `internal/catalog/catalog_test.go` (11)
 
 - [ ] TestCataloglistscapabilitiesfromhttp [CLI-CAT]
 - [ ] TestDescribefetchesjsonschema [CLI-CAT]
@@ -5504,7 +5506,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestCatalogjsonoutputenvelope [CLI-CAT]
 - [ ] TestSunsetcapabilitywarnedorblocked [CLI-CAT]
 
-### `internal/mcpstdio/mcpstdio_todo_test.go` (6)
+### `internal/mcpstdio/mcpstdio_test.go` (6)
 
 - [ ] TestMcpstdioproxiestoremotehttpwithstoredtoken [CLI-MCP]
 - [ ] TestMcpstdionolocaldomainrun [CLI-MCP]
@@ -5513,7 +5515,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestMcpstdioprofiletoolscomefromserver [CLI-MCP]
 - [ ] TestMcpstdioforwardsidempotencykeys [CLI-MCP]
 
-### `internal/run/run_todo_test.go` (24)
+### `internal/run/run_test.go` (24)
 
 - [ ] TestRunvalidatesschemalocallybeforepost [CLI-RUN]
 - [ ] TestRunstructuralerrorexitcode2nonetwork [CLI-RUN]
@@ -5540,7 +5542,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestRununauthenticatedexitcode3 [CLI-RUN]
 - [ ] TestRunvalidationviolationslistedinenvelope [CLI-RUN]
 
-### `internal/api/errors_todo_test.go` (12)
+### `internal/api/errors_test.go` (12)
 
 - [ ] TestMaperrorcodeValidationFailedHttp422Exit2 [D-018]
 - [ ] TestMaperrorcodeUnauthenticatedHttp401Exit3 [D-018]
@@ -5555,7 +5557,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestUnknownerrorcodedefaultstointernalexit1 [D-018]
 - [ ] TestRetryableflagparsedfromenvelope [D-018]
 
-### `internal/run/flags_todo_test.go` (12)
+### `internal/run/flags_test.go` (12)
 
 - [ ] TestFlaginputjson [CLI-RUN]
 - [ ] TestFlaginputfile [CLI-RUN]
@@ -5570,7 +5572,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestInvalidjsoninputfailslocalvalidation [CLI-RUN]
 - [ ] TestEmptycapabilitynamefails [CLI-RUN]
 
-### `internal/catalog/deprecation_todo_test.go` (5)
+### `internal/catalog/deprecation_test.go` (5)
 
 - [ ] TestWarnondeprecatedtrue [D-012]
 - [ ] TestShowsuccessorwhenpresent [D-012]
@@ -5578,7 +5580,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestAliasresolvesbeforerun [D-012]
 - [ ] TestCanonicalpreferredinlist [D-012]
 
-### `internal/auth/guards_todo_test.go` (9)
+### `internal/auth/guards_test.go` (9)
 
 - [ ] TestRunwithoutauthfails [CLI-AUTH]
 - [ ] TestCatalogwithoutauthfails [CLI-AUTH]
@@ -5590,7 +5592,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestLoginfailsonnetworkerror [CLI-AUTH]
 - [ ] TestLoginfailsoninvalidbaseurl [CLI-AUTH]
 
-### `internal/api/no_domain_todo_test.go` (5)
+### `internal/api/no_domain_test.go` (5)
 
 - [ ] TestNosqldriverimported [D-016]
 - [ ] TestNobusinessinvoicetypes [D-016]
@@ -5598,7 +5600,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestNolocalapprovalstatemachine [D-016]
 - [ ] TestClientishttponly [D-016]
 
-### `cmd/capabilities/help_todo_test.go` (8)
+### `cmd/capabilities/help_test.go` (8)
 
 - [ ] TestHelpauth [D-016]
 - [ ] TestHelpcatalog [D-016]
@@ -5609,7 +5611,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestHelpexitcodestable [D-016]
 - [ ] TestHelpexamplesdonotshowdomainlogic [D-016]
 
-### `cmd/capabilities/commands_todo_test.go` (18)
+### `cmd/capabilities/commands_test.go` (18)
 
 - [ ] TestCommandexistsAuthlogin [D-016]
 - [ ] TestCommandhelpAuthlogin [D-016]
@@ -5630,7 +5632,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestCommandexistsHelp [D-016]
 - [ ] TestCommandhelpHelp [D-016]
 
-### `internal/run/exitcodes_todo_test.go` (21)
+### `internal/run/exitcodes_test.go` (21)
 
 - [ ] TestExitcodeforValidationFailedIs2 [D-018]
 - [ ] TestHttpstatusforValidationFailedIs422Documented [D-018]
@@ -5654,7 +5656,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestHttpstatusforInternalIs500Documented [D-018]
 - [ ] TestExitcode0onsuccess [D-018]
 
-### `internal/run/validation_flow_todo_test.go` (8)
+### `internal/run/validation_flow_test.go` (8)
 
 - [ ] TestLocalstructuralfailnohttp [D-004]
 - [ ] TestLocalstructuralokthenhttp [D-004]
@@ -5665,7 +5667,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestLocalcachebypassedwithnocache [D-004]
 - [ ] TestSchemafetchedonmissingcache [D-004]
 
-### `internal/auth/keychain_todo_test.go` (8)
+### `internal/auth/keychain_test.go` (8)
 
 - [ ] TestStoretokenencryptedoroskeychain [CLI-AUTH]
 - [ ] TestReadtokenforapiclient [CLI-AUTH]
@@ -5676,7 +5678,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestCorruptkeychainhandled [CLI-AUTH]
 - [ ] TestMissingkeychainfallsbacksecurely [CLI-AUTH]
 
-### `cmd/capabilities/principles_todo_test.go` (5)
+### `cmd/capabilities/principles_test.go` (5)
 
 - [ ] TestSinglestaticbinaryname [D-016]
 - [ ] TestNonoderequired [D-016]
@@ -5684,7 +5686,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestNomultilanguageclimatrixinv02 [D-016]
 - [ ] TestProductclinotartisan [D-016]
 
-### `internal/mcpstdio/security_todo_test.go` (7)
+### `internal/mcpstdio/security_test.go` (7)
 
 - [ ] TestNolocalauthorize [CLI-MCP]
 - [ ] TestNolocalrun [CLI-MCP]
@@ -5694,7 +5696,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestPropagatesservererrors [CLI-MCP]
 - [ ] TestPropagatesapprovalrequired [CLI-MCP]
 
-### `internal/run/failure_chain_todo_test.go` (12)
+### `internal/run/failure_chain_test.go` (12)
 
 - [ ] TestFaillocalschema [CLI-RUN]
 - [ ] TestFailauth [CLI-RUN]
@@ -5709,7 +5711,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestFailoutputinvalid [CLI-RUN]
 - [ ] TestFaildomain [CLI-RUN]
 
-### `internal/auth/command_guards_todo_test.go` (10)
+### `internal/auth/command_guards_test.go` (10)
 
 - [ ] TestRunrequiresauth [CLI-AUTH]
 - [ ] TestRunfailswithexit3whennotoken [CLI-AUTH]
@@ -5722,7 +5724,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestApprovalsrequiresauth [CLI-AUTH]
 - [ ] TestApprovalsfailswithexit3whennotoken [CLI-AUTH]
 
-### `internal/catalog/cache_todo_test.go` (10)
+### `internal/catalog/cache_test.go` (10)
 
 - [ ] TestCachehitsameversion [CLI-CAT]
 - [ ] TestCachemissfetches [CLI-CAT]
@@ -5735,7 +5737,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestCachecorruptfilerefetches [CLI-CAT]
 - [ ] TestCachewriteatomic [CLI-CAT]
 
-### `internal/run/exit_doc_todo_test.go` (10)
+### `internal/run/exit_doc_test.go` (10)
 
 - [ ] TestDocandcodeagreeValidationFailedExit2 [D-018]
 - [ ] TestDocandcodeagreeUnauthenticatedExit3 [D-018]
@@ -5748,21 +5750,21 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestDocandcodeagreeOutputInvalidExit5 [D-018]
 - [ ] TestDocandcodeagreeInternalExit1 [D-018]
 
-### `cmd/capabilities/dist_todo_test.go` (4)
+### `cmd/capabilities/dist_test.go` (4)
 
 - [ ] TestNoembeddedphpruntime [D-016]
 - [ ] TestNoembeddedlaravelapp [D-016]
 - [ ] TestNolocaldatabasedriver [D-016]
 - [ ] TestCrosscompiletargetsdocumented [D-016]
 
-### `internal/api/accept_header_todo_test.go` (4)
+### `internal/api/accept_header_test.go` (4)
 
 - [ ] TestDefaultacceptjson [D-009]
 - [ ] TestOptionalclivendoraccept [D-009]
 - [ ] TestVendoracceptdoesnotchangeservercaller [D-009]
 - [ ] TestVendoracceptonlyaffectspresentation [D-009]
 
-### `cmd/capabilities/exit_help_todo_test.go` (10)
+### `cmd/capabilities/exit_help_test.go` (10)
 
 - [ ] TestHelpmentionsValidationFailedExit2 [D-018]
 - [ ] TestHelpmentionsUnauthenticatedExit3 [D-018]
@@ -5775,7 +5777,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestHelpmentionsOutputInvalidExit5 [D-018]
 - [ ] TestHelpmentionsInternalExit1 [D-018]
 
-### `internal/run/retry_todo_test.go` (5)
+### `internal/run/retry_test.go` (5)
 
 - [ ] TestRetrylastreusesidempotencykey [D-005]
 - [ ] TestRetrylastfailsifnoprevious [D-005]
@@ -5783,7 +5785,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestNetworkfaildoesnotrotatekeyonretrylast [D-005]
 - [ ] TestNewrunwithoutretrylastgetsnewkey [D-005]
 
-### `internal/api/methods_todo_test.go` (8)
+### `internal/api/methods_test.go` (8)
 
 - [ ] TestListcapabilities [D-009]
 - [ ] TestDescribecapability [D-009]
@@ -5794,7 +5796,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] TestLogindevice [D-009]
 - [ ] TestLogintoken [D-009]
 
-### `internal/run/caller_docs_todo_test.go` (6)
+### `internal/run/caller_docs_test.go` (6)
 
 - [ ] TestDocssayserverderivescaller [D-016]
 - [ ] TestDocssaynotartisan [D-016]

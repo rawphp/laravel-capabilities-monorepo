@@ -597,7 +597,8 @@ final class ArchitectureHelpers
         // Test files may mention Eloquent as a forbidden string they assert against.
         $prod = '';
         foreach ($goFiles as $path) {
-            if (str_ends_with($path, '_test.go') || str_contains($path, '_todo_test.go')) {
+            // Standard Go test files (*_test.go); exclude from production domain checks.
+            if (str_ends_with($path, '_test.go')) {
                 continue;
             }
             $prod .= file_get_contents($path)."\n";

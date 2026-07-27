@@ -1049,7 +1049,7 @@ def build_catalog() -> list[FileSpec]:
     # ─────────────────────────────────────────────────────────────
     # CLI (Go)
     # ─────────────────────────────────────────────────────────────
-    main = F("cli", "cmd/capabilities/main_todo_test.go", language="go", go_package="main")
+    main = F("cli", "cmd/capabilities/main_test.go", language="go", go_package="main")
     for title in [
         "BinaryNameIsCapabilities",
         "HelpListsAuthCatalogRunMcpApprovals",
@@ -1062,7 +1062,7 @@ def build_catalog() -> list[FileSpec]:
         main.add("go", title, "D-016")
     files.append(main)
 
-    api = F("cli", "internal/api/api_todo_test.go", language="go", go_package="api")
+    api = F("cli", "internal/api/api_test.go", language="go", go_package="api")
     for title in [
         "ClientPostsToSingleCapabilityHTTPAPI",
         "ClientSendsBearerFromKeychain",
@@ -1080,7 +1080,7 @@ def build_catalog() -> list[FileSpec]:
         api.add("go", title, "D-009")
     files.append(api)
 
-    auth = F("cli", "internal/auth/auth_todo_test.go", language="go", go_package="auth")
+    auth = F("cli", "internal/auth/auth_test.go", language="go", go_package="auth")
     for title in [
         "AuthLoginStoresTokenInKeychainNotPrompt",
         "AuthStatusShowsProfileBaseURL",
@@ -1096,7 +1096,7 @@ def build_catalog() -> list[FileSpec]:
         auth.add("go", title, "CLI-AUTH")
     files.append(auth)
 
-    catal = F("cli", "internal/catalog/catalog_todo_test.go", language="go", go_package="catalog")
+    catal = F("cli", "internal/catalog/catalog_test.go", language="go", go_package="catalog")
     for title in [
         "CatalogListsCapabilitiesFromHTTP",
         "DescribeFetchesJSONSchema",
@@ -1113,7 +1113,7 @@ def build_catalog() -> list[FileSpec]:
         catal.add("go", title, "CLI-CAT")
     files.append(catal)
 
-    mcpstdio = F("cli", "internal/mcpstdio/mcpstdio_todo_test.go", language="go", go_package="mcpstdio")
+    mcpstdio = F("cli", "internal/mcpstdio/mcpstdio_test.go", language="go", go_package="mcpstdio")
     for title in [
         "McpStdioProxiesToRemoteHTTPWithStoredToken",
         "McpStdioNoLocalDomainRun",
@@ -1125,7 +1125,7 @@ def build_catalog() -> list[FileSpec]:
         mcpstdio.add("go", title, "CLI-MCP")
     files.append(mcpstdio)
 
-    run = F("cli", "internal/run/run_todo_test.go", language="go", go_package="run")
+    run = F("cli", "internal/run/run_test.go", language="go", go_package="run")
     for title in [
         "RunValidatesSchemaLocallyBeforePOST",
         "RunStructuralErrorExitCode2NoNetwork",
@@ -1156,7 +1156,7 @@ def build_catalog() -> list[FileSpec]:
     files.append(run)
 
     # Expand matrix: every error code × local mapping unit in errors for CLI
-    cli_err = F("cli", "internal/api/errors_todo_test.go", language="go", go_package="api")
+    cli_err = F("cli", "internal/api/errors_test.go", language="go", go_package="api")
     for code, http, exit_code in ERROR_CODES:
         safe = code.replace("-", "_")
         cli_err.add("go", f"MapErrorCode_{safe}_HTTP{http}_Exit{exit_code}", "D-018")
@@ -1314,7 +1314,7 @@ def build_catalog() -> list[FileSpec]:
     files.append(job_m)
 
     # Expand: CLI exit matrix already partial; add more CLI files
-    run2 = F("cli", "internal/run/flags_todo_test.go", language="go", go_package="run")
+    run2 = F("cli", "internal/run/flags_test.go", language="go", go_package="run")
     for title in [
         "FlagInputJSON",
         "FlagInputFile",
@@ -1456,7 +1456,7 @@ def build_catalog() -> list[FileSpec]:
     files.append(wh_m)
 
     # CLI catalog × deprecation matrix
-    cat_m = F("cli", "internal/catalog/deprecation_todo_test.go", language="go", go_package="catalog")
+    cat_m = F("cli", "internal/catalog/deprecation_test.go", language="go", go_package="catalog")
     for title in [
         "WarnOnDeprecatedTrue",
         "ShowSuccessorWhenPresent",
@@ -1574,7 +1574,7 @@ def build_catalog() -> list[FileSpec]:
     files.append(lease)
 
     # Large expansion: CLI auth × run guard
-    cli_g = F("cli", "internal/auth/guards_todo_test.go", language="go", go_package="auth")
+    cli_g = F("cli", "internal/auth/guards_test.go", language="go", go_package="auth")
     for title in [
         "RunWithoutAuthFails",
         "CatalogWithoutAuthFails",
@@ -1756,7 +1756,7 @@ def build_catalog() -> list[FileSpec]:
     files.append(refuse2)
 
     # Expand: CLI no domain mutation static-ish tests
-    nodom = F("cli", "internal/api/no_domain_todo_test.go", language="go", go_package="api")
+    nodom = F("cli", "internal/api/no_domain_test.go", language="go", go_package="api")
     for title in [
         "NoSQLDriverImported",
         "NoBusinessInvoiceTypes",
@@ -1805,7 +1805,7 @@ def build_catalog() -> list[FileSpec]:
     files.append(msp)
 
     # Expand more CLI main
-    main2 = F("cli", "cmd/capabilities/help_todo_test.go", language="go", go_package="main")
+    main2 = F("cli", "cmd/capabilities/help_test.go", language="go", go_package="main")
     for title in [
         "HelpAuth",
         "HelpCatalog",
@@ -2077,7 +2077,7 @@ def build_catalog() -> list[FileSpec]:
 
     # Failure before run × no side effects × all callers already exists
     # Expand CLI commands matrix
-    cli_cmd = F("cli", "cmd/capabilities/commands_todo_test.go", language="go", go_package="main")
+    cli_cmd = F("cli", "cmd/capabilities/commands_test.go", language="go", go_package="main")
     for cmd in ["auth login", "auth logout", "auth status", "catalog", "describe", "run", "mcp", "version", "help"]:
         safe = "".join(p.capitalize() for p in cmd.replace(" ", "_").split("_"))
         cli_cmd.add("go", f"CommandExists_{safe}", "D-016")
@@ -2085,7 +2085,7 @@ def build_catalog() -> list[FileSpec]:
     files.append(cli_cmd)
 
     # CLI run exit code × each error code (duplicate safe)
-    cli_ex = F("cli", "internal/run/exitcodes_todo_test.go", language="go", go_package="run")
+    cli_ex = F("cli", "internal/run/exitcodes_test.go", language="go", go_package="run")
     for code, http, exit_code in ERROR_CODES:
         cli_ex.add("go", f"ExitCodeFor_{code}_Is{exit_code}", "D-018")
         cli_ex.add("go", f"HTTPStatusFor_{code}_Is{http}_Documented", "D-018")
@@ -2234,7 +2234,7 @@ def build_catalog() -> list[FileSpec]:
     files.append(success)
 
     # CLI local validation then server
-    cliv = F("cli", "internal/run/validation_flow_todo_test.go", language="go", go_package="run")
+    cliv = F("cli", "internal/run/validation_flow_test.go", language="go", go_package="run")
     for title in [
         "LocalStructuralFailNoHTTP",
         "LocalStructuralOKThenHTTP",
@@ -2367,7 +2367,7 @@ def build_catalog() -> list[FileSpec]:
     files.append(puf)
 
     # CLI keychain behaviors
-    kc = F("cli", "internal/auth/keychain_todo_test.go", language="go", go_package="auth")
+    kc = F("cli", "internal/auth/keychain_test.go", language="go", go_package="auth")
     for title in [
         "StoreTokenEncryptedOrOSKeychain",
         "ReadTokenForAPIClient",
@@ -2446,7 +2446,7 @@ def build_catalog() -> list[FileSpec]:
     files.append(d015)
 
     # D-016 Go CLI principles
-    d016 = F("cli", "cmd/capabilities/principles_todo_test.go", language="go", go_package="main")
+    d016 = F("cli", "cmd/capabilities/principles_test.go", language="go", go_package="main")
     for title in [
         "SingleStaticBinaryName",
         "NoNodeRequired",
@@ -2530,7 +2530,7 @@ def build_catalog() -> list[FileSpec]:
     files.append(cef)
 
     # CLI MCP stdio security
-    ms = F("cli", "internal/mcpstdio/security_todo_test.go", language="go", go_package="mcpstdio")
+    ms = F("cli", "internal/mcpstdio/security_test.go", language="go", go_package="mcpstdio")
     for title in [
         "NoLocalAuthorize",
         "NoLocalRun",
@@ -2662,7 +2662,7 @@ def build_catalog() -> list[FileSpec]:
     files.append(mchain)
 
     # CLI failure chain
-    clif = F("cli", "internal/run/failure_chain_todo_test.go", language="go", go_package="run")
+    clif = F("cli", "internal/run/failure_chain_test.go", language="go", go_package="run")
     for title in [
         "FailLocalSchema",
         "FailAuth",
@@ -2958,14 +2958,14 @@ def build_catalog() -> list[FileSpec]:
     files.append(om2)
 
     # CLI command × auth required matrix
-    clia = F("cli", "internal/auth/command_guards_todo_test.go", language="go", go_package="auth")
+    clia = F("cli", "internal/auth/command_guards_test.go", language="go", go_package="auth")
     for cmd in ["Run", "Catalog", "Describe", "Mcp", "Approvals"]:
         clia.add("go", f"{cmd}RequiresAuth", "CLI-AUTH")
         clia.add("go", f"{cmd}FailsWithExit3WhenNoToken", "CLI-AUTH")
     files.append(clia)
 
     # CLI schema cache scenarios
-    cache = F("cli", "internal/catalog/cache_todo_test.go", language="go", go_package="catalog")
+    cache = F("cli", "internal/catalog/cache_test.go", language="go", go_package="catalog")
     for title in [
         "CacheHitSameVersion",
         "CacheMissFetches",
@@ -3132,7 +3132,7 @@ def build_catalog() -> list[FileSpec]:
     files.append(rab)
 
     # CLI exit documentation vs implementation parity
-    ced = F("cli", "internal/run/exit_doc_todo_test.go", language="go", go_package="run")
+    ced = F("cli", "internal/run/exit_doc_test.go", language="go", go_package="run")
     for code, http, exit_code in ERROR_CODES:
         ced.add("go", f"DocAndCodeAgree_{code}_Exit{exit_code}", "D-018")
     files.append(ced)
@@ -3232,7 +3232,7 @@ def build_catalog() -> list[FileSpec]:
     files.append(hyd)
 
     # CLI binary distribution non-goals
-    dist = F("cli", "cmd/capabilities/dist_todo_test.go", language="go", go_package="main")
+    dist = F("cli", "cmd/capabilities/dist_test.go", language="go", go_package="main")
     for title in [
         "NoEmbeddedPHPRuntime",
         "NoEmbeddedLaravelApp",
@@ -3407,7 +3407,7 @@ def build_catalog() -> list[FileSpec]:
     files.append(ad)
 
     # CLI accept header matrix
-    cah = F("cli", "internal/api/accept_header_todo_test.go", language="go", go_package="api")
+    cah = F("cli", "internal/api/accept_header_test.go", language="go", go_package="api")
     for title in [
         "DefaultAcceptJSON",
         "OptionalCLIVendorAccept",
@@ -3457,7 +3457,7 @@ def build_catalog() -> list[FileSpec]:
     files.append(ng)
 
     # CLI help text contains each error code
-    ch = F("cli", "cmd/capabilities/exit_help_todo_test.go", language="go", go_package="main")
+    ch = F("cli", "cmd/capabilities/exit_help_test.go", language="go", go_package="main")
     for code, _, exit_code in ERROR_CODES:
         ch.add("go", f"HelpMentions_{code}_Exit{exit_code}", "D-018")
     files.append(ch)
@@ -3510,7 +3510,7 @@ def build_catalog() -> list[FileSpec]:
     files.append(later)
 
     # CLI run retries matrix
-    rtry = F("cli", "internal/run/retry_todo_test.go", language="go", go_package="run")
+    rtry = F("cli", "internal/run/retry_test.go", language="go", go_package="run")
     for title in [
         "RetryLastReusesIdempotencyKey",
         "RetryLastFailsIfNoPrevious",
@@ -3559,7 +3559,7 @@ def build_catalog() -> list[FileSpec]:
     files.append(mpo)
 
     # Expand Go API client methods
-    apim = F("cli", "internal/api/methods_todo_test.go", language="go", go_package="api")
+    apim = F("cli", "internal/api/methods_test.go", language="go", go_package="api")
     for title in [
         "ListCapabilities",
         "DescribeCapability",
@@ -3665,7 +3665,7 @@ def build_catalog() -> list[FileSpec]:
         bulk6.fail(f"messaging metadata field {meta} not used as authorize authority alone", "MSG-002")
     files.append(bulk6)
 
-    bulk7 = F("cli", "internal/run/caller_docs_todo_test.go", language="go", go_package="run")
+    bulk7 = F("cli", "internal/run/caller_docs_test.go", language="go", go_package="run")
     for title in [
         "DocsSayServerDerivesCaller",
         "DocsSayNotArtisan",
