@@ -1,23 +1,18 @@
 # REQ-061: GoReleaser multi-arch config
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.83526
-**Claimed at:** 2026-07-27T20:40:49Z
-**Heartbeat:** 2026-07-27T20:40:49Z
-<!-- claimed-end -->
 
 **UR:** UR-011
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-28
 **Layer:** cli
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-059
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:828264a steps:3/3 AC1-AC6 passed
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** M
-**Files:** packages/capabilities-cli/.goreleaser.yml packages/capabilities-cli/dist/README.md packages/capabilities-cli/CHANGELOG.md
+**Files:** packages/capabilities-cli/.goreleaser.yml packages/capabilities-cli/cmd/capabilities/goreleaser_test.go packages/capabilities-cli/dist/README.md packages/capabilities-cli/CHANGELOG.md
 **Depends on:** REQ-060
 
 ## Task
@@ -30,12 +25,12 @@ Clarifications: GoReleaser; multi-arch matrix from dist/README; version ldflags 
 
 ## Acceptance Criteria
 
-- [ ] `packages/capabilities-cli/.goreleaser.yml` exists and builds `./cmd/capabilities` as binary name `capabilities`
-- [ ] Targets include at least: darwin/amd64, darwin/arm64, linux/amd64, linux/arm64, windows/amd64, windows/arm64
-- [ ] Version ldflags match REQ-060’s documented `-X` path; tag `v1.2.3` → version `1.2.3`
-- [ ] Checksums (e.g. `checksums.txt` or goreleaser default) are produced
-- [ ] Config is valid for goreleaser v2-style schema used in CI (document version pin in comments or workflow)
-- [ ] No hard dependency on signing secrets in the base config (signing is secret-gated in REQ-063)
+- [x] `packages/capabilities-cli/.goreleaser.yml` exists and builds `./cmd/capabilities` as binary name `capabilities`
+- [x] Targets include at least: darwin/amd64, darwin/arm64, linux/amd64, linux/arm64, windows/amd64, windows/arm64
+- [x] Version ldflags match REQ-060’s documented `-X` path; tag `v1.2.3` → version `1.2.3`
+- [x] Checksums (e.g. `checksums.txt` or goreleaser default) are produced
+- [x] Config is valid for goreleaser v2-style schema used in CI (document version pin in comments or workflow)
+- [x] No hard dependency on signing secrets in the base config (signing is secret-gated in REQ-063)
 
 ## Verification Steps
 
@@ -55,3 +50,11 @@ Clarifications: GoReleaser; multi-arch matrix from dist/README; version ldflags 
 **Service dependencies:** GoReleaser CLI in CI; GitHub Releases API via workflow (REQ-062).
 
 ## Assets
+
+## Outputs
+
+- packages/capabilities-cli/.goreleaser.yml — GoReleaser v2 multi-arch config (capabilities, ldflags, checksums, no signing secrets)
+- packages/capabilities-cli/cmd/capabilities/goreleaser_test.go — Unit tests asserting goreleaser config matrix, ldflags, checksums, v2 pin
+- packages/capabilities-cli/dist/README.md — Documents GoReleaser release path, matrix, and -X main.Version
+- packages/capabilities-cli/CHANGELOG.md — Unreleased note for package-root .goreleaser.yml multi-arch release config
+
