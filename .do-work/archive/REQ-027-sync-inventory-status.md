@@ -1,23 +1,18 @@
 # REQ-027: Sync inventory status to suite reality
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.68154
-**Claimed at:** 2026-07-27T05:03:47Z
-**Heartbeat:** 2026-07-27T05:08:38Z
-<!-- claimed-end -->
 
 **UR:** UR-003
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:**
 **Terminal state:**
 **Parent:**
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (3/3) commit:b9c951d
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** M
-**Files:** docs/requirements-inventory.md tools/generate_requirement_stubs.py tools/sync_requirements_inventory.py packages/laravel-capabilities/tests/Unit/Architecture/ContractSourceOfTruthTest.php
+**Files:** docs/requirements-inventory.md tools/generate_requirement_stubs.py tools/sync_requirements_inventory.py tools/tests/test_sync_requirements_inventory.py packages/laravel-capabilities/tests/Unit/Architecture/ContractSourceOfTruthTest.php
 **Depends on:** REQ-026
 
 ## Task
@@ -30,13 +25,13 @@ Inventory is a static dump that always writes `- [ ]`. Implemented tests use sin
 
 ## Acceptance Criteria
 
-- [ ] Inventory header reports implemented vs remaining (or equivalent), not only “Total TODO cases: 5010”
-- [ ] Cases with a matching live test are marked complete (`- [x]` or equivalent documented status)
-- [ ] Cases without a matching live test remain incomplete
-- [ ] Matching handles Pest double- and single-quoted `it()` titles and Go `Test*` names from inventory CLI lines
-- [ ] Dynamic matrix registration (`it($title)` / string interpolation building inventory titles) is counted when the constructed title equals the inventory label (execute-scan or static evaluation of the title expressions used in foreach matrices is acceptable if documented)
-- [ ] Architecture/contract test that claimed “go CLI stubs use t.Skip TODO until implemented” is updated to the post-sync truth if still present
-- [ ] Re-running sync is idempotent
+- [x] Inventory header reports implemented vs remaining (or equivalent), not only “Total TODO cases: 5010”
+- [x] Cases with a matching live test are marked complete (`- [x]` or equivalent documented status)
+- [x] Cases without a matching live test remain incomplete
+- [x] Matching handles Pest double- and single-quoted `it()` titles and Go `Test*` names from inventory CLI lines
+- [x] Dynamic matrix registration (`it($title)` / string interpolation building inventory titles) is counted when the constructed title equals the inventory label (execute-scan or static evaluation of the title expressions used in foreach matrices is acceptable if documented)
+- [x] Architecture/contract test that claimed “go CLI stubs use t.Skip TODO until implemented” is updated to the post-sync truth if still present
+- [x] Re-running sync is idempotent
 
 ## Verification Steps
 
@@ -50,3 +45,10 @@ Inventory is a static dump that always writes `- [ ]`. Implemented tests use sin
 ## Manual checks (advisory)
 
 - [ ] Skim inventory CLI section after rename/sync — Observable outcome: paths/names match non-todo Go files and Test* rows look checked when tests exist
+
+## Outputs
+
+- tools/sync_requirements_inventory.py — suite-aware inventory status sync
+- tools/tests/test_sync_requirements_inventory.py — hermetic unit tests
+- docs/requirements-inventory.md — 4993 implemented / 17 remaining
+- tools/generate_requirement_stubs.py — post-sync header/regenerate guidance
