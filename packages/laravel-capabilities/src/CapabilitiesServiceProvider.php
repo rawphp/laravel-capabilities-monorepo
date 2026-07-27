@@ -17,6 +17,7 @@ use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\Metrics;
 use Rawphp\Capabilities\Contracts\ScopeResolver;
 use Rawphp\Capabilities\Contracts\Tracer;
+use Rawphp\Capabilities\Http\HttpRouteRegistrar;
 use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\Capabilities\Observability\LogFallbackMetrics;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
@@ -81,6 +82,8 @@ class CapabilitiesServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        $this->bootHttpRoutes();
+
         if ($this->app->runningInConsole()) {
             $this->publishes([
                 __DIR__.'/../config/capabilities.php' => config_path('capabilities.php'),
@@ -90,6 +93,58 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 __DIR__.'/../database/migrations' => database_path('migrations'),
             ], 'capabilities-migrations');
         }
+    }
+
+    /**
+     * Map {@see \Rawphp\Capabilities\Http\RouteTable} onto the app router when http is enabled (REQ-021 / D-009).
+     *
+     * @return list<string> registered route keys (empty when disabled or no router)
+     */
+    public function bootHttpRoutes(?array $httpConfig = null): array
+    {
+        $config = $httpConfig ?? (self::configFromApp($this->app)['surfaces']['http'] ?? []);
+        if (! is_array($config)) {
+            $config = [];
+        }
+
+        if (! (bool) ($config['enabled'] ?? true)) {
+            return [];
+        }
+
+        // Prefer real Illuminate router when present; otherwise no-op (unit tests use HttpRouteRegistrar directly).
+        try {
+            $router = $this->app->make('router');
+        } catch (\Throwable) {
+            return HttpRouteRegistrar::registeredKeys($config);
+        }
+
+        if (! is_object($router) || ! method_exists($router, 'addRoute') && ! method_exists($router, 'match')) {
+            return HttpRouteRegistrar::registeredKeys($config);
+        }
+
+        return HttpRouteRegistrar::registerInto($config, function (array $def) use ($router): void {
+            $method = $def['method'];
+            $uri = $def['uri'];
+            $action = [
+                'uses' => $def['uses'][0].'@'.$def['uses'][1],
+                'as' => $def['name'],
+                'middleware' => $def['middleware'],
+            ];
+
+            if (method_exists($router, 'addRoute')) {
+                $route = $router->addRoute($method, $uri, $action);
+                if (is_object($route) && method_exists($route, 'middleware')) {
+                    $route->middleware($def['middleware']);
+                }
+
+                return;
+            }
+
+            // Fallback: Router::match([$methods], $uri, $action)
+            if (method_exists($router, 'match')) {
+                $router->match([$method], $uri, $action);
+            }
+        });
     }
 
     /**

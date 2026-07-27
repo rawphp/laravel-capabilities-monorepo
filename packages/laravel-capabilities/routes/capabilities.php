@@ -1,12 +1,15 @@
 <?php
 
 /**
- * Capability HTTP routes — single catalog + invoke API (D-009).
+ * Capability HTTP routes — single catalog + invoke API (D-009 / REQ-021).
  *
  * Product CLI is a remote HTTP client of these routes, not a second controller tree.
- * Registered only when surfaces.http.enabled is true (see RouteTable + service provider).
+ * Registered only when surfaces.http.enabled is true via
+ * {@see \Rawphp\Capabilities\CapabilitiesServiceProvider::bootHttpRoutes()}
+ * which maps pure {@see \Rawphp\Capabilities\Http\RouteTable} definitions.
  *
- * Definitions (pure): {@see \Rawphp\Capabilities\Http\RouteTable::routes()}
+ * This file is the documentation / import surface for the table — the service
+ * provider is the lifecycle owner (not a hand-duplicated Route:: list).
  *
  * | Method | Path | Action |
  * |--------|------|--------|
@@ -21,20 +24,19 @@
  * | POST   | /{prefix}/{name} | CapabilityController@invoke |
  */
 
-use Rawphp\Capabilities\Adapters\Http\ApprovalController;
-use Rawphp\Capabilities\Adapters\Http\AuthController;
-use Rawphp\Capabilities\Adapters\Http\CapabilityController;
+use Rawphp\Capabilities\Http\HttpRouteRegistrar;
 use Rawphp\Capabilities\Http\RouteTable;
 
 return static function (array $httpConfig = []): array {
-    return RouteTable::routes($httpConfig === [] ? [
+    $config = $httpConfig === [] ? [
         'enabled' => true,
         'prefix' => 'capabilities',
         'middleware' => ['api', 'auth:sanctum'],
-    ] : $httpConfig);
+    ] : $httpConfig;
+
+    return HttpRouteRegistrar::definitions($config);
 };
 
-// Controllers referenced for static discovery / IDE — single tree only.
-class_exists(CapabilityController::class);
-class_exists(ApprovalController::class);
-class_exists(AuthController::class);
+// Re-export action keys for static analysis / IDE.
+class_exists(RouteTable::class);
+class_exists(HttpRouteRegistrar::class);
