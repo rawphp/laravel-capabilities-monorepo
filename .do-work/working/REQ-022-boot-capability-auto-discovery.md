@@ -1,7 +1,13 @@
 # REQ-022: Boot capability auto-discovery
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.52672
+**Claimed at:** 2026-07-27T04:50:55Z
+**Heartbeat:** 2026-07-27T04:50:55Z
+<!-- claimed-end -->
+
 **UR:** UR-002
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
