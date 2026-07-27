@@ -1,19 +1,14 @@
 # REQ-050: Illuminate query TableGateway
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.40419
-**Claimed at:** 2026-07-27T06:12:36Z
-**Heartbeat:** 2026-07-27T06:12:36Z
-<!-- claimed-end -->
 
 **UR:** UR-008
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-049
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (3/3) commit:6a2c346
 **Criteria approved:** agent-drafted
 **Priority:** 3
 **Size:** L
@@ -30,12 +25,12 @@ Interface: `packages/laravel-capabilities/src/Persistence/TableGateway.php`. Sto
 
 ## Acceptance Criteria
 
-- [ ] `QueryTableGateway` (or equivalent name) implements full `TableGateway` contract for a named table
-- [ ] Supports JSON/array column encoding consistent with `DatabaseApprovalStore` / `DatabaseIdempotencyStore` row shapes (or documents column map)
-- [ ] `compareAndUpdate`-style flows via `updateWhere` remain atomic at gateway semantics level under unit fakes
-- [ ] Unit tests cover insert, find, replace, updateWhere miss, findWhere, upsert without network MySQL/Postgres
-- [ ] No dependency on messaging package
-- [ ] Challenger: missing connection fails closed with clear exception, not silent ArrayTableGateway fallback inside this class
+- [x] `QueryTableGateway` (or equivalent name) implements full `TableGateway` contract for a named table
+- [x] Supports JSON/array column encoding consistent with `DatabaseApprovalStore` / `DatabaseIdempotencyStore` row shapes (or documents column map)
+- [x] `compareAndUpdate`-style flows via `updateWhere` remain atomic at gateway semantics level under unit fakes
+- [x] Unit tests cover insert, find, replace, updateWhere miss, findWhere, upsert without network MySQL/Postgres
+- [x] No dependency on messaging package
+- [x] Challenger: missing connection fails closed with clear exception, not silent ArrayTableGateway fallback inside this class
 
 ## Verification Steps
 
@@ -53,3 +48,9 @@ Interface: `packages/laravel-capabilities/src/Persistence/TableGateway.php`. Sto
 **Data dependencies:** tables from migrations `capabilities_approvals`, `capabilities_idempotency` (MigrationCatalog names).
 
 **Service dependencies:** `Illuminate\Database\ConnectionInterface` or package-local connection abstraction; `TableGateway` interface; used by `DatabaseApprovalStore` / `DatabaseIdempotencyStore`.
+
+## Outputs
+
+- packages/laravel-capabilities/src/Persistence/QueryTableGateway.php — Illuminate query TableGateway
+- packages/laravel-capabilities/src/Persistence/TableGateway.php — interface doc update
+- packages/laravel-capabilities/tests/Unit/Persistence/QueryTableGatewayTest.php — unit tests
