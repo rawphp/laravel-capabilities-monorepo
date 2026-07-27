@@ -1,23 +1,18 @@
 # REQ-005: Registry invoke pipeline choke point
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.49422
-**Claimed at:** 2026-07-27T01:09:35Z
-**Heartbeat:** 2026-07-27T01:09:35Z
-<!-- claimed-end -->
 
 **UR:** UR-001
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** CapabilityRegistry::invoke (and Capability::invoke facade) from any caller
 **Terminal state:** Successful invoke runs ordered stages; stage failures never call run(); inventory Registry/* and Pipeline/* scenarios pass.
 **Parent:** 
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (3/3) commit:63c4aec Registry:560 Pipeline:392 Facade:28
 **Criteria approved:** agent-drafted
 **Priority:** 3
 **Size:** L
-**Files:** packages/laravel-capabilities/src/Registry packages/laravel-capabilities/src/Pipeline packages/laravel-capabilities/src/Facades packages/laravel-capabilities/tests/Unit/Registry packages/laravel-capabilities/tests/Unit/Pipeline packages/laravel-capabilities/tests/Unit/Facades
+**Files:** packages/laravel-capabilities/src/Registry packages/laravel-capabilities/src/Pipeline packages/laravel-capabilities/src/Facades packages/laravel-capabilities/src/Approval/ApprovalManager.php packages/laravel-capabilities/src/Events/CapabilityInvoked.php packages/laravel-capabilities/src/Events/CapabilityApprovalRequested.php packages/laravel-capabilities/src/Schema/InputValidator.php packages/laravel-capabilities/tests/Unit/Registry packages/laravel-capabilities/tests/Unit/Pipeline packages/laravel-capabilities/tests/Unit/Facades packages/laravel-capabilities/tests/Fixtures/PipelineHelpers.php
 **Depends on:** REQ-004
 
 ## Task
@@ -32,11 +27,11 @@ Original brief: implement all package tests and business logic so all tests pass
 
 ## Acceptance Criteria
 
-- [ ] Happy-path invoke executes stages in documented order and calls capability run once
-- [ ] Each pre-run stage failure prevents run() and returns correct error envelope (PIPE-002 family)
-- [ ] Unknown capability / disabled surface behaviours match inventory
-- [ ] Facades/CapabilityFacade tests pass for exposed invoke/list entry points
-- [ ] Unit tests only with injected fakes
+- [x] Happy-path invoke executes stages in documented order and calls capability run once
+- [x] Each pre-run stage failure prevents run() and returns correct error envelope (PIPE-002 family)
+- [x] Unknown capability / disabled surface behaviours match inventory
+- [x] Facades/CapabilityFacade tests pass for exposed invoke/list entry points
+- [x] Unit tests only with injected fakes
 
 ## Verification Steps
 
@@ -59,3 +54,11 @@ Original brief: implement all package tests and business logic so all tests pass
 
 - docs/spec.md — design bible / conflict oracle
 - docs/requirements-inventory.md — scenario checklist
+
+
+## Outputs
+
+- packages/laravel-capabilities/src/Registry/CapabilityRegistry.php — full invoke pipeline
+- packages/laravel-capabilities/src/Pipeline/* — stage units
+- packages/laravel-capabilities/src/Facades/Capability.php — facade entry
+- packages/laravel-capabilities/tests/Unit/Registry|Pipeline|Facades — inventory green
