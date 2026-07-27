@@ -9,6 +9,7 @@ use Rawphp\Capabilities\Audit\AuditOutbox;
 use Rawphp\Capabilities\Contracts\ApprovalStore;
 use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Contracts\Authorizer;
+use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\SchemaProvider;
@@ -54,7 +55,7 @@ use Throwable;
  *
  * All surfaces call {@see invoke()}; domain `run()` is never dual-pathed.
  */
-final class CapabilityRegistry
+final class CapabilityRegistry implements CapabilityBus
 {
     /** @var array<string, CapabilityDefinition> */
     private array $definitions = [];
