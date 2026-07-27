@@ -41,6 +41,9 @@
         }
     },
     "extra": {
+        "branch-alias": {
+            "dev-main": "0.x-dev"
+        },
         "laravel": {
             "providers": [
                 "Rawphp\\CapabilitiesMessaging\\MessagingServiceProvider"

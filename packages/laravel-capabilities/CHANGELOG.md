@@ -1,0 +1,35 @@
+# Changelog
+
+All notable changes to `rawphp/laravel-capabilities` are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
+with **0.x pre-stable** expectations (see [docs/versioning.md](../../docs/versioning.md)).
+
+## [Unreleased]
+
+### Added
+
+- Core product capability bus for Laravel apps: single registry choke point and invoke pipeline
+  (validate → hydrate → actor → scope → idempotency → authorize → approval → rate limit → run → output → audit).
+- Package-native DTOs / JSON Schema surface for catalog and wire edges.
+- Surface adapters as thin entry points: agent (`laravel/ai`), MCP (`laravel/mcp`), HTTP capability API,
+  product CLI (`caller: cli` via same HTTP API), jobs, optional Artisan ops — domain stays in app `run()`.
+- Governance built into every invoke: authorization, optional approval state machine, audit modes,
+  actor derivation, tenant/scope re-resolution, mutating idempotency keys.
+- Conversation **contracts** only in core (messaging Bot API lives in the sibling messaging package).
+- Unit-test contract scaffold aligned with `docs/spec.md` / requirements inventory (≥95% coverage target).
+
+### Notes
+
+- **Not published on Packagist.** Install from monorepo path or VCS (see versioning doc).
+- Public Composer package name is reserved as `rawphp/laravel-capabilities`; tags and stable `1.x`
+  are not claimed until a deliberate release process lands.
+
+## [0.x] — pre-stable monorepo
+
+Pre-1.0 development line. APIs may change without a major version bump while on 0.x.
+Consumers should pin a VCS ref or path checkout and read this changelog before upgrading.
+
+[Unreleased]: https://github.com/rawphp/laravel-capabilities
+[0.x]: https://github.com/rawphp/laravel-capabilities
