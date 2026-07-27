@@ -2,6 +2,7 @@
 
 namespace Rawphp\Capabilities\Support;
 
+use DateTimeImmutable;
 use Rawphp\Capabilities\Contracts\Clock;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 
@@ -9,6 +10,7 @@ use Rawphp\Capabilities\Contracts\IdempotencyStore;
  * Array-backed idempotency outcome store for unit tests (D-005).
  *
  * Requires an explicit {@see Clock} — missing constructor args fail loudly.
+ * Expired rows (expires_at <= now) are treated as missing on {@see find()}.
  */
 final class InMemoryIdempotencyStore implements IdempotencyStore
 {
@@ -26,7 +28,20 @@ final class InMemoryIdempotencyStore implements IdempotencyStore
         string $capabilityName,
         string $key,
     ): ?array {
-        return $this->rows[$this->identity($tenantId, $actorType, $actorId, $capabilityName, $key)] ?? null;
+        $identity = $this->identity($tenantId, $actorType, $actorId, $capabilityName, $key);
+        $row = $this->rows[$identity] ?? null;
+
+        if ($row === null) {
+            return null;
+        }
+
+        if ($this->isExpired($row)) {
+            unset($this->rows[$identity]);
+
+            return null;
+        }
+
+        return $row;
     }
 
     public function put(array $record): array
@@ -81,6 +96,25 @@ final class InMemoryIdempotencyStore implements IdempotencyStore
         $this->rows[$identity] = $row;
 
         return $row;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function isExpired(array $row): bool
+    {
+        $expiresAt = $row['expires_at'] ?? null;
+        if (! is_string($expiresAt) || $expiresAt === '') {
+            return false;
+        }
+
+        try {
+            $exp = new DateTimeImmutable($expiresAt);
+        } catch (\Exception) {
+            return false;
+        }
+
+        return $this->clock->now() >= $exp;
     }
 
     private function identity(
