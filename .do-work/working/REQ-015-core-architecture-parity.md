@@ -1,7 +1,13 @@
 # REQ-015: Architecture parity and remaining core matrices
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.49422
+**Claimed at:** 2026-07-27T02:48:15Z
+**Heartbeat:** 2026-07-27T02:48:15Z
+<!-- claimed-end -->
+
 **UR:** UR-001
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** Architecture/* Parity/* remaining matrix suites as contract guards
