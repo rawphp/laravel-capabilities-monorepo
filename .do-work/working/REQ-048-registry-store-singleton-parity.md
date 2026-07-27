@@ -1,7 +1,13 @@
 # REQ-048: Registry store singleton parity
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.40419
+**Claimed at:** 2026-07-27T06:22:30Z
+**Heartbeat:** 2026-07-27T06:22:30Z
+<!-- claimed-end -->
+
 **UR:** UR-008
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
