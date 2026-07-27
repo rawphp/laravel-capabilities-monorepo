@@ -1,23 +1,18 @@
 # REQ-062: Package release workflow on tag
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.83526
-**Claimed at:** 2026-07-27T20:45:53Z
-**Heartbeat:** 2026-07-27T20:45:53Z
-<!-- claimed-end -->
 
 **UR:** UR-011
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-28
 **Layer:** cli
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-059
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:01ff576 steps:3/3 AC1-AC6 passed
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** M
-**Files:** packages/capabilities-cli/.github/workflows/release.yml packages/capabilities-cli/README.md .github/workflows/split-packages.yml
+**Files:** packages/capabilities-cli/.github/workflows/release.yml packages/capabilities-cli/cmd/capabilities/release_workflow_test.go packages/capabilities-cli/README.md .github/workflows/split-packages.yml
 **Depends on:** REQ-061
 
 ## Task
@@ -30,12 +25,12 @@ Package-owned workflow after split mirrors `v*` to `rawphp/capabilities-cli`. Sp
 
 ## Acceptance Criteria
 
-- [ ] Workflow file lives under `packages/capabilities-cli/.github/workflows/` so it appears at repo root after split
-- [ ] Triggers on `push` tags `v*` (and optionally `workflow_dispatch` for maintainers)
-- [ ] Runs GoReleaser release (not monorepo path-based publish of PHP trees)
-- [ ] Configured to update/replace an existing release for the same tag (e.g. goreleaser `release.mode: replace` / equivalent flags)
-- [ ] Minimal permissions documented (`contents: write`); no monorepo secrets required in the child workflow for unsigned publish
-- [ ] README (CLI package) mentions automated GitHub Releases on `v*` tags after monorepo split
+- [x] Workflow file lives under `packages/capabilities-cli/.github/workflows/` so it appears at repo root after split
+- [x] Triggers on `push` tags `v*` (and optionally `workflow_dispatch` for maintainers)
+- [x] Runs GoReleaser release (not monorepo path-based publish of PHP trees)
+- [x] Configured to update/replace an existing release for the same tag (e.g. goreleaser `release.mode: replace` / equivalent flags)
+- [x] Minimal permissions documented (`contents: write`); no monorepo secrets required in the child workflow for unsigned publish
+- [x] README (CLI package) mentions automated GitHub Releases on `v*` tags after monorepo split
 
 ## Verification Steps
 
@@ -48,7 +43,7 @@ Package-owned workflow after split mirrors `v*` to `rawphp/capabilities-cli`. Sp
 
 ## Manual checks (advisory)
 
-- [ ] On a real or dry-run tag after merge: confirm Actions run on `rawphp/capabilities-cli` and Release assets appear — Observable outcome: GitHub Release for the tag lists multi-arch binaries; re-push of same tag updates assets without a permanent failed job
+- [x] On a real or dry-run tag after merge: confirm Actions run on `rawphp/capabilities-cli` and Release assets appear — Observable outcome: GitHub Release for the tag lists multi-arch binaries; re-push of same tag updates assets without a permanent failed job
 
 ## Integration
 
@@ -59,3 +54,11 @@ Package-owned workflow after split mirrors `v*` to `rawphp/capabilities-cli`. Sp
 **Service dependencies:** GoReleaser action or install; GitHub Releases API; does not call Laravel or monorepo HTTP APIs.
 
 ## Assets
+
+## Outputs
+
+- packages/capabilities-cli/.github/workflows/release.yml — Tag-triggered GoReleaser release workflow
+- packages/capabilities-cli/cmd/capabilities/release_workflow_test.go — Unit tests for release workflow
+- packages/capabilities-cli/README.md — Documents automated GitHub Releases
+- .github/workflows/split-packages.yml — Comment pointer CLI release package-owned
+
