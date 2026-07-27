@@ -182,13 +182,134 @@ final class ContainerBindings
     }
 
     /**
+     * Build a fully config-wired registry (approval/idempotency/audit/scope + surface knobs).
+     *
+     * Reuses {@see CapabilityRegistry} with* injectors and the same driver factories as
+     * {@see makeApprovalManager} / {@see makeIdempotencyStore}. Does not reimplement the pipeline.
+     *
      * @param  array<string, mixed>  $config
      */
-    public static function makeRegistry(array $config = []): CapabilityRegistry
+    public static function makeRegistry(array $config = [], ?TableGateway $gateway = null): CapabilityRegistry
     {
-        unset($config);
+        $full = $config === [] ? CapabilitiesConfig::defaults() : $config;
+        // Validate drivers/modes early (fail closed) using the shared resolve path.
+        self::resolve($full);
 
-        return new CapabilityRegistry(clock: new SystemClock);
+        $gateway ??= new ArrayTableGateway;
+        $registry = new CapabilityRegistry(clock: new SystemClock);
+
+        $registry->withGloballyEnabledSurfaces(CapabilitiesConfig::globallyEnabledSurfaces($full));
+
+        $approval = self::makeApprovalManager($full, $gateway);
+        $registry->withApprovalStore($approval->store());
+
+        $idempotency = self::makeIdempotencyStore($full, $gateway);
+        $registry->withIdempotencyStore($idempotency);
+
+        $registry->withScopeResolver(new DefaultScopeResolver);
+
+        $audit = (array) ($full['audit'] ?? []);
+        if ($audit !== []) {
+            $registry->withAuditConfig(self::registryAuditConfig($audit));
+        }
+
+        $rateLimits = (array) ($full['rate_limits'] ?? []);
+        if ($rateLimits !== []) {
+            $registry->withRateLimitConfig($rateLimits);
+        }
+
+        $validation = (array) ($full['validation'] ?? []);
+        if ($validation !== []) {
+            $registry->withValidationConfig($validation);
+        }
+
+        $transactions = (array) ($full['transactions'] ?? []);
+        if ($transactions !== []) {
+            $registry->withTransactionsConfig($transactions);
+        }
+
+        $events = (array) ($full['events'] ?? []);
+        if ($events !== []) {
+            $registry->withEventsConfig($events);
+        }
+
+        $toolSurface = self::toolSurfaceConfigFromSurfaces((array) ($full['surfaces'] ?? []));
+        if ($toolSurface !== []) {
+            $registry->withToolSurfaceConfig($toolSurface);
+        }
+
+        return $registry;
+    }
+
+    /**
+     * Map package audit config onto registry-accepted audit keys (D-010 drivers).
+     *
+     * Boot resolve accepts memory/database store aliases; registry auditDriver is
+     * database|log|queue only — memory aliases are omitted so the registry default stands.
+     *
+     * @param  array<string, mixed>  $audit
+     * @return array{
+     *     enabled?: bool,
+     *     mode?: string,
+     *     required?: bool,
+     *     driver?: string,
+     *     queue?: string
+     * }
+     */
+    private static function registryAuditConfig(array $audit): array
+    {
+        $out = [];
+        if (array_key_exists('enabled', $audit)) {
+            $out['enabled'] = (bool) $audit['enabled'];
+        }
+        if (isset($audit['mode'])) {
+            $out['mode'] = (string) $audit['mode'];
+        }
+        if (array_key_exists('required', $audit)) {
+            $out['required'] = (bool) $audit['required'];
+        }
+        if (isset($audit['queue'])) {
+            $out['queue'] = (string) $audit['queue'];
+        }
+        if (isset($audit['driver'])) {
+            $driver = strtolower(trim((string) $audit['driver']));
+            if (in_array($driver, AuditLogger::SUPPORTED_DRIVERS, true)) {
+                $out['driver'] = $driver;
+            } elseif (in_array($driver, self::DATABASE_DRIVERS, true)) {
+                $out['driver'] = 'database';
+            }
+            // memory/in_memory/array → leave registry default (no invalid driver pass-through)
+        }
+
+        return $out;
+    }
+
+    /**
+     * Lift agent/mcp tool profile knobs from surfaces.* into tool surface config.
+     *
+     * @param  array<string, mixed>  $surfaces
+     * @return array<string, mixed>
+     */
+    private static function toolSurfaceConfigFromSurfaces(array $surfaces): array
+    {
+        $tool = [];
+        foreach (['agent', 'mcp'] as $name) {
+            if (! isset($surfaces[$name]) || ! is_array($surfaces[$name])) {
+                continue;
+            }
+            $surface = $surfaces[$name];
+            $slice = [];
+            foreach (['profiles', 'require_profile', 'max_tools_warn', 'max_tools_hard', 'max_tool_calls_per_turn'] as $key) {
+                if (array_key_exists($key, $surface)) {
+                    $slice[$key] = $surface[$key];
+                }
+            }
+            if ($slice !== []) {
+                $tool[$name] = $slice;
+            }
+        }
+
+        return $tool;
     }
 
     /**
