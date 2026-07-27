@@ -1,23 +1,18 @@
 # REQ-019: Monorepo all packages green gate
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.49422
-**Claimed at:** 2026-07-27T03:37:47Z
-**Heartbeat:** 2026-07-27T03:37:47Z
-<!-- claimed-end -->
 
 **UR:** UR-001
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:** composer test && composer test:cli
 **Terminal state:** All PHP + Go unit suites pass; core and messaging ≥95% coverage; no feature/DB tests; inventory scenarios implemented or deliberately updated with spec rationale.
 **Parent:** 
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:657b24f monorepo green core 95.1% messaging 97%
 **Criteria approved:** agent-drafted
 **Priority:** 1
 **Size:** M
-**Files:** packages docs/requirements-inventory.md docs/spec.md
+**Files:** packages/capabilities-cli/dist/README.md, .gitignore
 **Depends on:** REQ-016, REQ-017, REQ-018
 
 ## Task
@@ -32,13 +27,13 @@ Original brief: implement all package tests and business logic so all tests pass
 
 ## Acceptance Criteria
 
-- [ ] composer test exits 0 (core + messaging)
-- [ ] composer test:cli exits 0
-- [ ] Core and messaging src coverage ≥95%
-- [ ] No tests/Feature directories; suites pass with DB_* unset
-- [ ] Any intentional test changes vs original stubs are justified by docs/spec.md
+- [x] composer test exits 0 (core + messaging)
+- [x] composer test:cli exits 0
+- [x] Core and messaging src coverage ≥95%
+- [x] No tests/Feature directories; suites pass with DB_* unset
+- [x] Any intentional test changes vs original stubs are justified by docs/spec.md
 
-- [ ] If any package suite fails or coverage is below 95%, the gate fails (non-zero) and does not declare monorepo green
+- [x] If any package suite fails or coverage is below 95%, the gate fails (non-zero) and does not declare monorepo green
 
 ## Verification Steps
 
@@ -53,3 +48,8 @@ Original brief: implement all package tests and business logic so all tests pass
 
 - docs/spec.md — design bible / conflict oracle
 - docs/requirements-inventory.md — scenario checklist
+
+
+## Outputs
+
+- monorepo all packages green
