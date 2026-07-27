@@ -10,6 +10,7 @@ use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Audit\AuditLogger;
 use Rawphp\Capabilities\Contracts\ApprovalStore;
+use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\Metrics as MetricsContract;
 use Rawphp\Capabilities\Contracts\ScopeResolver;
@@ -134,6 +135,9 @@ final class ContainerBindings
         $bindings = [
             'CapabilityRegistry' => CapabilityRegistry::class,
             CapabilityRegistry::class => CapabilityRegistry::class,
+            // HTTP controller type-hints CapabilityBus; must resolve to the registry singleton (REQ-057).
+            'CapabilityBus' => CapabilityBus::class,
+            CapabilityBus::class => CapabilityRegistry::class,
             'ApprovalManager' => ApprovalManager::class,
             ApprovalManager::class => ApprovalManager::class,
             'IdempotencyStore' => IdempotencyStore::class,

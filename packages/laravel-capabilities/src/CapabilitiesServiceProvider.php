@@ -14,6 +14,7 @@ use Rawphp\Capabilities\Boot\CapabilitiesConfig;
 use Rawphp\Capabilities\Boot\ContainerBindings;
 use Rawphp\Capabilities\Boot\RegistrationPlan;
 use Rawphp\Capabilities\Boot\SurfaceNames;
+use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\Metrics;
 use Rawphp\Capabilities\Contracts\ScopeResolver;
@@ -123,6 +124,9 @@ class CapabilitiesServiceProvider extends ServiceProvider
             );
         });
         $this->app->alias(CapabilityRegistry::class, 'CapabilityRegistry');
+        // CapabilityController type-hints CapabilityBus — same singleton, no second registry (REQ-057).
+        $this->app->alias(CapabilityRegistry::class, CapabilityBus::class);
+        $this->app->alias(CapabilityRegistry::class, 'CapabilityBus');
     }
 
     /**

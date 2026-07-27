@@ -9,6 +9,7 @@ use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Boot\CapabilitiesConfig;
 use Rawphp\Capabilities\Boot\SurfaceNames;
 use Rawphp\Capabilities\CapabilitiesServiceProvider;
+use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Persistence\ArrayTableGateway;
 use Rawphp\Capabilities\Persistence\DatabaseApprovalStore;
@@ -132,6 +133,14 @@ function req048FakeApp(array $capabilitiesConfig = []): object
             if ($abstract === 'config') {
                 return $this->config;
             }
+
+            // Follow alias chain like Laravel (aliases[$alias] = $abstract).
+            $seen = [];
+            while (isset($this->aliases[$abstract]) && ! isset($seen[$abstract])) {
+                $seen[$abstract] = true;
+                $abstract = $this->aliases[$abstract];
+            }
+
             if (array_key_exists($abstract, $this->resolved)) {
                 return $this->resolved[$abstract];
             }
@@ -152,7 +161,20 @@ function req048FakeApp(array $capabilitiesConfig = []): object
 
         public function offsetExists(mixed $key): bool
         {
-            return $key === 'config' || isset($this->singletons[$key]) || isset($this->resolved[$key]);
+            if ($key === 'config' || isset($this->singletons[$key]) || isset($this->resolved[$key])) {
+                return true;
+            }
+            $seen = [];
+            $abstract = (string) $key;
+            while (isset($this->aliases[$abstract]) && ! isset($seen[$abstract])) {
+                $seen[$abstract] = true;
+                $abstract = $this->aliases[$abstract];
+                if (isset($this->singletons[$abstract]) || isset($this->resolved[$abstract])) {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public function offsetSet(mixed $key, mixed $value): void
@@ -310,4 +332,26 @@ it('REQ-048: no silent re-create of in-memory stores across repeated singleton r
         ->and($i2)->toBe($i1)
         ->and($r2->approvalStore())->toBe($a2->store())
         ->and($r2->idempotencyStore())->toBe($i2);
+});
+
+// --- REQ-057: CapabilityBus resolves to same singleton as CapabilityRegistry ---
+
+it('REQ-057: CapabilityBus resolves to the same singleton instance as CapabilityRegistry', function () {
+    $app = req048FakeApp(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+    ]));
+
+    $registry = $app->make(CapabilityRegistry::class);
+    $bus = $app->make(CapabilityBus::class);
+    $busAgain = $app->make(CapabilityBus::class);
+    $stringAlias = $app->make('CapabilityBus');
+
+    expect($bus)->toBe($registry)
+        ->and($busAgain)->toBe($registry)
+        ->and($stringAlias)->toBe($registry)
+        ->and($bus)->toBeInstanceOf(CapabilityRegistry::class)
+        ->and($bus)->toBeInstanceOf(CapabilityBus::class)
+        ->and($app->aliases[CapabilityBus::class] ?? null)->toBe(CapabilityRegistry::class)
+        ->and($app->aliases['CapabilityBus'] ?? null)->toBe(CapabilityRegistry::class);
 });
