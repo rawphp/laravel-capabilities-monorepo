@@ -18,6 +18,16 @@ final class InputValidator
         private readonly ?ServerRuleChecker $serverRules = null,
     ) {}
 
+    public function serverRuleChecker(): ServerRuleChecker
+    {
+        return $this->serverRules ?? new PassThroughServerRuleChecker;
+    }
+
+    public function jsonSchemaValidator(): JsonSchemaValidator
+    {
+        return $this->jsonSchema;
+    }
+
     /**
      * @param  array<string, mixed>  $data
      * @return object|array  Hydrated DTO or raw array when no input class

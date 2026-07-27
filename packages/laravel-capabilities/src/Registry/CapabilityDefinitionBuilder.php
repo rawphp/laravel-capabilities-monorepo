@@ -12,7 +12,7 @@ final class CapabilityDefinitionBuilder
     private string $description = '';
 
     /** @var list<string> */
-    private array $surfaces = ['agent', 'mcp', 'http', 'cli'];
+    private array $surfaces = ['agent', 'mcp', 'http', 'cli', 'job', 'artisan'];
 
     private ?string $input = null;
 
