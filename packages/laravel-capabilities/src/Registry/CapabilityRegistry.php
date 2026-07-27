@@ -99,6 +99,8 @@ final class CapabilityRegistry implements CapabilityBus
 
     private ?ApprovalStore $approvalStore;
 
+    private ?ScopeResolver $scopeResolver = null;
+
     private ?AuditWriter $auditWriter;
 
     private ApprovalManager $approvalManager;
@@ -237,6 +239,7 @@ final class CapabilityRegistry implements CapabilityBus
         $this->jsonSchema = $this->inputValidator->jsonSchemaValidator();
         $this->serverRuleChecker = $serverRuleChecker ?? $this->inputValidator->serverRuleChecker();
         $this->resolveActor = new ResolveActor;
+        $this->scopeResolver = $scopeResolver;
         $this->resolveTenant = new ResolveTenantFromCaller($scopeResolver);
         $this->idempotencyGuard = new IdempotencyGuard($idempotencyStore);
         $this->authorizer = $authorizer ?? StubAuthorizer::allow();
@@ -452,6 +455,11 @@ final class CapabilityRegistry implements CapabilityBus
         return $this->auditMode;
     }
 
+    public function auditEnabled(): bool
+    {
+        return $this->auditEnabled;
+    }
+
     public function auditRequired(): bool
     {
         return $this->auditRequired;
@@ -541,11 +549,21 @@ final class CapabilityRegistry implements CapabilityBus
         return $this;
     }
 
+    public function approvalStore(): ?ApprovalStore
+    {
+        return $this->approvalStore ?? $this->approvalManager->store();
+    }
+
     public function withIdempotencyStore(IdempotencyStore $store): self
     {
         $this->idempotencyGuard = new IdempotencyGuard($store);
 
         return $this;
+    }
+
+    public function idempotencyStore(): ?IdempotencyStore
+    {
+        return $this->idempotencyGuard->store();
     }
 
     public function withRateLimiter(RateLimiter $limiter): self
@@ -557,9 +575,15 @@ final class CapabilityRegistry implements CapabilityBus
 
     public function withScopeResolver(ScopeResolver $resolver): self
     {
+        $this->scopeResolver = $resolver;
         $this->resolveTenant = new ResolveTenantFromCaller($resolver);
 
         return $this;
+    }
+
+    public function scopeResolver(): ?ScopeResolver
+    {
+        return $this->scopeResolver;
     }
 
     /**

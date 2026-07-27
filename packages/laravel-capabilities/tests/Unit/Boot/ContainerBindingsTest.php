@@ -8,6 +8,34 @@ use Rawphp\Capabilities\Boot\ArrayContainer;
 use Rawphp\Capabilities\Boot\ContainerBindings;
 use Rawphp\Capabilities\CapabilitiesServiceProvider;
 
+// REQ-047: prove bare makeRegistry cannot ignore surface/store config.
+
+it('makeRegistry wiring: disabled surfaces and store drivers are applied from config', function () {
+    $config = \Rawphp\Capabilities\Tests\Fixtures\BootHelpers::config([
+        'surfaces' => \Rawphp\Capabilities\Tests\Fixtures\BootHelpers::surfaces([
+            'cli' => false,
+            'job' => false,
+        ]),
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'database'],
+        'audit' => ['mode' => 'strict', 'enabled' => true, 'required' => false, 'driver' => 'database'],
+        'transactions' => ['wrap_run' => true],
+        'events' => ['enabled' => false],
+    ]);
+
+    $registry = ContainerBindings::makeRegistry($config);
+
+    expect($registry->globallyEnabledSurfaces()['cli'])->toBeFalse()
+        ->and($registry->globallyEnabledSurfaces()['job'])->toBeFalse()
+        ->and($registry->approvalStore())->toBeInstanceOf(\Rawphp\Capabilities\Support\InMemoryApprovalStore::class)
+        ->and($registry->idempotencyStore())->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseIdempotencyStore::class)
+        ->and($registry->auditMode())->toBe('strict')
+        ->and($registry->scopeResolver())->toBeInstanceOf(\Rawphp\Capabilities\Support\DefaultScopeResolver::class)
+        ->and($registry->transactionsWrapRun())->toBeTrue()
+        ->and($registry->eventsEnabled())->toBeFalse()
+        ->and($registry->clock())->toBeInstanceOf(\Rawphp\Capabilities\Support\SystemClock::class);
+});
+
 it("happy: container binds CapabilityRegistry [BOOT-001]", function () {
     expect(ContainerBindings::binds("CapabilityRegistry"))->toBeTrue()
         ->and(CapabilitiesServiceProvider::bindingAbstracts())->toContain("CapabilityRegistry");

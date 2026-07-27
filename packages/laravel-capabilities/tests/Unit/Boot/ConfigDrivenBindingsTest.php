@@ -143,6 +143,156 @@ it('clients and surfaces from config appear on the resolved plan', function () {
         ->and($resolved['surfaces']['http']['enabled'] ?? false)->toBeTrue();
 });
 
+// REQ-047: makeRegistry full config wiring — fail when config is ignored.
+
+it('makeRegistry applies globally enabled surfaces from surfaces.*.enabled', function () {
+    $config = BootHelpers::config([
+        'surfaces' => BootHelpers::surfaces([
+            'http' => false,
+            'artisan' => false,
+            'messaging' => false,
+            'agent' => true,
+        ]),
+    ]);
+
+    $registry = ContainerBindings::makeRegistry($config);
+    $global = $registry->globallyEnabledSurfaces();
+
+    expect($global['http'])->toBeFalse()
+        ->and($global['artisan'])->toBeFalse()
+        ->and($global['agent'])->toBeTrue()
+        ->and($global)->toEqual(CapabilitiesConfig::globallyEnabledSurfaces($config));
+});
+
+it('makeRegistry injects approval store matching makeApprovalManager driver', function () {
+    $memory = BootHelpers::config(['approval' => ['store' => 'memory']]);
+    $database = BootHelpers::config(['approval' => ['store' => 'database']]);
+
+    $memReg = ContainerBindings::makeRegistry($memory);
+    $dbReg = ContainerBindings::makeRegistry($database);
+
+    expect($memReg->approvals()->store())->toBeInstanceOf(\Rawphp\Capabilities\Support\InMemoryApprovalStore::class)
+        ->and($memReg->approvalStore())->toBeInstanceOf(\Rawphp\Capabilities\Support\InMemoryApprovalStore::class)
+        ->and(ContainerBindings::makeApprovalManager($memory)->store())
+        ->toBeInstanceOf(\Rawphp\Capabilities\Support\InMemoryApprovalStore::class)
+        ->and($dbReg->approvals()->store())->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseApprovalStore::class)
+        ->and($dbReg->approvalStore())->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseApprovalStore::class)
+        ->and(ContainerBindings::makeApprovalManager($database)->store())
+        ->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseApprovalStore::class);
+});
+
+it('makeRegistry injects idempotency store matching makeIdempotencyStore driver', function () {
+    $memory = BootHelpers::config(['idempotency' => ['driver' => 'memory']]);
+    $database = BootHelpers::config(['idempotency' => ['driver' => 'database']]);
+
+    $memReg = ContainerBindings::makeRegistry($memory);
+    $dbReg = ContainerBindings::makeRegistry($database);
+
+    expect($memReg->idempotencyStore())->toBeInstanceOf(InMemoryIdempotencyStore::class)
+        ->and(ContainerBindings::makeIdempotencyStore($memory))->toBeInstanceOf(InMemoryIdempotencyStore::class)
+        ->and($dbReg->idempotencyStore())->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseIdempotencyStore::class)
+        ->and(ContainerBindings::makeIdempotencyStore($database))
+        ->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseIdempotencyStore::class);
+});
+
+it('makeRegistry applies audit mode/enabled/required/driver via registry APIs', function () {
+    $config = BootHelpers::config([
+        'audit' => [
+            'enabled' => false,
+            'mode' => 'strict',
+            'required' => true,
+            // boot resolve accepts memory|database; registry maps database → database
+            'driver' => 'database',
+        ],
+    ]);
+
+    $registry = ContainerBindings::makeRegistry($config);
+
+    expect($registry->auditEnabled())->toBeFalse()
+        ->and($registry->auditMode())->toBe('strict')
+        ->and($registry->auditRequired())->toBeTrue()
+        ->and($registry->auditDriver())->toBe('database');
+});
+
+it('makeRegistry injects DefaultScopeResolver', function () {
+    $registry = ContainerBindings::makeRegistry(CapabilitiesConfig::defaults());
+
+    expect($registry->scopeResolver())->toBeInstanceOf(\Rawphp\Capabilities\Support\DefaultScopeResolver::class);
+});
+
+it('makeRegistry applies rate limit, validation, transactions, events, and tool surface config', function () {
+    $config = BootHelpers::config([
+        'rate_limits' => [
+            'enabled' => false,
+            'defaults' => ['per_minute' => 12, 'per_capability_per_minute' => 3],
+            'agent_turn' => ['max_tool_calls' => 4],
+        ],
+        'validation' => ['validate_output' => false],
+        'transactions' => ['wrap_run' => true],
+        'events' => ['enabled' => false],
+        'surfaces' => [
+            'agent' => [
+                'enabled' => true,
+                'profiles' => ['ops' => ['create-invoice']],
+                'require_profile' => false,
+                'max_tools_warn' => 8,
+                'max_tools_hard' => 16,
+                'max_tool_calls_per_turn' => 2,
+            ],
+            'mcp' => [
+                'enabled' => true,
+                'profiles' => ['read' => ['list-invoices']],
+                'require_profile' => true,
+                'max_tools_warn' => 10,
+                'max_tools_hard' => 20,
+            ],
+        ],
+    ]);
+
+    $registry = ContainerBindings::makeRegistry($config);
+
+    expect($registry->rateLimitConfig()['enabled'])->toBeFalse()
+        ->and($registry->rateLimitConfig()['defaults']['per_minute'])->toBe(12)
+        ->and($registry->rateLimitConfig()['agent_turn']['max_tool_calls'])->toBe(4)
+        ->and($registry->validateOutputEnabled())->toBeFalse()
+        ->and($registry->transactionsWrapRun())->toBeTrue()
+        ->and($registry->eventsEnabled())->toBeFalse()
+        ->and($registry->toolSurfaceConfig()['agent']['profiles']['ops'] ?? null)->toBe(['create-invoice'])
+        ->and($registry->toolSurfaceConfig()['agent']['require_profile'] ?? null)->toBeFalse()
+        ->and($registry->toolSurfaceConfig()['agent']['max_tools_warn'] ?? null)->toBe(8)
+        ->and($registry->toolSurfaceConfig()['mcp']['profiles']['read'] ?? null)->toBe(['list-invoices'])
+        ->and($registry->toolSurfaceConfig()['mcp']['max_tools_hard'] ?? null)->toBe(20);
+});
+
+it('makeRegistry clock remains SystemClock by default', function () {
+    $registry = ContainerBindings::makeRegistry(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+    ]));
+
+    expect($registry->clock())->toBeInstanceOf(SystemClock::class);
+});
+
+it('challenger: mixed approval.database + idempotency.memory drivers without inventing a second store type', function () {
+    $config = BootHelpers::config([
+        'approval' => ['store' => 'database'],
+        'idempotency' => ['driver' => 'memory'],
+        'audit' => ['driver' => 'memory', 'mode' => 'best_effort'],
+    ]);
+
+    $registry = ContainerBindings::makeRegistry($config);
+    $approval = ContainerBindings::makeApprovalManager($config);
+    $idempotency = ContainerBindings::makeIdempotencyStore($config);
+
+    expect($registry->approvalStore())->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseApprovalStore::class)
+        ->and($registry->approvals()->store())->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseApprovalStore::class)
+        ->and($approval->store())->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseApprovalStore::class)
+        ->and($registry->idempotencyStore())->toBeInstanceOf(InMemoryIdempotencyStore::class)
+        ->and($idempotency)->toBeInstanceOf(InMemoryIdempotencyStore::class)
+        ->and($registry->idempotencyStore())->not->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseIdempotencyStore::class)
+        ->and($registry->approvalStore())->not->toBeInstanceOf(\Rawphp\Capabilities\Support\InMemoryApprovalStore::class);
+});
+
 it('provider register applies config-driven factories against a fake app', function () {
     $configStore = new class
     {
