@@ -15,15 +15,17 @@ use Rawphp\Capabilities\Contracts\ScopeResolver;
 use Rawphp\Capabilities\Contracts\Tracer as TracerContract;
 use Rawphp\Capabilities\Observability\InMemoryMetrics;
 use Rawphp\Capabilities\Observability\InMemoryTracer;
+use Rawphp\Capabilities\Observability\LogFallbackMetrics;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\DefaultScopeResolver;
 use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
+use Rawphp\Capabilities\Support\SystemClock;
 
 /**
- * Declarative container binding plan (BOOT-001).
+ * Declarative container binding plan (BOOT-001 / REQ-023).
  *
- * Unit tests assert the plan without booting a full Laravel container.
- * Tests rebind via {@see ArrayContainer}.
+ * Pure function of config — unit tests assert without a Laravel app.
+ * Host apps rebind database drivers when ready; package defaults use memory.
  */
 final class ContainerBindings
 {
@@ -32,28 +34,89 @@ final class ContainerBindings
         'capabilities-migrations',
     ];
 
+    /** Drivers the package can construct without host DB glue. */
+    public const MEMORY_DRIVERS = ['memory', 'in_memory', 'array'];
+
+    /** Drivers that fall back to package memory until host rebinds. */
+    public const DATABASE_DRIVERS = ['database', 'db', 'eloquent'];
+
     /**
      * Abstract names bound by the service provider.
      *
+     * @param  array<string, mixed>|null  $config
      * @return list<string>
      */
-    public static function abstracts(): array
+    public static function abstracts(?array $config = null): array
     {
-        return array_keys(self::plan());
+        return array_keys(self::plan($config));
     }
 
     /**
+     * Abstract → concrete map (backward-compatible plan surface).
+     *
+     * @param  array<string, mixed>|null  $config
      * @return array<string, class-string|string>
      */
-    public static function plan(): array
+    public static function plan(?array $config = null): array
     {
-        return [
+        return self::resolve($config)['bindings'];
+    }
+
+    /**
+     * Full config-driven resolution plan (surfaces, audit, approval, clients, drivers).
+     *
+     * @param  array<string, mixed>|null  $config
+     * @return array{
+     *     bindings: array<string, class-string|string>,
+     *     drivers: array{
+     *         approval_store: array{requested: string, resolved: string, concrete: class-string, package_default: bool},
+     *         audit: array{requested: string, resolved: string, mode: string, concrete: class-string, package_default: bool},
+     *         idempotency: array{requested: string, resolved: string, concrete: class-string, package_default: bool}
+     *     },
+     *     clients: array<string, mixed>,
+     *     surfaces: array<string, mixed>,
+     *     registry: class-string
+     * }
+     */
+    public static function resolve(?array $config = null): array
+    {
+        $config = $config === null || $config === []
+            ? CapabilitiesConfig::defaults()
+            : $config;
+
+        $approvalStore = self::resolveStoreDriver(
+            kind: 'approval.store',
+            requested: (string) (($config['approval']['store'] ?? null) ?: 'memory'),
+            memoryConcrete: ApprovalManager::class,
+        );
+
+        $auditDriver = self::resolveStoreDriver(
+            kind: 'audit.driver',
+            requested: (string) (($config['audit']['driver'] ?? null) ?: 'memory'),
+            memoryConcrete: AuditLogger::class,
+        );
+
+        $auditMode = (string) (($config['audit']['mode'] ?? null) ?: 'best_effort');
+        if (! in_array($auditMode, AuditLogger::SUPPORTED_MODES, true)) {
+            throw BootException::unknownAuditMode($auditMode);
+        }
+
+        $idempotency = self::resolveStoreDriver(
+            kind: 'idempotency.driver',
+            requested: (string) (($config['idempotency']['driver'] ?? null) ?: 'memory'),
+            memoryConcrete: InMemoryIdempotencyStore::class,
+        );
+
+        $metricsEnabled = (bool) ($config['observability']['metrics'] ?? true);
+        $tracingEnabled = (bool) ($config['observability']['tracing'] ?? true);
+
+        $bindings = [
             'CapabilityRegistry' => CapabilityRegistry::class,
             CapabilityRegistry::class => CapabilityRegistry::class,
             'ApprovalManager' => ApprovalManager::class,
             ApprovalManager::class => ApprovalManager::class,
             'IdempotencyStore' => IdempotencyStore::class,
-            IdempotencyStore::class => InMemoryIdempotencyStore::class,
+            IdempotencyStore::class => $idempotency['concrete'],
             'AuditLogger' => AuditLogger::class,
             AuditLogger::class => AuditLogger::class,
             'ScopeResolver' => ScopeResolver::class,
@@ -63,16 +126,48 @@ final class ContainerBindings
             'McpToolAdapter' => McpToolAdapter::class,
             McpToolAdapter::class => McpToolAdapterV1::class,
             'Metrics' => MetricsContract::class,
-            MetricsContract::class => InMemoryMetrics::class,
+            MetricsContract::class => $metricsEnabled ? LogFallbackMetrics::class : InMemoryMetrics::class,
             'Tracer' => TracerContract::class,
             TracerContract::class => InMemoryTracer::class,
             PeerVersionProbe::class => PeerVersionProbe::class,
         ];
+
+        return [
+            'bindings' => $bindings,
+            'drivers' => [
+                'approval_store' => [
+                    'requested' => $approvalStore['requested'],
+                    'resolved' => $approvalStore['resolved'],
+                    'concrete' => $approvalStore['concrete'],
+                    'package_default' => $approvalStore['package_default'],
+                ],
+                'audit' => [
+                    'requested' => $auditDriver['requested'],
+                    'resolved' => $auditDriver['resolved'],
+                    'mode' => $auditMode,
+                    'concrete' => $auditDriver['concrete'],
+                    'package_default' => $auditDriver['package_default'],
+                ],
+                'idempotency' => [
+                    'requested' => $idempotency['requested'],
+                    'resolved' => $idempotency['resolved'],
+                    'concrete' => $idempotency['concrete'],
+                    'package_default' => $idempotency['package_default'],
+                ],
+            ],
+            'clients' => (array) ($config['clients'] ?? []),
+            'surfaces' => (array) ($config['surfaces'] ?? []),
+            'registry' => CapabilityRegistry::class,
+            'observability' => [
+                'metrics' => $metricsEnabled,
+                'tracing' => $tracingEnabled,
+            ],
+        ];
     }
 
-    public static function binds(string $abstract): bool
+    public static function binds(string $abstract, ?array $config = null): bool
     {
-        $plan = self::plan();
+        $plan = self::plan($config);
 
         return isset($plan[$abstract]) || in_array($abstract, $plan, true);
     }
@@ -80,5 +175,85 @@ final class ContainerBindings
     public static function hasPublishTag(string $tag): bool
     {
         return in_array($tag, self::PUBLISH_TAGS, true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     */
+    public static function makeRegistry(array $config = []): CapabilityRegistry
+    {
+        unset($config); // registry is empty until discovery/fluent; config shapes peer surfaces only
+
+        return new CapabilityRegistry;
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     */
+    public static function makeIdempotencyStore(array $config = []): IdempotencyStore
+    {
+        $resolved = self::resolve($config === [] ? null : $config);
+        $driver = $resolved['drivers']['idempotency']['resolved'];
+
+        if ($driver !== 'memory') {
+            throw BootException::unknownDriver('idempotency.driver', $driver);
+        }
+
+        return new InMemoryIdempotencyStore(new SystemClock);
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     */
+    public static function makeApprovalManager(array $config = []): ApprovalManager
+    {
+        $full = $config === [] ? CapabilitiesConfig::defaults() : $config;
+        self::resolve($full); // validate drivers/modes
+
+        $approvalConfig = (array) ($full['approval'] ?? []);
+
+        return ApprovalManager::inMemory(new SystemClock)->withConfig($approvalConfig);
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     */
+    public static function makeAuditLogger(array $config = []): AuditLogger
+    {
+        self::resolve($config === [] ? null : $config);
+
+        return new AuditLogger;
+    }
+
+    /**
+     * @return array{requested: string, resolved: string, concrete: class-string, package_default: bool}
+     */
+    private static function resolveStoreDriver(string $kind, string $requested, string $memoryConcrete): array
+    {
+        $normalized = strtolower(trim($requested));
+        if ($normalized === '') {
+            $normalized = 'memory';
+        }
+
+        if (in_array($normalized, self::MEMORY_DRIVERS, true)) {
+            return [
+                'requested' => $normalized,
+                'resolved' => 'memory',
+                'concrete' => $memoryConcrete,
+                'package_default' => false,
+            ];
+        }
+
+        if (in_array($normalized, self::DATABASE_DRIVERS, true)) {
+            // Package ships memory concretes; host apps rebind for real DB drivers.
+            return [
+                'requested' => $normalized,
+                'resolved' => 'memory',
+                'concrete' => $memoryConcrete,
+                'package_default' => true,
+            ];
+        }
+
+        throw BootException::unknownDriver($kind, $requested);
     }
 }
