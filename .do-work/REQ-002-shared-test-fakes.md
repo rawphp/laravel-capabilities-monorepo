@@ -31,6 +31,8 @@ Original brief: implement all package tests and business logic so all tests pass
 - [ ] At least one smoke unit test proves a fake can record and read back a pending approval / idempotency outcome
 - [ ] No tests/Feature, RefreshDatabase, or real DB connection required
 
+- [ ] Constructing fakes without required contracts fails loudly (type/constructor error) rather than silently returning null stores
+
 ## Verification Steps
 
 1. **test** `composer test:core -- --filter=Fake 2>&1 | tail -40 || pest --configuration=packages/laravel-capabilities/phpunit.xml --filter=InMemory 2>&1 | tail -40`

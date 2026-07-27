@@ -31,6 +31,8 @@ Original brief: implement all package tests and business logic so all tests pass
 - [ ] No domain business logic in Go
 - [ ] go test ./... exits 0 with acceptable coverage for implemented packages
 
+- [ ] HTTP 4xx/5xx and schema validation failures map to non-zero exit codes without embedding domain logic
+
 ## Verification Steps
 
 1. **test** `composer test:cli 2>&1 | tail -40`

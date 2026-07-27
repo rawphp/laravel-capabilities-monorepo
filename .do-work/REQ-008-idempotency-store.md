@@ -31,6 +31,8 @@ Original brief: implement all package tests and business logic so all tests pass
 - [ ] Wire format / storage identity matrices pass
 - [ ] Unit-only fakes
 
+- [ ] Conflicting idempotency payload for same key is rejected or returns stored outcome without re-running (per D-005 inventory fail cases)
+
 ## Verification Steps
 
 1. **test** `composer test:core -- --filter=Idempotency 2>&1 | tail -50`

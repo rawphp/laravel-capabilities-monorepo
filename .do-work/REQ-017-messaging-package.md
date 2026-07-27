@@ -31,6 +31,8 @@ Original brief: implement all package tests and business logic so all tests pass
 - [ ] Mocks only — no real Telegram network
 - [ ] Coverage ≥95% on packages/laravel-capabilities-messaging/src
 
+- [ ] Unauthenticated or invalid Telegram webhook payloads are rejected without invoking registry/run
+
 ## Verification Steps
 
 1. **test** `composer test:messaging 2>&1 | tail -40`

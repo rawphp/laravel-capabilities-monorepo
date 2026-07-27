@@ -31,6 +31,8 @@ Original brief: implement all package tests and business logic so all tests pass
 - [ ] Contracts needed by later pipeline stages are defined (interfaces only if implementation is elsewhere)
 - [ ] Unit tests only; ≥95% coverage on files this REQ adds under src/Support and src/Contracts (or package still on track)
 
+- [ ] Invalid or incomplete CapabilityData construction fails closed (exception or typed error) rather than producing a usable invalid DTO
+
 ## Verification Steps
 
 1. **test** `composer test:core -- --filter=Support 2>&1 | tail -50`

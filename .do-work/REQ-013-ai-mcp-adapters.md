@@ -31,6 +31,8 @@ Original brief: implement all package tests and business logic so all tests pass
 - [ ] AdapterApi version / contract table tests pass
 - [ ] No live laravel/ai or laravel/mcp required in CI
 
+- [ ] When peer interfaces are missing while surface enabled, adapter registration fails closed/soft-disables without calling live peers
+
 ## Verification Steps
 
 1. **test** `composer test:core -- --filter=Ai 2>&1 | tail -40`

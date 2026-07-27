@@ -32,6 +32,8 @@ Original brief: implement all package tests and business logic so all tests pass
 - [ ] Who-may-approve / expiry / staleness matrices pass
 - [ ] No DB in tests
 
+- [ ] Double-execute after approval and crash-recovery races never call run() twice (assert single execution from inventory scenarios)
+
 ## Verification Steps
 
 1. **test** `composer test:core -- --filter=Approval 2>&1 | tail -60`

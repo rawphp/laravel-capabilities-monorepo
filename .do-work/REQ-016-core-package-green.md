@@ -11,7 +11,7 @@
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** L
-**Files:** packages/laravel-capabilities
+**Files:** packages/laravel-capabilities docs/spec.md
 **Depends on:** REQ-015
 
 ## Task

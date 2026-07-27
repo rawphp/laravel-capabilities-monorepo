@@ -31,6 +31,8 @@ Original brief: implement all package tests and business logic so all tests pass
 - [ ] Events payload matrix and observability metrics/spans pass
 - [ ] Disabled surface registers nothing / invoke denied
 
+- [ ] Missing required peer with surface enabled produces clear boot failure or soft-disable, not silent half-registration
+
 ## Verification Steps
 
 1. **test** `composer test:core -- --filter=Boot 2>&1 | tail -40`

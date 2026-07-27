@@ -11,7 +11,7 @@
 **Criteria approved:** agent-drafted
 **Priority:** 1
 **Size:** M
-**Files:** packages docs/requirements-inventory.md
+**Files:** packages docs/requirements-inventory.md docs/spec.md
 **Depends on:** REQ-016 REQ-017 REQ-018
 
 ## Task
@@ -31,6 +31,8 @@ Original brief: implement all package tests and business logic so all tests pass
 - [ ] Core and messaging src coverage ≥95%
 - [ ] No tests/Feature directories; suites pass with DB_* unset
 - [ ] Any intentional test changes vs original stubs are justified by docs/spec.md
+
+- [ ] If any package suite fails or coverage is below 95%, the gate fails (non-zero) and does not declare monorepo green
 
 ## Verification Steps
 
