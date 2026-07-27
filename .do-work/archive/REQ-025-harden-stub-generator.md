@@ -1,19 +1,14 @@
 # REQ-025: Harden requirement stub generator
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.65959
-**Claimed at:** 2026-07-27T04:53:04Z
-**Heartbeat:** 2026-07-27T04:53:31Z
-<!-- claimed-end -->
 
 **UR:** UR-003
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:**
 **Terminal state:**
 **Parent:**
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (3/3) commit:7edb60c
 **Criteria approved:** agent-drafted
 **Priority:** 3
 **Size:** M
@@ -30,11 +25,11 @@ UR-003 scaffold-sync only. Implemented PHP/Go suites green; generator `write_fil
 
 ## Acceptance Criteria
 
-- [ ] Running the generator does not delete or overwrite a test file that lacks the AUTO-GENERATED stub marker (or equivalent “implemented” detection)
-- [ ] Pure stub targets may still be regenerated; inventory markdown generation remains available without destroying live suites
-- [ ] Clear stdout/stderr message when skips/refuses overwrite of implemented files (counts of written vs skipped)
-- [ ] Automated test or scripted assertion covers the no-wipe behaviour (unit test of generator helpers, or a hermetic temp-dir exercise)
-- [ ] AGENTS.md regenerate guidance matches the new safe contract (no “blind re-run wipes tests”)
+- [x] Running the generator does not delete or overwrite a test file that lacks the AUTO-GENERATED stub marker (or equivalent “implemented” detection)
+- [x] Pure stub targets may still be regenerated; inventory markdown generation remains available without destroying live suites
+- [x] Clear stdout/stderr message when skips/refuses overwrite of implemented files (counts of written vs skipped)
+- [x] Automated test or scripted assertion covers the no-wipe behaviour (unit test of generator helpers, or a hermetic temp-dir exercise)
+- [x] AGENTS.md regenerate guidance matches the new safe contract (no “blind re-run wipes tests”)
 
 ## Verification Steps
 
@@ -48,3 +43,9 @@ UR-003 scaffold-sync only. Implemented PHP/Go suites green; generator `write_fil
 ## Manual checks (advisory)
 
 - [ ] Before any intentional full scaffold refresh, operator reads AGENTS.md regenerate section — Observable outcome: procedure mentions inventory-only or force flag explicitly
+
+## Outputs
+
+- tools/generate_requirement_stubs.py — No-wipe write_files; written/skipped stats
+- tools/tests/test_generate_requirement_stubs.py — Hermetic unit tests for no-wipe regeneration
+- AGENTS.md — Safe regenerate contract for the stub generator
