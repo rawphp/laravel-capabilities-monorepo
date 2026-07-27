@@ -1,19 +1,14 @@
 # REQ-039: Consumer readiness path
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.49422
-**Claimed at:** 2026-07-27T05:59:23Z
-**Heartbeat:** 2026-07-27T05:59:23Z
-<!-- claimed-end -->
 
 **UR:** UR-007
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:** App integrator evaluates the monorepo for adoption — opens root README, package docs, and plans a first capability plus app CI parity/schema checks
 **Terminal state:** Status and versioning are honest (monorepo/unit-complete vs Packagist-stable); release notes and packaging readiness exist; a first-capability tutorial closes; D-020 helpers enforce real multi-surface success/deny class and durable schema snapshots under unit-only policy — consumer can tell stable-API claims from REQ-driven monorepo reality
 **Parent:**
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (2/2) children REQ-040–045 archived commit:0c9a0b2
 **Criteria approved:** agent-drafted
 **Priority:** 1
 **Size:** S
@@ -30,13 +25,13 @@ Brief items 5–6: README/spec still advertise future/unpublished status while r
 
 ## Acceptance Criteria
 
-- [ ] Child REQs REQ-040–REQ-045 are done and their verification steps pass
-- [ ] Root README no longer claims only “future package design” without a readiness residual matrix
-- [ ] A first-capability tutorial exists and is linked from README
-- [ ] Package CHANGELOG or equivalent release-notes surface exists for core (and other packages in-scope)
-- [ ] `assertSchemaSnapshot` fails on durable snapshot drift (not only optional in-memory equality)
-- [ ] `assertParity` compares success/deny class across listed surfaces via real registry/adapter invoke paths with mocks (not empty-arg `return true`)
-- [ ] Default package CI remains unit-only (no feature/DB suite, no live peers required)
+- [x] Child REQs REQ-040–REQ-045 are done and their verification steps pass
+- [x] Root README no longer claims only “future package design” without a readiness residual matrix
+- [x] A first-capability tutorial exists and is linked from README
+- [x] Package CHANGELOG or equivalent release-notes surface exists for core (and other packages in-scope)
+- [x] `assertSchemaSnapshot` fails on durable snapshot drift (not only optional in-memory equality)
+- [x] `assertParity` compares success/deny class across listed surfaces via real registry/adapter invoke paths with mocks (not empty-arg `return true`)
+- [x] Default package CI remains unit-only (no feature/DB suite, no live peers required)
 
 ## Verification Steps
 
@@ -56,3 +51,8 @@ Brief items 5–6: README/spec still advertise future/unpublished status while r
 **Data dependencies:** Spec roadmap + D-020 section; package `composer.json` metadata
 
 **Service dependencies:** `CapabilityRegistry::assertParity`, `assertSchemaSnapshot`, catalog/schema pipeline
+
+
+## Outputs
+
+- (path-unit) — closed via children REQ-040–045 on main; verification green
