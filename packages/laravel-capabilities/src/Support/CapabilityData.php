@@ -109,7 +109,8 @@ abstract class CapabilityData implements SchemaProvider
                 continue;
             }
 
-            $out[$property->getName()] = $property->getValue($this);
+            $value = $property->getValue($this);
+            $out[$property->getName()] = self::exportValue($value);
         }
 
         return $out;
@@ -134,8 +135,8 @@ abstract class CapabilityData implements SchemaProvider
                 $schema = self::parameterSchema($parameter);
 
                 $field = self::fieldAttribute($parameter);
-                if ($field !== null && $field->description !== '') {
-                    $schema['description'] = $field->description;
+                if ($field !== null) {
+                    $schema = self::applyFieldConstraints($schema, $field);
                 }
 
                 $properties[$name] = $schema;
@@ -189,6 +190,7 @@ abstract class CapabilityData implements SchemaProvider
     private static function coerceValue(mixed $value, ReflectionParameter $parameter): mixed
     {
         $type = $parameter->getType();
+        $field = self::fieldAttribute($parameter);
 
         if ($type === null) {
             return $value;
@@ -207,7 +209,7 @@ abstract class CapabilityData implements SchemaProvider
         }
 
         if ($type instanceof ReflectionNamedType) {
-            return self::coerceNamed($value, $type->getName(), $parameter->getName());
+            return self::coerceNamed($value, $type->getName(), $parameter->getName(), $field);
         }
 
         if ($type instanceof ReflectionUnionType) {
@@ -217,7 +219,7 @@ abstract class CapabilityData implements SchemaProvider
                 }
 
                 try {
-                    return self::coerceNamed($value, $inner->getName(), $parameter->getName());
+                    return self::coerceNamed($value, $inner->getName(), $parameter->getName(), $field);
                 } catch (InvalidArgumentException) {
                     // try next union member
                 }
@@ -233,10 +235,19 @@ abstract class CapabilityData implements SchemaProvider
         return $value;
     }
 
-    private static function coerceNamed(mixed $value, string $typeName, string $property): mixed
+    private static function coerceNamed(mixed $value, string $typeName, string $property, ?Field $field = null): mixed
     {
+        if (is_a($typeName, SchemaProvider::class, true) || is_a($typeName, self::class, true)) {
+            if (! is_array($value)) {
+                throw new InvalidArgumentException("Property \"{$property}\" must be object/array for nested type");
+            }
+
+            /** @var class-string<SchemaProvider> $typeName */
+            return $typeName::validate($value);
+        }
+
         return match ($typeName) {
-            'int' => is_int($value) || (is_string($value) && is_numeric($value))
+            'int' => is_int($value) || (is_string($value) && is_numeric($value) && ! str_contains((string) $value, '.'))
                 ? (int) $value
                 : throw new InvalidArgumentException("Property \"{$property}\" must be int"),
             'float' => is_float($value) || is_int($value) || (is_string($value) && is_numeric($value))
@@ -248,11 +259,32 @@ abstract class CapabilityData implements SchemaProvider
             'bool' => is_bool($value)
                 ? $value
                 : throw new InvalidArgumentException("Property \"{$property}\" must be bool"),
-            'array' => is_array($value)
-                ? $value
-                : throw new InvalidArgumentException("Property \"{$property}\" must be array"),
+            'array' => self::coerceArray($value, $property, $field),
             default => $value,
         };
+    }
+
+    private static function coerceArray(mixed $value, string $property, ?Field $field): array
+    {
+        if (! is_array($value)) {
+            throw new InvalidArgumentException("Property \"{$property}\" must be array");
+        }
+
+        if ($field?->items !== null && is_a($field->items, SchemaProvider::class, true)) {
+            $items = [];
+            foreach ($value as $i => $item) {
+                if (! is_array($item)) {
+                    throw new InvalidArgumentException("Property \"{$property}[{$i}]\" must be object");
+                }
+                /** @var class-string<SchemaProvider> $itemClass */
+                $itemClass = $field->items;
+                $items[] = $itemClass::validate($item);
+            }
+
+            return $items;
+        }
+
+        return $value;
     }
 
     /**
@@ -261,14 +293,18 @@ abstract class CapabilityData implements SchemaProvider
     private static function parameterSchema(ReflectionParameter $parameter): array
     {
         $type = $parameter->getType();
+        $field = self::fieldAttribute($parameter);
 
         if ($type instanceof ReflectionNamedType) {
-            return self::namedTypeSchema($type->getName(), $type->allowsNull());
+            $schema = self::namedTypeSchema($type->getName(), $type->allowsNull(), $field);
+
+            return $schema;
         }
 
         if ($type instanceof ReflectionUnionType) {
             $names = [];
             $allowsNull = false;
+            $objectSchema = null;
             foreach ($type->getTypes() as $inner) {
                 if (! $inner instanceof ReflectionNamedType) {
                     continue;
@@ -278,7 +314,13 @@ abstract class CapabilityData implements SchemaProvider
 
                     continue;
                 }
-                $names[] = self::jsonTypeName($inner->getName());
+                if (is_a($inner->getName(), SchemaProvider::class, true)) {
+                    $objectSchema = $inner->getName()::jsonSchema();
+                    unset($objectSchema['$schema']);
+                    $names[] = 'object';
+                } else {
+                    $names[] = self::jsonTypeName($inner->getName());
+                }
             }
 
             if ($allowsNull) {
@@ -286,6 +328,14 @@ abstract class CapabilityData implements SchemaProvider
             }
 
             $names = array_values(array_unique($names));
+
+            if ($objectSchema !== null && count($names) === 1) {
+                return $objectSchema;
+            }
+
+            if ($objectSchema !== null && $allowsNull && count($names) === 2) {
+                return array_merge($objectSchema, ['type' => ['object', 'null']]);
+            }
 
             if (count($names) === 1) {
                 return ['type' => $names[0]];
@@ -300,15 +350,75 @@ abstract class CapabilityData implements SchemaProvider
     /**
      * @return array<string, mixed>
      */
-    private static function namedTypeSchema(string $typeName, bool $allowsNull): array
+    private static function namedTypeSchema(string $typeName, bool $allowsNull, ?Field $field = null): array
     {
+        if (is_a($typeName, SchemaProvider::class, true) || ($field?->of !== null && is_a($field->of, SchemaProvider::class, true))) {
+            $class = is_a($typeName, SchemaProvider::class, true) ? $typeName : $field->of;
+            /** @var class-string<SchemaProvider> $class */
+            $nested = $class::jsonSchema();
+            unset($nested['$schema']);
+            if ($allowsNull) {
+                $nested['type'] = ['object', 'null'];
+            }
+
+            return $nested;
+        }
+
         $json = self::jsonTypeName($typeName);
+
+        if ($json === 'array' && $field?->items !== null && is_a($field->items, SchemaProvider::class, true)) {
+            $itemSchema = $field->items::jsonSchema();
+            unset($itemSchema['$schema']);
+            $schema = [
+                'type' => $allowsNull ? ['array', 'null'] : 'array',
+                'items' => $itemSchema,
+            ];
+
+            return $schema;
+        }
 
         if ($allowsNull) {
             return ['type' => [$json, 'null']];
         }
 
         return ['type' => $json];
+    }
+
+    /**
+     * @param  array<string, mixed>  $schema
+     * @return array<string, mixed>
+     */
+    private static function applyFieldConstraints(array $schema, Field $field): array
+    {
+        if ($field->description !== '') {
+            $schema['description'] = $field->description;
+        }
+        if ($field->minimum !== null) {
+            $schema['minimum'] = $field->minimum;
+        }
+        if ($field->maximum !== null) {
+            $schema['maximum'] = $field->maximum;
+        }
+        if ($field->minLength !== null) {
+            $schema['minLength'] = $field->minLength;
+        }
+        if ($field->maxLength !== null) {
+            $schema['maxLength'] = $field->maxLength;
+        }
+        if ($field->minItems !== null) {
+            $schema['minItems'] = $field->minItems;
+        }
+        if ($field->maxItems !== null) {
+            $schema['maxItems'] = $field->maxItems;
+        }
+        if ($field->enum !== null) {
+            $schema['enum'] = $field->enum;
+        }
+        if ($field->format !== null) {
+            $schema['format'] = $field->format;
+        }
+
+        return $schema;
     }
 
     private static function jsonTypeName(string $phpType): string
@@ -339,5 +449,18 @@ abstract class CapabilityData implements SchemaProvider
         }
 
         return $attributes[0]->newInstance();
+    }
+
+    private static function exportValue(mixed $value): mixed
+    {
+        if ($value instanceof self) {
+            return $value->toArray();
+        }
+
+        if (is_array($value)) {
+            return array_map(static fn ($v) => self::exportValue($v), $value);
+        }
+
+        return $value;
     }
 }

@@ -36,6 +36,16 @@ final class CapabilityResult
     }
 
     /**
+     * Alias for {@see ok()} used by registry/schema paths.
+     *
+     * @param  array<string, mixed>  $meta
+     */
+    public static function success(mixed $data = null, array $meta = []): self
+    {
+        return self::ok($data, $meta);
+    }
+
+    /**
      * @param  array<string, mixed>  $meta
      */
     public static function approvalRequired(
