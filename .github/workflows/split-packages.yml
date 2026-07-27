@@ -1,6 +1,10 @@
 # Mirror each packages/* tree into its public package repo on every push to main,
 # and re-publish monorepo tags (v*) onto those repos for Packagist / releases.
 #
+# CLI binary GitHub Release is package-owned: after this workflow force-pushes a
+# v* tag to rawphp/capabilities-cli, that repo's .github/workflows/release.yml
+# (GoReleaser) builds assets — do not re-implement binary release here.
+#
 # Setup (one-time, monorepo repo settings):
 #   1. Create a fine-grained PAT (or classic) with Contents: Read and write
 #      on rawphp/laravel-capabilities, rawphp/laravel-capabilities-messaging,

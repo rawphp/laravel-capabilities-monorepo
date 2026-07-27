@@ -1,0 +1,52 @@
+# Package-owned release for rawphp/capabilities-cli (binary: capabilities).
+#
+# After monorepo split force-pushes a mirrored v* tag onto this repo, this
+# workflow builds multi-arch binaries with GoReleaser and creates or updates
+# the GitHub Release for that tag. Do not build PHP packages here.
+#
+# Prerequisites:
+#   - Monorepo split-packages.yml has already mirrored the tag (SPLIT_GITHUB_TOKEN
+#     is monorepo-only; this child workflow uses GITHUB_TOKEN only).
+#   - Package-root .goreleaser.yml (GoReleaser v2) with release.mode: replace so
+#     retags overwrite assets/notes instead of failing.
+#
+# Permissions: contents: write is enough for unsigned publish via GITHUB_TOKEN.
+# Signing secrets (REQ-063) are optional and not required here.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          # Pin to GoReleaser v2.x (matches package .goreleaser.yml version: 2).
+          version: '~> v2'
+          # release --clean: publish GitHub Release; .goreleaser.yml uses
+          # release.mode: replace + replace_existing_artifacts so a retag
+          # updates the same tag's assets rather than failing.
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
