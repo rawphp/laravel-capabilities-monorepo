@@ -43,10 +43,10 @@ use Rawphp\Capabilities\Support\CapabilityData;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\CapabilityScope;
 use Rawphp\Capabilities\Support\ErrorCodeMap;
-use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Support\InMemoryRateLimiter;
 use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Support\SystemActor;
+use Rawphp\Capabilities\Support\SystemClock;
 use Rawphp\Capabilities\Contracts\Clock;
 use Throwable;
 
@@ -258,7 +258,7 @@ final class CapabilityRegistry implements CapabilityBus
             $this->toolSurfaceConfig = array_replace_recursive($this->toolSurfaceConfig, $toolSurfaceConfig);
         }
         $this->profileSelector = new ProfileSelector;
-        $this->clock = $clock ?? new FixedClock(new \DateTimeImmutable('2026-07-27T00:00:00Z'));
+        $this->clock = $clock ?? new SystemClock;
     }
 
     public function define(string $name): CapabilityDefinitionBuilder
