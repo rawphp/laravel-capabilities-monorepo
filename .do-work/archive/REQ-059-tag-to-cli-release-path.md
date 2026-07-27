@@ -1,23 +1,18 @@
 # REQ-059: Tag-to-CLI release path
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.83526
-**Claimed at:** 2026-07-27T21:03:10Z
-**Heartbeat:** 2026-07-27T21:03:10Z
-<!-- claimed-end -->
 
 **UR:** UR-011
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-28
 **Layer:** none
 **Entry point:** Maintainer pushes monorepo git tag matching `v*` (split workflow mirrors the tag to `rawphp/capabilities-cli`)
 **Terminal state:** `rawphp/capabilities-cli` has a GitHub Release for that tag with multi-arch `capabilities` binaries (platform signing applied when secrets are present); `capabilities version` on a release asset matches the tag (without leading `v`)
 **Parent:**
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:0dc2c1d steps:2/2 AC1-AC3 passed
 **Criteria approved:** agent-drafted
 **Priority:** 3
 **Size:** M
-**Files:** packages/capabilities-cli/.goreleaser.yml packages/capabilities-cli/.github/workflows/release.yml packages/capabilities-cli/cmd/capabilities/cli.go docs/versioning.md packages/capabilities-cli/README.md packages/capabilities-cli/dist/README.md
+**Files:** packages/capabilities-cli/docs/release-path.md packages/capabilities-cli/cmd/capabilities/release_path_test.go packages/capabilities-cli/README.md packages/capabilities-cli/CHANGELOG.md packages/capabilities-cli/.goreleaser.yml packages/capabilities-cli/.github/workflows/release.yml
 **Depends on:** REQ-060, REQ-061, REQ-062, REQ-063, REQ-064
 
 ## Task
@@ -30,9 +25,9 @@ Brief: when a monorepo tag is pushed and split to child repos, the CLI must be b
 
 ## Acceptance Criteria
 
-- [ ] Path entry and terminal are documented in this REQ and satisfied by child REQs (no monorepo job that creates CLI releases on PHP package remotes)
-- [ ] Child REQs cover version embed, GoReleaser config, tag-triggered release workflow (update-on-retag), secret-gated platform signing, and docs/residual updates
-- [ ] No second mutation path: release automation lives under `packages/capabilities-cli` so it is self-contained after split
+- [x] Path entry and terminal are documented in this REQ and satisfied by child REQs (no monorepo job that creates CLI releases on PHP package remotes)
+- [x] Child REQs cover version embed, GoReleaser config, tag-triggered release workflow (update-on-retag), secret-gated platform signing, and docs/residual updates
+- [x] No second mutation path: release automation lives under `packages/capabilities-cli` so it is self-contained after split
 
 ## Verification Steps
 
@@ -46,3 +41,11 @@ Brief: when a monorepo tag is pushed and split to child repos, the CLI must be b
 - [ ] After children land: push a monorepo tag `v0.x.y` (or dry-run on a test tag) and confirm split mirrors it, then child workflow produces/updates a GitHub Release with assets — Observable outcome: release page on `rawphp/capabilities-cli` lists darwin/linux/windows amd64+arm64 binaries; version string matches tag when downloaded and run where possible
 
 ## Assets
+
+## Outputs
+
+- packages/capabilities-cli/docs/release-path.md — Path-unit maintainer map
+- packages/capabilities-cli/cmd/capabilities/release_path_test.go — Path-unit unit tests
+- packages/capabilities-cli/README.md — Docs table link to release-path.md
+- packages/capabilities-cli/CHANGELOG.md — Unreleased note for path-unit
+
