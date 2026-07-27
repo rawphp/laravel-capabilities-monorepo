@@ -2,9 +2,20 @@
 
 > **Package:** `rawphp/capabilities-cli`  
 > **Language:** Go (D-016)  
-> **Binary:** `capabilities`
+> **Binary:** `capabilities`  
+> **Status:** 0.x pre-stable — build from source until binary releases exist
 
 Downloadable client for end users and local agents. Auth + catalog + run + optional MCP stdio against a remote Laravel app’s **same** HTTP capability API (D-009). **No domain `run()` on the laptop.**
+
+**User documentation (monorepo):**
+
+| Doc | Path |
+|---|---|
+| Docs index | [docs/README.md](../../docs/README.md) |
+| CLI user guide | [docs/user-guide.md](docs/user-guide.md) |
+| Getting started (optional CLI) | [docs/getting-started.md](../../docs/getting-started.md) |
+| Troubleshooting | [docs/troubleshooting.md](../../docs/troubleshooting.md) |
+| Core HTTP API (server) | [laravel-capabilities user guide](../laravel-capabilities/docs/user-guide.md) |
 
 ## Layout
 

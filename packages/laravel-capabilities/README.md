@@ -7,6 +7,17 @@ Core product capability bus for Laravel.
 
 Define a capability once (schema, authorization, `run`, approval, audit) and expose it via agent, MCP, HTTP, product CLI, and jobs — same rules, one `run()`.
 
+**User documentation (monorepo):**
+
+| Doc | Path |
+|---|---|
+| Docs index | [docs/README.md](../../docs/README.md) |
+| Getting started | [docs/getting-started.md](../../docs/getting-started.md) |
+| Core user guide | [docs/user-guide.md](docs/user-guide.md) |
+| Concepts | [docs/concepts.md](../../docs/concepts.md) |
+| Troubleshooting | [docs/troubleshooting.md](../../docs/troubleshooting.md) |
+| First capability tutorial | [docs/tutorials/first-capability.md](../../docs/tutorials/first-capability.md) |
+
 **Getting started:** monorepo [First capability tutorial](../../docs/tutorials/first-capability.md) (path/VCS install, fluent + attribute define, registry invoke, HTTP, D-020). Full design: [docs/spec.md](../../docs/spec.md). D-020 helpers (`assertSchemaSnapshot`, `assertParity`) are **implemented for unit-path DX** (durable schema snapshots; multi-surface success/deny class parity with mocks/fakes) — not a live multi-surface HTTP/feature suite.
 
 ## Peer support / D-011 release gate
