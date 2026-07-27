@@ -1,19 +1,14 @@
 # REQ-022: Boot capability auto-discovery
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.52672
-**Claimed at:** 2026-07-27T04:50:55Z
-**Heartbeat:** 2026-07-27T04:50:55Z
-<!-- claimed-end -->
 
 **UR:** UR-002
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-020
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:5bf4a34 tests:CapabilityDiscoveryBoot+core
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** M
@@ -30,12 +25,12 @@ Brief: provider does not auto-discover `app/Capabilities`. Discovery already exi
 
 ## Acceptance Criteria
 
-- [ ] Boot (or explicit provider method used by boot) runs discovery for configured path(s) into the singleton registry
-- [ ] Default path follows `config/capabilities.php` `path` key (app Capabilities directory)
-- [ ] Missing discovery path does not throw; yields zero new definitions
-- [ ] Classes outside the path are not discovered (existing Outside fixture contract preserved)
-- [ ] Duplicate capability names from discovery + fluent/attribute registration raise a clear boot/register exception (D-017 single map)
-- [ ] Unit tests cover happy/missing-path/outside-path without feature tests or DB
+- [x] Boot (or explicit provider method used by boot) runs discovery for configured path(s) into the singleton registry
+- [x] Default path follows `config/capabilities.php` `path` key (app Capabilities directory)
+- [x] Missing discovery path does not throw; yields zero new definitions
+- [x] Classes outside the path are not discovered (existing Outside fixture contract preserved)
+- [x] Duplicate capability names from discovery + fluent/attribute registration raise a clear boot/register exception (D-017 single map)
+- [x] Unit tests cover happy/missing-path/outside-path without feature tests or DB
 
 ## Verification Steps
 
@@ -55,3 +50,9 @@ Brief: provider does not auto-discover `app/Capabilities`. Discovery already exi
 ## Assets
 
 - docs/spec.md D-017 discovery
+
+## Outputs
+
+- packages/laravel-capabilities/src/Discovery/CapabilityDiscoveryBoot.php — boot discovery runner
+- packages/laravel-capabilities/src/CapabilitiesServiceProvider.php — bootCapabilityDiscovery
+- packages/laravel-capabilities/tests/Unit/Discovery/CapabilityDiscoveryBootTest.php — unit tests
