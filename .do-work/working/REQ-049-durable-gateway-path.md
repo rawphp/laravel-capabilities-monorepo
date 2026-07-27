@@ -1,7 +1,13 @@
 # REQ-049: Durable TableGateway path
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.40419
+**Claimed at:** 2026-07-27T06:49:41Z
+**Heartbeat:** 2026-07-27T06:49:41Z
+<!-- claimed-end -->
+
 **UR:** UR-008
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:** Host enables `approval.store=database` and/or `idempotency.driver=database`, publishes/runs package migrations
