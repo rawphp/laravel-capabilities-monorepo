@@ -1,19 +1,14 @@
 # REQ-007: Approval state machine and resume
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.49422
-**Claimed at:** 2026-07-27T01:23:48Z
-**Heartbeat:** 2026-07-27T01:41:31Z
-<!-- claimed-end -->
 
 **UR:** UR-001
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** needs_approval stage + approve/deny/resume APIs
 **Terminal state:** Pending approvals do not call run(); approve path executes exactly once with crash recovery; Approval/* inventory tests pass.
 **Parent:** 
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:c8b8b5c Approval:543
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** L
@@ -57,3 +52,8 @@ Original brief: implement all package tests and business logic so all tests pass
 
 - docs/spec.md — design bible / conflict oracle
 - docs/requirements-inventory.md — scenario checklist
+
+
+## Outputs
+
+- packages/laravel-capabilities — implementation commit c8b8b5c
