@@ -233,6 +233,22 @@ Complete in order. Checkboxes are for human operators — not CI.
 
 Until those human steps finish, **Packagist remains residual**. Root README consumer-readiness table must keep packaging as residual. Unit tests must not depend on Packagist availability.
 
+## Durable persistence path (core)
+
+Durable approval / idempotency in a host app is a **config + migrations** path — not Packagist-gated.
+
+| Piece | Where |
+|---|---|
+| Default gateway for database drivers | `Rawphp\Capabilities\Persistence\QueryTableGateway` (Illuminate query builder) |
+| Config | `approval.store`, `approval.connection`, `idempotency.driver`, `idempotency.connection` in published `config/capabilities.php` |
+| Migrations tag | `php artisan vendor:publish --tag=capabilities-migrations` |
+| Tables | `capabilities_approvals`, `capabilities_idempotency` (`MigrationCatalog`) |
+| Host override | Bind `TableGateway` in `AppServiceProvider` (see [first-capability tutorial](tutorials/first-capability.md#durable-stores-approvals--idempotency)) |
+
+Package defaults: `approval.store` = `database`; `idempotency.driver` = `memory` until the host opts into database. Missing connection on a database driver fails closed (no silent `ArrayTableGateway`). Full host walkthrough: [docs/tutorials/first-capability.md](tutorials/first-capability.md). Package notes: [packages/laravel-capabilities/README.md](../packages/laravel-capabilities/README.md#durable-persistence-querytablegateway).
+
+This does **not** mean packages are on Packagist — install remains path/VCS until the human Packagist checklist above is complete.
+
 ## What this prep work does **not** do
 
 - No Packagist publish, API tokens, or `composer publish` automation.

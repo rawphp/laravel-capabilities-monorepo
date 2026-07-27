@@ -41,6 +41,46 @@ php artisan vendor:publish --tag=capabilities-config
 
 Default discovery path is `app/Capabilities` (`config/capabilities.php` → `path`).
 
+### Durable stores (approvals / idempotency)
+
+When you enable **database** drivers, the package uses a first-party `Rawphp\Capabilities\Persistence\QueryTableGateway` (Illuminate query builder / connection — not Eloquent models) as the **default** `TableGateway` for each store table. There is **no** silent `ArrayTableGateway` fallback on the database path: missing connection fails closed.
+
+| Config key | Role | Package default |
+|---|---|---|
+| `approval.store` | Approval store driver (`memory` / `database` / aliases) | `database` |
+| `approval.connection` | Optional Illuminate connection name for approvals | `null` → app default (`db`) |
+| `idempotency.driver` | Idempotency store driver | `memory` (set `database` for durable keys) |
+| `idempotency.connection` | Optional connection name for idempotency | `null` → app default |
+
+Env mirrors: `CAPABILITIES_APPROVAL_CONNECTION`, `CAPABILITIES_IDEMPOTENCY_DRIVER`, `CAPABILITIES_IDEMPOTENCY_CONNECTION`.
+
+**Migrations** (tables `capabilities_approvals`, `capabilities_idempotency`, `capabilities_audit_outbox` — see `MigrationCatalog`):
+
+```bash
+php artisan vendor:publish --tag=capabilities-migrations
+php artisan migrate
+```
+
+For production durability: keep `approval.store` = `database` (default) and set `idempotency.driver` = `database`. The service provider builds a **per-table** `QueryTableGateway` for each store from the resolved connection.
+
+**Host override** (custom gateway, or `ArrayTableGateway` for unit isolation). Bind `TableGateway` before the package factories run — a host binding wins over the QueryTableGateway construction path:
+
+```php
+// app/Providers/AppServiceProvider.php — register()
+use Rawphp\Capabilities\Persistence\ArrayTableGateway;
+use Rawphp\Capabilities\Persistence\TableGateway;
+
+public function register(): void
+{
+    // Optional: override the package QueryTableGateway default for database drivers.
+    // Unbound = QueryTableGateway per table (capabilities_approvals / capabilities_idempotency).
+    $this->app->singleton(TableGateway::class, fn () => new ArrayTableGateway);
+    // Or: $this->app->singleton(TableGateway::class, fn () => new App\Persistence\MyGateway(...));
+}
+```
+
+Prefer leaving `TableGateway` **unbound** in production so dual-table QueryTableGateway wiring stays correct. A single host-bound gateway is shared by both database stores when present.
+
 ---
 
 ## 2. Define input / output DTOs
@@ -317,6 +357,7 @@ These exercise registry / adapter unit paths with mocks — **not** a live multi
 - Product CLI binary install — `packages/capabilities-cli` (Go client)
 - Approval state machine deep-dive, rate limits, audit modes — see [docs/spec.md](../spec.md)
 - Packagist publish or a stable 1.x API
+- Live multi-surface feature/DB suites — package CI remains unit-only with gateway mocks/fakes
 
 ## Next reading
 
@@ -324,6 +365,7 @@ These exercise registry / adapter unit paths with mocks — **not** a live multi
 |---|---|
 | Full design & decisions | [docs/spec.md](../spec.md) |
 | Install / 0.x versioning | [docs/versioning.md](../versioning.md) |
+| Durable stores / TableGateway | this tutorial § Durable stores · [core README](../../packages/laravel-capabilities/README.md#durable-persistence-querytablegateway) |
 | Monorepo status & residuals | [README.md](../../README.md) |
 | Core package peer/D-011 notes | [packages/laravel-capabilities/README.md](../../packages/laravel-capabilities/README.md) |
 | D-020 parity & snapshots | [spec D-020](../spec.md#d-020--parity-tests-and-schema-snapshots-as-package-features) |
