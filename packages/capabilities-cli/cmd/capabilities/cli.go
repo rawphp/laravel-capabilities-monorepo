@@ -17,7 +17,13 @@ import (
 	"github.com/rawphp/capabilities-cli/internal/run"
 )
 
-// Version is the CLI version string.
+// Version is the CLI version string printed by `capabilities version`.
+// Release builds override it at link time (package main → symbol main.Version):
+//
+//	go build -ldflags "-X main.Version=0.2.0" ./cmd/capabilities
+//
+// Prefer the git tag without a leading "v" (e.g. tag v0.2.0 → 0.2.0).
+// Default remains a sensible dev string when ldflags are not injected.
 var Version = "0.2.0"
 
 // BinaryName is the product binary name (D-016).
