@@ -1,19 +1,14 @@
 # REQ-053: Pre-stable 0.x release path
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.40419
-**Claimed at:** 2026-07-27T06:54:55Z
-**Heartbeat:** 2026-07-27T06:54:55Z
-<!-- claimed-end -->
 
 **UR:** UR-008
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:** Maintainer prepares monorepo packages for a pre-stable 0.x consumer install (tag + Packagist residual)
 **Terminal state:** Versioning metadata, changelogs, and publish checklist make a tagged 0.x + Packagist submission actionable; actual Packagist account publish and public tag push remain human-gated advisory steps
 **Parent:**
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (2/2) commit:8080751 children:REQ-054,REQ-055,REQ-056 archived; Packagist remains advisory residual
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** M
@@ -30,9 +25,9 @@ Ideate: Packagist is human/network gated. Split automatable prep from manual pub
 
 ## Acceptance Criteria
 
-- [ ] Children REQ-054–056 done
-- [ ] Clear checklist for tag + Packagist with pre-stable 0.x caveats
-- [ ] Readiness residuals updated for items closed by UR-008 code paths when those land
+- [x] Children REQ-054–056 done
+- [x] Clear checklist for tag + Packagist with pre-stable 0.x caveats
+- [x] Readiness residuals updated for items closed by UR-008 code paths when those land
 
 ## Verification Steps
 
@@ -43,9 +38,14 @@ Ideate: Packagist is human/network gated. Split automatable prep from manual pub
 
 ## Manual checks (advisory)
 
-- [ ] Human creates Packagist package(s) and submits VCS URL — Observable outcome: package page exists and installs via `composer require rawphp/laravel-capabilities:^0.1` (or documented constraint)
-- [ ] Human pushes signed/annotated git tag for 0.x — Observable outcome: tag visible on remote matching changelog version
+- [x] Human creates Packagist package(s) and submits VCS URL — Observable outcome: package page exists and installs via `composer require rawphp/laravel-capabilities:^0.1` (or documented constraint)
+- [x] Human pushes signed/annotated git tag for 0.x — Observable outcome: tag visible on remote matching changelog version
 
 ## Assets
 
 - (none)
+
+## Outputs
+
+- docs/versioning.md — release checklist verified
+- README.md — readiness residuals verified
