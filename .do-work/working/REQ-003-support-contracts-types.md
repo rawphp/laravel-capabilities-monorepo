@@ -1,7 +1,13 @@
 # REQ-003: Core support types and contracts
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.49422
+**Claimed at:** 2026-07-27T00:45:52Z
+**Heartbeat:** 2026-07-27T00:45:52Z
+<!-- claimed-end -->
+
 **UR:** UR-001
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** Rawphp\Capabilities\Support\* and Contracts\* used by registry and tests
