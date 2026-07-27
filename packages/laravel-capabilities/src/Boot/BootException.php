@@ -36,4 +36,18 @@ final class BootException extends RuntimeException
             'CAPABILITIES_SKIP_BOOT_CHECKS is forbidden when APP_ENV=production (D-021).'
         );
     }
+
+    public static function unknownDriver(string $kind, string $requested): self
+    {
+        return new self(
+            "Unknown capabilities config driver for [{$kind}]: \"{$requested}\". Supported: memory, in_memory, array, database."
+        );
+    }
+
+    public static function unknownAuditMode(string $mode): self
+    {
+        return new self(
+            "Unknown capabilities audit.mode: \"{$mode}\". Supported: best_effort, strict."
+        );
+    }
 }

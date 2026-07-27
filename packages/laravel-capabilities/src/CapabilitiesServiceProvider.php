@@ -21,13 +21,13 @@ use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\Capabilities\Observability\LogFallbackMetrics;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\DefaultScopeResolver;
-use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
 
 /**
  * Core package service provider.
  *
  * Boot rules fail closed when peers are missing while surfaces are enabled (D-011).
  * Disabled surfaces register nothing (SURF-003). Pure registration tables stay unit-testable.
+ * Container bindings are a pure function of config/capabilities.php (REQ-023).
  *
  * @see docs/spec.md Package layout
  */
@@ -40,32 +40,42 @@ class CapabilitiesServiceProvider extends ServiceProvider
         $this->app->singleton(PeerVersionProbe::class, static fn () => new PeerVersionProbe);
 
         $this->app->singleton(Metrics::class, function ($app) {
-            $enabled = (bool) ($app['config']->get('capabilities.observability.metrics') ?? true);
+            $config = self::configFromApp($app);
+            $enabled = (bool) ($config['observability']['metrics'] ?? true);
 
             return new LogFallbackMetrics($enabled);
         });
         $this->app->alias(Metrics::class, 'Metrics');
 
         $this->app->singleton(Tracer::class, function ($app) {
-            $enabled = (bool) ($app['config']->get('capabilities.observability.tracing') ?? true);
+            $config = self::configFromApp($app);
+            $enabled = (bool) ($config['observability']['tracing'] ?? true);
 
             return new InMemoryTracer($enabled);
         });
         $this->app->alias(Tracer::class, 'Tracer');
 
-        $this->app->singleton(IdempotencyStore::class, static fn () => new InMemoryIdempotencyStore);
+        $this->app->singleton(IdempotencyStore::class, function ($app) {
+            return ContainerBindings::makeIdempotencyStore(self::configFromApp($app));
+        });
         $this->app->alias(IdempotencyStore::class, 'IdempotencyStore');
 
         $this->app->singleton(ScopeResolver::class, static fn () => new DefaultScopeResolver);
         $this->app->alias(ScopeResolver::class, 'ScopeResolver');
 
-        $this->app->singleton(AuditLogger::class, static fn () => new AuditLogger);
+        $this->app->singleton(AuditLogger::class, function ($app) {
+            return ContainerBindings::makeAuditLogger(self::configFromApp($app));
+        });
         $this->app->alias(AuditLogger::class, 'AuditLogger');
 
-        $this->app->singleton(CapabilityRegistry::class, static fn () => new CapabilityRegistry);
+        $this->app->singleton(CapabilityRegistry::class, function ($app) {
+            return ContainerBindings::makeRegistry(self::configFromApp($app));
+        });
         $this->app->alias(CapabilityRegistry::class, 'CapabilityRegistry');
 
-        $this->app->singleton(ApprovalManager::class, static fn () => ApprovalManager::inMemory());
+        $this->app->singleton(ApprovalManager::class, function ($app) {
+            return ContainerBindings::makeApprovalManager(self::configFromApp($app));
+        });
         $this->app->alias(ApprovalManager::class, 'ApprovalManager');
     }
 
@@ -157,5 +167,25 @@ class CapabilitiesServiceProvider extends ServiceProvider
     public static function knownSurfaces(): array
     {
         return SurfaceNames::ALL;
+    }
+
+    /**
+     * @param  object  $app
+     * @return array<string, mixed>
+     */
+    private static function configFromApp(object $app): array
+    {
+        try {
+            $config = $app->make('config');
+            if (is_object($config) && method_exists($config, 'get')) {
+                $value = $config->get('capabilities', []);
+
+                return is_array($value) ? $value : CapabilitiesConfig::defaults();
+            }
+        } catch (\Throwable) {
+            // unit fakes without config repository
+        }
+
+        return CapabilitiesConfig::defaults();
     }
 }

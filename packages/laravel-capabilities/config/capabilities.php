@@ -109,6 +109,8 @@ return [
 
     'idempotency' => [
         'enabled' => true,
+        // Package default is memory; host apps may rebind a database driver.
+        'driver' => $env('CAPABILITIES_IDEMPOTENCY_DRIVER', 'memory'),
         'ttl_hours' => 24,
         'header' => 'Idempotency-Key',
         'warn_missing_key' => $env('CAPABILITIES_IDEMPOTENCY_WARN', true),
