@@ -21,3 +21,8 @@
 2026-07-27 | UR-006 | D-011 residual via matrix+fixtures+release-gate docs; no live peers in default package CI | monorepo unit-only policy
 2026-07-27 | UR-007 | layer "messaging" out of scope | user answered "No" at layer-coverage prompt
 2026-07-27 | UR-007 | layer "cli" out of scope | user answered "No" at layer-coverage prompt
+2026-07-27 | UR-008 | layer "messaging" out of scope | user answered "No" at layer-coverage prompt
+2026-07-27 | UR-008 | layer "cli" out of scope | user answered "No" at layer-coverage prompt
+2026-07-27 | UR-008 | ship first-party QueryTableGateway + host override docs (not document-only) | brief lists first-party first; closes durable residual
+2026-07-27 | UR-008 | Packagist/tag publish is human-gated advisory; REQs cover prep + checklist only | no package credentials in monorepo CI
+2026-07-27 | UR-008 | path units: registry wiring, durable gateway, pre-stable release prep | three brief items as three reachable paths
