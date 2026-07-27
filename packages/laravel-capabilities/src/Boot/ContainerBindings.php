@@ -188,7 +188,7 @@ final class ContainerBindings
     {
         unset($config);
 
-        return new CapabilityRegistry;
+        return new CapabilityRegistry(clock: new SystemClock);
     }
 
     /**

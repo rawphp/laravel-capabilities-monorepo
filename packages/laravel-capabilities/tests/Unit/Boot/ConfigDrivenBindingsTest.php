@@ -13,6 +13,7 @@ use Rawphp\Capabilities\CapabilitiesServiceProvider;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
+use Rawphp\Capabilities\Support\SystemClock;
 use Rawphp\Capabilities\Tests\Fixtures\BootHelpers;
 
 it('resolve is a pure function of config drivers and modes', function () {
@@ -59,7 +60,8 @@ it('memory drivers construct in-memory stores and approval manager', function ()
         ->and($idempotency)->toBeInstanceOf(IdempotencyStore::class)
         ->and($approval)->toBeInstanceOf(ApprovalManager::class)
         ->and($audit)->toBeInstanceOf(AuditLogger::class)
-        ->and($registry)->toBeInstanceOf(CapabilityRegistry::class);
+        ->and($registry)->toBeInstanceOf(CapabilityRegistry::class)
+        ->and($registry->clock())->toBeInstanceOf(SystemClock::class);
 });
 
 it('registry factory returns a shared empty map instance shape for discovery/fluent', function () {
@@ -69,7 +71,9 @@ it('registry factory returns a shared empty map instance shape for discovery/flu
 
     expect($a)->toBeInstanceOf(CapabilityRegistry::class)
         ->and($b)->toBeInstanceOf(CapabilityRegistry::class)
-        ->and($a->all())->toBe([]);
+        ->and($a->all())->toBe([])
+        ->and($a->clock())->toBeInstanceOf(SystemClock::class)
+        ->and($b->clock())->toBeInstanceOf(SystemClock::class);
 });
 
 it('database drivers resolve to Database store concretes without package_default fallback', function () {
