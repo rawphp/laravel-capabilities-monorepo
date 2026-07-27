@@ -1,19 +1,33 @@
 # Laravel Capabilities (monorepo)
 
 > **Status:** monorepo **unit-complete design** (v0.1–v0.5 surfaces largely covered by package unit tests) — **not a stable public API**, **not published on Packagist**.  
-> **Spec:** [docs/spec.md](docs/spec.md) · **Versioning & install:** [docs/versioning.md](docs/versioning.md) · **First capability:** [docs/tutorials/first-capability.md](docs/tutorials/first-capability.md)  
+> **User docs:** [docs/README.md](docs/README.md) · **Spec:** [docs/spec.md](docs/spec.md) · **Versioning & install:** [docs/versioning.md](docs/versioning.md) · **First capability:** [docs/tutorials/first-capability.md](docs/tutorials/first-capability.md)  
 > Unit-green ≠ shipped product: treat path/VCS install + package CHANGELOGs as pre-release readiness, not Packagist release.
 
 Product capability bus for Laravel: define once, expose via agent, MCP, HTTP, product CLI, and jobs — same rules, one `run()`.
 
-## Getting started
+## User documentation
+
+Task-based guides for app integrators (0.x honesty preserved). Start at the docs index:
+
+**[Documentation index → docs/README.md](docs/README.md)**
 
 | Guide | Audience |
 |---|---|
+| [Getting started](docs/getting-started.md) | Path/VCS install → first capability → optional messaging → optional CLI |
+| [Concepts](docs/concepts.md) | Bus, surfaces, `run()`, profiles, approval, idempotency, messaging, CLI |
+| [Core package](packages/laravel-capabilities/docs/user-guide.md) | Define, invoke, HTTP, config, peers, D-020 |
+| [Messaging package](packages/laravel-capabilities-messaging/docs/user-guide.md) | Telegram sibling: webhooks, identity, agent profile |
+| [Product CLI](packages/capabilities-cli/docs/user-guide.md) | Build `capabilities`, auth, catalog, run, MCP stdio |
+| [Troubleshooting](docs/troubleshooting.md) | Boot, peers, auth, CLI, messaging |
 | **[First capability tutorial](docs/tutorials/first-capability.md)** | App integrators: path/VCS install, define once (fluent primary + attribute alternate), durable stores / `QueryTableGateway`, registry invoke, HTTP note, D-020 helpers |
 | [docs/versioning.md](docs/versioning.md) | 0.x policy, path/VCS install, durable persistence path, CHANGELOG locations, Packagist publish checklist (human) |
 | [docs/spec.md](docs/spec.md) | Full design, decisions D-002–D-023, pipeline, roadmap |
 | [Core package README — durable persistence](packages/laravel-capabilities/README.md#durable-persistence-querytablegateway) | `QueryTableGateway` default, config keys, host `TableGateway` override |
+
+## Getting started (short)
+
+Path install and the first-capability tutorial remain the fastest integrator path. Full sequence (messaging + CLI optional): **[docs/getting-started.md](docs/getting-started.md)**.
 
 ## Consumer readiness (residuals)
 
@@ -61,6 +75,11 @@ packages/
   laravel-capabilities-messaging/ # messaging PHP package (+ tests/Unit, phpunit.xml, CHANGELOG.md)
   capabilities-cli/               # Go product CLI (+ *_test.go, CHANGELOG.md)
 docs/
+  README.md                       # documentation index (user guides vs design)
+  getting-started.md              # integrator path: install → first capability → optional messaging/CLI
+  concepts.md                     # mental model
+  packages/                       # per-package user guides (core, messaging, CLI)
+  troubleshooting.md
   spec.md
   versioning.md                   # 0.x policy, path/VCS install, Packagist checklist, changelogs
   tutorials/first-capability.md   # app integrator first capability walkthrough
