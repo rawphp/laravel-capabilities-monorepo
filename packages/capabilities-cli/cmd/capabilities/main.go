@@ -4,12 +4,10 @@
 package main
 
 import (
-	"fmt"
 	"os"
 )
 
 func main() {
-	// Scaffold only — implementation lands in v0.2 roadmap.
-	fmt.Fprintln(os.Stderr, "capabilities: not implemented yet (scaffold)")
-	os.Exit(1)
+	code := Execute(Env{Args: os.Args[1:]})
+	os.Exit(code)
 }
