@@ -1,7 +1,13 @@
 # REQ-002: Shared core test fakes and doubles
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.49422
+**Claimed at:** 2026-07-27T00:38:44Z
+**Heartbeat:** 2026-07-27T00:38:44Z
+<!-- claimed-end -->
+
 **UR:** UR-001
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** packages/laravel-capabilities/tests support helpers constructing fakes
