@@ -61,6 +61,9 @@ final class CapabilityContext
      *     attributes?: array<string, mixed>
      * }  $fields
      */
+    /** @var list<string> */
+    public const MCP_AUTH_PROFILES = ['user_pat', 'integration', 'user_delegated'];
+
     public static function make(array $fields): self
     {
         if (! array_key_exists('actor', $fields) || $fields['actor'] === null) {
@@ -75,6 +78,18 @@ final class CapabilityContext
             throw new InvalidArgumentException('CapabilityContext actor must be an object.');
         }
 
+        $mcp = $fields['mcp'] ?? null;
+        if (is_array($mcp) && array_key_exists('auth_profile', $mcp)) {
+            $profile = $mcp['auth_profile'];
+            if (! is_string($profile) || ! in_array($profile, self::MCP_AUTH_PROFILES, true)) {
+                throw new InvalidArgumentException(sprintf(
+                    'Invalid mcp auth_profile "%s"; expected one of: %s',
+                    is_scalar($profile) ? (string) $profile : gettype($profile),
+                    implode(', ', self::MCP_AUTH_PROFILES),
+                ));
+            }
+        }
+
         return new self(
             caller: $fields['caller'],
             actor: $fields['actor'],
@@ -82,7 +97,7 @@ final class CapabilityContext
             requestId: $fields['request_id'] ?? null,
             traceId: $fields['trace_id'] ?? null,
             agent: $fields['agent'] ?? null,
-            mcp: $fields['mcp'] ?? null,
+            mcp: $mcp,
             messaging: $fields['messaging'] ?? null,
             job: $fields['job'] ?? null,
             credential: $fields['credential'] ?? null,
