@@ -222,8 +222,16 @@ Automated package CI stays **unit-only** and must **not** call Packagist, create
    - [ ] On a **clean** Laravel app (no path repository): `composer require rawphp/laravel-capabilities` succeeds.
    - [ ] Only then update root README / consumer docs to drop “not on Packagist” residual wording for those packages.
 
-7. **CLI binary residual (separate track)**
-   - [ ] Go CLI is **not** published via Packagist. Track binary distribution as its own residual; monorepo/`capabilities-cli` build remains the interim path.
+7. **CLI binary distribution (not Packagist)**
+   - Go CLI is **not** published via Packagist.
+   - **Automated download path exists:** monorepo git tag `v*` → split mirrors into
+     `rawphp/capabilities-cli` → package-owned GoReleaser workflow creates/updates a
+     **GitHub Release** with multi-arch `capabilities` archives + checksums
+     (unsigned by default; see package `docs/release-signing.md`).
+   - **Signed** binaries remain residual **only while** child-repo platform-signing secrets
+     are not configured (secret-gated soft path still publishes unsigned assets).
+   - Source build / ad-hoc cross-compile stay documented for contributors; they are no longer
+     the sole distribution path.
 
 ### Residual marker
 
@@ -231,7 +239,8 @@ Automated package CI stays **unit-only** and must **not** call Packagist, create
 |---|---|
 | Packagist listing for `rawphp/laravel-capabilities` | Human completes submit + webhook + first tag + `composer show` / clean `composer require` |
 | Packagist listing for `rawphp/laravel-capabilities-messaging` | Same, after core (dependency order) |
-| Signed/downloadable `capabilities` CLI binary | Separate human release track |
+| Downloadable `capabilities` CLI binary (unsigned multi-arch) | **Closed for automation** — GitHub Releases on `rawphp/capabilities-cli` after monorepo `v*` tag + split (GoReleaser). First public assets still need a human to cut/push a monorepo tag. |
+| **Signed** `capabilities` CLI binary (macOS/Windows) | Child-repo signing secrets configured and verified on a real tag (secret-gated; unsigned publish still works without them) |
 
 Until those human steps finish, **Packagist remains residual**. Root README consumer-readiness table must keep packaging as residual. Unit tests must not depend on Packagist availability.
 

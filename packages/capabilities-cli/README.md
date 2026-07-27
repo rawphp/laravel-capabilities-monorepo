@@ -3,14 +3,23 @@
 > **Package:** `rawphp/capabilities-cli`  
 > **Language:** Go (D-016)  
 > **Binary:** `capabilities`  
-> **Status:** 0.x pre-stable — prefer GitHub Release binaries on `v*` tags; source build still supported  
+> **Status:** 0.x pre-stable — install from [GitHub Releases](https://github.com/rawphp/capabilities-cli/releases) on tagged builds; source build still supported  
 > **Repo:** [github.com/rawphp/capabilities-cli](https://github.com/rawphp/capabilities-cli) (mirrored from the monorepo on push)
 
 Downloadable client for end users and local agents. Auth + catalog + run + optional MCP stdio against a remote Laravel app’s **same** HTTP capability API (D-009). **No domain `run()` on the laptop.**
 
 ### Releases
 
-Automated **GitHub Releases** (multi-arch `capabilities` binaries + checksums) run on this package repo when a monorepo tag matching `v*` is split/mirrored here. The package-owned workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) runs **GoReleaser** (see [`.goreleaser.yml`](.goreleaser.yml)); retags **replace** the existing release assets. Unsigned publish needs only `GITHUB_TOKEN` (`contents: write`) — no monorepo `SPLIT_GITHUB_TOKEN`. Cross-compile notes: [`dist/README.md`](dist/README.md).
+**Flow:** monorepo git tag `v*` → split workflow mirrors the tag into this package repo → package-owned [`.github/workflows/release.yml`](.github/workflows/release.yml) runs **GoReleaser** ([`.goreleaser.yml`](.goreleaser.yml)) → **GitHub Release** with multi-arch `capabilities` archives + `checksums.txt`.
+
+| | |
+|---|---|
+| **Download** | [github.com/rawphp/capabilities-cli/releases](https://github.com/rawphp/capabilities-cli/releases) |
+| **Matrix** | darwin / linux / windows × amd64 / arm64 |
+| **Retag** | Re-push of the same `v*` tag **replaces** release assets |
+| **Auth for unsigned publish** | Child-repo `GITHUB_TOKEN` (`contents: write`) only — no monorepo `SPLIT_GITHUB_TOKEN` |
+
+Cross-compile / local matrix notes: [`dist/README.md`](dist/README.md).
 
 **Platform signing** (macOS codesign/notarization, Windows Authenticode) is **secret-gated**: when secrets are absent the release still publishes **unsigned** assets with clear skip logs; when secrets are present, signing hooks run. Secret names and setup: [`docs/release-signing.md`](docs/release-signing.md). Never commit private keys or certificates.
 
@@ -32,7 +41,7 @@ internal/
   run/              # validate locally → POST invoke
   mcpstdio/         # optional MCP stdio bridge
   api/              # HTTP client
-dist/               # cross-compile notes + future goreleaser artifacts
+dist/               # cross-compile notes; CI release uses GoReleaser (see Releases)
 ```
 
 ## Principles
