@@ -1,14 +1,12 @@
 # Messaging package: rawphp/laravel-capabilities-messaging
 
-> **Location:** This guide lives in the **laravel-capabilities-messaging** package (`packages/laravel-capabilities-messaging/docs/user-guide.md`). Monorepo docs index: [docs/README.md](../../docs/README.md). Package root readme: [README.md](../README.md).
-
+> Ships with the **laravel-capabilities-messaging** package (this file is at `docs/user-guide.md` in the package repo). Package root: [README.md](../README.md).
 
 Optional **sibling** package for conversation surfaces. Telegram first; other chat products may follow the same contracts.
 
-**Path:** `packages/laravel-capabilities-messaging`  
 **Namespace:** `Rawphp\CapabilitiesMessaging\`  
 **Depends on:** `rawphp/laravel-capabilities`  
-**Status:** 0.x pre-stable, path/VCS install (not Packagist-published)
+**Status:** 0.x pre-stable, path or package-repo VCS install (not Packagist-published)
 
 Messaging implements core conversation contracts (`ConversationIngress` / identity / approval notify). It does **not** embed domain `run()`. Chat feeds the agent; **tools are the capability registry** (design D-007).
 
@@ -17,23 +15,27 @@ Messaging implements core conversation contracts (`ConversationIngress` / identi
 - Core package installed and at least one capability defined for the agent profile you will expose
 - Optional but typical: `laravel/ai` available for agent turns behind ingress
 - A Telegram bot token and webhook secret values for real traffic
-- Read [Concepts — Messaging sibling](../concepts.md#messaging-sibling)
+- Concepts (monorepo): [Messaging sibling](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/concepts.md#messaging-sibling)
 
 ## Install
 
-Path repository (adjust URL):
+See [package README](../README.md#install) for VCS and path options. Minimal VCS:
 
 ```json
 {
   "repositories": [
     {
-      "type": "path",
-      "url": "../laravel-capabilities-monorepo/packages/laravel-capabilities-messaging",
-      "options": { "symlink": true }
+      "type": "vcs",
+      "url": "https://github.com/rawphp/laravel-capabilities"
+    },
+    {
+      "type": "vcs",
+      "url": "https://github.com/rawphp/laravel-capabilities-messaging"
     }
   ],
   "require": {
-    "rawphp/laravel-capabilities-messaging": "*@dev"
+    "rawphp/laravel-capabilities": "dev-main",
+    "rawphp/laravel-capabilities-messaging": "dev-main"
   }
 }
 ```
@@ -134,13 +136,12 @@ Core owns approval state and HTTP accept/reject. Messaging supplies conversation
 
 ## If something goes wrong
 
-→ [Troubleshooting](../troubleshooting.md#messaging-telegram)
+Troubleshooting (monorepo): [Messaging / Telegram](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/troubleshooting.md#messaging-telegram).
 
 ## Related
 
-- [Getting started](../getting-started.md#4-optional-messaging-telegram)
-- [Core package](laravel-capabilities.md)
-- [Concepts](../../docs/concepts.md)
 - [Package README](../README.md)
-- [CHANGELOG](../../laravel-capabilities-messaging/CHANGELOG.md)
-- Design: [spec.md](../../docs/spec.md) (D-007, D-008, D-021)
+- [CHANGELOG](../CHANGELOG.md)
+- Core package: [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities) · [user guide](https://github.com/rawphp/laravel-capabilities/blob/main/docs/user-guide.md)
+- Getting started (monorepo): [optional messaging](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/getting-started.md#4-optional-messaging-telegram)
+- Design (monorepo): [spec.md](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/spec.md) (D-007, D-008, D-021)

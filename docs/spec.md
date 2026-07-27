@@ -3,7 +3,7 @@
 > **Status:** monorepo **unit-complete design** (v0.1–v0.5 largely unit-tested in-package) — **not Packagist-published**, **not a stable public API**.  
 > **Working title:** `rawphp/laravel-capabilities`  
 > **Job:** one domain capability → many agent-era surfaces, without dual mutation paths.  
-> **Install today:** monorepo path repository or VCS (`docs/versioning.md`). Unit-green monorepo ≠ shipped product — see root README readiness residuals.
+> **Install today:** monorepo path or package-repo VCS (`docs/versioning.md`). On monorepo push, each package tree is mirrored to its public remote. Unit-green monorepo ≠ shipped product — see root README readiness residuals.
 
 ---
 
@@ -292,15 +292,17 @@ Versions below are **illustrative placeholders** until first release; the machin
 - Each release notes declared peer constraints; consumer apps that run peer-live may record which minors they exercised.
 - Bumping the matrix without a green **unit** adapter contract suite is a release blocker (D-011).
 
-### Distributed separately (same monorepo, different Composer packages)
+### Distributed separately (one monorepo → three package remotes)
 
-| Artifact | Package | Why |
-|---|---|---|
-| **Capability bus (core)** | `rawphp/laravel-capabilities` | Registry, schema, HTTP, AI/MCP/job adapters, approval, audit, scope, idempotency, **ingress contracts** |
-| **Product CLI** | `rawphp/capabilities-cli` | Downloadable client; auth + catalog + run + MCP stdio |
-| **Messaging** | `rawphp/laravel-capabilities-messaging` | Telegram (then Slack/…); webhooks, identity, threads — **not in core** (D-007) |
+Developed in a single monorepo; on push to `main` / tags `v*`, CI mirrors each `packages/*` tree to its public package repo (package root = repo root). Packagist and consumer VCS use those remotes — not the monorepo URL. Details: `docs/versioning.md`.
 
-Install on the **server**:
+| Artifact | Package | Public remote | Why |
+|---|---|---|---|
+| **Capability bus (core)** | `rawphp/laravel-capabilities` | `rawphp/laravel-capabilities` | Registry, schema, HTTP, AI/MCP/job adapters, approval, audit, scope, idempotency, **ingress contracts** |
+| **Product CLI** | `rawphp/capabilities-cli` | `rawphp/capabilities-cli` | Downloadable client; auth + catalog + run + MCP stdio |
+| **Messaging** | `rawphp/laravel-capabilities-messaging` | `rawphp/laravel-capabilities-messaging` | Telegram (then Slack/…); webhooks, identity, threads — **not in core** (D-007) |
+
+Install on the **server** (Packagist residual — use path/package VCS until published):
 
 ```bash
 composer require rawphp/laravel-capabilities
@@ -315,8 +317,9 @@ composer require rawphp/laravel-capabilities-messaging
 Install the **CLI** on the **user’s machine** (not on the server):
 
 ```bash
-# examples — exact channel TBD
-brew install rawphp/tap/capabilities
+# build from package remote / monorepo path until binary releases exist
+# git clone https://github.com/rawphp/capabilities-cli && cd capabilities-cli && go build -o capabilities ./cmd/capabilities
+# future: brew install rawphp/tap/capabilities
 # or
 curl -fsSL https://capabilities.example/install | sh
 # or
@@ -3343,7 +3346,7 @@ Run on **every PR** that touches `Adapters/` or peer matrix config. Optional **c
 
 | Phase | Package | Scope | Unit monorepo | Residual / publish |
 |---|---|---|---|---|
-| **v0.1** | **core** | Registry, package-native DTOs (D-015), single HTTP API (D-009), **D-022** caller derivation, D-002/D-003, D-012 names, D-014 output validation, D-017 discovery, conversation contracts | largely covered | path/VCS only; no Packagist |
+| **v0.1** | **core** | Registry, package-native DTOs (D-015), single HTTP API (D-009), **D-022** caller derivation, D-002/D-003, D-012 names, D-014 output validation, D-017 discovery, conversation contracts | largely covered | path or package-repo VCS; no Packagist |
 | **v0.2** | **core + cli (Go)** | Product CLI as HTTP client (D-016); CLI tokens map to `caller: cli` (D-022); schema validate; auto idempotency; error envelope (D-018) | largely covered | CLI binary releases not published |
 | **v0.3** | **core** | `laravel/ai` + `laravel/mcp` adapters; **D-005** / **D-008**; **D-023** MCP auth profiles; **D-011** support matrix + adapter contract CI | unit matrix + fixtures green | **live peer CI residual** (consumer-app path) |
 | **v0.4** | **core** | D-006 approval SM + **P2-004 resume/atomic crash recovery**; jobs; CLI MCP stdio; D-010 audit/events; D-013 rate limits; D-019 metrics/OTel (`approvals_stuck_approved_total`); D-020 parity helpers | largely covered; **D-020 helpers done** (`assertSchemaSnapshot` + `assertParity` unit-path) | not multi-surface live HTTP feature suite; no Packagist |
@@ -3351,7 +3354,7 @@ Run on **every PR** that touches `Adapters/` or peer matrix config. Optional **c
 | **v0.6** | **messaging** | Harden Telegram; schema snapshots; docs | partial / residual | first-capability tutorial **done** (monorepo docs); messaging harden residual |
 | **Later** | **messaging** / core | Slack / WhatsApp / email adapters; Livewire helpers; OpenAPI; soft A2A | not started | future |
 
-Cross-cutting residuals (also in root README): **packaging / Packagist publish (human checklist)** and **live peer CI** (optional consumer-app path). Closed monorepo gaps (not Packagist ship): config-wired `makeRegistry` + store singleton parity, first-party `QueryTableGateway` durable path + host override docs, release-prep metadata / CHANGELOGs / versioning checklist, first-capability tutorial, D-020 unit helpers. Still **pre-stable 0.x** — unit-green ≠ tagged release or stable public API.
+Cross-cutting residuals (also in root README): **packaging / Packagist publish (human checklist)** and **live peer CI** (optional consumer-app path). Closed monorepo gaps (not Packagist ship): config-wired `makeRegistry` + store singleton parity, first-party `QueryTableGateway` durable path + host override docs, release-prep metadata / CHANGELOGs / versioning checklist, first-capability tutorial, D-020 unit helpers, **three-package split-on-push workflow**. Still **pre-stable 0.x** — unit-green ≠ tagged release or stable public API.
 
 Non-goals for core: generative UI, multi-app workspaces, template galleries, Artisan-as-product-CLI, shipping Telegram in `laravel-capabilities`, full agent-native Dispatch clone.
 

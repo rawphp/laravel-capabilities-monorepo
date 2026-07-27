@@ -4,15 +4,49 @@ Optional sibling package for conversation surfaces (Telegram first).
 
 Implements core `ConversationIngress` / `ApprovalNotifier` contracts. **Never** embeds domain `run()` — chat feeds the agent; tools are the capability registry (D-007).
 
-**Status:** 0.x pre-stable monorepo package — **not Packagist-published**. Install via path/VCS ([docs/versioning.md](../../docs/versioning.md)).
+**Status:** 0.x pre-stable — **not Packagist-published**. Install via package VCS or monorepo path.
 
-**User documentation (monorepo):**
-
-| Doc | Path |
+| Doc | Where |
 |---|---|
-| Docs index | [docs/README.md](../../docs/README.md) |
-| Messaging user guide | [docs/user-guide.md](docs/user-guide.md) |
-| Getting started (optional messaging) | [docs/getting-started.md](../../docs/getting-started.md) |
-| Concepts | [docs/concepts.md](../../docs/concepts.md) |
-| Troubleshooting | [docs/troubleshooting.md](../../docs/troubleshooting.md) |
-| Design oracle | [docs/spec.md](../../docs/spec.md) |
+| User guide | [docs/user-guide.md](docs/user-guide.md) |
+| Changelog | [CHANGELOG.md](CHANGELOG.md) |
+| Core package | [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities) |
+| Monorepo design | [laravel-capabilities-monorepo](https://github.com/rawphp/laravel-capabilities-monorepo) |
+
+## Install
+
+Requires `rawphp/laravel-capabilities`.
+
+### VCS (package remotes)
+
+This tree is published to [github.com/rawphp/laravel-capabilities-messaging](https://github.com/rawphp/laravel-capabilities-messaging) from the monorepo on every push to `main`.
+
+```json
+{
+  "repositories": [
+    {
+      "type": "vcs",
+      "url": "https://github.com/rawphp/laravel-capabilities"
+    },
+    {
+      "type": "vcs",
+      "url": "https://github.com/rawphp/laravel-capabilities-messaging"
+    }
+  ],
+  "require": {
+    "rawphp/laravel-capabilities": "dev-main",
+    "rawphp/laravel-capabilities-messaging": "dev-main"
+  }
+}
+```
+
+### Path (monorepo contributors)
+
+Point path repos at `packages/laravel-capabilities` and `packages/laravel-capabilities-messaging` in a monorepo clone, require `*@dev`.
+
+```bash
+composer update rawphp/laravel-capabilities-messaging
+php artisan vendor:publish --tag=capabilities-messaging-config
+```
+
+Install policy: monorepo [`docs/versioning.md`](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versioning.md). How-to: [docs/user-guide.md](docs/user-guide.md).

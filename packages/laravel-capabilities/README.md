@@ -1,31 +1,76 @@
 # rawphp/laravel-capabilities
 
-> **Status:** core package in a **unit-complete monorepo design** — **not Packagist-published**, **0.x pre-stable** (no stable public API claim).  
-> Install today via monorepo **path** / VCS — see monorepo [docs/versioning.md](../../docs/versioning.md) and root [README readiness residuals](../../README.md#consumer-readiness-residuals).  
-> Closed in-monorepo: config-wired `makeRegistry`, durable `QueryTableGateway` path, release-prep metadata. **Packagist publish remains a human residual.**
+> **Status:** 0.x pre-stable — **not Packagist-published** (no stable public API claim).  
+> **Install:** package VCS or monorepo path — see [Install](#install).  
+> Closed design work includes config-wired `makeRegistry`, durable `QueryTableGateway`, release-prep metadata. **Packagist publish remains a human residual.**
 
 Core product capability bus for Laravel.
 
 Define a capability once (schema, authorization, `run`, approval, audit) and expose it via agent, MCP, HTTP, product CLI, and jobs — same rules, one `run()`.
 
-**User documentation (monorepo):**
-
-| Doc | Path |
+| Doc | Where |
 |---|---|
-| Docs index | [docs/README.md](../../docs/README.md) |
-| Getting started | [docs/getting-started.md](../../docs/getting-started.md) |
-| Core user guide | [docs/user-guide.md](docs/user-guide.md) |
-| Concepts | [docs/concepts.md](../../docs/concepts.md) |
-| Troubleshooting | [docs/troubleshooting.md](../../docs/troubleshooting.md) |
-| First capability tutorial | [docs/tutorials/first-capability.md](../../docs/tutorials/first-capability.md) |
+| User guide (this package) | [docs/user-guide.md](docs/user-guide.md) |
+| Changelog | [CHANGELOG.md](CHANGELOG.md) |
+| Sibling messaging | [rawphp/laravel-capabilities-messaging](https://github.com/rawphp/laravel-capabilities-messaging) |
+| Product CLI | [rawphp/capabilities-cli](https://github.com/rawphp/capabilities-cli) |
+| Monorepo design / tutorials | [laravel-capabilities-monorepo](https://github.com/rawphp/laravel-capabilities-monorepo) (`docs/`) |
 
-**Getting started:** monorepo [First capability tutorial](../../docs/tutorials/first-capability.md) (path/VCS install, fluent + attribute define, durable stores / `QueryTableGateway`, registry invoke, HTTP, D-020). Full design: [docs/spec.md](../../docs/spec.md). D-020 helpers (`assertSchemaSnapshot`, `assertParity`) are **implemented for unit-path DX** (durable schema snapshots; multi-surface success/deny class parity with mocks/fakes) — not a live multi-surface HTTP/feature suite.
+**Registry boot:** `ContainerBindings::makeRegistry` is the production factory — it applies `config/capabilities.php` (surfaces, approval/idempotency drivers, audit, scope, rate limits, etc.) and injects the same store instances the service provider binds for accept/invoke parity.
 
-**Registry boot:** `ContainerBindings::makeRegistry` is the production factory — it applies `config/capabilities.php` (surfaces, approval/idempotency drivers, audit, scope, rate limits, etc.) and injects the same store instances the service provider binds for accept/invoke parity. See root [Consumer readiness](../../README.md#consumer-readiness-residuals).
+D-020 helpers (`assertSchemaSnapshot`, `assertParity`) are **implemented for unit-path DX** (durable schema snapshots; multi-surface success/deny class parity with mocks/fakes) — not a live multi-surface HTTP/feature suite. See [Testing helpers (D-020)](#testing-helpers-d-020).
+
+## Install
+
+**Not on Packagist yet.** Prefer package-repo VCS or a monorepo path checkout.
+
+### VCS (package remote)
+
+This tree is published to [github.com/rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities) from the monorepo on every push to `main`.
+
+```json
+{
+  "repositories": [
+    {
+      "type": "vcs",
+      "url": "https://github.com/rawphp/laravel-capabilities"
+    }
+  ],
+  "require": {
+    "rawphp/laravel-capabilities": "dev-main"
+  }
+}
+```
+
+### Path (monorepo contributors)
+
+From a clone of [laravel-capabilities-monorepo](https://github.com/rawphp/laravel-capabilities-monorepo):
+
+```json
+{
+  "repositories": [
+    {
+      "type": "path",
+      "url": "../laravel-capabilities-monorepo/packages/laravel-capabilities",
+      "options": { "symlink": true }
+    }
+  ],
+  "require": {
+    "rawphp/laravel-capabilities": "*@dev"
+  }
+}
+```
+
+```bash
+composer update rawphp/laravel-capabilities
+php artisan vendor:publish --tag=capabilities-config
+```
+
+Full monorepo install policy, branch-alias, and Packagist checklist: monorepo [`docs/versioning.md`](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versioning.md). First-capability walkthrough: monorepo [`docs/tutorials/first-capability.md`](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/tutorials/first-capability.md).
 
 ## Peer support / D-011 release gate
 
-This package composes `laravel/ai` and `laravel/mcp` as optional peers. Release honesty is **matrix + unit contract fixtures**, not live SDKs in default monorepo CI.
+This package composes `laravel/ai` and `laravel/mcp` as optional peers. Release honesty is **matrix + unit contract fixtures**, not live SDKs in default package CI.
 
 ### Matrix location (source of truth)
 
@@ -34,7 +79,7 @@ This package composes `laravel/ai` and `laravel/mcp` as optional peers. Release 
 | Machine-readable matrix | [`src/Adapters/PeerSupportMatrix.php`](src/Adapters/PeerSupportMatrix.php) |
 | Config mirror | `config/capabilities.php` → `peers.support` |
 | Probe defaults | `PeerVersionProbe` uses the matrix (not open-ended `*`) |
-| Design decision | monorepo [docs/spec.md D-011](../../docs/spec.md#d-011--peer-package-churn-laravelai--laravelmcp) |
+| Design decision | monorepo [docs/spec.md D-011](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/spec.md#d-011--peer-package-churn-laravelai--laravelmcp) |
 
 Update `PeerSupportMatrix` whenever you add/drop a supported peer minor/major **after** contract fixtures stay green. Bumping the matrix without a green unit contract suite is a **release blocker**.
 
@@ -42,13 +87,20 @@ Update `PeerSupportMatrix` whenever you add/drop a supported peer minor/major **
 
 Default package CI does **not** install live `laravel/ai` or `laravel/mcp`. Contract coverage is mock/fake unit tests only.
 
-Before shipping matrix or adapter changes, run (from monorepo root):
+Before shipping matrix or adapter changes, run:
 
 ```bash
+# from monorepo root
 composer test:core -- --filter=PeerSupportMatrix
 composer test:core -- --filter=PeerContract
 composer test:core -- --filter=Adapter
 composer test:core -- --filter=PeerReleaseGateDocs
+
+# from this package (after composer install of dev deps)
+./vendor/bin/pest --filter=PeerSupportMatrix
+./vendor/bin/pest --filter=PeerContract
+./vendor/bin/pest --filter=Adapter
+./vendor/bin/pest --filter=PeerReleaseGateDocs
 ```
 
 Minimum intent (aligned with D-011 contract table):
@@ -83,17 +135,17 @@ When `agent` or `mcp` is enabled and the peer is missing or `supportsInstalledPe
 
 ### Package CI policy (no live peers)
 
-Default monorepo / package CI:
+Default package CI:
 
 - Does **not** install live `laravel/ai` or `laravel/mcp`
-- Uses unit tests with mocks/fakes only (see monorepo AGENTS.md)
+- Uses unit tests with mocks/fakes only
 - Package honesty = **PeerSupportMatrix** + **PeerContractFixtures** + adapter unit suite
 
 Live “contract tests against real peer minors” remain **aspirational for consumer apps** that choose to install peers — not a default CI dependency of this package.
 
 ### Optional consumer peer-live checklist
 
-Consumer applications that install real peers can run an app-owned peer-live path. This monorepo does not run it for you.
+Consumer applications that install real peers can run an app-owned peer-live path. This package does not run it for you.
 
 1. In the **app** (not this package’s default suite):
 
@@ -152,7 +204,7 @@ $this->app->singleton(TableGateway::class, function () {
 });
 ```
 
-A host-bound `TableGateway` is used for **both** database stores when present. Prefer unbound + dual QueryTableGateway in production. Integrator walkthrough: monorepo [first-capability tutorial](../../docs/tutorials/first-capability.md#durable-stores-approvals--idempotency).
+A host-bound `TableGateway` is used for **both** database stores when present. Prefer unbound + dual QueryTableGateway in production. Integrator walkthrough: monorepo [first-capability tutorial](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/tutorials/first-capability.md#durable-stores-approvals--idempotency).
 
 **Honesty:** this package is still **not Packagist-published** (path/VCS install only until a human completes the monorepo Packagist checklist). Durable gateway code is unit-tested with connection fakes; default package CI does not require a live MySQL/Postgres.
 
@@ -164,7 +216,7 @@ Consumer app CI should lock every capability’s catalog schema and, where dual-
 
 **Scope honesty:** these exercise **registry / adapter unit paths** with mocks/fakes. They are **not** a live multi-surface HTTP/feature suite against real `laravel/ai` / `laravel/mcp` peers.
 
-Full first-capability walkthrough: [docs/tutorials/first-capability.md](../../docs/tutorials/first-capability.md#7-lock-it-in-ci-d-020-helpers). Design: [docs/spec.md D-020](../../docs/spec.md#d-020--parity-tests-and-schema-snapshots-as-package-features).
+Full first-capability walkthrough: monorepo [first-capability tutorial](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/tutorials/first-capability.md#7-lock-it-in-ci-d-020-helpers). Design: monorepo [docs/spec.md D-020](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/spec.md#d-020--parity-tests-and-schema-snapshots-as-package-features).
 
 ### `assertSchemaSnapshot`
 

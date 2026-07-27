@@ -1,48 +1,59 @@
 # Versioning and packaging
 
-Monorepo packaging readiness for **Laravel Capabilities**. This document describes how packages
-are versioned and how consumers install them **today**. It does **not** claim that packages are
-published on Packagist or that stable release tags already exist.
+How Laravel Capabilities packages are versioned and how consumers install them **today**. This does **not** claim Packagist listings or stable release tags already exist.
 
-## Packages and changelogs
+## Packages, remotes, changelogs
 
-| Package | Path | Artifact | Changelog |
-|---|---|---|---|
-| Core bus | `packages/laravel-capabilities` | Composer `rawphp/laravel-capabilities` | [CHANGELOG.md](../packages/laravel-capabilities/CHANGELOG.md) |
-| Messaging | `packages/laravel-capabilities-messaging` | Composer `rawphp/laravel-capabilities-messaging` | [CHANGELOG.md](../packages/laravel-capabilities-messaging/CHANGELOG.md) |
-| Product CLI | `packages/capabilities-cli` | Go module + binary `capabilities` | [CHANGELOG.md](../packages/capabilities-cli/CHANGELOG.md) |
+| Package | Monorepo path | Public package repo | Artifact | Changelog |
+|---|---|---|---|---|
+| Core bus | `packages/laravel-capabilities` | [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities) | Composer `rawphp/laravel-capabilities` | [CHANGELOG](../packages/laravel-capabilities/CHANGELOG.md) |
+| Messaging | `packages/laravel-capabilities-messaging` | [rawphp/laravel-capabilities-messaging](https://github.com/rawphp/laravel-capabilities-messaging) | Composer `rawphp/laravel-capabilities-messaging` | [CHANGELOG](../packages/laravel-capabilities-messaging/CHANGELOG.md) |
+| Product CLI | `packages/capabilities-cli` | [rawphp/capabilities-cli](https://github.com/rawphp/capabilities-cli) | Go module + binary `capabilities` | [CHANGELOG](../packages/capabilities-cli/CHANGELOG.md) |
 
-Release notes live **per package**, Keep a Changelog style, with an `[Unreleased]` section and a
-pre-stable `0.x` note until the first tagged release.
+Release notes live **per package**, Keep a Changelog style, with an `[Unreleased]` section and a pre-stable `0.x` note until the first tagged release.
+
+## Monorepo → three package remotes (on push)
+
+Source of truth for day-to-day development is this monorepo. Publication of package trees is automated:
+
+| Trigger | What happens |
+|---|---|
+| Push to monorepo `main` | [`.github/workflows/split-packages.yml`](../.github/workflows/split-packages.yml) rsyncs each `packages/<name>/` tree into the matching public repo’s `main` (package root becomes repo root) |
+| Push monorepo tag `v*` | Same workflow force-updates that tag on **each** package remote (for Packagist / releases) |
+| Manual | `workflow_dispatch` on the same workflow |
+
+**Implications:**
+
+- Consumer VCS installs and Packagist submissions use the **package repos**, not `laravel-capabilities-monorepo`.
+- Package `README.md`, `docs/user-guide.md`, and `CHANGELOG.md` must work standalone after split (no relative links into monorepo-only `docs/`).
+- Monorepo design docs (`docs/spec.md`, tutorials, inventory) stay monorepo-only; link them with absolute monorepo URLs if a package doc needs them.
+
+Setup (repo secrets / empty package remotes) is documented in the workflow file header.
 
 ## 0.x pre-stable expectations
 
-- While major version is **0**, the public surface is **pre-stable**: breaking changes may land
-  without a `1.0.0` major bump (SemVer allows this on 0.x).
+- While major version is **0**, the public surface is **pre-stable**: breaking changes may land without a `1.0.0` major bump (SemVer allows this on 0.x).
 - Prefer pinning a **git commit/tag** or a **path** checkout over floating `*@dev` in production apps.
-- Unit-tested monorepo green ≠ “API frozen for production consumers.” Treat the inventory and
-  package tests as the behavioural contract; docs lag is called out honestly in the root README.
+- Unit-tested monorepo green ≠ “API frozen for production consumers.” Treat the inventory and package tests as the behavioural contract.
 - `1.x` stability, Packagist versions, and signed CLI binaries are **future** — not asserted here.
 
-## Install today (path / VCS)
+## Install today
 
-Packages are developed in this monorepo. Preferred consumer paths until Packagist publish:
+### Path repository (monorepo contributors / local symlink)
 
-### Path repository (local monorepo or vendored checkout)
-
-Root `composer.json` already path-requires the PHP packages for local work. In an app:
+Root `composer.json` path-requires the PHP packages for local work. In an app next to a monorepo clone:
 
 ```json
 {
   "repositories": [
     {
       "type": "path",
-      "url": "../laravel-capabilities/packages/laravel-capabilities",
+      "url": "../laravel-capabilities-monorepo/packages/laravel-capabilities",
       "options": { "symlink": true }
     },
     {
       "type": "path",
-      "url": "../laravel-capabilities/packages/laravel-capabilities-messaging",
+      "url": "../laravel-capabilities-monorepo/packages/laravel-capabilities-messaging",
       "options": { "symlink": true }
     }
   ],
@@ -53,9 +64,11 @@ Root `composer.json` already path-requires the PHP packages for local work. In a
 }
 ```
 
-Adjust `url` to your checkout layout. Path installs use symlink options when present.
+Adjust `url` to your checkout layout.
 
-### VCS repository (git)
+### VCS repository (package remotes — preferred for app integrators)
+
+Point Composer at the **split package repos** (updated on monorepo push):
 
 ```json
 {
@@ -63,39 +76,43 @@ Adjust `url` to your checkout layout. Path installs use symlink options when pre
     {
       "type": "vcs",
       "url": "https://github.com/rawphp/laravel-capabilities"
+    },
+    {
+      "type": "vcs",
+      "url": "https://github.com/rawphp/laravel-capabilities-messaging"
     }
   ],
   "require": {
-    "rawphp/laravel-capabilities": "dev-main"
+    "rawphp/laravel-capabilities": "dev-main",
+    "rawphp/laravel-capabilities-messaging": "dev-main"
   }
 }
 ```
 
-Composer monorepo layouts may require a subtree or path mapping depending on how the remote
-repository is structured. Until a dedicated package repository or Packagist listing exists,
-**path** install from a monorepo clone is the supported day-to-day path for contributors.
+Do **not** VCS-require the monorepo URL expecting Composer to find nested package roots — Packagist and Composer expect `composer.json` at the repository root, which is true on the package remotes after split.
 
 ### Go CLI
 
 ```bash
+# from monorepo
 cd packages/capabilities-cli
+# or clone https://github.com/rawphp/capabilities-cli
 go test ./...
 go build -o capabilities ./cmd/capabilities
 ```
 
-Install from module path / built binary — not Composer. See `packages/capabilities-cli/README.md`.
+Install from module path / built binary — not Composer. See the CLI package README.
 
 ## Composer version field and branch-alias
 
-| Mechanism | Policy in this monorepo |
+| Mechanism | Policy |
 |---|---|
-| `"version"` in package `composer.json` | **Not set.** Composer ignores or forbids fixed versions for VCS-published packages; tags (when created) define versions. |
-| `extra.branch-alias` | **Set intentionally** on both PHP packages: `dev-main` → `0.x-dev` so path/VCS consumers resolve a stable-looking 0.x constraint without claiming a Packagist release. |
-| Git tags | **Not created by packaging docs alone.** Tagging is a deliberate, human-gated release step (see **Git tag naming** below). |
-| Packagist | **Not claimed.** `composer require rawphp/...` from the public registry is aspirational until packages are submitted and accepted. Root README install snippets remain the intended end-state; this doc is the honest “how to install now.” |
+| `"version"` in package `composer.json` | **Not set.** Tags (when created) define versions for VCS/Packagist. |
+| `extra.branch-alias` | **Set** on both PHP packages: `dev-main` → `0.x-dev`. |
+| Git tags | Human-gated on the monorepo; mirrored to package remotes by the split workflow. |
+| Packagist | **Not claimed** until human submit + first tag. Root README install snippets are the intended end-state. |
 
-Messaging’s `require` on core uses `"rawphp/laravel-capabilities": "*"` so path/symlink monorepo
-resolution works; consumers should still pin once they leave the monorepo.
+Messaging’s `require` on core uses `"rawphp/laravel-capabilities": "*"` so path/symlink monorepo resolution works; consumers should pin once they leave path install.
 
 ### Branch-alias consistency (0.x-dev policy)
 
@@ -114,9 +131,9 @@ Both Composer packages **must** keep:
 | Core | `packages/laravel-capabilities/composer.json` | `dev-main` → `0.x-dev` |
 | Messaging | `packages/laravel-capabilities-messaging/composer.json` | `dev-main` → `0.x-dev` |
 
-- Do **not** set a top-level `"version"` field in package `composer.json` while publishing from VCS/path.
-- Do **not** alias `dev-main` to a concrete `0.Y.Z` (that freezes the line incorrectly); keep the open `0.x-dev` line alias until a major-line change is intentional.
-- Go CLI has no Composer `branch-alias`; its version story is git tags + module path only (see tag naming).
+- Do **not** set a top-level `"version"` field in package `composer.json`.
+- Do **not** alias `dev-main` to a concrete `0.Y.Z`.
+- Go CLI has no Composer `branch-alias`; its version story is git tags + module path.
 
 ## Git tag naming (exact pattern)
 
@@ -132,11 +149,11 @@ Examples: `v0.1.0`, `v0.1.1`, `v0.2.0`.
 |---|---|
 | **Prefix** | Leading lowercase `v` is required (`v0.1.0`, not `0.1.0`). |
 | **SemVer body** | `0.Y.Z` only while pre-stable (major stays `0`). |
-| **Scope** | **One coordinated monorepo tag** at the repository root for a release train. All three artifacts (core, messaging, CLI) share that tag when cut together. |
-| **Not used (v0.x prep)** | Package-scoped tags such as `laravel-capabilities/v0.1.0` or `packages/laravel-capabilities@0.1.0` — out of scope for the first pre-stable line. Revisit only if packages split to separate remotes. |
-| **First pre-stable target** | `v0.1.0` when a human deliberately cuts the first tag (not automated by this monorepo alone). |
-| **Annotated preferred** | Prefer annotated tags: `git tag -a v0.1.0 -m "Pre-stable 0.1.0"`. |
-| **Push / Packagist** | Tag **create and push** are human-gated. This document does **not** create tags or publish to Packagist. |
+| **Scope** | One coordinated monorepo tag. The split workflow mirrors the same tag name onto each package remote. |
+| **Not used (v0.x)** | Package-scoped tags such as `laravel-capabilities/v0.1.0`. |
+| **First pre-stable target** | `v0.1.0` when a human deliberately cuts the first tag. |
+| **Annotated preferred** | `git tag -a v0.1.0 -m "Pre-stable 0.1.0"` on the monorepo. |
+| **Push** | Tag create/push on the monorepo are human-gated; package remotes receive the tag via CI. |
 
 ### CHANGELOG ↔ tag handoff (Keep a Changelog)
 
@@ -151,68 +168,54 @@ Per package `CHANGELOG.md`:
 
    (section title uses **no** leading `v`; the git tag keeps the `v` prefix.)
 3. Leave `## [Unreleased]` empty (or with only “Notes”) for the next cycle.
-4. Keep the **`## [0.x] — pre-stable monorepo`** policy banner until `1.0.0` is intentional — it is **not** a substitute for a concrete `0.Y.Z` section.
-5. Update footer compare/release links only after the tag exists on the remote; do not invent release URLs before the first push.
-
-Go CLI versioning is documented here only (CLI layer implementation out of scope for prep REQs): the same monorepo tag `v0.Y.Z` is the release marker; binary embedding of that string is a later release step.
+4. Keep the **`## [0.x] — pre-stable`** policy banner until `1.0.0` is intentional.
+5. Update footer compare/release links only after the tag exists on the **package** remote.
 
 ## Packagist + git tag publish checklist (human steps)
 
 **State:** Packagist publish remains a **residual** until a maintainer completes the manual checks below.
-This monorepo documents the steps only. Automated package CI stays **unit-only** and must **not**
-call Packagist, create tags, or hold API tokens. Do **not** claim publish is done because this
-checklist exists.
+Automated package CI stays **unit-only** and must **not** call Packagist, create tags, or hold API tokens.
 
-### Package names and monorepo path layout
+### Package names and publish surface
 
-| Composer / artifact name | Monorepo path | Publish surface |
-|---|---|---|
-| `rawphp/laravel-capabilities` | `packages/laravel-capabilities` | Packagist (Composer) |
-| `rawphp/laravel-capabilities-messaging` | `packages/laravel-capabilities-messaging` | Packagist (Composer) — sibling of core |
-| `rawphp/capabilities-cli` (Go module / binary `capabilities`) | `packages/capabilities-cli` | **Not Packagist** — CLI binary residual (GitHub Releases / install docs; separate from Composer) |
+| Composer / artifact name | Monorepo path | Publish surface | VCS URL for Packagist |
+|---|---|---|---|
+| `rawphp/laravel-capabilities` | `packages/laravel-capabilities` | Packagist (Composer) | `https://github.com/rawphp/laravel-capabilities` |
+| `rawphp/laravel-capabilities-messaging` | `packages/laravel-capabilities-messaging` | Packagist (Composer) | `https://github.com/rawphp/laravel-capabilities-messaging` |
+| `rawphp/capabilities-cli` (Go / binary `capabilities`) | `packages/capabilities-cli` | **Not Packagist** | GitHub Releases / install docs |
 
-**Monorepo path layout caveats (read before submit):**
+**Monorepo path layout (already solved by split):**
 
-- The git remote is a **monorepo**. Packagist expects each Composer package root to contain its own
-  `composer.json`. Submitting the monorepo URL alone often fails or mis-discovers packages unless
-  you use a **subtree split**, **Satis / private mirror**, or separate package remotes.
-- Prefer either: (a) maintain split package remotes that track only `packages/<name>` history, or
-  (b) document an explicit Packagist/subtree strategy before the first public tag. Path/VCS install
-  from this monorepo remains valid until that lands.
-- Messaging depends on core (`rawphp/laravel-capabilities`). Publish **core first**, then messaging,
-  so `composer require` resolution does not hit a missing dependency.
-- Do not invent a third package name. Wire/catalog names stay exactly as in package `composer.json`
-  / Go module paths above.
+- Submit **package repo** URLs to Packagist (composer.json at repo root after split). Do **not** submit the monorepo URL as the package VCS.
+- Messaging depends on core — publish **core first**, then messaging.
+- Do not invent a third Composer package name.
 
 ### Human checklist (maintainer)
 
-Complete in order. Checkboxes are for human operators — not CI.
-
-1. **Prep (docs already cover this)**
+1. **Prep**
    - [ ] `branch-alias` remains `dev-main` → `0.x-dev` on both PHP packages (no top-level `"version"`).
-   - [ ] CHANGELOGs: move `[Unreleased]` into a dated `## [0.Y.Z]` section before the tag (see handoff above).
-   - [ ] Confirm monorepo unit suites green locally (`composer test:core`, messaging as needed). **No** live Packagist network call is part of unit CI.
+   - [ ] CHANGELOGs: move `[Unreleased]` into a dated `## [0.Y.Z]` section before the tag.
+   - [ ] Confirm monorepo unit suites green (`composer test:core`, messaging as needed).
+   - [ ] Confirm split workflow has mirrored `main` to package remotes (and `SPLIT_GITHUB_TOKEN` is set).
 
 2. **Packagist submit (each PHP package)**
    - [ ] Log into [Packagist](https://packagist.org/) with the org/maintainer account that owns `rawphp/*`.
-   - [ ] **Submit package** for `rawphp/laravel-capabilities` pointing at the **package VCS URL** that
-     exposes that package’s `composer.json` at the repository root (split remote or agreed monorepo strategy — not a blind monorepo root if Composer cannot see the package).
-   - [ ] **Submit package** for `rawphp/laravel-capabilities-messaging` the same way (after core is listed or simultaneously only if both remotes are ready).
+   - [ ] **Submit package** for `rawphp/laravel-capabilities` → package repo URL above.
+   - [ ] **Submit package** for `rawphp/laravel-capabilities-messaging` the same way (after core is listed).
    - [ ] Confirm package names match `composer.json` `name` fields exactly.
 
 3. **VCS linkage**
-   - [ ] Verify Packagist shows the correct git remote and default branch (`main`).
-   - [ ] Ensure the package repository is public (or Packagist has access) so consumers can clone.
+   - [ ] Packagist shows the correct package git remote and default branch (`main`).
+   - [ ] Package repositories are public (or Packagist has access).
 
 4. **Auto-update webhook**
-   - [ ] On the git host (e.g. GitHub), add Packagist’s **auto-update webhook** (or GitHub service integration)
-     so new tags/commits update Packagist without manual “Update” clicks.
+   - [ ] On each **package** git host, add Packagist’s auto-update webhook (or GitHub integration).
    - [ ] Fire a test push or use Packagist “Update” once to confirm the hook works.
 
 5. **First git tag**
-   - [ ] Create annotated monorepo tag per pattern: `git tag -a v0.Y.Z -m "Pre-stable 0.Y.Z"` (first target often `v0.1.0`).
-   - [ ] Push the tag: `git push origin v0.Y.Z` (and package split remotes if used).
-   - [ ] Do **not** treat tag create/push as automated by monorepo CI.
+   - [ ] Create annotated **monorepo** tag: `git tag -a v0.Y.Z -m "Pre-stable 0.Y.Z"` (first target often `v0.1.0`).
+   - [ ] Push monorepo tag: `git push origin v0.Y.Z` — split workflow mirrors the tag to package remotes.
+   - [ ] Do **not** treat tag create as automated by monorepo unit CI.
 
 6. **Verify public install**
    - [ ] After Packagist indexes the tag: `composer show rawphp/laravel-capabilities` (and messaging) resolves a version.
@@ -220,8 +223,7 @@ Complete in order. Checkboxes are for human operators — not CI.
    - [ ] Only then update root README / consumer docs to drop “not on Packagist” residual wording for those packages.
 
 7. **CLI binary residual (separate track)**
-   - [ ] Go CLI is **not** published via Packagist. Track binary distribution (release assets, install script)
-     as its own residual; monorepo build (`go build` in `packages/capabilities-cli`) remains the interim path.
+   - [ ] Go CLI is **not** published via Packagist. Track binary distribution as its own residual; monorepo/`capabilities-cli` build remains the interim path.
 
 ### Residual marker
 
@@ -229,7 +231,7 @@ Complete in order. Checkboxes are for human operators — not CI.
 |---|---|
 | Packagist listing for `rawphp/laravel-capabilities` | Human completes submit + webhook + first tag + `composer show` / clean `composer require` |
 | Packagist listing for `rawphp/laravel-capabilities-messaging` | Same, after core (dependency order) |
-| Signed/downloadable `capabilities` CLI binary | Separate human release track (not this checklist’s Packagist steps) |
+| Signed/downloadable `capabilities` CLI binary | Separate human release track |
 
 Until those human steps finish, **Packagist remains residual**. Root README consumer-readiness table must keep packaging as residual. Unit tests must not depend on Packagist availability.
 
@@ -245,18 +247,16 @@ Durable approval / idempotency in a host app is a **config + migrations** path �
 | Tables | `capabilities_approvals`, `capabilities_idempotency` (`MigrationCatalog`) |
 | Host override | Bind `TableGateway` in `AppServiceProvider` (see [first-capability tutorial](tutorials/first-capability.md#durable-stores-approvals--idempotency)) |
 
-Package defaults: `approval.store` = `database`; `idempotency.driver` = `memory` until the host opts into database. Missing connection on a database driver fails closed (no silent `ArrayTableGateway`). Full host walkthrough: [docs/tutorials/first-capability.md](tutorials/first-capability.md). Package notes: [packages/laravel-capabilities/README.md](../packages/laravel-capabilities/README.md#durable-persistence-querytablegateway).
+Package defaults: `approval.store` = `database`; `idempotency.driver` = `memory` until the host opts into database. Missing connection on a database driver fails closed (no silent `ArrayTableGateway`). Full host walkthrough: [first-capability tutorial](tutorials/first-capability.md). Package notes: [core package README](../packages/laravel-capabilities/README.md#durable-persistence-querytablegateway).
 
-This does **not** mean packages are on Packagist — install remains path/VCS until the human Packagist checklist above is complete.
+This does **not** mean packages are on Packagist — install remains path or package-repo VCS until the human Packagist checklist above is complete.
 
 ## What this prep work does **not** do
 
 - No Packagist publish, API tokens, or `composer publish` automation.
-- No git tags or GitHub Releases created solely for versioning readiness.
-- No secrets, deploy keys, or live network release steps in-repo.
-- No claim that packages are already on Packagist or that tags already exist on a public remote.
+- No git tags created solely by versioning docs.
+- No secrets, deploy keys, or live network release steps in-repo (split uses a configured `SPLIT_GITHUB_TOKEN` secret only).
+- No claim that packages are already on Packagist or that tags already exist on public remotes.
 - No monorepo unit test that hits `packagist.org` or requires `composer show` against the public registry.
 
-When a maintainer completes the **Packagist + git tag publish checklist** above, cut tags using the
-pattern in **Git tag naming**, fill dated CHANGELOG sections, and only then claim public install via
-Packagist / binary distribution.
+When a maintainer completes the **Packagist + git tag publish checklist** above, cut monorepo tags using the pattern in **Git tag naming**, fill dated CHANGELOG sections, and only then claim public install via Packagist / binary distribution.

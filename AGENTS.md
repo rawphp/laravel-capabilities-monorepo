@@ -10,6 +10,7 @@ Shared project instructions for all AI coding agents. **AGENTS.md is the source 
 - Surfaces: in-app agent (`laravel/ai`), MCP (`laravel/mcp`), HTTP, product CLI (downloadable client), jobs. Messaging is a **sibling package**, not core.
 - Working titles: `rawphp/laravel-capabilities` (core), `rawphp/laravel-capabilities-messaging`, `rawphp/capabilities-cli` (Go).
 - **Status:** monorepo **unit-complete design** (package unit suites largely cover v0.1–v0.5 scope) — **not Packagist-published**, **not a stable public API**. Spec remains the design oracle where tests are silent; unit-green ≠ shipped product. See root README readiness residuals.
+- **Ship model:** develop here; on push to `main` / tags `v*`, CI mirrors each `packages/*` tree to its public package repo (`.github/workflows/split-packages.yml`). Package docs must stay **self-contained** after split (no relative links into monorepo-only `docs/`).
 
 One sentence: *Define what the product can do once; let every agent-era channel invoke it under the same law.*
 
@@ -28,15 +29,15 @@ One sentence: *Define what the product can do once; let every agent-era channel 
 
 ## Monorepo packages
 
-| Path | Package | Owns |
-|---|---|---|
-| `packages/laravel-capabilities` | `rawphp/laravel-capabilities` | Registry, schema, HTTP API, AI/MCP/job adapters, approval SM, audit, scope, idempotency, **conversation ingress contracts** |
-| `packages/laravel-capabilities-messaging` | `rawphp/laravel-capabilities-messaging` | Telegram first: webhooks, identity, threads, chat approval notifier |
-| `packages/capabilities-cli` | `rawphp/capabilities-cli` | Downloadable Go client: auth + catalog + run + optional MCP stdio |
+| Path | Package | Public remote (after split) | Owns |
+|---|---|---|---|
+| `packages/laravel-capabilities` | `rawphp/laravel-capabilities` | `rawphp/laravel-capabilities` | Registry, schema, HTTP API, AI/MCP/job adapters, approval SM, audit, scope, idempotency, **conversation ingress contracts** |
+| `packages/laravel-capabilities-messaging` | `rawphp/laravel-capabilities-messaging` | `rawphp/laravel-capabilities-messaging` | Telegram first: webhooks, identity, threads, chat approval notifier |
+| `packages/capabilities-cli` | `rawphp/capabilities-cli` | `rawphp/capabilities-cli` | Downloadable Go client: auth + catalog + run + optional MCP stdio |
 
 Namespaces: `Rawphp\Capabilities\` (core), `Rawphp\CapabilitiesMessaging\` (messaging).
 
-Root `composer.json` path-requires the PHP packages for local work. CLI is Go (`go.mod`), not Composer.
+Root `composer.json` path-requires the PHP packages for local work. CLI is Go (`go.mod`), not Composer. Consumer VCS/Packagist targets are the **package remotes**, not this monorepo.
 
 ## Constraints (MUST NOT)
 
@@ -55,6 +56,7 @@ Root `composer.json` path-requires the PHP packages for local work. CLI is Go (`
 - Do **not** invent a third capability discovery path beyond class `#[Capability]` + fluent `Capability::define` (D-017).
 - Do **not** commit secrets except `.env.example`; do not use `git commit --no-verify`.
 - Do **not** delete or clobber `docs/spec.md` when scaffolding or refactoring.
+- Do **not** add relative links from `packages/*/README.md` or `packages/*/docs/*` into monorepo-only paths (`../../docs/…`, monorepo root README) — those break after the three-package split. Use in-package paths or absolute monorepo GitHub URLs.
 - Do **not** add feature tests, HTTP/browser tests, database-backed tests, or any suite that requires a real DB, Redis, queue worker, or full Laravel app boot for assertions. **Unit tests only** (see Testing).
 
 ## Testing (IMPORTANT — non-negotiable)

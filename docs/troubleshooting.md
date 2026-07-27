@@ -1,10 +1,10 @@
 # Troubleshooting
 
-Common boot, peer, auth, CLI, and messaging failures for Laravel Capabilities monorepo consumers. Verify against your published config and package version — this is 0.x pre-stable.
+Common boot, peer, auth, CLI, and messaging failures for Laravel Capabilities consumers. Verify against your published config and package version — this is 0.x pre-stable.
 
 ## Quick checks
 
-1. Are you installing via **path/VCS**, not Packagist? Packagist publish is still a residual.
+1. Are you installing via **path** (monorepo) or **package-repo VCS**, not Packagist? Packagist publish is still a residual.
 2. Did the app boot after enabling agent/MCP without installing peers?
 3. Is the capability registered **once** (fluent **or** attribute, not both)?
 4. For HTTP/CLI: is `surfaces.http.enabled` true and middleware auth satisfied?
@@ -16,17 +16,22 @@ Common boot, peer, auth, CLI, and messaging failures for Laravel Capabilities mo
 ### `composer require rawphp/laravel-capabilities` fails from Packagist
 
 **Cause:** Packages are not published on Packagist yet.  
-**Fix:** Path or VCS install — [versioning.md](versioning.md) · [Getting started](getting-started.md).
+**Fix:** Path or package-repo VCS — [versioning.md](versioning.md) · [Getting started](getting-started.md).
 
 ### Path repo not picking up changes
 
 **Cause:** Composer mirror/cache or missing symlink option.  
-**Fix:** Use `"options": { "symlink": true }` for path repos; `composer update rawphp/laravel-capabilities`. Confirm the package path URL matches your checkout.
+**Fix:** Use `"options": { "symlink": true }` for path repos; `composer update rawphp/laravel-capabilities`. Confirm the package path URL matches your monorepo checkout.
+
+### VCS require against the monorepo URL fails / wrong package root
+
+**Cause:** Composer expects `composer.json` at the repository root. The monorepo nests packages under `packages/`.  
+**Fix:** VCS-require the **split package remotes** (`rawphp/laravel-capabilities`, `…-messaging`, `capabilities-cli`) updated on monorepo push — [versioning.md](versioning.md#monorepo--three-package-remotes-on-push).
 
 ### Messaging cannot resolve core
 
 **Cause:** Messaging requires `rawphp/laravel-capabilities`.  
-**Fix:** Path-require **both** packages; messaging’s constraint is `*` for monorepo resolution — pin when you leave the monorepo.
+**Fix:** Require **both** packages (path both monorepo dirs, or VCS both package remotes). Messaging’s constraint is `*` for monorepo path resolution — pin when you leave path install.
 
 ## Boot and peers
 

@@ -1,15 +1,14 @@
 # Product CLI: capabilities (Go)
 
-> **Location:** This guide lives in the **capabilities-cli** package (`packages/capabilities-cli/docs/user-guide.md`). Monorepo docs index: [docs/README.md](../../docs/README.md). Package root readme: [README.md](../README.md).
-
+> Ships with the **capabilities-cli** package (this file is at `docs/user-guide.md` in the package repo). Package root: [README.md](../README.md).
 
 Downloadable client for end users and local agents. Authenticates to a deployment, lists the capability catalog, validates input locally, and invokes capabilities over the app’s **same** HTTP API. Optional MCP stdio bridge for local agent runtimes.
 
-**Path:** `packages/capabilities-cli`  
 **Module:** `github.com/rawphp/capabilities-cli`  
 **Binary name:** `capabilities`  
 **Language:** Go 1.22+ (D-016)  
-**Status:** 0.x pre-stable; build from source until signed binary releases exist
+**Status:** 0.x pre-stable; build from source until signed binary releases exist  
+**Repo:** [github.com/rawphp/capabilities-cli](https://github.com/rawphp/capabilities-cli)
 
 **No domain `run()` on the laptop.** The server always re-validates and authorizes.
 
@@ -22,12 +21,12 @@ Downloadable client for end users and local agents. Authenticates to a deploymen
 ## Build and test
 
 ```bash
-cd packages/capabilities-cli
+# from this package root (monorepo: packages/capabilities-cli)
 go test ./...
 go build -o capabilities ./cmd/capabilities
 ```
 
-Cross-compile targets (darwin/linux/windows × amd64/arm64): see [`dist/README.md`](../../capabilities-cli/dist/README.md).
+Cross-compile targets (darwin/linux/windows × amd64/arm64): see [`dist/README.md`](../dist/README.md).
 
 ```bash
 # example Apple Silicon
@@ -187,7 +186,7 @@ dist/               # cross-compile notes + future release artifacts
 
 ## If something goes wrong
 
-→ [Troubleshooting](../troubleshooting.md#product-cli)
+Troubleshooting (monorepo): [Product CLI](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/troubleshooting.md#product-cli).
 
 | Symptom | Likely fix |
 |---|---|
@@ -199,8 +198,8 @@ dist/               # cross-compile notes + future release artifacts
 
 ## Related
 
-- [Getting started](../getting-started.md#5-optional-product-cli-on-the-user-machine)
-- [Core HTTP API](laravel-capabilities.md#http-api-single-tree)
-- [Concepts — Product CLI vs Artisan](../concepts.md#product-cli-vs-artisan)
 - [Package README](../README.md)
-- [CHANGELOG](../../capabilities-cli/CHANGELOG.md)
+- [CHANGELOG](../CHANGELOG.md)
+- Core HTTP API: [laravel-capabilities user guide](https://github.com/rawphp/laravel-capabilities/blob/main/docs/user-guide.md#http-api-single-tree)
+- Getting started (monorepo): [optional CLI](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/getting-started.md#5-optional-product-cli-on-the-user-machine)
+- Concepts (monorepo): [Product CLI vs Artisan](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/concepts.md#product-cli-vs-artisan)

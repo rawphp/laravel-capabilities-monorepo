@@ -3,19 +3,17 @@
 > **Package:** `rawphp/capabilities-cli`  
 > **Language:** Go (D-016)  
 > **Binary:** `capabilities`  
-> **Status:** 0.x pre-stable — build from source until binary releases exist
+> **Status:** 0.x pre-stable — build from source until binary releases exist  
+> **Repo:** [github.com/rawphp/capabilities-cli](https://github.com/rawphp/capabilities-cli) (mirrored from the monorepo on push)
 
 Downloadable client for end users and local agents. Auth + catalog + run + optional MCP stdio against a remote Laravel app’s **same** HTTP capability API (D-009). **No domain `run()` on the laptop.**
 
-**User documentation (monorepo):**
-
-| Doc | Path |
+| Doc | Where |
 |---|---|
-| Docs index | [docs/README.md](../../docs/README.md) |
-| CLI user guide | [docs/user-guide.md](docs/user-guide.md) |
-| Getting started (optional CLI) | [docs/getting-started.md](../../docs/getting-started.md) |
-| Troubleshooting | [docs/troubleshooting.md](../../docs/troubleshooting.md) |
-| Core HTTP API (server) | [laravel-capabilities user guide](../laravel-capabilities/docs/user-guide.md) |
+| User guide | [docs/user-guide.md](docs/user-guide.md) |
+| Changelog | [CHANGELOG.md](CHANGELOG.md) |
+| Server HTTP API | [laravel-capabilities user guide](https://github.com/rawphp/laravel-capabilities/blob/main/docs/user-guide.md) |
+| Monorepo design | [laravel-capabilities-monorepo](https://github.com/rawphp/laravel-capabilities-monorepo) |
 
 ## Layout
 

@@ -78,9 +78,9 @@ Core **composes** these packages as adapters when agent/MCP surfaces are enabled
 
 ## What to do next
 
-1. [Getting started](getting-started.md) — install  
+1. [Getting started](getting-started.md) — install (path or package VCS)  
 2. [First capability tutorial](tutorials/first-capability.md) — define and invoke  
-3. Package guides: [core](../packages/laravel-capabilities/docs/user-guide.md) · [messaging](../packages/laravel-capabilities-messaging/docs/user-guide.md) · [CLI](../packages/capabilities-cli/docs/user-guide.md)  
+3. Package guides (ship with each package): [core](../packages/laravel-capabilities/docs/user-guide.md) · [messaging](../packages/laravel-capabilities-messaging/docs/user-guide.md) · [CLI](../packages/capabilities-cli/docs/user-guide.md)  
 4. Design depth: [spec.md](spec.md)
 
 ## Related

@@ -1,19 +1,17 @@
 # Core package: rawphp/laravel-capabilities
 
-> **Location:** This guide lives in the **laravel-capabilities** package (`packages/laravel-capabilities/docs/user-guide.md`). Monorepo docs index: [docs/README.md](../../docs/README.md). Package root readme: [README.md](../README.md).
-
+> Ships with the **laravel-capabilities** package (this file is at `docs/user-guide.md` in the package repo). Package root: [README.md](../README.md).
 
 Define a product capability once (schema, authorization, `run`, optional approval and audit) and expose it through agent, MCP, HTTP, product CLI, and jobs — same rules, one `run()`.
 
-**Path:** `packages/laravel-capabilities`  
 **Namespace:** `Rawphp\Capabilities\`  
-**Status:** 0.x pre-stable, monorepo path/VCS install only (not Packagist-published)
+**Status:** 0.x pre-stable, path or package-repo VCS install (not Packagist-published)
 
-Package-specific peer matrix and D-020 detail also live in the [package README](../README.md). Full design: [spec.md](../../docs/spec.md).
+Peer matrix, durable persistence, and D-020 detail live in the [package README](../README.md). Full design oracle (monorepo): [spec.md](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/spec.md).
 
 ## Before you start
 
-- Install via monorepo path or VCS — [Getting started](../../docs/getting-started.md) · [versioning.md](../../docs/versioning.md)
+- Install via package VCS or monorepo path — see [README install](../README.md#install)
 - PHP ^8.2, Laravel 11/12 illuminate components as declared in package `composer.json`
 - Optional peers: `laravel/ai`, `laravel/mcp` when agent/MCP surfaces are enabled
 
@@ -55,7 +53,7 @@ Builder highlights (non-exhaustive): `description`, `surfaces`, `input`, `output
 
 Place classes under `config('capabilities.path')` (default `app/Capabilities`) with `#[Rawphp\Capabilities\Attributes\Capability]` implementing `Rawphp\Capabilities\Contracts\DefinesCapability`. Boot discovery runs through the service provider — do not invent a third registration mechanism.
 
-Full teaching sample: [First capability tutorial](../../docs/tutorials/first-capability.md).
+Full teaching sample (monorepo): [First capability tutorial](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/tutorials/first-capability.md).
 
 ### Input / output DTOs
 
@@ -186,14 +184,14 @@ When agent or MCP is enabled and the peer is missing or `supportsInstalledPeer()
 
 **Never half-register tools.** Default package CI does not install live peers; honesty is matrix + unit contract fixtures. Live peer exercise is an optional **consumer app** path.
 
-Maintainer filters (from monorepo root): see [package README — Peer support](../../laravel-capabilities/README.md#peer-support--d-011-release-gate).
+Maintainer filters: see [package README — Peer support](../README.md#peer-support--d-011-release-gate).
 
 ## Approval and idempotency (operator view)
 
 - **Approval:** definitions may require approval before `run()` finishes. HTTP accept/reject routes are on the capability prefix. Notifier contracts allow CLI/HTTP/Telegram-style prompts; messaging package supplies conversation-side notify implementation.
 - **Idempotency:** when enabled and the definition uses it, repeated keys replay stored outcomes instead of double-applying. CLI always sends a key on `run`.
 
-Deep state machine detail: [spec.md](../../docs/spec.md).
+Deep state machine detail (monorepo): [spec.md](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/spec.md).
 
 ## Testing helpers (D-020)
 
@@ -248,11 +246,12 @@ Surface labels include `http`, `cli`, `agent`, `mcp`, `job`, `artisan`, plus ali
 
 ## If something goes wrong
 
-→ [Troubleshooting](../../docs/troubleshooting.md)
+Common boot, peer, and HTTP failures (monorepo): [Troubleshooting](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/troubleshooting.md). Peer matrix and D-020 details: [package README](../README.md).
 
 ## Related
 
-- [Concepts](../../docs/concepts.md)
-- [Messaging](laravel-capabilities-messaging.md) · [CLI](capabilities-cli.md)
-- [Package README](../README.md)
-- [CHANGELOG](../../laravel-capabilities/CHANGELOG.md)
+- [Package README](../README.md) — install, peers, durable stores, D-020
+- [CHANGELOG](../CHANGELOG.md)
+- Messaging sibling: [rawphp/laravel-capabilities-messaging](https://github.com/rawphp/laravel-capabilities-messaging)
+- Product CLI: [rawphp/capabilities-cli](https://github.com/rawphp/capabilities-cli)
+- Concepts (monorepo): [concepts.md](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/concepts.md)

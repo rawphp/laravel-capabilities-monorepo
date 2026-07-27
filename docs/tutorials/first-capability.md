@@ -2,22 +2,38 @@
 
 Define one product operation once, register it on the bus, invoke it through the registry, and lock it with D-020 test helpers.
 
-This walkthrough is for **app integrators** using the monorepo **path / VCS** install. Packages are **not** on Packagist yet; the public API is **0.x pre-stable**. See [docs/versioning.md](../versioning.md) and the root [README readiness residuals](../../README.md#consumer-readiness-residuals).
+This walkthrough is for **app integrators**. Packages are **not** on Packagist yet; the public API is **0.x pre-stable**. Install via monorepo **path** or **package-repo VCS** — see [docs/versioning.md](../versioning.md) and the root [README readiness residuals](../../README.md#consumer-readiness-residuals).
 
-Samples use real namespaces from `packages/laravel-capabilities/src` (`Rawphp\Capabilities\…`). They are teaching skeletons, not a feature/DB suite.
+Samples use real namespaces from the core package (`Rawphp\Capabilities\…`). They are teaching skeletons, not a feature/DB suite.
 
 ---
 
-## 1. Install (path repository)
+## 1. Install
 
-In your Laravel app’s `composer.json`, path-require the core package from a monorepo clone (adjust `url` to your layout):
+### Package-repo VCS (integrators)
+
+```json
+{
+  "repositories": [
+    {
+      "type": "vcs",
+      "url": "https://github.com/rawphp/laravel-capabilities"
+    }
+  ],
+  "require": {
+    "rawphp/laravel-capabilities": "dev-main"
+  }
+}
+```
+
+### Monorepo path (contributors)
 
 ```json
 {
   "repositories": [
     {
       "type": "path",
-      "url": "../laravel-capabilities/packages/laravel-capabilities",
+      "url": "../laravel-capabilities-monorepo/packages/laravel-capabilities",
       "options": { "symlink": true }
     }
   ],
@@ -31,7 +47,7 @@ In your Laravel app’s `composer.json`, path-require the core package from a mo
 composer update rawphp/laravel-capabilities
 ```
 
-VCS require is also supported (`type: vcs` + `dev-main`). Full policy, branch-alias, and 0.x caveats: **[docs/versioning.md](../versioning.md)**. Do not pretend `composer require rawphp/laravel-capabilities` works from Packagist until that residual is closed.
+Full policy, branch-alias, split remotes, and 0.x caveats: **[docs/versioning.md](../versioning.md)**. Do not pretend public Packagist `composer require rawphp/laravel-capabilities` works until that residual is closed.
 
 Auto-discovery loads `Rawphp\Capabilities\CapabilitiesServiceProvider`. Publish config when you need to override defaults:
 

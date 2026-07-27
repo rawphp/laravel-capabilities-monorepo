@@ -1,23 +1,47 @@
 # Getting started
 
-Install the monorepo packages into a Laravel app, define one capability, invoke it through the registry (and HTTP), then optionally add messaging and the product CLI.
+Install core into a Laravel app, define one capability, invoke it through the registry (and HTTP), then optionally add messaging and the product CLI.
 
 **Audience:** app integrators.  
-**Time:** path install + first capability is the primary path; messaging and CLI are optional follow-ons.  
+**Time:** install + first capability is the primary path; messaging and CLI are optional follow-ons.  
 **Status:** 0.x pre-stable — not Packagist-published. Prefer path or pinned VCS over floating `*@dev` in production apps.
 
 ## Before you start
 
 - PHP **^8.2**, Laravel **11 or 12** (`illuminate/*` as required by the core package)
-- A clone of this monorepo (or access to its package paths)
 - Composer in your app
+- Access to packages via either:
+  - a monorepo clone (path install), or
+  - the public package repos (VCS install) — see [versioning.md](versioning.md)
 - Optional later: Go **1.22+** (CLI), `laravel/ai` / `laravel/mcp` (agent/MCP surfaces), Telegram bot credentials (messaging)
 
 Related: [Concepts](concepts.md) · [versioning.md](versioning.md) · [First capability tutorial](tutorials/first-capability.md)
 
-## 1. Install the core package (path repository)
+## 1. Install the core package
 
-In your Laravel app’s `composer.json`, path-require core from a monorepo checkout (adjust `url` to your layout):
+### Option A — package repo VCS (app integrators)
+
+```json
+{
+  "repositories": [
+    {
+      "type": "vcs",
+      "url": "https://github.com/rawphp/laravel-capabilities"
+    }
+  ],
+  "require": {
+    "rawphp/laravel-capabilities": "dev-main"
+  }
+}
+```
+
+```bash
+composer update rawphp/laravel-capabilities
+```
+
+Those package remotes are updated when the monorepo is pushed (see [versioning.md](versioning.md#monorepo--three-package-remotes-on-push)).
+
+### Option B — monorepo path (contributors)
 
 ```json
 {
@@ -38,9 +62,7 @@ In your Laravel app’s `composer.json`, path-require core from a monorepo check
 composer update rawphp/laravel-capabilities
 ```
 
-VCS require (`type: vcs`) is also supported when you point at a package remote; day-to-day contributor path is **path** install from this monorepo. Full policy and branch-alias notes: [versioning.md](versioning.md).
-
-Do **not** expect `composer require rawphp/laravel-capabilities` from public Packagist until that residual is closed (see root README readiness table).
+Full policy and branch-alias notes: [versioning.md](versioning.md). Do **not** expect public Packagist `composer require` until that residual is closed.
 
 ### Boot
 
@@ -76,26 +98,29 @@ Agent and MCP surfaces compose `laravel/ai` and `laravel/mcp`. They are **option
 - Supported version constraints live in `PeerSupportMatrix` (mirrored under `peers.support`).
 - If a surface is enabled and the peer is missing or incompatible: **fail** boot (default) or **soft-disable** with CRITICAL log, per `on_incompatible`. Never half-register tools.
 
-Details: [Core package guide](../packages/laravel-capabilities/docs/user-guide.md#peers-laravelai--laravelmcp) and core package README.
+Details: [Core package guide](../packages/laravel-capabilities/docs/user-guide.md#peers-laravelai--laravelmcp) and [core package README](../packages/laravel-capabilities/README.md#peer-support--d-011-release-gate).
 
 ## 4. Optional: messaging (Telegram)
 
 Conversation surfaces are a **sibling package**, not core.
 
+**VCS:**
+
 ```json
 {
   "repositories": [
     {
-      "type": "path",
-      "url": "../laravel-capabilities-monorepo/packages/laravel-capabilities-messaging",
-      "options": { "symlink": true }
+      "type": "vcs",
+      "url": "https://github.com/rawphp/laravel-capabilities-messaging"
     }
   ],
   "require": {
-    "rawphp/laravel-capabilities-messaging": "*@dev"
+    "rawphp/laravel-capabilities-messaging": "dev-main"
   }
 }
 ```
+
+**Path (monorepo):** point a path repo at `packages/laravel-capabilities-messaging` and require `*@dev`.
 
 ```bash
 composer update rawphp/laravel-capabilities-messaging
@@ -111,7 +136,9 @@ Messaging implements conversation ingress and approval notify contracts. Chat do
 The product CLI is a **downloadable Go HTTP client** (`capabilities`), not Artisan. It talks to the app’s same capability HTTP API.
 
 ```bash
+# monorepo
 cd packages/capabilities-cli
+# or: git clone https://github.com/rawphp/capabilities-cli && cd capabilities-cli
 go test ./...
 go build -o capabilities ./cmd/capabilities
 ```
@@ -138,7 +165,7 @@ See [Troubleshooting](troubleshooting.md). Common early blockers:
 
 | Symptom | Where to look |
 |---|---|
-| Packagist / `composer require` fails | Expected until publish — use path/VCS ([versioning.md](versioning.md)) |
+| Packagist / `composer require` fails | Expected until publish — use path or package VCS ([versioning.md](versioning.md)) |
 | Boot exception mentioning `laravel/ai` or `laravel/mcp` | Disable surface or install compatible peer |
 | Capability not discovered | Path `app/Capabilities`, provider registration, one define style per name |
 | CLI “missing base URL” / auth exit | `capabilities auth login --base-url=...` |
@@ -147,4 +174,4 @@ See [Troubleshooting](troubleshooting.md). Common early blockers:
 
 - [Concepts](concepts.md)
 - [Documentation index](README.md)
-- [Root README](../README.md) — monorepo status and residuals
+- [Root README](../README.md) — monorepo status, split remotes, residuals
