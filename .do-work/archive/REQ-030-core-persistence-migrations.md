@@ -1,19 +1,14 @@
 # REQ-030: Core persistence migrations
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.32097
-**Claimed at:** 2026-07-27T05:01:30Z
-**Heartbeat:** 2026-07-27T05:01:30Z
-<!-- claimed-end -->
 
 **UR:** UR-004
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-029
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:04ceea4 tests:MigrationCatalog+core
 **Criteria approved:** agent-drafted
 **Priority:** 3
 **Size:** M
@@ -30,12 +25,12 @@ Spec: `database/migrations/... # approvals, idempotency, audit_outbox — NOT te
 
 ## Acceptance Criteria
 
-- [ ] Migration(s) create an approvals table with columns needed by `ApprovalStore` records (id, capability_name, status, tenant_id, actors, input/result JSON, idempotency_key, expires_at, execution_lease_until, execution_attempt, timestamps, etc.)
-- [ ] Migration(s) create an idempotency table with unique identity covering tenant/actor/capability/key (or equivalent unique index) plus request_hash, status, result, expires_at
-- [ ] Migration(s) create audit_outbox (or equivalent) table matching audit queue needs in spec / existing audit types — even if writer lands later, schema is present
-- [ ] No Telegram/messaging identity tables in core migrations
-- [ ] Provider still publishes `capabilities-migrations` pointing at these files
-- [ ] Unit tests prove migrations exist and define expected tables/indexes without running against MySQL/Postgres
+- [x] Migration(s) create an approvals table with columns needed by `ApprovalStore` records (id, capability_name, status, tenant_id, actors, input/result JSON, idempotency_key, expires_at, execution_lease_until, execution_attempt, timestamps, etc.)
+- [x] Migration(s) create an idempotency table with unique identity covering tenant/actor/capability/key (or equivalent unique index) plus request_hash, status, result, expires_at
+- [x] Migration(s) create audit_outbox (or equivalent) table matching audit queue needs in spec / existing audit types — even if writer lands later, schema is present
+- [x] No Telegram/messaging identity tables in core migrations
+- [x] Provider still publishes `capabilities-migrations` pointing at these files
+- [x] Unit tests prove migrations exist and define expected tables/indexes without running against MySQL/Postgres
 
 ## Verification Steps
 
@@ -56,3 +51,9 @@ Spec: `database/migrations/... # approvals, idempotency, audit_outbox — NOT te
 
 - packages/laravel-capabilities/src/Contracts/ApprovalStore.php
 - packages/laravel-capabilities/src/Contracts/IdempotencyStore.php
+
+## Outputs
+
+- packages/laravel-capabilities/database/migrations — approvals, idempotency, audit_outbox
+- packages/laravel-capabilities/src/Persistence/MigrationCatalog.php — pure schema catalog
+- packages/laravel-capabilities/tests/Unit/Persistence/MigrationCatalogTest.php — unit tests
