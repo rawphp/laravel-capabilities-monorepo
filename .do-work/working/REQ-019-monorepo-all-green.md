@@ -1,7 +1,13 @@
 # REQ-019: Monorepo all packages green gate
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.49422
+**Claimed at:** 2026-07-27T03:37:47Z
+**Heartbeat:** 2026-07-27T03:37:47Z
+<!-- claimed-end -->
+
 **UR:** UR-001
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:** composer test && composer test:cli
