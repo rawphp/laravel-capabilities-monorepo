@@ -3,6 +3,7 @@
 namespace Rawphp\Capabilities;
 
 use Illuminate\Support\ServiceProvider;
+use Rawphp\Capabilities\Adapters\Artisan\ArtisanCommandRegistrar;
 use Rawphp\Capabilities\Adapters\Artisan\ArtisanCommandTable;
 use Rawphp\Capabilities\Adapters\JobSurface;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
@@ -85,6 +86,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
     {
         $this->bootHttpRoutes();
         $this->bootCapabilityDiscovery();
+        $this->bootArtisanCommands();
 
         if ($this->app->runningInConsole()) {
             $this->publishes([
@@ -97,6 +99,31 @@ class CapabilitiesServiceProvider extends ServiceProvider
         }
     }
 
+
+
+    /**
+     * Register in-server Artisan ops commands from ArtisanCommandTable (REQ-024).
+     *
+     * @return list<class-string>
+     */
+    public function bootArtisanCommands(?array $artisanConfig = null): array
+    {
+        $config = $artisanConfig ?? (self::configFromApp($this->app)['surfaces']['artisan'] ?? []);
+        if (! is_array($config)) {
+            $config = [];
+        }
+
+        $classes = ArtisanCommandRegistrar::classes($config);
+        if ($classes === []) {
+            return [];
+        }
+
+        if (method_exists($this, 'commands')) {
+            $this->commands($classes);
+        }
+
+        return $classes;
+    }
 
     /**
      * Auto-discover #[Capability] classes from config path into the shared registry (REQ-022 / D-017).

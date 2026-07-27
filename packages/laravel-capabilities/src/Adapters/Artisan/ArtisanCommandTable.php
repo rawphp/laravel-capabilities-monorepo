@@ -49,8 +49,27 @@ final class ArtisanCommandTable
                 'description' => 'Invoke a capability in-process as an operator (requires --acting-as or --system for mutations).',
                 'caller' => self::CALLER,
                 'role' => self::ROLE,
-                'class' => ArtisanCapabilityInvoker::class,
+                'class' => RunCapabilityCommand::class,
             ],
         ];
+    }
+
+    /**
+     * Command classes safe for ServiceProvider::$this->commands().
+     *
+     * @param  array{enabled?: bool}  $artisanConfig
+     * @return list<class-string>
+     */
+    public static function commandClasses(array $artisanConfig = []): array
+    {
+        $classes = [];
+        foreach (self::commands($artisanConfig) as $row) {
+            $class = $row['class'] ?? null;
+            if (is_string($class) && $class !== '') {
+                $classes[] = $class;
+            }
+        }
+
+        return array_values(array_unique($classes));
     }
 }
