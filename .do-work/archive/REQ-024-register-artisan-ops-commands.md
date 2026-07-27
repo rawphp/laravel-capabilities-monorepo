@@ -1,19 +1,14 @@
 # REQ-024: Register Artisan ops commands
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.65372
-**Claimed at:** 2026-07-27T04:52:39Z
-**Heartbeat:** 2026-07-27T04:52:39Z
-<!-- claimed-end -->
 
 **UR:** UR-002
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-020
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:07cfb2e tests:ArtisanCommandRegistrar+core
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** M
@@ -30,12 +25,12 @@ Brief: provider registers no real Artisan commands beyond pure tables. `ArtisanC
 
 ## Acceptance Criteria
 
-- [ ] When artisan surface enabled, provider registers every command class/signature from `ArtisanCommandTable::commands()`
-- [ ] When artisan surface disabled, zero ops commands registered
-- [ ] Registered commands use table signatures (e.g. `capability:run`) and ROLE remains `ops` (not product CLI)
-- [ ] Invoke path goes through registry / invoker (same law as other surfaces) — no parallel domain `run()`
-- [ ] Unit tests cover enabled/disabled registration lists and invoker contract without feature suite or DB
-- [ ] Actor rules from existing Artisan adapter tests (acting-as / system) remain enforced
+- [x] When artisan surface enabled, provider registers every command class/signature from `ArtisanCommandTable::commands()`
+- [x] When artisan surface disabled, zero ops commands registered
+- [x] Registered commands use table signatures (e.g. `capability:run`) and ROLE remains `ops` (not product CLI)
+- [x] Invoke path goes through registry / invoker (same law as other surfaces) — no parallel domain `run()`
+- [x] Unit tests cover enabled/disabled registration lists and invoker contract without feature suite or DB
+- [x] Actor rules from existing Artisan adapter tests (acting-as / system) remain enforced
 
 ## Verification Steps
 
@@ -55,3 +50,9 @@ Brief: provider registers no real Artisan commands beyond pure tables. `ArtisanC
 ## Assets
 
 - docs/spec.md — CLI vs Artisan distinction
+
+## Outputs
+
+- packages/laravel-capabilities/src/Adapters/Artisan/RunCapabilityCommand.php — real Artisan command
+- packages/laravel-capabilities/src/Adapters/Artisan/ArtisanCommandRegistrar.php — registration plan
+- packages/laravel-capabilities/src/CapabilitiesServiceProvider.php — bootArtisanCommands
