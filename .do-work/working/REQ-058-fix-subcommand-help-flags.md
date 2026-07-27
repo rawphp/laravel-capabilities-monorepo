@@ -1,7 +1,13 @@
 # REQ-058: Fix subcommand --help flags
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.57067
+**Claimed at:** 2026-07-27T20:22:27Z
+**Heartbeat:** 2026-07-27T20:22:27Z
+<!-- claimed-end -->
+
 **UR:** UR-010
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-28
 **Layer:** none
 **Entry point:**
