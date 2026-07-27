@@ -16,3 +16,6 @@
 2026-07-27 | UR-004 | layer "messaging" out of scope | user answered "No" at layer-coverage prompt
 2026-07-27 | UR-004 | layer "cli" out of scope | user answered "No" at layer-coverage prompt
 2026-07-27 | UR-005 | registry constructor + makeRegistry default SystemClock; tests inject FixedClock | align Clock contract and avoid frozen singleton in apps
+2026-07-27 | UR-006 | layer "messaging" out of scope | user answered "No" at layer-coverage prompt
+2026-07-27 | UR-006 | layer "cli" out of scope | user answered "No" at layer-coverage prompt
+2026-07-27 | UR-006 | D-011 residual via matrix+fixtures+release-gate docs; no live peers in default package CI | monorepo unit-only policy
