@@ -1,23 +1,18 @@
 # REQ-010: Catalog health errors naming deprecation
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.49422
-**Claimed at:** 2026-07-27T01:56:22Z
-**Heartbeat:** 2026-07-27T01:56:22Z
-<!-- claimed-end -->
 
 **UR:** UR-001
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** Catalog list/health APIs and error envelopes from registry
 **Terminal state:** Catalog/*, Errors/*, Naming/*, Profiles/* selection-related tests pass with stable error envelopes and catalog fields.
 **Parent:** 
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (4/4) commit:f81ee79 Catalog:148 Errors:276 Naming:20 Profiles:111
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** L
-**Files:** packages/laravel-capabilities/src packages/laravel-capabilities/tests/Unit/Catalog packages/laravel-capabilities/tests/Unit/Errors packages/laravel-capabilities/tests/Unit/Naming packages/laravel-capabilities/tests/Unit/Profiles packages/laravel-capabilities/tests/Unit/TestingHelpers
+**Files:** packages/laravel-capabilities/src/Profiles, packages/laravel-capabilities/src/Schema/CatalogPresenter.php, packages/laravel-capabilities/src/Schema/CatalogHealth.php, packages/laravel-capabilities/src/Registry/CapabilityRegistry.php, packages/laravel-capabilities/src/Registry/CapabilityDefinition.php, packages/laravel-capabilities/src/Registry/CapabilityDefinitionBuilder.php, packages/laravel-capabilities/src/Support/ErrorCodeMap.php, packages/laravel-capabilities/src/Support/CapabilityResult.php, packages/laravel-capabilities/src/Http/CliJsonEnvelope.php, packages/laravel-capabilities/tests/Fixtures/CatalogHelpers.php, packages/laravel-capabilities/tests/Fixtures/ErrorHelpers.php, packages/laravel-capabilities/tests/Fixtures/ProfileHelpers.php, packages/laravel-capabilities/tests/Unit/Catalog, packages/laravel-capabilities/tests/Unit/Errors, packages/laravel-capabilities/tests/Unit/Naming, packages/laravel-capabilities/tests/Unit/Profiles, packages/laravel-capabilities/tests/Unit/TestingHelpers
 **Depends on:** REQ-005
 
 ## Task
@@ -32,11 +27,11 @@ Original brief: implement all package tests and business logic so all tests pass
 
 ## Acceptance Criteria
 
-- [ ] Catalog list field and health matrices pass
-- [ ] Error envelope and code matrices pass for key stages
-- [ ] Profile composition / max tools / meta tools / discoverability pass
-- [ ] Deprecation lifecycle tests pass
-- [ ] Testing helpers surface tests pass
+- [x] Catalog list field and health matrices pass
+- [x] Error envelope and code matrices pass for key stages
+- [x] Profile composition / max tools / meta tools / discoverability pass
+- [x] Deprecation lifecycle tests pass
+- [x] Testing helpers surface tests pass
 
 ## Verification Steps
 
@@ -61,3 +56,8 @@ Original brief: implement all package tests and business logic so all tests pass
 
 - docs/spec.md — design bible / conflict oracle
 - docs/requirements-inventory.md — scenario checklist
+
+
+## Outputs
+
+- Catalog/Errors/Naming/Profiles/TestingHelpers inventory green
