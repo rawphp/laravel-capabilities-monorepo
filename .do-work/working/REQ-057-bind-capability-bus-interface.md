@@ -1,7 +1,13 @@
 # REQ-057: Bind CapabilityBus interface
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.41848
+**Claimed at:** 2026-07-27T10:49:35Z
+**Heartbeat:** 2026-07-27T10:49:35Z
+<!-- claimed-end -->
+
 **UR:** UR-009
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:** HTTP `CapabilityController` constructor DI (`CapabilityBus`); product CLI `capabilities catalog` against package HTTP API
