@@ -13,7 +13,7 @@ Define a capability once (schema, authorization, `run`, approval, audit) and exp
 |---|---|
 | Docs index | [docs/README.md](../../docs/README.md) |
 | Getting started | [docs/getting-started.md](../../docs/getting-started.md) |
-| Core user guide | [docs/README.md](docs/README.md) |
+| Core user guide | [docs/user-guide.md](docs/user-guide.md) |
 | Concepts | [docs/concepts.md](../../docs/concepts.md) |
 | Troubleshooting | [docs/troubleshooting.md](../../docs/troubleshooting.md) |
 | First capability tutorial | [docs/tutorials/first-capability.md](../../docs/tutorials/first-capability.md) |

@@ -76,7 +76,7 @@ Agent and MCP surfaces compose `laravel/ai` and `laravel/mcp`. They are **option
 - Supported version constraints live in `PeerSupportMatrix` (mirrored under `peers.support`).
 - If a surface is enabled and the peer is missing or incompatible: **fail** boot (default) or **soft-disable** with CRITICAL log, per `on_incompatible`. Never half-register tools.
 
-Details: [Core package guide](../packages/laravel-capabilities/docs/README.md#peers-laravelai--laravelmcp) and core package README.
+Details: [Core package guide](../packages/laravel-capabilities/docs/user-guide.md#peers-laravelai--laravelmcp) and core package README.
 
 ## 4. Optional: messaging (Telegram)
 
@@ -104,7 +104,7 @@ php artisan vendor:publish --tag=capabilities-messaging-config
 
 Messaging implements conversation ingress and approval notify contracts. Chat does **not** call domain `run()` itself — tools go through the capability registry. Configure Telegram secrets and an **agent profile** before first bot traffic.
 
-→ [Messaging package guide](../packages/laravel-capabilities-messaging/docs/README.md)
+→ [Messaging package guide](../packages/laravel-capabilities-messaging/docs/user-guide.md)
 
 ## 5. Optional: product CLI on the user machine
 
@@ -122,7 +122,7 @@ go build -o capabilities ./cmd/capabilities
 ./capabilities run create-invoice --input='{"customer_id":1,"amount_cents":2500,"currency":"USD"}' --json
 ```
 
-→ [CLI package guide](../packages/capabilities-cli/docs/README.md)
+→ [CLI package guide](../packages/capabilities-cli/docs/user-guide.md)
 
 ## How you know it worked
 

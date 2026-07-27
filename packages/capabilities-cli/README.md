@@ -12,10 +12,10 @@ Downloadable client for end users and local agents. Auth + catalog + run + optio
 | Doc | Path |
 |---|---|
 | Docs index | [docs/README.md](../../docs/README.md) |
-| CLI user guide | [docs/README.md](docs/README.md) |
+| CLI user guide | [docs/user-guide.md](docs/user-guide.md) |
 | Getting started (optional CLI) | [docs/getting-started.md](../../docs/getting-started.md) |
 | Troubleshooting | [docs/troubleshooting.md](../../docs/troubleshooting.md) |
-| Core HTTP API (server) | [docs/README.md](docs/README.md) |
+| Core HTTP API (server) | [docs/user-guide.md](docs/user-guide.md) |
 
 ## Layout
 

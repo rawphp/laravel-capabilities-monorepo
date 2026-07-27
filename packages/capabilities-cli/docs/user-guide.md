@@ -1,6 +1,6 @@
 # Product CLI: capabilities (Go)
 
-> **Location:** This guide lives in the **capabilities-cli** package (`packages/capabilities-cli/docs/`). Monorepo index: [docs/README.md](../../docs/README.md).
+> **Location:** This guide lives in the **capabilities-cli** package (`packages/capabilities-cli/docs/user-guide.md`). Monorepo docs index: [docs/README.md](../../docs/README.md). Package root readme: [README.md](../README.md).
 
 
 Downloadable client for end users and local agents. Authenticates to a deployment, lists the capability catalog, validates input locally, and invokes capabilities over the app’s **same** HTTP API. Optional MCP stdio bridge for local agent runtimes.

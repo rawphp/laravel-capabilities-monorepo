@@ -164,7 +164,7 @@ Matrix source: `packages/laravel-capabilities/src/Adapters/PeerSupportMatrix.php
 ### `assertSchemaSnapshot` always passes but CI did not lock schema
 
 **Cause:** Name-only call does not lock.  
-**Fix:** Pass file path, conventional directory, or envelope — see [core guide](../packages/laravel-capabilities/docs/README.md#testing-helpers-d-020).
+**Fix:** Pass file path, conventional directory, or envelope — see [core guide](../packages/laravel-capabilities/docs/user-guide.md#testing-helpers-d-020).
 
 ### `assertParity` throws `InvalidArgumentException`
 

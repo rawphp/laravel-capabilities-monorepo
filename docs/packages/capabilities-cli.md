@@ -1,7 +1,9 @@
-# rawphp/capabilities-cli (moved)
+# capabilities-cli (moved)
 
-Package user documentation now lives with the package:
+Package user documentation:
 
-**→ [packages/capabilities-cli/docs/README.md](../../packages/capabilities-cli/docs/README.md)**
+**→ [../../packages/capabilities-cli/docs/user-guide.md](../../packages/capabilities-cli/docs/user-guide.md)**
 
-Monorepo docs index: [docs/README.md](../README.md)
+Package root README stays at the package root (`packages/.../README.md`).
+
+Monorepo index: [docs/README.md](../README.md)

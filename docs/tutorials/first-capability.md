@@ -328,7 +328,7 @@ These exercise registry / adapter unit paths with mocks — **not** a live multi
 | Full design & decisions | [docs/spec.md](../spec.md) |
 | Install / 0.x versioning | [docs/versioning.md](../versioning.md) |
 | Monorepo status & residuals | [README.md](../../README.md) |
-| Core package user guide | [../packages/laravel-capabilities/docs/README.md](../../packages/laravel-capabilities/docs/README.md) |
+| Core package user guide | [../packages/laravel-capabilities/docs/user-guide.md](../../packages/laravel-capabilities/docs/user-guide.md) |
 | Core package peer/D-011 notes | [packages/laravel-capabilities/README.md](../../packages/laravel-capabilities/README.md) |
 | D-020 parity & snapshots | [spec D-020](../spec.md#d-020--parity-tests-and-schema-snapshots-as-package-features) |
 | Troubleshooting | [docs/troubleshooting.md](../troubleshooting.md) |

@@ -1,7 +1,9 @@
-# rawphp/laravel-capabilities-messaging (moved)
+# laravel-capabilities-messaging (moved)
 
-Package user documentation now lives with the package:
+Package user documentation:
 
-**→ [packages/laravel-capabilities-messaging/docs/README.md](../../packages/laravel-capabilities-messaging/docs/README.md)**
+**→ [../../packages/laravel-capabilities-messaging/docs/user-guide.md](../../packages/laravel-capabilities-messaging/docs/user-guide.md)**
 
-Monorepo docs index: [docs/README.md](../README.md)
+Package root README stays at the package root (`packages/.../README.md`).
+
+Monorepo index: [docs/README.md](../README.md)

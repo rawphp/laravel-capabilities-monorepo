@@ -1,6 +1,6 @@
 # Core package: rawphp/laravel-capabilities
 
-> **Location:** This guide lives in the **laravel-capabilities** package (`packages/laravel-capabilities/docs/`). Monorepo index: [docs/README.md](../../docs/README.md).
+> **Location:** This guide lives in the **laravel-capabilities** package (`packages/laravel-capabilities/docs/user-guide.md`). Monorepo docs index: [docs/README.md](../../docs/README.md). Package root readme: [README.md](../README.md).
 
 
 Define a product capability once (schema, authorization, `run`, optional approval and audit) and expose it through agent, MCP, HTTP, product CLI, and jobs — same rules, one `run()`.

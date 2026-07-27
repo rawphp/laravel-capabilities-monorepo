@@ -1,6 +1,6 @@
 # Messaging package: rawphp/laravel-capabilities-messaging
 
-> **Location:** This guide lives in the **laravel-capabilities-messaging** package (`packages/laravel-capabilities-messaging/docs/`). Monorepo index: [docs/README.md](../../docs/README.md).
+> **Location:** This guide lives in the **laravel-capabilities-messaging** package (`packages/laravel-capabilities-messaging/docs/user-guide.md`). Monorepo docs index: [docs/README.md](../../docs/README.md). Package root readme: [README.md](../README.md).
 
 
 Optional **sibling** package for conversation surfaces. Telegram first; other chat products may follow the same contracts.
