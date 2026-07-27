@@ -1,19 +1,14 @@
 # REQ-052: Host TableGateway binding docs
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.40419
-**Claimed at:** 2026-07-27T06:46:09Z
-**Heartbeat:** 2026-07-27T06:46:09Z
-<!-- claimed-end -->
 
 **UR:** UR-008
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-049
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (2/2) commit:793b537
 **Criteria approved:** agent-drafted
 **Priority:** 1
 **Size:** S
@@ -30,11 +25,11 @@ Brief item 2: "First-party Eloquent/query TableGateway (or document a 10-line ho
 
 ## Acceptance Criteria
 
-- [ ] First-capability tutorial (or versioning) explains database driver + migrations + default gateway
-- [ ] Includes a ~10-line host `AppServiceProvider` binding example for custom `TableGateway`
-- [ ] Core package README and/or monorepo readiness residuals note durable persistence path
-- [ ] Does not claim Packagist publish as done
-- [ ] Docs match actual class/config keys after REQ-050/051
+- [x] First-capability tutorial (or versioning) explains database driver + migrations + default gateway
+- [x] Includes a ~10-line host `AppServiceProvider` binding example for custom `TableGateway`
+- [x] Core package README and/or monorepo readiness residuals note durable persistence path
+- [x] Does not claim Packagist publish as done
+- [x] Docs match actual class/config keys after REQ-050/051
 
 ## Verification Steps
 
@@ -50,3 +45,10 @@ Brief item 2: "First-party Eloquent/query TableGateway (or document a 10-line ho
 **Data dependencies:** config keys and class names from REQ-050/051.
 
 **Service dependencies:** none runtime; documentation only.
+
+## Outputs
+
+- docs/tutorials/first-capability.md — durable stores docs
+- docs/versioning.md — durable path
+- packages/laravel-capabilities/README.md — QueryTableGateway section
+- README.md — readiness residual
