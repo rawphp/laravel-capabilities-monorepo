@@ -1,23 +1,18 @@
 # REQ-012: Job and Artisan adapter surfaces
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.49422
-**Claimed at:** 2026-07-27T02:18:17Z
-**Heartbeat:** 2026-07-27T02:18:17Z
-<!-- claimed-end -->
 
 **UR:** UR-001
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** Queued job payload invoke + optional Artisan ops commands
 **Terminal state:** Surfaces/Job* Job/* Artisan* unit tests pass with SystemActor; Artisan is ops-only not product CLI.
 **Parent:** 
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:8741381 Job:408 Artisan:23
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** M
-**Files:** packages/laravel-capabilities/src/Adapters packages/laravel-capabilities/tests/Unit/Surfaces/JobAdapterTest.php packages/laravel-capabilities/tests/Unit/Surfaces/ArtisanAdapterTest.php packages/laravel-capabilities/tests/Unit/Surfaces/ArtisanFlagsTest.php packages/laravel-capabilities/tests/Unit/Job
+**Files:** packages/laravel-capabilities/src/Adapters/JobSurface.php, packages/laravel-capabilities/src/Adapters/Artisan/ArtisanCommandTable.php, packages/laravel-capabilities/src/Adapters/Artisan/ArtisanCapabilityInvoker.php, packages/laravel-capabilities/src/Support/MissingArtisanActorException.php, packages/laravel-capabilities/src/Support/InvalidArtisanFlagsException.php, packages/laravel-capabilities/src/CapabilitiesServiceProvider.php, packages/laravel-capabilities/tests/Unit/Surfaces/JobAdapterTest.php, packages/laravel-capabilities/tests/Unit/Surfaces/ArtisanAdapterTest.php, packages/laravel-capabilities/tests/Unit/Surfaces/ArtisanFlagsTest.php
 **Depends on:** REQ-006, REQ-010
 
 ## Task
@@ -32,9 +27,9 @@ Original brief: implement all package tests and business logic so all tests pass
 
 ## Acceptance Criteria
 
-- [ ] Job adapter and Job/* matrices pass
-- [ ] Artisan adapter tests pass and do not claim product CLI role
-- [ ] Unauthorized/missing actor fails closed
+- [x] Job adapter and Job/* matrices pass
+- [x] Artisan adapter tests pass and do not claim product CLI role
+- [x] Unauthorized/missing actor fails closed
 
 ## Verification Steps
 
@@ -55,3 +50,8 @@ Original brief: implement all package tests and business logic so all tests pass
 
 - docs/spec.md — design bible / conflict oracle
 - docs/requirements-inventory.md — scenario checklist
+
+
+## Outputs
+
+- Job + Artisan surfaces
