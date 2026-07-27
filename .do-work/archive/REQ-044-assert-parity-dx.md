@@ -1,19 +1,14 @@
 # REQ-044: Assert parity DX
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.95896
-**Claimed at:** 2026-07-27T05:36:20Z
-**Heartbeat:** 2026-07-27T05:36:20Z
-<!-- claimed-end -->
 
 **UR:** UR-007
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-039
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:02f8c92
 **Criteria approved:** agent-drafted
 **Priority:** 3
 **Size:** L
@@ -30,13 +25,13 @@ Spec D-020 example invokes http/registry/ai adapter paths with shared assert. Cu
 
 ## Acceptance Criteria
 
-- [ ] `assertParity` accepts capability name + options array shaped like D-020 (`input`, `surfaces`, `assert` callback) — keep BC or document breaking change if empty-arg presence API is removed
-- [ ] For each listed surface, invoke goes through a real registry surface path (e.g. `invokeForSurface` / equivalent) with provided input and controlled actor/tenant options
-- [ ] Success class vs deny/failure class is compared across surfaces; mismatch throws with surface names and result classes
-- [ ] Optional `assert` callback runs on successful results (or documented contract for deny-path parity)
-- [ ] Unit tests cover: same success across ≥2 surfaces; same deny across ≥2 surfaces; mismatch fails; invalid surface list fails
-- [ ] Presence-only `assertParity()` tests rewritten to exercise real behaviour (or dedicated “invalid usage” tests if empty call is rejected)
-- [ ] No feature tests, no DB, no live peer packages required in default suite
+- [x] `assertParity` accepts capability name + options array shaped like D-020 (`input`, `surfaces`, `assert` callback) — keep BC or document breaking change if empty-arg presence API is removed
+- [x] For each listed surface, invoke goes through a real registry surface path (e.g. `invokeForSurface` / equivalent) with provided input and controlled actor/tenant options
+- [x] Success class vs deny/failure class is compared across surfaces; mismatch throws with surface names and result classes
+- [x] Optional `assert` callback runs on successful results (or documented contract for deny-path parity)
+- [x] Unit tests cover: same success across ≥2 surfaces; same deny across ≥2 surfaces; mismatch fails; invalid surface list fails
+- [x] Presence-only `assertParity()` tests rewritten to exercise real behaviour (or dedicated “invalid usage” tests if empty call is rejected)
+- [x] No feature tests, no DB, no live peer packages required in default suite
 
 ## Verification Steps
 
@@ -54,3 +49,12 @@ Spec D-020 example invokes http/registry/ai adapter paths with shared assert. Cu
 **Data dependencies:** Registered capability definition; `CapabilityResult` success/failure codes
 
 **Service dependencies:** `CapabilityRegistry::invoke` / surface invoke helpers; test harness fixtures (`CatalogHelpers` or equivalent)
+
+## Outputs
+
+- packages/laravel-capabilities/src/Support/AssertParity.php — Surface alias + result class helpers
+- packages/laravel-capabilities/src/Support/ParityAssertionException.php — Mismatch exception
+- packages/laravel-capabilities/src/Registry/CapabilityRegistry.php — Real assertParity D-020
+- packages/laravel-capabilities/src/Facades/Capability.php — Facade signature
+- packages/laravel-capabilities/tests/Unit/TestingHelpers/ParityAndSnapshotsTest.php — Behavioural parity tests
+- packages/laravel-capabilities/tests/Unit/TestingHelpers/HelperSurfaceTest.php — Presence-only rewritten
