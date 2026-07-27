@@ -1,7 +1,13 @@
 # REQ-045: D-020 consumer docs and inventory honesty
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.49422
+**Claimed at:** 2026-07-27T05:52:39Z
+**Heartbeat:** 2026-07-27T05:52:39Z
+<!-- claimed-end -->
+
 **UR:** UR-007
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
