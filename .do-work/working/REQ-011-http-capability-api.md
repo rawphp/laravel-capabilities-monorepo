@@ -1,7 +1,13 @@
 # REQ-011: HTTP capability API surface
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.49422
+**Claimed at:** 2026-07-27T02:06:52Z
+**Heartbeat:** 2026-07-27T02:06:52Z
+<!-- claimed-end -->
+
 **UR:** UR-001
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** HTTP routes for catalog + invoke (single API for CLI too, D-009)
