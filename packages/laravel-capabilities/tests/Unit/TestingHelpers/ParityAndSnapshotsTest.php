@@ -138,7 +138,16 @@ it('happy: assertSchemaSnapshot fails when conventional directory file is missin
 
 it('happy: assertParity same success class across registry surfaces with mocks [D-020]', function () {
     $h = CatalogHelpers::harness();
-    expect($h['registry']->assertParity(['agent', 'http', 'cli']))->toBeTrue();
+    $asserted = 0;
+    expect($h['registry']->assertParity($h['name'], [
+        'input' => CatalogHelpers::input(),
+        'surfaces' => ['agent', 'http', 'cli'],
+        'assert' => function ($result) use (&$asserted) {
+            expect($result->isOk())->toBeTrue();
+            $asserted++;
+        },
+    ]))->toBeTrue();
+    expect($asserted)->toBe(3);
 });
 
 it('happy: assertCannotInvokeAcrossTenant fails test on cross-tenant success [D-003]', function () {
@@ -169,33 +178,93 @@ it('happy: assertLastScopeTenant reflects SystemActor first-class tenant not smu
 });
 
 it('edge: assertParity same deny class across registry http and ai with mocks [D-020]', function () {
+    // authorize: false → every surface denies; assert callback must not run on deny-path parity
+    $h = \Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers::harness([
+        'authorize' => false,
+        'allowSystemCallers' => true,
+    ]);
+    $asserted = 0;
+    expect($h['registry']->assertParity($h['name'], [
+        'input' => \Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers::validInput(),
+        'surfaces' => ['http', 'ai'],
+        'assert' => function () use (&$asserted) {
+            $asserted++;
+        },
+    ]))->toBeTrue();
+    expect($asserted)->toBe(0);
+});
+
+it('edge: assertParity mismatch throws with surface names and result classes [D-020]', function () {
+    // Capability only enabled on http → http succeeds, mcp is surface-gate forbidden
+    $h = CatalogHelpers::harness([
+        'cap_surfaces' => ['http'],
+    ]);
+    expect(fn () => $h['registry']->assertParity($h['name'], [
+        'input' => CatalogHelpers::input(),
+        'surfaces' => ['http', 'mcp'],
+    ]))->toThrow(
+        \Rawphp\Capabilities\Support\ParityAssertionException::class,
+        'parity mismatch',
+    );
+});
+
+it('edge: assertParity invalid surface list fails [D-020]', function () {
     $h = CatalogHelpers::harness();
-    expect($h['registry']->assertParity(['http', 'agent']))->toBeTrue();
+    expect(fn () => $h['registry']->assertParity($h['name'], [
+        'input' => CatalogHelpers::input(),
+        'surfaces' => ['http', 'not-a-surface'],
+    ]))->toThrow(InvalidArgumentException::class);
+
+    expect(fn () => $h['registry']->assertParity($h['name'], [
+        'input' => CatalogHelpers::input(),
+        'surfaces' => [''],
+    ]))->toThrow(InvalidArgumentException::class);
+
+    expect(fn () => $h['registry']->assertParity($h['name'], [
+        'input' => CatalogHelpers::input(),
+        'surfaces' => [],
+    ]))->toThrow(InvalidArgumentException::class);
 });
 
 it('edge: assertParity can include surface path for agent [D-020]', function () {
     $h = CatalogHelpers::harness();
-    expect($h['registry']->assertParity(['agent']))->toBeTrue();
+    expect($h['registry']->assertParity($h['name'], [
+        'input' => CatalogHelpers::input(),
+        'surfaces' => ['agent'],
+    ]))->toBeTrue();
 });
 
 it('edge: assertParity can include surface path for mcp [D-020]', function () {
     $h = CatalogHelpers::harness();
-    expect($h['registry']->assertParity(['mcp']))->toBeTrue();
+    expect($h['registry']->assertParity($h['name'], [
+        'input' => CatalogHelpers::input(),
+        'surfaces' => ['mcp'],
+    ]))->toBeTrue();
 });
 
 it('edge: assertParity can include surface path for http [D-020]', function () {
     $h = CatalogHelpers::harness();
-    expect($h['registry']->assertParity(['http']))->toBeTrue();
+    expect($h['registry']->assertParity($h['name'], [
+        'input' => CatalogHelpers::input(),
+        'surfaces' => ['http'],
+    ]))->toBeTrue();
 });
 
 it('edge: assertParity can include surface path for cli [D-020]', function () {
     $h = CatalogHelpers::harness();
-    expect($h['registry']->assertParity(['cli']))->toBeTrue();
+    expect($h['registry']->assertParity($h['name'], [
+        'input' => CatalogHelpers::input(),
+        'surfaces' => ['cli'],
+    ]))->toBeTrue();
 });
 
 it('edge: assertParity can include surface path for job [D-020]', function () {
     $h = CatalogHelpers::harness();
-    expect($h['registry']->assertParity(['job']))->toBeTrue();
+    expect($h['registry']->assertParity($h['name'], [
+        'input' => CatalogHelpers::input(),
+        'surfaces' => ['job'],
+        'actor' => new SystemActor('billing-worker'),
+    ]))->toBeTrue();
 });
 
 it('happy: Capability::fake available for unit tests [D-020]', function () {

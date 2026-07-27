@@ -252,30 +252,24 @@ final class ParityHelpers
 
     public static function assertParitySurfaces(string $a, string $b, string $class): void
     {
-        $map = [
-            'registry' => 'http', // registry path exercised via any surface; assertParity API
-            'ai' => 'agent',
-            'http' => 'http',
-            'mcp' => 'mcp',
-            'job' => 'job',
-            'cli' => 'cli',
-            'agent' => 'agent',
-        ];
-        $sa = $map[$a] ?? $a;
-        $sb = $map[$b] ?? $b;
-        $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
-        expect($h['registry']->assertParity([$sa, $sb]))->toBeTrue();
+        // D-020 surface labels (registry/ai aliases resolved inside assertParity)
+        $surfaces = [$a, $b];
+        $input = PipelineHelpers::validInput();
 
         if ($class === 'success') {
-            $r1 = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options($sa));
-            $r2 = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options($sb));
-            expect($r1->isOk())->toBeTrue()->and($r2->isOk())->toBeTrue();
+            $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
+            expect($h['registry']->assertParity($h['name'], [
+                'input' => $input,
+                'surfaces' => $surfaces,
+                'actor' => PipelineHelpers::userActor(),
+            ]))->toBeTrue();
         } else {
             $h2 = PipelineHelpers::harness(['authorize' => false, 'allowSystemCallers' => true]);
-            $d1 = $h2['registry']->invoke($h2['name'], PipelineHelpers::validInput(), PipelineHelpers::options($sa));
-            $d2 = $h2['registry']->invoke($h2['name'], PipelineHelpers::validInput(), PipelineHelpers::options($sb));
-            expect($d1->isOk())->toBeFalse()->and($d2->isOk())->toBeFalse()
-                ->and($d1->errorCode())->toBe($d2->errorCode());
+            expect($h2['registry']->assertParity($h2['name'], [
+                'input' => $input,
+                'surfaces' => $surfaces,
+                'actor' => PipelineHelpers::userActor(),
+            ]))->toBeTrue();
         }
     }
 

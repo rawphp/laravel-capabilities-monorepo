@@ -77,8 +77,17 @@ it('covers registry assertParity empty surface, artisan caller, assert helpers, 
         run: static fn () => CapabilityResult::ok(['v' => 1]),
     ));
 
-    expect(fn () => $reg->assertParity(['']))->toThrow(InvalidArgumentException::class);
-    expect($reg->assertParity(['http', 'cli']))->toBeTrue();
+    expect(fn () => $reg->assertParity('snap', [
+        'surfaces' => [''],
+        'input' => [],
+        'actor' => SystemActor::named('s'),
+    ]))->toThrow(InvalidArgumentException::class);
+    expect($reg->assertParity('snap', [
+        'surfaces' => ['http', 'cli'],
+        'input' => [],
+        'actor' => SystemActor::named('s'),
+        'scope' => new CapabilityScope(tenantId: 't1'),
+    ]))->toBeTrue();
     expect($reg->fake())->toBe($reg);
     expect($reg->assertSchemaSnapshot('snap'))->toBeTrue();
 
