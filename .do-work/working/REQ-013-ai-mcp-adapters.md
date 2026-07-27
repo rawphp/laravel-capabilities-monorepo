@@ -1,7 +1,13 @@
 # REQ-013: AI and MCP peer adapters
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.49422
+**Claimed at:** 2026-07-27T02:06:53Z
+**Heartbeat:** 2026-07-27T02:06:53Z
+<!-- claimed-end -->
+
 **UR:** UR-001
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** laravel/ai tools + laravel/mcp tools via adapters
