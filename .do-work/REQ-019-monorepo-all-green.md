@@ -12,7 +12,7 @@
 **Priority:** 1
 **Size:** M
 **Files:** packages docs/requirements-inventory.md docs/spec.md
-**Depends on:** REQ-016 REQ-017 REQ-018
+**Depends on:** REQ-016, REQ-017, REQ-018
 
 ## Task
 

@@ -12,7 +12,7 @@
 **Priority:** 2
 **Size:** L
 **Files:** packages/laravel-capabilities/src/CapabilitiesServiceProvider.php packages/laravel-capabilities/config packages/laravel-capabilities/src/Events packages/laravel-capabilities/tests/Unit/Boot packages/laravel-capabilities/tests/Unit/Config packages/laravel-capabilities/tests/Unit/Events packages/laravel-capabilities/tests/Unit/Observability
-**Depends on:** REQ-011 REQ-012 REQ-013
+**Depends on:** REQ-011, REQ-012, REQ-013
 
 ## Task
 

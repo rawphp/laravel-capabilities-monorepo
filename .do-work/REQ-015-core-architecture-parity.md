@@ -12,7 +12,7 @@
 **Priority:** 1
 **Size:** L
 **Files:** packages/laravel-capabilities/tests/Unit/Architecture packages/laravel-capabilities/tests/Unit/Parity packages/laravel-capabilities/src docs/spec.md
-**Depends on:** REQ-005 REQ-006 REQ-007 REQ-008 REQ-009 REQ-010 REQ-011 REQ-012 REQ-013 REQ-014
+**Depends on:** REQ-005, REQ-006, REQ-007, REQ-008, REQ-009, REQ-010, REQ-011, REQ-012, REQ-013, REQ-014
 
 ## Task
 
