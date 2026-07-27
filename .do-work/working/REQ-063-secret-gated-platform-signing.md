@@ -1,7 +1,13 @@
 # REQ-063: Secret-gated platform signing
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.83526
+**Claimed at:** 2026-07-27T20:51:01Z
+**Heartbeat:** 2026-07-27T20:51:01Z
+<!-- claimed-end -->
+
 **UR:** UR-011
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-28
 **Layer:** cli
 **Entry point:**
