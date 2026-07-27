@@ -12,7 +12,7 @@
 **Priority:** 1
 **Size:** M
 **Files:** docs/spec.md docs/tutorials/first-capability.md packages/laravel-capabilities/README.md packages/laravel-capabilities/tests/Unit/TestingHelpers docs/requirements-inventory.md
-**Depends on:** REQ-043 REQ-044
+**Depends on:** REQ-043, REQ-044
 
 ## Task
 

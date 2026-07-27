@@ -12,7 +12,7 @@
 **Priority:** 1
 **Size:** S
 **Files:** README.md docs/spec.md AGENTS.md docs packages/laravel-capabilities/src/Registry/CapabilityRegistry.php packages/laravel-capabilities/tests/Unit/TestingHelpers
-**Depends on:** REQ-040 REQ-041 REQ-042 REQ-043 REQ-044 REQ-045
+**Depends on:** REQ-040, REQ-041, REQ-042, REQ-043, REQ-044, REQ-045
 
 ## Task
 
