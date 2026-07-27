@@ -1,7 +1,13 @@
 # REQ-025: Harden requirement stub generator
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.65959
+**Claimed at:** 2026-07-27T04:53:04Z
+**Heartbeat:** 2026-07-27T04:53:04Z
+<!-- claimed-end -->
+
 **UR:** UR-003
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:**
