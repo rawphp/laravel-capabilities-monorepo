@@ -1,7 +1,13 @@
 # REQ-037: Frozen peer contract fixtures and adapter shape tests
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.95896
+**Claimed at:** 2026-07-27T05:30:14Z
+**Heartbeat:** 2026-07-27T05:30:14Z
+<!-- claimed-end -->
+
 **UR:** UR-006
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
