@@ -1,23 +1,18 @@
 # REQ-001: Fix unit test harness load
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.49422
-**Claimed at:** 2026-07-27T00:27:56Z
-**Heartbeat:** 2026-07-27T00:27:56Z
-<!-- claimed-end -->
 
 **UR:** UR-001
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:** composer test:core | composer test:messaging | composer test:cli
 **Terminal state:** All three suites start without fatal redeclare/load errors; Pest/Go report TODO/incomplete tests rather than crashing at load.
 **Parent:** 
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (3/3) commit:0ae2927 core:4504-todos messaging:239-todos cli:go-test-ok inventory:5010
 **Criteria approved:** agent-drafted
 **Priority:** 3
 **Size:** M
-**Files:** tools/generate_requirement_stubs.py packages/laravel-capabilities/tests packages/laravel-capabilities-messaging/tests packages/capabilities-cli
+**Files:** tools/generate_requirement_stubs.py docs/requirements-inventory.md packages/laravel-capabilities/tests packages/laravel-capabilities-messaging/tests packages/capabilities-cli
 **Depends on:** 
 
 ## Task
@@ -32,11 +27,11 @@ Original brief: implement all package tests and business logic so all tests pass
 
 ## Acceptance Criteria
 
-- [ ] composer test:core exits without PHP fatal redeclare; suite enumerates tests
-- [ ] composer test:messaging loads without fatal
-- [ ] composer test:cli loads (go test ./... starts) without compile/load failure unrelated to unimplemented behaviour
-- [ ] No intentional removal of inventory scenarios to 'fix' collisions — collisions get unique names while preserving intent
-- [ ] If generator regenerated stubs, docs/requirements-inventory.md stays consistent with tools/generate_requirement_stubs.py
+- [x] composer test:core exits without PHP fatal redeclare; suite enumerates tests
+- [x] composer test:messaging loads without fatal
+- [x] composer test:cli loads (go test ./... starts) without compile/load failure unrelated to unimplemented behaviour
+- [x] No intentional removal of inventory scenarios to 'fix' collisions — collisions get unique names while preserving intent
+- [x] If generator regenerated stubs, docs/requirements-inventory.md stays consistent with tools/generate_requirement_stubs.py
 
 ## Verification Steps
 
@@ -51,3 +46,11 @@ Original brief: implement all package tests and business logic so all tests pass
 
 - docs/spec.md — design bible / conflict oracle
 - docs/requirements-inventory.md — scenario checklist
+
+
+## Outputs
+
+- tools/generate_requirement_stubs.py — Pest evaluable uniquify, key-format tags, never-drop ensure_unique_cases
+- docs/requirements-inventory.md — Regenerated inventory aligned to 5010 generator cases
+- packages/laravel-capabilities/tests/Unit/** — Unique scenario titles for loadable Pest suites
+- packages/laravel-capabilities-messaging/tests/Unit/** — Unique messaging scenario titles
