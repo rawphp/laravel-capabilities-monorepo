@@ -1,19 +1,14 @@
 # REQ-023: Config-driven container bindings
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.24443
-**Claimed at:** 2026-07-27T04:45:13Z
-**Heartbeat:** 2026-07-27T04:45:13Z
-<!-- claimed-end -->
 
 **UR:** UR-002
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-020
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:5e32780 tests:ConfigDrivenBindings+core
 **Criteria approved:** agent-drafted
 **Priority:** 3
 **Size:** M
@@ -32,12 +27,12 @@ Challenger: silent memory stores in production are dangerous for idempotency/app
 
 ## Acceptance Criteria
 
-- [ ] Binding plan is a pure function of config (surfaces, audit, approval, and related keys) and is unit-tested without booting a full app DB
-- [ ] `CapabilityRegistry` singleton is constructed so discovery and fluent registration share one map (D-017)
-- [ ] Audit mode / approval store / idempotency driver selection is driven by config keys already present in `config/capabilities.php` (or documented extensions of that file)
-- [ ] When a configured driver is “memory” or testing, in-memory implementations remain available for unit tests
-- [ ] Provider `register()` applies the plan (not only static plan helpers unused by boot)
-- [ ] Existing Boot/Config unit tests remain green or are intentionally updated with failing-first coverage for the new plan
+- [x] Binding plan is a pure function of config (surfaces, audit, approval, and related keys) and is unit-tested without booting a full app DB
+- [x] `CapabilityRegistry` singleton is constructed so discovery and fluent registration share one map (D-017)
+- [x] Audit mode / approval store / idempotency driver selection is driven by config keys already present in `config/capabilities.php` (or documented extensions of that file)
+- [x] When a configured driver is “memory” or testing, in-memory implementations remain available for unit tests
+- [x] Provider `register()` applies the plan (not only static plan helpers unused by boot)
+- [x] Existing Boot/Config unit tests remain green or are intentionally updated with failing-first coverage for the new plan
 
 ## Verification Steps
 
@@ -57,3 +52,9 @@ Challenger: silent memory stores in production are dangerous for idempotency/app
 ## Assets
 
 - docs/spec.md — boot / config sections
+
+## Outputs
+
+- packages/laravel-capabilities/src/Boot/ContainerBindings.php — Config-driven resolve/plan/factories
+- packages/laravel-capabilities/src/CapabilitiesServiceProvider.php — Provider register applies config factories
+- packages/laravel-capabilities/tests/Unit/Boot/ConfigDrivenBindingsTest.php — Unit tests for config-driven bindings
