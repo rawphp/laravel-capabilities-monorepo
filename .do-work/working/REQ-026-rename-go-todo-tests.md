@@ -1,7 +1,13 @@
 # REQ-026: Rename Go CLI todo test files
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.27027
+**Claimed at:** 2026-07-27T04:59:13Z
+**Heartbeat:** 2026-07-27T04:59:13Z
+<!-- claimed-end -->
+
 **UR:** UR-003
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:**
