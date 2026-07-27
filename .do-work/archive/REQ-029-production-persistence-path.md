@@ -1,19 +1,14 @@
 # REQ-029: Production persistence path
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.26592
-**Claimed at:** 2026-07-27T05:08:49Z
-**Heartbeat:** 2026-07-27T05:08:49Z
-<!-- claimed-end -->
 
 **UR:** UR-004
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:** Host app sets `approval.store` / `idempotency.driver` (and related keys) to `database` after publishing migrations, then boots `CapabilitiesServiceProvider`
 **Terminal state:** Approval and idempotency state survive process restart (rows in DB-backed stores); mutating retry and approval accept use durable stores under D-005/D-006 contracts; memory drivers remain available for unit tests; no feature/DB suite required for package CI
 **Parent:**
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:64220fe tests:ProductionPersistencePath+core
 **Criteria approved:** agent-drafted
 **Priority:** 1
 **Size:** S
@@ -30,11 +25,11 @@ Brief: empty migrations, in-memory defaults, contracts promise Eloquent but none
 
 ## Acceptance Criteria
 
-- [ ] Child REQs REQ-030–REQ-033 are done and their verification steps pass
-- [ ] With `database` drivers selected in config, ContainerBindings resolves to non-memory package_default:false concretes for approval store and idempotency store
-- [ ] With `memory` drivers, in-memory stores still construct for unit tests
-- [ ] Package suite remains unit-only (no `tests/Feature`, no required live DB for green CI)
-- [ ] Messaging/Telegram tables are not added to core migrations (D-007)
+- [x] Child REQs REQ-030–REQ-033 are done and their verification steps pass
+- [x] With `database` drivers selected in config, ContainerBindings resolves to non-memory package_default:false concretes for approval store and idempotency store
+- [x] With `memory` drivers, in-memory stores still construct for unit tests
+- [x] Package suite remains unit-only (no `tests/Feature`, no required live DB for green CI)
+- [x] Messaging/Telegram tables are not added to core migrations (D-007)
 
 ## Verification Steps
 
@@ -59,3 +54,8 @@ Brief: empty migrations, in-memory defaults, contracts promise Eloquent but none
 
 - docs/spec.md — D-005, D-006, package layout migrations
 - .do-work/user-requests/UR-004/ideate.md
+
+
+## Outputs
+
+- packages/laravel-capabilities/tests/Unit/Persistence/ProductionPersistencePathTest.php — path-unit closure
