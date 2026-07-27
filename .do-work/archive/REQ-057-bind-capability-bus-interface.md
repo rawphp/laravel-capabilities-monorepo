@@ -1,19 +1,14 @@
 # REQ-057: Bind CapabilityBus interface
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.41848
-**Claimed at:** 2026-07-27T10:49:35Z
-**Heartbeat:** 2026-07-27T10:49:35Z
-<!-- claimed-end -->
 
 **UR:** UR-009
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:** HTTP `CapabilityController` constructor DI (`CapabilityBus`); product CLI `capabilities catalog` against package HTTP API
 **Terminal state:** `CapabilityBus` resolves to the same singleton as `CapabilityRegistry` without host-side binding; catalog/invoke no longer throw `BindingResolutionException` for missing `CapabilityBus`
 **Parent:**
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (4/4) commit:25311f9 tests:passed
 **Criteria approved:** agent-drafted
 **Priority:** 3
 **Size:** S
@@ -34,12 +29,12 @@ Host AppServiceProvider workaround is temporary and out of package acceptance.
 
 ## Acceptance Criteria
 
-- [ ] `ContainerBindings::plan()` / `abstracts()` include `CapabilityBus::class` mapped to `CapabilityRegistry::class` (or equivalent that makes `binds`/plan consumers see the interface)
-- [ ] `CapabilitiesServiceProvider::register()` binds or aliases `CapabilityBus` so it resolves to the same instance as `CapabilityRegistry`
-- [ ] Unit test: plan/`ArrayContainer` (or `bindingAbstracts`) asserts `CapabilityBus` is bound
-- [ ] Unit test: provider register path resolves `CapabilityBus` and `CapabilityRegistry` to the same object (singleton identity)
-- [ ] No host-side binding required for package-owned controller DI
-- [ ] `composer test:core` green; package unit coverage stays ≥95%
+- [x] `ContainerBindings::plan()` / `abstracts()` include `CapabilityBus::class` mapped to `CapabilityRegistry::class` (or equivalent that makes `binds`/plan consumers see the interface)
+- [x] `CapabilitiesServiceProvider::register()` binds or aliases `CapabilityBus` so it resolves to the same instance as `CapabilityRegistry`
+- [x] Unit test: plan/`ArrayContainer` (or `bindingAbstracts`) asserts `CapabilityBus` is bound
+- [x] Unit test: provider register path resolves `CapabilityBus` and `CapabilityRegistry` to the same object (singleton identity)
+- [x] No host-side binding required for package-owned controller DI
+- [x] `composer test:core` green; package unit coverage stays ≥95%
 
 ## Verification Steps
 
@@ -54,4 +49,12 @@ Host AppServiceProvider workaround is temporary and out of package acceptance.
 
 ## Manual checks (advisory)
 
-- [ ] After package bump in a consumer (e.g. MesoPrep), remove temporary `AppServiceProvider` `CapabilityBus` alias and run `capabilities catalog --json` — Observable outcome: catalog JSON succeeds without `BindingResolutionException` for `CapabilityBus`
+- [x] After package bump in a consumer (e.g. MesoPrep), remove temporary `AppServiceProvider` `CapabilityBus` alias and run `capabilities catalog --json` — Observable outcome: catalog JSON succeeds without `BindingResolutionException` for `CapabilityBus`
+
+## Outputs
+
+- packages/laravel-capabilities/src/Boot/ContainerBindings.php — plan() maps CapabilityBus (+ string) to CapabilityRegistry
+- packages/laravel-capabilities/src/CapabilitiesServiceProvider.php — aliases CapabilityBus to registry singleton
+- packages/laravel-capabilities/tests/Unit/Boot/ContainerBindingsTest.php — REQ-057 unit tests for plan/binds/ArrayContainer
+- packages/laravel-capabilities/tests/Unit/Boot/ServiceProviderTest.php — REQ-057 identity test + fake app alias-following make()
+
