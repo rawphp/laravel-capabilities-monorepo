@@ -1,7 +1,13 @@
 # REQ-012: Job and Artisan adapter surfaces
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.49422
+**Claimed at:** 2026-07-27T02:18:17Z
+**Heartbeat:** 2026-07-27T02:18:17Z
+<!-- claimed-end -->
+
 **UR:** UR-001
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** Queued job payload invoke + optional Artisan ops commands
@@ -12,7 +18,7 @@
 **Priority:** 2
 **Size:** M
 **Files:** packages/laravel-capabilities/src/Adapters packages/laravel-capabilities/tests/Unit/Surfaces/JobAdapterTest.php packages/laravel-capabilities/tests/Unit/Surfaces/ArtisanAdapterTest.php packages/laravel-capabilities/tests/Unit/Surfaces/ArtisanFlagsTest.php packages/laravel-capabilities/tests/Unit/Job
-**Depends on:** REQ-006 REQ-010
+**Depends on:** REQ-006, REQ-010
 
 ## Task
 
