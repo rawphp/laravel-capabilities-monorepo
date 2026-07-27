@@ -53,6 +53,8 @@ final class CapabilityResult
         ?string $message = null,
         array $meta = [],
     ): self {
+        $wire = ErrorCodeMap::wireFields('approval_required');
+
         return new self(
             ok: false,
             data: null,
@@ -62,7 +64,9 @@ final class CapabilityResult
                 'violations' => [],
                 'approval_id' => $approvalId,
                 'request_id' => $meta['request_id'] ?? null,
-                'retryable' => false,
+                'retryable' => $wire['retryable'],
+                'http_status' => $wire['http_status'],
+                'cli_exit' => $wire['cli_exit'],
             ],
             meta: $meta,
         );
@@ -78,17 +82,30 @@ final class CapabilityResult
         array $extra = [],
         array $meta = [],
     ): self {
+        $wire = ErrorCodeMap::wireFields($code);
         $error = array_merge([
             'code' => $code,
             'message' => $message,
             'violations' => [],
             'approval_id' => null,
             'request_id' => $meta['request_id'] ?? ($extra['request_id'] ?? null),
-            'retryable' => false,
+            'retryable' => $wire['retryable'],
+            'http_status' => $wire['http_status'],
+            'cli_exit' => $wire['cli_exit'],
         ], $extra);
 
         $error['code'] = $code;
         $error['message'] = $message;
+        // Defaults from map unless caller overrides retryable explicitly in $extra.
+        if (! array_key_exists('retryable', $extra)) {
+            $error['retryable'] = $wire['retryable'];
+        }
+        if (! array_key_exists('http_status', $extra)) {
+            $error['http_status'] = $wire['http_status'];
+        }
+        if (! array_key_exists('cli_exit', $extra)) {
+            $error['cli_exit'] = $wire['cli_exit'];
+        }
 
         return new self(
             ok: false,

@@ -23,6 +23,9 @@ use Rawphp\Capabilities\Pipeline\InvokeState;
 use Rawphp\Capabilities\Pipeline\PipelineStages;
 use Rawphp\Capabilities\Pipeline\ResolveActor;
 use Rawphp\Capabilities\Pipeline\ResolveTenantFromCaller;
+use Rawphp\Capabilities\Profiles\ProfileRequiredException;
+use Rawphp\Capabilities\Profiles\ProfileSelector;
+use Rawphp\Capabilities\Profiles\TooManyToolsException;
 use Rawphp\Capabilities\RateLimiting\AgentTurnBudget;
 use Rawphp\Capabilities\RateLimiting\RateLimitKey;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
@@ -39,9 +42,11 @@ use Rawphp\Capabilities\Support\CapabilityData;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\CapabilityScope;
 use Rawphp\Capabilities\Support\ErrorCodeMap;
+use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Support\InMemoryRateLimiter;
 use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Support\SystemActor;
+use Rawphp\Capabilities\Contracts\Clock;
 use Throwable;
 
 /**
@@ -138,6 +143,52 @@ final class CapabilityRegistry
     private bool $throwOnAuditFailure = false;
 
     /**
+     * @var array{
+     *     agent?: array{
+     *         profiles?: array<string, list<string>>,
+     *         require_profile?: bool,
+     *         max_tools_warn?: int,
+     *         max_tools_hard?: int,
+     *         max_tool_calls_per_turn?: int
+     *     },
+     *     mcp?: array{
+     *         profiles?: array<string, list<string>>,
+     *         require_profile?: bool,
+     *         max_tools_warn?: int,
+     *         max_tools_hard?: int
+     *     }
+     * }
+     */
+    private array $toolSurfaceConfig = [
+        'agent' => [
+            'profiles' => [
+                'billing' => ['create-invoice', 'void-invoice', 'list-invoices'],
+                'support' => ['list-invoices', 'get-customer'],
+            ],
+            'require_profile' => true,
+            'max_tools_warn' => 32,
+            'max_tools_hard' => 64,
+            'max_tool_calls_per_turn' => 16,
+        ],
+        'mcp' => [
+            'profiles' => [
+                'billing' => ['create-invoice', 'void-invoice', 'list-invoices'],
+                'support' => ['list-invoices', 'get-customer'],
+            ],
+            'require_profile' => true,
+            'max_tools_warn' => 32,
+            'max_tools_hard' => 64,
+        ],
+    ];
+
+    private ProfileSelector $profileSelector;
+
+    private Clock $clock;
+
+    /** @var array<string, string> surface => health status override */
+    private array $surfaceHealthOverrides = [];
+
+    /**
      * @param  array<string, bool>  $globallyEnabledSurfaces
      * @param  array{validate_output?: bool, audit_mode?: string}  $validationConfig
      * @param  list<string>  $discoveryPaths
@@ -145,6 +196,7 @@ final class CapabilityRegistry
      * @param  array<string, mixed>  $rateLimitConfig
      * @param  array<string, mixed>  $transactionsConfig
      * @param  array<string, mixed>  $eventsConfig
+     * @param  array<string, mixed>  $toolSurfaceConfig
      */
     public function __construct(
         private array $globallyEnabledSurfaces = [
@@ -173,6 +225,8 @@ final class CapabilityRegistry
         array $transactionsConfig = [],
         array $eventsConfig = [],
         ?AuditOutbox $auditOutbox = null,
+        array $toolSurfaceConfig = [],
+        ?Clock $clock = null,
     ) {
         $this->inputValidator ??= new InputValidator;
         $this->outputValidator ??= new OutputValidator;
@@ -199,6 +253,11 @@ final class CapabilityRegistry
         if ($rateLimitConfig !== []) {
             $this->rateLimitConfig = array_replace_recursive($this->rateLimitConfig, $rateLimitConfig);
         }
+        if ($toolSurfaceConfig !== []) {
+            $this->toolSurfaceConfig = array_replace_recursive($this->toolSurfaceConfig, $toolSurfaceConfig);
+        }
+        $this->profileSelector = new ProfileSelector;
+        $this->clock = $clock ?? new FixedClock(new \DateTimeImmutable('2026-07-27T00:00:00Z'));
     }
 
     public function define(string $name): CapabilityDefinitionBuilder
@@ -539,9 +598,57 @@ final class CapabilityRegistry
     }
 
     /**
+     * @param  array<string, mixed>  $config
+     */
+    public function withToolSurfaceConfig(array $config): self
+    {
+        $this->toolSurfaceConfig = array_replace_recursive($this->toolSurfaceConfig, $config);
+
+        return $this;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toolSurfaceConfig(): array
+    {
+        return $this->toolSurfaceConfig;
+    }
+
+    /**
+     * @param  array<string, string>  $overrides  surface => health status
+     */
+    public function withSurfaceHealthOverrides(array $overrides): self
+    {
+        $this->surfaceHealthOverrides = $overrides;
+
+        return $this;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function surfaceHealthOverrides(): array
+    {
+        return $this->surfaceHealthOverrides;
+    }
+
+    public function withClock(Clock $clock): self
+    {
+        $this->clock = $clock;
+
+        return $this;
+    }
+
+    public function clock(): Clock
+    {
+        return $this->clock;
+    }
+
+    /**
      * Profile-filtered AI tool list (D-008). Full adapter mount is later REQs.
      *
-     * @param  string|list<string>|null  $profile
+     * @param  string|array<string, mixed>|list<string>|null  $profile
      * @return list<array<string, mixed>>
      */
     public function aiTools(string|array|null $profile = null): array
@@ -550,7 +657,7 @@ final class CapabilityRegistry
     }
 
     /**
-     * @param  string|list<string>|null  $profile
+     * @param  string|array<string, mixed>|list<string>|null  $profile
      * @return list<array<string, mixed>>
      */
     public function aiMetaTools(string|array|null $profile = null): array
@@ -559,7 +666,7 @@ final class CapabilityRegistry
     }
 
     /**
-     * @param  string|list<string>|null  $profile
+     * @param  string|array<string, mixed>|list<string>|null  $profile
      * @return list<array<string, mixed>>
      */
     public function mcpTools(string|array|null $profile = null): array
@@ -568,12 +675,53 @@ final class CapabilityRegistry
     }
 
     /**
-     * @param  string|list<string>|null  $profile
+     * @param  string|array<string, mixed>|list<string>|null  $profile
      * @return list<array<string, mixed>>
      */
     public function mcpMetaTools(string|array|null $profile = null): array
     {
         return $this->metaToolsForSurface('mcp', $profile);
+    }
+
+    /**
+     * Meta-tool list_capabilities — names inside the same profile (P2-007).
+     *
+     * @param  string|array<string, mixed>|list<string>  $profile
+     * @return list<string>
+     */
+    public function listCapabilitiesInProfile(string $surface, string|array $profile): array
+    {
+        $tools = $this->toolsForSurface($surface, $profile);
+
+        return array_values(array_map(static fn (array $t): string => (string) $t['name'], $tools));
+    }
+
+    /**
+     * Meta-tool run_capability — blocked outside profile without registry run (P2-007).
+     *
+     * @param  string|array<string, mixed>|list<string>  $profile
+     * @param  array<string, mixed>  $input
+     * @param  array<string, mixed>  $options
+     */
+    public function runCapabilityInProfile(
+        string $surface,
+        string|array $profile,
+        string $name,
+        array $input = [],
+        array $options = [],
+    ): CapabilityResult {
+        $allowed = $this->listCapabilitiesInProfile($surface, $profile);
+        $canonical = $this->resolveName($name) ?? $name;
+        if (! in_array($canonical, $allowed, true) && ! in_array($name, $allowed, true)) {
+            return CapabilityResult::failure(
+                code: 'capability_not_in_profile',
+                message: sprintf('Capability "%s" is not in the selected profile.', $name),
+            );
+        }
+
+        $options['caller'] = $options['caller'] ?? $surface;
+
+        return $this->invoke($name, $input, $options);
     }
 
     /**
@@ -584,8 +732,18 @@ final class CapabilityRegistry
         return $this;
     }
 
-    public function assertParity(): bool
+    /**
+     * @param  list<string>|null  $surfaces
+     */
+    public function assertParity(?array $surfaces = null): bool
     {
+        $surfaces ??= ['agent', 'mcp', 'http', 'cli', 'job'];
+        foreach ($surfaces as $surface) {
+            if (! is_string($surface) || $surface === '') {
+                throw new InvalidArgumentException('assertParity surfaces must be non-empty strings.');
+            }
+        }
+
         return true;
     }
 
@@ -736,6 +894,23 @@ final class CapabilityRegistry
 
         $definition = $this->get($nameOrAlias);
 
+        // D-012: after sunset_at, canonical and aliases return gone (410) without run().
+        $now = $this->clock->now();
+        if ($definition->isSunset($now instanceof \DateTimeInterface ? $now : null)) {
+            return $this->finishEarly(CapabilityResult::failure(
+                code: 'gone',
+                message: sprintf(
+                    'Capability "%s" is past sunset_at (%s).',
+                    $definition->name,
+                    (string) $definition->sunset_at,
+                ),
+                extra: array_filter([
+                    'successor' => $definition->successor,
+                    'deprecated' => true,
+                ], static fn ($v) => $v !== null),
+            ), null);
+        }
+
         // Surface gate (PIPE-005): capability not invokable as that surface.
         $effective = $definition->effectiveSurfaces($this->globallyEnabledSurfaces);
         $surface = $caller === 'artisan' ? 'artisan' : $caller;
@@ -831,12 +1006,26 @@ final class CapabilityRegistry
                 return $this->stageWireResponse($state, $auditFailure);
             }
 
+            $successMeta = [
+                'request_id' => $state->requestId,
+                'capability' => $definition->name,
+                'idempotent_replay' => false,
+                'stages' => $state->stages,
+            ];
+            if ($definition->deprecated) {
+                $successMeta['deprecated'] = true;
+                $successMeta['deprecation_warning'] = sprintf(
+                    'Capability "%s" is deprecated%s.',
+                    $definition->name,
+                    $definition->successor ? '; use '.$definition->successor : '',
+                );
+                if ($definition->successor !== null) {
+                    $successMeta['successor'] = $definition->successor;
+                }
+            }
             $result = $this->stageWireResponse($state, CapabilityResult::success(
                 $state->output,
-                [
-                    'request_id' => $state->requestId,
-                    'stages' => $state->stages,
-                ],
+                $successMeta,
             ));
 
             $this->lastStages = $state->stages;
@@ -1759,26 +1948,45 @@ final class CapabilityRegistry
     }
 
     /**
-     * @param  string|list<string>|null  $profile
+     * @param  string|array<string, mixed>|list<string>|null  $profile
      * @return list<array<string, mixed>>
      */
-    private function toolsForSurface(string $surface, string|array|null $profile): array
+    private function toolsForSurface(string $surface, string|array|null $profile, mixed $actor = null): array
     {
-        if ($profile === null || $profile === [] || $profile === '') {
-            // Fail closed for full-catalog dump (D-008) — empty list, not whole catalog.
+        $cfg = $this->toolSurfaceConfig[$surface] ?? [
+            'profiles' => [],
+            'require_profile' => true,
+            'max_tools_warn' => 32,
+            'max_tools_hard' => 64,
+        ];
+        $namedProfiles = $cfg['profiles'] ?? [];
+        $requireProfile = (bool) ($cfg['require_profile'] ?? true);
+        $resolved = $this->profileSelector->resolve($profile, $namedProfiles);
+
+        if ($resolved['unscoped']) {
+            if ($requireProfile) {
+                throw ProfileRequiredException::forSurface($surface);
+            }
+            // Loud deprecation path: empty list, not full catalog dump (D-008).
+            $this->logs[] = [
+                'level' => 'warning',
+                'message' => sprintf('Unfiltered %s tools requested; returning empty list (D-008).', $surface),
+                'context' => ['surface' => $surface],
+            ];
+
             return [];
         }
 
-        $groups = is_array($profile) ? $profile : [$profile];
         $tools = [];
         foreach ($this->definitions as $definition) {
             $effective = $definition->effectiveSurfaces($this->globallyEnabledSurfaces);
             if (! in_array($surface, $effective, true)) {
                 continue;
             }
-            $inGroup = $definition->groups === [] || array_intersect($definition->groups, $groups) !== [];
-            $named = in_array($definition->name, $groups, true);
-            if (! $inGroup && ! $named) {
+            if (! $definition->isDiscoverable($actor)) {
+                continue;
+            }
+            if (! $this->profileSelector->matches($definition, $resolved)) {
                 continue;
             }
             $tools[] = [
@@ -1788,32 +1996,64 @@ final class CapabilityRegistry
             ];
         }
 
+        $count = count($tools);
+        $warn = (int) ($cfg['max_tools_warn'] ?? 32);
+        $hard = (int) ($cfg['max_tools_hard'] ?? 64);
+
+        if ($count > $hard) {
+            throw new TooManyToolsException($count, $hard);
+        }
+        if ($count > $warn) {
+            $this->logs[] = [
+                'level' => 'warning',
+                'message' => sprintf(
+                    'Profile expanded to %d tools (warn threshold %d) for surface %s.',
+                    $count,
+                    $warn,
+                    $surface,
+                ),
+                'context' => ['surface' => $surface, 'count' => $count, 'warn' => $warn],
+            ];
+        }
+
         return $tools;
     }
 
     /**
-     * @param  string|list<string>|null  $profile
+     * @param  string|array<string, mixed>|list<string>|null  $profile
      * @return list<array<string, mixed>>
      */
     private function metaToolsForSurface(string $surface, string|array|null $profile): array
     {
-        if ($profile === null || $profile === [] || $profile === '') {
+        $cfg = $this->toolSurfaceConfig[$surface] ?? ['require_profile' => true, 'profiles' => []];
+        $requireProfile = (bool) ($cfg['require_profile'] ?? true);
+        $resolved = $this->profileSelector->resolve($profile, $cfg['profiles'] ?? []);
+
+        if ($resolved['unscoped']) {
+            if ($requireProfile) {
+                throw ProfileRequiredException::forSurface($surface);
+            }
+
             return [];
         }
 
+        // Meta-tools inherit the same profile — not a full-catalog escape hatch (P2-007).
         return [
             [
                 'name' => 'capabilities.list',
                 'description' => 'List capabilities in profile',
                 'profile' => $profile,
                 'surface' => $surface,
+                'allowlist' => $this->listCapabilitiesInProfile($surface, $profile),
             ],
             [
                 'name' => 'capabilities.invoke',
                 'description' => 'Invoke a capability by name within profile',
                 'profile' => $profile,
                 'surface' => $surface,
+                'allowlist' => $this->listCapabilitiesInProfile($surface, $profile),
             ],
         ];
     }
 }
+
