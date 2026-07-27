@@ -1,19 +1,14 @@
 # REQ-048: Registry store singleton parity
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.40419
-**Claimed at:** 2026-07-27T06:22:30Z
-**Heartbeat:** 2026-07-27T06:22:30Z
-<!-- claimed-end -->
 
 **UR:** UR-008
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-046
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (3/3) commit:21fa257
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** M
@@ -30,11 +25,11 @@ Ideate Challenger: dual ApprovalManager binding under concurrent accept/invoke. 
 
 ## Acceptance Criteria
 
-- [ ] Resolving registry and ApprovalManager for the same config yields the same approval store instance (or documented shared gateway that makes compareAndUpdate/find consistent)
-- [ ] Resolving registry and IdempotencyStore yields the same idempotency store instance
-- [ ] Unit test covers memory and database driver resolution paths with ArrayTableGateway (no live DB)
-- [ ] When gateway is injected for database drivers, both registry and ApprovalManager use it
-- [ ] No silent re-create of in-memory managers inside registry after SP registration
+- [x] Resolving registry and ApprovalManager for the same config yields the same approval store instance (or documented shared gateway that makes compareAndUpdate/find consistent)
+- [x] Resolving registry and IdempotencyStore yields the same idempotency store instance
+- [x] Unit test covers memory and database driver resolution paths with ArrayTableGateway (no live DB)
+- [x] When gateway is injected for database drivers, both registry and ApprovalManager use it
+- [x] No silent re-create of in-memory managers inside registry after SP registration
 
 ## Verification Steps
 
@@ -52,3 +47,10 @@ Ideate Challenger: dual ApprovalManager binding under concurrent accept/invoke. 
 **Data dependencies:** same `config('capabilities')` snapshot as factory.
 
 **Service dependencies:** `ContainerBindings::makeRegistry`, `makeApprovalManager`, `makeIdempotencyStore`, optional shared `TableGateway` binding.
+
+## Outputs
+
+- packages/laravel-capabilities/src/CapabilitiesServiceProvider.php — bind shared stores then registry
+- packages/laravel-capabilities/src/Boot/ContainerBindings.php — makeRegistry optional prebuilt store injects
+- packages/laravel-capabilities/tests/Unit/Boot/ServiceProviderTest.php — parity unit tests
+- packages/laravel-capabilities/tests/Unit/Boot/LaravelGlueBootPathTest.php — prebuilt-store path test
