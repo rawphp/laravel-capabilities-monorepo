@@ -1,7 +1,13 @@
 # REQ-028: Matrix-aware inventory gap report
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.45746
+**Claimed at:** 2026-07-27T05:14:57Z
+**Heartbeat:** 2026-07-27T05:14:57Z
+<!-- claimed-end -->
+
 **UR:** UR-003
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:**
