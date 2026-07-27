@@ -1,19 +1,14 @@
 # REQ-021: Register HTTP routes from RouteTable
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.40493
-**Claimed at:** 2026-07-27T04:49:19Z
-**Heartbeat:** 2026-07-27T04:49:19Z
-<!-- claimed-end -->
 
 **UR:** UR-002
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-020
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:a5e9826 tests:HttpRouteRegistrar+core
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** M
@@ -32,11 +27,11 @@ Reuse: `RouteTable::routes()`, `SurfaceRegistrar` HTTP artifacts, existing HTTP 
 
 ## Acceptance Criteria
 
-- [ ] When `surfaces.http.enabled` is true, provider boot registers every route key from `RouteTable::actionKeys()` with method/uri/name/middleware matching the table
-- [ ] When `surfaces.http.enabled` is false, zero capability HTTP routes are registered
-- [ ] Registration uses `RouteTable` as the sole definition of paths/actions (no second hand-copied URI matrix)
-- [ ] Unit tests cover enabled/disabled mapping without a full HTTP feature suite or real DB (fake/router spy or pure registrar)
-- [ ] Messaging/Telegram routes are not part of this tree (D-007)
+- [x] When `surfaces.http.enabled` is true, provider boot registers every route key from `RouteTable::actionKeys()` with method/uri/name/middleware matching the table
+- [x] When `surfaces.http.enabled` is false, zero capability HTTP routes are registered
+- [x] Registration uses `RouteTable` as the sole definition of paths/actions (no second hand-copied URI matrix)
+- [x] Unit tests cover enabled/disabled mapping without a full HTTP feature suite or real DB (fake/router spy or pure registrar)
+- [x] Messaging/Telegram routes are not part of this tree (D-007)
 
 ## Verification Steps
 
@@ -56,3 +51,9 @@ Reuse: `RouteTable::routes()`, `SurfaceRegistrar` HTTP artifacts, existing HTTP 
 ## Assets
 
 - packages/laravel-capabilities/routes/capabilities.php — existing table-backed stub
+
+## Outputs
+
+- packages/laravel-capabilities/src/Http/HttpRouteRegistrar.php — pure RouteTable→router mapper
+- packages/laravel-capabilities/src/CapabilitiesServiceProvider.php — bootHttpRoutes lifecycle
+- packages/laravel-capabilities/tests/Unit/Http/HttpRouteRegistrarTest.php — unit tests
