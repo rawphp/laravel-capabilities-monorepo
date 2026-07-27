@@ -9,6 +9,7 @@ use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapterV1;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Audit\AuditLogger;
+use Rawphp\Capabilities\Contracts\ApprovalStore;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\Metrics as MetricsContract;
 use Rawphp\Capabilities\Contracts\ScopeResolver;
@@ -187,10 +188,19 @@ final class ContainerBindings
      * Reuses {@see CapabilityRegistry} with* injectors and the same driver factories as
      * {@see makeApprovalManager} / {@see makeIdempotencyStore}. Does not reimplement the pipeline.
      *
+     * When $approvalStore / $idempotencyStore are provided (service-provider path), those
+     * instances are injected as-is so invoke and accept paths cannot diverge (REQ-048).
+     * Standalone calls without prebuilt stores still construct via the shared factories and
+     * a single gateway for database drivers.
+     *
      * @param  array<string, mixed>  $config
      */
-    public static function makeRegistry(array $config = [], ?TableGateway $gateway = null): CapabilityRegistry
-    {
+    public static function makeRegistry(
+        array $config = [],
+        ?TableGateway $gateway = null,
+        ?ApprovalStore $approvalStore = null,
+        ?IdempotencyStore $idempotencyStore = null,
+    ): CapabilityRegistry {
         $full = $config === [] ? CapabilitiesConfig::defaults() : $config;
         // Validate drivers/modes early (fail closed) using the shared resolve path.
         self::resolve($full);
@@ -200,11 +210,15 @@ final class ContainerBindings
 
         $registry->withGloballyEnabledSurfaces(CapabilitiesConfig::globallyEnabledSurfaces($full));
 
-        $approval = self::makeApprovalManager($full, $gateway);
-        $registry->withApprovalStore($approval->store());
+        if ($approvalStore === null) {
+            $approvalStore = self::makeApprovalManager($full, $gateway)->store();
+        }
+        $registry->withApprovalStore($approvalStore);
 
-        $idempotency = self::makeIdempotencyStore($full, $gateway);
-        $registry->withIdempotencyStore($idempotency);
+        if ($idempotencyStore === null) {
+            $idempotencyStore = self::makeIdempotencyStore($full, $gateway);
+        }
+        $registry->withIdempotencyStore($idempotencyStore);
 
         $registry->withScopeResolver(new DefaultScopeResolver);
 
