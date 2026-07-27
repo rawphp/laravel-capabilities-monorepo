@@ -1,0 +1,56 @@
+<?php
+
+// REQ-020: Laravel glue boot path closure. Unit-only.
+
+declare(strict_types=1);
+
+use Rawphp\Capabilities\Adapters\Artisan\ArtisanCommandRegistrar;
+use Rawphp\Capabilities\Boot\ContainerBindings;
+use Rawphp\Capabilities\CapabilitiesServiceProvider;
+use Rawphp\Capabilities\Discovery\CapabilityDiscoveryBoot;
+use Rawphp\Capabilities\Http\HttpRouteRegistrar;
+use Rawphp\Capabilities\Http\RouteTable;
+use Rawphp\Capabilities\Tests\Fixtures\BootHelpers;
+
+it('path: enabled surfaces expose routes, commands, config-driven bindings, and discovery entry points', function () {
+    $config = BootHelpers::config([
+        'surfaces' => BootHelpers::surfaces([
+            'http' => true,
+            'artisan' => true,
+        ]),
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+        'audit' => ['driver' => 'memory', 'mode' => 'best_effort'],
+        'path' => dirname(__DIR__, 2).'/Fixtures/Capabilities',
+    ]);
+
+    $plan = CapabilitiesServiceProvider::registrationPlan($config);
+    expect($plan['routes'])->toContain(RouteTable::ROUTE_INVOKE)
+        ->and($plan['commands'])->not->toBeEmpty();
+
+    expect(HttpRouteRegistrar::registeredKeys($config['surfaces']['http']))->toContain(RouteTable::ROUTE_INVOKE)
+        ->and(ArtisanCommandRegistrar::classes($config['surfaces']['artisan']))->not->toBeEmpty()
+        ->and(ContainerBindings::resolve($config)['drivers']['approval_store']['resolved'])->toBe('memory');
+
+    $registry = ContainerBindings::makeRegistry($config);
+    $names = CapabilityDiscoveryBoot::run($registry, $config);
+    expect($names)->not->toBeEmpty()
+        ->and($registry->has('create-invoice'))->toBeTrue();
+});
+
+it('path: disabled http and artisan register empty artifacts', function () {
+    $config = BootHelpers::config([
+        'surfaces' => BootHelpers::surfaces(['http' => false, 'artisan' => false]),
+    ]);
+    $plan = CapabilitiesServiceProvider::registrationPlan($config);
+    expect($plan['routes'])->toBeEmpty()
+        ->and($plan['commands'])->toBeEmpty()
+        ->and(HttpRouteRegistrar::registeredKeys(['enabled' => false]))->toBeEmpty()
+        ->and(ArtisanCommandRegistrar::classes(['enabled' => false]))->toBeEmpty();
+});
+
+it('path: provider exposes boot glue methods for routes discovery and artisan', function () {
+    expect(method_exists(CapabilitiesServiceProvider::class, 'bootHttpRoutes'))->toBeTrue()
+        ->and(method_exists(CapabilitiesServiceProvider::class, 'bootCapabilityDiscovery'))->toBeTrue()
+        ->and(method_exists(CapabilitiesServiceProvider::class, 'bootArtisanCommands'))->toBeTrue();
+});
