@@ -38,7 +38,7 @@ return new class extends Migration
             $blueprint->timestamp('execution_lease_until')->nullable();
             $blueprint->unsignedInteger('execution_attempt')->default(0);
             $blueprint->timestamp('approved_at')->nullable();
-            $blueprint->json('messaging_json')->nullable();
+            $blueprint->json('channel_meta_json')->nullable();
             $blueprint->timestamps();
 
             $blueprint->index(['tenant_id', 'status']);
