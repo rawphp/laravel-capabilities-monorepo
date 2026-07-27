@@ -1,7 +1,13 @@
 # REQ-041: Package versioning and changelogs
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.95896
+**Claimed at:** 2026-07-27T05:28:56Z
+**Heartbeat:** 2026-07-27T05:28:56Z
+<!-- claimed-end -->
+
 **UR:** UR-007
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:**
