@@ -28,3 +28,4 @@
 2026-07-27 | UR-008 | path units: registry wiring, durable gateway, pre-stable release prep | three brief items as three reachable paths
 2026-07-27 | UR-009 | bug-fix single REQ plan+provider+tests | avoid plan/provider drift and second registry singleton
 2026-07-27 | UR-009 | layers messaging/cli not prompted | bug-fix classification; core package DI only
+2026-07-28 | UR-010 | one REQ: shared subcommand --help early-exit for mcp+siblings (not mcp-only) | avoid leaving same footgun on catalog/run/describe/approvals
