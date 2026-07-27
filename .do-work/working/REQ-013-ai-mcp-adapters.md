@@ -3,7 +3,7 @@
 <!-- claimed-start -->
 **Claimed by:** Toms-MacBook-Pro.local.49422
 **Claimed at:** 2026-07-27T02:06:53Z
-**Heartbeat:** 2026-07-27T02:06:53Z
+**Heartbeat:** 2026-07-27T02:16:56Z
 <!-- claimed-end -->
 
 **UR:** UR-001
@@ -17,7 +17,7 @@
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** L
-**Files:** packages/laravel-capabilities/src/Adapters packages/laravel-capabilities/tests/Unit/Surfaces/AiAdapterTest.php packages/laravel-capabilities/tests/Unit/Surfaces/AiToolFailurePointsTest.php packages/laravel-capabilities/tests/Unit/Surfaces/McpAdapterTest.php packages/laravel-capabilities/tests/Unit/Surfaces/McpToolFailurePointsTest.php packages/laravel-capabilities/tests/Unit/Mcp packages/laravel-capabilities/tests/Unit/Adapters
+**Files:** packages/laravel-capabilities/src/Adapters, packages/laravel-capabilities/src/Audit/AuditLogger.php, packages/laravel-capabilities/tests/Fixtures/AdapterHelpers.php, packages/laravel-capabilities/tests/Unit/Surfaces/AiAdapterTest.php, packages/laravel-capabilities/tests/Unit/Surfaces/AiToolFailurePointsTest.php, packages/laravel-capabilities/tests/Unit/Surfaces/McpAdapterTest.php, packages/laravel-capabilities/tests/Unit/Surfaces/McpToolFailurePointsTest.php, packages/laravel-capabilities/tests/Unit/Mcp, packages/laravel-capabilities/tests/Unit/Adapters
 **Depends on:** REQ-010
 
 ## Task
@@ -32,12 +32,12 @@ Original brief: implement all package tests and business logic so all tests pass
 
 ## Acceptance Criteria
 
-- [ ] AiAdapter and McpAdapter unit tests pass
-- [ ] MCP auth profile and confused-deputy scenarios pass
-- [ ] AdapterApi version / contract table tests pass
-- [ ] No live laravel/ai or laravel/mcp required in CI
+- [x] AiAdapter and McpAdapter unit tests pass
+- [x] MCP auth profile and confused-deputy scenarios pass
+- [x] AdapterApi version / contract table tests pass
+- [x] No live laravel/ai or laravel/mcp required in CI
 
-- [ ] When peer interfaces are missing while surface enabled, adapter registration fails closed/soft-disables without calling live peers
+- [x] When peer interfaces are missing while surface enabled, adapter registration fails closed/soft-disables without calling live peers
 
 ## Verification Steps
 

@@ -1,23 +1,18 @@
 # REQ-011: HTTP capability API surface
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.49422
-**Claimed at:** 2026-07-27T02:06:52Z
-**Heartbeat:** 2026-07-27T02:06:52Z
-<!-- claimed-end -->
 
 **UR:** UR-001
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** HTTP routes for catalog + invoke (single API for CLI too, D-009)
 **Terminal state:** Http/* and Surfaces/Http* unit tests pass; controllers map to registry only.
 **Parent:** 
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:e32218d Http:125
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** M
-**Files:** packages/laravel-capabilities/src/Http packages/laravel-capabilities/routes packages/laravel-capabilities/tests/Unit/Http packages/laravel-capabilities/tests/Unit/Surfaces/HttpAdapterTest.php packages/laravel-capabilities/tests/Unit/Surfaces/HttpInvokeFailurePointsTest.php
+**Files:** packages/laravel-capabilities/src/Http, packages/laravel-capabilities/src/Adapters/Http, packages/laravel-capabilities/src/Contracts/CapabilityBus.php, packages/laravel-capabilities/src/Registry/CapabilityRegistry.php, packages/laravel-capabilities/routes/capabilities.php, packages/laravel-capabilities/tests/Fixtures/HttpHelpers.php, packages/laravel-capabilities/tests/Fixtures/FakeCapabilityBus.php, packages/laravel-capabilities/tests/Unit/Http, packages/laravel-capabilities/tests/Unit/Surfaces/HttpAdapterTest.php, packages/laravel-capabilities/tests/Unit/Surfaces/HttpInvokeFailurePointsTest.php
 **Depends on:** REQ-010
 
 ## Task
@@ -32,10 +27,10 @@ Original brief: implement all package tests and business logic so all tests pass
 
 ## Acceptance Criteria
 
-- [ ] Http CapabilityApi and Routes matrix unit tests pass
-- [ ] HttpAdapter invoke maps to registry; failures map to error envelopes
-- [ ] No dual mutation path outside registry
-- [ ] Unit tests mock registry; no RefreshDatabase
+- [x] Http CapabilityApi and Routes matrix unit tests pass
+- [x] HttpAdapter invoke maps to registry; failures map to error envelopes
+- [x] No dual mutation path outside registry
+- [x] Unit tests mock registry; no RefreshDatabase
 
 ## Verification Steps
 
@@ -56,3 +51,8 @@ Original brief: implement all package tests and business logic so all tests pass
 
 - docs/spec.md — design bible / conflict oracle
 - docs/requirements-inventory.md — scenario checklist
+
+
+## Outputs
+
+- implementation e32218d
