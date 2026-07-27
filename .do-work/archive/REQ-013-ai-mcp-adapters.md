@@ -1,19 +1,14 @@
 # REQ-013: AI and MCP peer adapters
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.49422
-**Claimed at:** 2026-07-27T02:06:53Z
-**Heartbeat:** 2026-07-27T02:16:56Z
-<!-- claimed-end -->
 
 **UR:** UR-001
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** laravel/ai tools + laravel/mcp tools via adapters
 **Terminal state:** Surfaces/Ai* Mcp/* Adapters/* unit tests pass against mocked peers; profiles limit tool dump (D-008/D-011/D-023).
 **Parent:** 
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:5acee10 Ai/Mcp/Adapter green
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** L
@@ -60,3 +55,8 @@ Original brief: implement all package tests and business logic so all tests pass
 
 - docs/spec.md — design bible / conflict oracle
 - docs/requirements-inventory.md — scenario checklist
+
+
+## Outputs
+
+- implementation 5acee10
