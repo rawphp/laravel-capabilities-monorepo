@@ -26,6 +26,8 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   GitHub Release on `rawphp/capabilities-cli` (`.github/workflows/release.yml` + GoReleaser).
   Install/download pointer and residual wording updated in package README, `dist/README.md`,
   and user guide.
+- Maintainer path map: `docs/release-path.md` (entry monorepo `v*` tag → terminal GitHub
+  Release; package-owned only — no PHP-remote release jobs).
 
 ### Notes
 
