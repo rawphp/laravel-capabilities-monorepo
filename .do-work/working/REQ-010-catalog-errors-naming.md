@@ -1,7 +1,13 @@
 # REQ-010: Catalog health errors naming deprecation
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.49422
+**Claimed at:** 2026-07-27T01:56:22Z
+**Heartbeat:** 2026-07-27T01:56:22Z
+<!-- claimed-end -->
+
 **UR:** UR-001
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** Catalog list/health APIs and error envelopes from registry
