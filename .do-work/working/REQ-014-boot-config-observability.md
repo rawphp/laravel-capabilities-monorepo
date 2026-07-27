@@ -1,7 +1,13 @@
 # REQ-014: Boot rules config events observability
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.49422
+**Claimed at:** 2026-07-27T02:28:49Z
+**Heartbeat:** 2026-07-27T02:28:49Z
+<!-- claimed-end -->
+
 **UR:** UR-001
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** CapabilitiesServiceProvider boot + config/capabilities.php
