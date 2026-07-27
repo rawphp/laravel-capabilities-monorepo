@@ -1,7 +1,13 @@
 # REQ-047: makeRegistry full config wiring
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.40419
+**Claimed at:** 2026-07-27T06:12:35Z
+**Heartbeat:** 2026-07-27T06:12:35Z
+<!-- claimed-end -->
+
 **UR:** UR-008
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
