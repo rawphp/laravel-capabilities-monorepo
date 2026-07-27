@@ -8,7 +8,7 @@
 **Entry point:**
 **Terminal state:**
 **Parent:**
-**Closure proof:** checkpoint:.do-work/runs/RUN-027.yml#REQ-034 commit:d295f1c tests:passed
+**Closure proof:** checkpoint:.do-work/runs/RUN-032.yml#REQ-034 commit:d295f1c tests:passed
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** S
