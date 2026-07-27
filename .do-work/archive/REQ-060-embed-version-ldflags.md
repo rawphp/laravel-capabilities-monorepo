@@ -1,23 +1,18 @@
 # REQ-060: Embed version via ldflags
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.83526
-**Claimed at:** 2026-07-27T20:36:53Z
-**Heartbeat:** 2026-07-27T20:36:53Z
-<!-- claimed-end -->
 
 **UR:** UR-011
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-28
 **Layer:** cli
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-059
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:f7221d0 steps:2/2 verification (test + ldflags runtime) AC1-AC5 passed
 **Criteria approved:** agent-drafted
 **Priority:** 3
 **Size:** S
-**Files:** packages/capabilities-cli/cmd/capabilities/cli.go packages/capabilities-cli/cmd/capabilities/main_test.go packages/capabilities-cli/cmd/capabilities/commands_test.go packages/capabilities-cli/dist/README.md
+**Files:** packages/capabilities-cli/cmd/capabilities/cli.go packages/capabilities-cli/cmd/capabilities/main_test.go packages/capabilities-cli/cmd/capabilities/dist_test.go packages/capabilities-cli/dist/README.md
 **Depends on:**
 
 ## Task
@@ -30,11 +25,11 @@ Clarification: release builds inject the git tag into the binary version string.
 
 ## Acceptance Criteria
 
-- [ ] `Version` is a package-level `var` (already) suitable for `-X main.Version=...` or the correct package path for the module
-- [ ] `capabilities version` prints `capabilities <Version>` using that variable
-- [ ] Unit test covers default Version non-empty and version command output contains Version
-- [ ] `dist/README.md` (or build notes) documents the ldflags key used so GoReleaser can match it
-- [ ] Default Version without ldflags still builds and tests pass (`go test ./...` under the CLI package)
+- [x] `Version` is a package-level `var` (already) suitable for `-X main.Version=...` or the correct package path for the module
+- [x] `capabilities version` prints `capabilities <Version>` using that variable
+- [x] Unit test covers default Version non-empty and version command output contains Version
+- [x] `dist/README.md` (or build notes) documents the ldflags key used so GoReleaser can match it
+- [x] Default Version without ldflags still builds and tests pass (`go test ./...` under the CLI package)
 
 ## Verification Steps
 
@@ -52,3 +47,11 @@ Clarification: release builds inject the git tag into the binary version string.
 **Service dependencies:** None beyond the existing CLI command router in `cli.go` `Execute`.
 
 ## Assets
+
+## Outputs
+
+- packages/capabilities-cli/cmd/capabilities/cli.go — Version var documented as -X main.Version overridable; default 0.2.0 retained
+- packages/capabilities-cli/cmd/capabilities/main_test.go — Unit tests for non-empty default Version and version command output
+- packages/capabilities-cli/cmd/capabilities/dist_test.go — Unit test that dist/README.md documents -ldflags -X main.Version
+- packages/capabilities-cli/dist/README.md — Documents exact ldflags key -X main.Version for GoReleaser/manual release builds
+
