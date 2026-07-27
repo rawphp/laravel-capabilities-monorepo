@@ -1,7 +1,13 @@
 # REQ-021: Register HTTP routes from RouteTable
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.40493
+**Claimed at:** 2026-07-27T04:49:19Z
+**Heartbeat:** 2026-07-27T04:49:19Z
+<!-- claimed-end -->
+
 **UR:** UR-002
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
