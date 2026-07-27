@@ -10,3 +10,8 @@
 2026-07-27 | UR-003 | scaffold-sync only for test gaps (not re-implement inventory scenarios) | user chose minimal capture at classify gate
 2026-07-27 | UR-003 | other-as-bug-fix; layers_in_scope empty; all REQs layer none | no new product surface
 2026-07-27 | UR-003 | order harden-generator → rename go todo tests → inventory status sync → gap report | prevent regen wipe and path thrash
+2026-07-27 | UR-004 | layer "messaging" out of scope | core persistence only (user gate pending — capture will confirm)
+2026-07-27 | UR-004 | layer "cli" out of scope | core persistence only (user gate pending — capture will confirm)
+2026-07-27 | UR-004 | ship approvals+idempotency drivers + shared migrations including audit_outbox schema; no separate audit writer REQ this UR | brief stresses approval/idempotency; schema matches spec layout
+2026-07-27 | UR-004 | layer "messaging" out of scope | user answered "No" at layer-coverage prompt
+2026-07-27 | UR-004 | layer "cli" out of scope | user answered "No" at layer-coverage prompt
