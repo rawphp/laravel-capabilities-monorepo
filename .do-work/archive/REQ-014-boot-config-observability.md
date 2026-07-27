@@ -1,23 +1,18 @@
 # REQ-014: Boot rules config events observability
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.49422
-**Claimed at:** 2026-07-27T02:28:49Z
-**Heartbeat:** 2026-07-27T02:28:49Z
-<!-- claimed-end -->
 
 **UR:** UR-001
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** CapabilitiesServiceProvider boot + config/capabilities.php
 **Terminal state:** Boot/* Config/* Events/* Observability/* unit tests pass; disabled surfaces register nothing; missing peers fail closed/loud.
 **Parent:** 
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:aa86a52 Boot/Config/Events/Observability 485
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** L
-**Files:** packages/laravel-capabilities/src/CapabilitiesServiceProvider.php packages/laravel-capabilities/config packages/laravel-capabilities/src/Events packages/laravel-capabilities/tests/Unit/Boot packages/laravel-capabilities/tests/Unit/Config packages/laravel-capabilities/tests/Unit/Events packages/laravel-capabilities/tests/Unit/Observability
+**Files:** packages/laravel-capabilities/src/CapabilitiesServiceProvider.php packages/laravel-capabilities/config/capabilities.php packages/laravel-capabilities/src/Boot packages/laravel-capabilities/src/Events packages/laravel-capabilities/src/Observability packages/laravel-capabilities/src/Contracts/Metrics.php packages/laravel-capabilities/src/Contracts/Tracer.php packages/laravel-capabilities/tests/Fixtures/BootHelpers.php packages/laravel-capabilities/tests/Unit/Boot packages/laravel-capabilities/tests/Unit/Config packages/laravel-capabilities/tests/Unit/Events packages/laravel-capabilities/tests/Unit/Observability
 **Depends on:** REQ-011, REQ-012, REQ-013
 
 ## Task
@@ -32,12 +27,12 @@ Original brief: implement all package tests and business logic so all tests pass
 
 ## Acceptance Criteria
 
-- [ ] Surface boot rules and peer matrix tests pass
-- [ ] Config matrices pass
-- [ ] Events payload matrix and observability metrics/spans pass
-- [ ] Disabled surface registers nothing / invoke denied
+- [x] Surface boot rules and peer matrix tests pass
+- [x] Config matrices pass
+- [x] Events payload matrix and observability metrics/spans pass
+- [x] Disabled surface registers nothing / invoke denied
 
-- [ ] Missing required peer with surface enabled produces clear boot failure or soft-disable, not silent half-registration
+- [x] Missing required peer with surface enabled produces clear boot failure or soft-disable, not silent half-registration
 
 ## Verification Steps
 
@@ -62,3 +57,8 @@ Original brief: implement all package tests and business logic so all tests pass
 
 - docs/spec.md — design bible / conflict oracle
 - docs/requirements-inventory.md — scenario checklist
+
+
+## Outputs
+
+- Boot/Config/Events/Observability
