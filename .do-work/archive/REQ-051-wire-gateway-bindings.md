@@ -1,19 +1,14 @@
 # REQ-051: Wire gateway into database bindings
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.40419
-**Claimed at:** 2026-07-27T06:33:56Z
-**Heartbeat:** 2026-07-27T06:37:36Z
-<!-- claimed-end -->
 
 **UR:** UR-008
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-049
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (3/3) commit:64c9521
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** M
@@ -30,12 +25,12 @@ Today: `makeIdempotencyStore` / `makeApprovalManager` use `$gateway ?? new Array
 
 ## Acceptance Criteria
 
-- [ ] Database driver path constructs QueryTableGateway (or equivalent) with correct table name for approval and for idempotency
-- [ ] Memory driver path still uses in-memory stores / ArrayTableGateway as appropriate
-- [ ] Optional host-bound `TableGateway` or connection from container is honored when present
-- [ ] Unit tests prove database resolution no longer instantiates only ArrayTableGateway as the sole production default (spy/factory)
-- [ ] Config comments or keys document driver + connection name if needed
-- [ ] Works with REQ-047/048 registry inject so database stores reach the registry
+- [x] Database driver path constructs QueryTableGateway (or equivalent) with correct table name for approval and for idempotency
+- [x] Memory driver path still uses in-memory stores / ArrayTableGateway as appropriate
+- [x] Optional host-bound `TableGateway` or connection from container is honored when present
+- [x] Unit tests prove database resolution no longer instantiates only ArrayTableGateway as the sole production default (spy/factory)
+- [x] Config comments or keys document driver + connection name if needed
+- [x] Works with REQ-047/048 registry inject so database stores reach the registry
 
 ## Verification Steps
 
@@ -53,3 +48,11 @@ Today: `makeIdempotencyStore` / `makeApprovalManager` use `$gateway ?? new Array
 **Data dependencies:** `config/capabilities.php` approval.store, idempotency.driver; MigrationCatalog table names.
 
 **Service dependencies:** REQ-050 QueryTableGateway; existing Database* stores.
+
+## Outputs
+
+- packages/laravel-capabilities/src/Boot/ContainerBindings.php — database factories use QueryTableGateway
+- packages/laravel-capabilities/src/Boot/BootException.php — missing connection fail-closed
+- packages/laravel-capabilities/src/CapabilitiesServiceProvider.php — no default ArrayTableGateway
+- packages/laravel-capabilities/config/capabilities.php — connection keys docs
+- packages/laravel-capabilities/tests/Unit/Boot/ContainerBindingsTest.php — REQ-051 tests
