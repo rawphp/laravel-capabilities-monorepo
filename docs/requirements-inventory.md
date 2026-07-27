@@ -2564,8 +2564,8 @@ Extend the catalog in the generator and re-run; do not hand-edit pure stubs.
 ### `TestingHelpers/HelperSurfaceTest.php` (11)
 
 - [x] happy: testing helper fake exists for package consumers [D-020]
-- [x] happy: testing helper assertSchemaSnapshot exists for package consumers [D-020]
-- [x] happy: testing helper assertParity exists for package consumers [D-020]
+- [x] happy: testing helper assertSchemaSnapshot locks input and output for package consumers [D-020]
+- [x] happy: testing helper assertParity compares success class across surfaces for package consumers [D-020]
 - [x] happy: testing helper assertCannotInvokeAcrossTenant exists for package consumers [D-020]
 - [x] happy: testing helper assertScopeResolvedTo exists for package consumers [D-020]
 - [x] happy: testing helper assertLastScopeTenant exists for package consumers [D-020]

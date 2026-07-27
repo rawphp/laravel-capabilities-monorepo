@@ -15,15 +15,14 @@ it("happy: testing helper fake exists for package consumers [D-020]", function (
     expect($h['registry']->fake())->toBe($h['registry']);
 });
 
-it("happy: testing helper assertSchemaSnapshot exists for package consumers [D-020]", function () {
+it("happy: testing helper assertSchemaSnapshot locks input and output for package consumers [D-020]", function () {
     $h = CatalogHelpers::harness();
     $def = $h['registry']->get($h['name']);
     $snap = [
         'input_schema' => $def->inputSchema(),
         'output_schema' => $def->outputSchema(),
     ];
-    expect(method_exists($h['registry'], 'assertSchemaSnapshot'))->toBeTrue()
-        ->and($h['registry']->assertSchemaSnapshot($h['name'], $snap))->toBeTrue();
+    expect($h['registry']->assertSchemaSnapshot($h['name'], $snap))->toBeTrue();
     // drift must name the mismatched side
     $bad = $snap;
     $bad['output_schema'] = ['type' => 'boolean'];
@@ -31,13 +30,12 @@ it("happy: testing helper assertSchemaSnapshot exists for package consumers [D-0
         ->toThrow(\Rawphp\Capabilities\Support\SchemaSnapshotException::class, 'output_schema');
 });
 
-it("happy: testing helper assertParity exists for package consumers [D-020]", function () {
+it("happy: testing helper assertParity compares success class across surfaces for package consumers [D-020]", function () {
     $h = CatalogHelpers::harness();
-    expect(method_exists($h['registry'], 'assertParity'))->toBeTrue()
-        ->and($h['registry']->assertParity($h['name'], [
-            'input' => CatalogHelpers::input(),
-            'surfaces' => ['http', 'cli'],
-        ]))->toBeTrue();
+    expect($h['registry']->assertParity($h['name'], [
+        'input' => CatalogHelpers::input(),
+        'surfaces' => ['http', 'cli'],
+    ]))->toBeTrue();
     // empty-arg / missing options.surfaces rejected (D-020 shape required)
     expect(fn () => $h['registry']->assertParity($h['name'], []))
         ->toThrow(InvalidArgumentException::class);

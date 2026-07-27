@@ -2706,19 +2706,27 @@ public function test_cannot_create_invoice_for_other_tenant_customer(): void
 
 Pest-friendly fakes: freeze catalog, assert capability was invoked with input, assert not double-run under approval, **assert cross-tenant deny on every mutating capability that accepts resource ids**.
 
-**Parity and snapshots (D-020)** — required package helpers:
+**Parity and snapshots (D-020)** — required package helpers (real argument shapes):
 
 ```php
-Capability::assertSchemaSnapshot('create-invoice');
+// Durable snapshot file locks input_schema + output_schema (name-only call does NOT lock):
+Capability::assertSchemaSnapshot(
+    'create-invoice',
+    base_path('tests/fixtures/capability-schemas/create-invoice.schema.json'),
+);
+// Or conventional dir: Capability::assertSchemaSnapshot('create-invoice', null, $dir);
+// Or in-memory: Capability::assertSchemaSnapshot('create-invoice', [
+//     'input_schema' => [/* … */], 'output_schema' => [/* … */],
+// ]);
 
 Capability::assertParity('create-invoice', [
     'input' => [/* valid tenant-scoped */],
-    'surfaces' => ['http', 'registry', 'ai'],
+    'surfaces' => ['http', 'registry', 'ai'], // required non-empty; empty options rejected
     'assert' => fn ($result) => expect($result->data['invoice_id'])->toBeInt(),
 ]);
 ```
 
-HTTP feature tests, registry unit tests, and AI adapter contract tests must share the same schema snapshot file.
+Registry unit tests and adapter contract tests must share the same schema snapshot document (file or envelope). Package helpers are **unit-path** (registry/adapters with mocks/fakes) — not a live multi-surface HTTP/feature suite.
 
 ---
 
@@ -3117,26 +3125,41 @@ Audit remains the compliance trail (D-010); metrics/traces are for operators.
 
 **Problem:** Fakes alone do not prevent HTTP vs registry vs AI adapter drift.
 
-**Decision:** Ship test helpers:
+**Decision:** Ship test helpers on `CapabilityRegistry` / `Capability` facade with the argument shapes below (implemented unit-path DX — not a live multi-surface HTTP/feature suite):
 
 ```php
-Capability::assertSchemaSnapshot('create-invoice'); // locks input_schema + output_schema JSON
+// assertSchemaSnapshot — lock input_schema + output_schema; returns true on match;
+// throws SchemaSnapshotException on drift/missing file (names capability + side).
+// Modes: file path | conventional directory | in-memory envelope.
+// Name-only (no path/envelope/dir) resolves the capability and returns true without comparing.
+Capability::assertSchemaSnapshot(
+    'create-invoice',
+    base_path('tests/fixtures/capability-schemas/create-invoice.schema.json'),
+);
+// Capability::assertSchemaSnapshot('create-invoice', null, $snapshotDirectory);
+// Capability::assertSchemaSnapshot('create-invoice', [
+//     'input_schema' => [/* JSON Schema */],
+//     'output_schema' => [/* JSON Schema */],
+// ]);
 
+// assertParity — same success/deny class across listed surfaces via registry invoke.
+// options.surfaces required (non-empty); empty options throw InvalidArgumentException.
+// Aliases: ai → agent, registry → http. Optional assert callback runs on success results only.
 Capability::assertParity('create-invoice', [
     'input' => [/* valid */],
-    'surfaces' => ['http', 'registry', 'ai'], // invoke each adapter path
+    'surfaces' => ['http', 'registry', 'ai'], // invoke each surface path (unit-path / mocks)
     'assert' => fn ($result) => expect($result->data['invoice_id'])->toBeInt(),
 ]);
 ```
 
 | Helper | Role |
 |---|---|
-| `assertSchemaSnapshot` | CI fails if catalog schema changes without intentional update |
-| `assertParity` | Same input → same success/deny class across listed surfaces |
+| `assertSchemaSnapshot` | CI fails if catalog **input_schema** / **output_schema** drift without intentional snapshot update (file path, conventional dir, or envelope) |
+| `assertParity` | Same input → same success/deny class across listed surfaces (registry choke point; not empty-arg) |
 | `assertCannotInvokeAcrossTenant` | D-003 |
 | Adapter group tests | D-011 |
 
-Document: app CI should run snapshots for every capability before release.
+Document: app CI should run schema snapshots for every capability before release. Consumer-facing usage: package README **Testing helpers (D-020)** and [first-capability tutorial](tutorials/first-capability.md#7-lock-it-in-ci-d-020-helpers).
 
 ---
 

@@ -271,24 +271,28 @@ Do not add a second HTTP invoke tree for CLI or integrations (D-009). The produc
 
 ## 7. Lock it in CI (D-020 helpers)
 
-D-020 helpers are **real unit-path DX** on the registry and facade (not presence-only stubs):
+D-020 helpers are **real unit-path DX** on the registry and facade (not presence-only stubs). Full API notes: package README [Testing helpers (D-020)](../../packages/laravel-capabilities/README.md#testing-helpers-d-020).
 
 | Helper | Role |
 |---|---|
-| `assertSchemaSnapshot` | Lock **input + output** JSON Schema; optional durable snapshot file; fail on drift |
-| `assertParity` | Same input → same success/deny **class** across listed surfaces (registry/adapter unit paths with mocks/fakes) |
+| `assertSchemaSnapshot` | Lock **input_schema + output_schema**; durable `.schema.json` file, conventional directory, or in-memory envelope; fail on drift |
+| `assertParity` | Same input → same success/deny **class** across **listed** `surfaces` (registry/adapter unit paths with mocks/fakes) |
 
 Facade signatures (`Rawphp\Capabilities\Facades\Capability`):
 
 ```php
-// Durable snapshot file under a conventional directory (input_schema + output_schema):
+// Preferred for app CI — conventional directory → create-invoice.schema.json
+// (document must include input_schema + output_schema):
 Capability::assertSchemaSnapshot(
     'create-invoice',
     null,
     base_path('tests/fixtures/capability-schemas'),
 );
 
-// Or pass an in-memory expected envelope / absolute snapshot path as the second argument.
+// Or absolute/relative file path as the second argument:
+// Capability::assertSchemaSnapshot('create-invoice', base_path('…/create-invoice.schema.json'));
+
+// Name-only assertSchemaSnapshot('create-invoice') does NOT lock schemas — always pass path, dir, or envelope.
 
 Capability::assertParity('create-invoice', [
     'input' => [
@@ -296,14 +300,14 @@ Capability::assertParity('create-invoice', [
         'amount_cents' => 2500,
         'currency' => 'USD',
     ],
-    'surfaces' => ['http', 'registry', 'job'],
+    'surfaces' => ['http', 'registry', 'job'], // required non-empty; empty options rejected
     'assert' => function ($result): void {
-        // optional: extra asserts on successful results
+        // optional: runs only on successful results
     },
 ]);
 ```
 
-These exercise registry / adapter unit paths with mocks — **not** a live multi-surface HTTP/feature suite. App CI should run schema snapshots for every capability before release. Design: [docs/spec.md D-020](../spec.md#d-020--parity-tests-and-schema-snapshots-as-package-features). Package status notes: [packages/laravel-capabilities/README.md](../../packages/laravel-capabilities/README.md).
+These exercise registry / adapter unit paths with mocks — **not** a live multi-surface HTTP/feature suite. App CI should run schema snapshots for every capability before release. Design: [docs/spec.md D-020](../spec.md#d-020--parity-tests-and-schema-snapshots-as-package-features). Package notes: [packages/laravel-capabilities/README.md](../../packages/laravel-capabilities/README.md#testing-helpers-d-020).
 
 ---
 
