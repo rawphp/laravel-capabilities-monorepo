@@ -6,6 +6,7 @@ namespace Rawphp\Capabilities\Adapters;
  * Feature-detect installed laravel/ai and laravel/mcp (D-011).
  *
  * Uses class/interface presence and optional version strings — never boots live peers.
+ * Supported version defaults come from {@see PeerSupportMatrix} (not bare `*`).
  * Unit tests inject class-exists + version maps; production uses class_exists + Composer.
  */
 final class PeerVersionProbe
@@ -33,22 +34,26 @@ final class PeerVersionProbe
     ];
 
     /**
+     * @var array<string, list<string>>
+     */
+    private readonly array $supportedVersions;
+
+    /**
      * @param  callable(string): bool|null  $classExists
      * @param  array<string, bool>  $installedOverrides  peer => installed (tests)
      * @param  array<string, bool>  $compatibleOverrides  peer => compatible (tests)
      * @param  array<string, string|null>  $versions  peer => installed version string
-     * @param  array<string, list<string>>  $supportedVersions  peer => allowed version strings / '*'
+     * @param  array<string, list<string>>|null  $supportedVersions  peer => constraints; null = PeerSupportMatrix
      */
     public function __construct(
         private readonly mixed $classExists = null,
         private readonly array $installedOverrides = [],
         private readonly array $compatibleOverrides = [],
         private readonly array $versions = [],
-        private readonly array $supportedVersions = [
-            self::PEER_AI => ['*'],
-            self::PEER_MCP => ['*'],
-        ],
-    ) {}
+        ?array $supportedVersions = null,
+    ) {
+        $this->supportedVersions = $supportedVersions ?? PeerSupportMatrix::constraints();
+    }
 
     public static function forMissingPeers(): self
     {
@@ -88,6 +93,16 @@ final class PeerVersionProbe
         );
     }
 
+    /**
+     * Constraints used for compatibility checks (matrix defaults or constructor override).
+     *
+     * @return array<string, list<string>>
+     */
+    public function supportedVersions(): array
+    {
+        return $this->supportedVersions;
+    }
+
     public function isInstalled(string $peer): bool
     {
         if (array_key_exists($peer, $this->installedOverrides)) {
@@ -115,7 +130,11 @@ final class PeerVersionProbe
         }
 
         $version = $this->installedVersion($peer);
-        $allowed = $this->supportedVersions[$peer] ?? ['*'];
+        $allowed = $this->supportedVersions[$peer] ?? PeerSupportMatrix::for($peer);
+
+        if ($allowed === []) {
+            return false;
+        }
 
         if (in_array('*', $allowed, true)) {
             return true;
@@ -126,7 +145,7 @@ final class PeerVersionProbe
             return true;
         }
 
-        return in_array($version, $allowed, true);
+        return PeerSupportMatrix::versionSatisfies($version, $allowed);
     }
 
     /**
