@@ -1,0 +1,67 @@
+req: REQ-060
+status: done
+commit: f7221d0
+reason: ""
+details: "Version remains package-level var main.Version (default 0.2.0); docs + unit tests for default/non-empty + version output; dist/README.md documents -X main.Version ldflags for GoReleaser; runtime build with -ldflags injects 9.9.9-test."
+isolation: worktree
+closure_proof: "checkpoint_log:passed commit:f7221d0 steps:2/2 verification (test + ldflags runtime) AC1-AC5 passed"
+last_good_step: 2
+failed_step: 0
+checkpoint_log:
+  status: passed
+  checkpoints:
+    - step: 1
+      total: 2
+      type: test
+      command: "cd packages/capabilities-cli && go test ./cmd/capabilities/ -count=1"
+      expected: "pass, including version-related tests"
+      actual: "ok github.com/rawphp/capabilities-cli/cmd/capabilities"
+      status: passed
+      handoff: ""
+    - step: 2
+      total: 2
+      type: runtime
+      command: "go build -ldflags \"-X main.Version=9.9.9-test\" -o /tmp/capabilities-ver-test ./cmd/capabilities && /tmp/capabilities-ver-test version"
+      expected: "stdout contains 9.9.9-test"
+      actual: "capabilities 9.9.9-test"
+      status: passed
+      handoff: "ldflags -> binary version string"
+deferred_checks: []
+acceptance:
+  AC1:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/cmd/capabilities/cli.go
+  AC2:
+    status: passed
+    evidence:
+      - type: test
+        ref: packages/capabilities-cli/cmd/capabilities/main_test.go::TestVersioncommandoutputcontainsversion
+  AC3:
+    status: passed
+    evidence:
+      - type: test
+        ref: packages/capabilities-cli/cmd/capabilities/main_test.go::TestDefaultversionnonempty
+  AC4:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/dist/README.md
+  AC5:
+    status: passed
+    evidence:
+      - type: test
+        ref: "go test ./cmd/capabilities/ -count=1 (exit 0)"
+milestone_complete: false
+milestone: ""
+retry_count: 0
+outputs:
+  - path: packages/capabilities-cli/cmd/capabilities/cli.go
+    description: "Version var documented as -X main.Version overridable"
+  - path: packages/capabilities-cli/cmd/capabilities/main_test.go
+    description: "Unit tests for Version"
+  - path: packages/capabilities-cli/cmd/capabilities/dist_test.go
+    description: "Unit test that dist/README.md documents ldflags"
+  - path: packages/capabilities-cli/dist/README.md
+    description: "Documents -X main.Version for GoReleaser"

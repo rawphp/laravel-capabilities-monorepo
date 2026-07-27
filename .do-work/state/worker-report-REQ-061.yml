@@ -1,0 +1,71 @@
+req: REQ-061
+status: done
+commit: 828264a
+closure_proof: "checkpoint_log:passed commit:828264a steps:3/3 AC1-AC6 passed"
+last_good_step: 3
+failed_step: 0
+checkpoint_log:
+  status: passed
+  checkpoints:
+    - step: 1
+      total: 3
+      type: build
+      command: "goreleaser check && goreleaser release --snapshot --clean --skip=publish"
+      expected: "config validates"
+      actual: "OK"
+      status: passed
+    - step: 2
+      total: 3
+      type: runtime
+      command: "test -f packages/capabilities-cli/.goreleaser.yml"
+      expected: "matrix present"
+      actual: "present"
+      status: passed
+    - step: 3
+      total: 3
+      type: test
+      command: "go test ./... -count=1"
+      expected: "green"
+      actual: "ok"
+      status: passed
+deferred_checks: []
+acceptance:
+  AC1:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/.goreleaser.yml
+  AC2:
+    status: passed
+    evidence:
+      - type: test
+        ref: packages/capabilities-cli/cmd/capabilities/goreleaser_test.go
+  AC3:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/.goreleaser.yml
+  AC4:
+    status: passed
+    evidence:
+      - type: command
+        ref: goreleaser snapshot checksums.txt
+  AC5:
+    status: passed
+    evidence:
+      - type: command
+        ref: goreleaser check v2
+  AC6:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/.goreleaser.yml
+outputs:
+  - path: packages/capabilities-cli/.goreleaser.yml
+    description: GoReleaser v2 multi-arch config
+  - path: packages/capabilities-cli/cmd/capabilities/goreleaser_test.go
+    description: Unit tests for goreleaser config
+  - path: packages/capabilities-cli/dist/README.md
+    description: Documents GoReleaser path
+  - path: packages/capabilities-cli/CHANGELOG.md
+    description: Unreleased note

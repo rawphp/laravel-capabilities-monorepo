@@ -1,0 +1,78 @@
+
+req: REQ-063
+status: done
+commit: ba27467
+closure_proof: "checkpoint_log:passed commit:ba27467 steps:3/3 AC1-AC6 passed"
+last_good_step: 3
+failed_step: 0
+checkpoint_log:
+  status: passed
+  checkpoints:
+    - step: 1
+      total: 3
+      type: runtime
+      command: "rg APPLE|WINDOWS|sign|skip"
+      expected: "secret-gated present"
+      actual: "present"
+      status: passed
+    - step: 2
+      total: 3
+      type: runtime
+      command: "test -f docs/release-signing.md; no private keys"
+      expected: "doc exists no keys"
+      actual: "ok"
+      status: passed
+    - step: 3
+      total: 3
+      type: test
+      command: "go test ./... -count=1"
+      expected: "green"
+      actual: "ok"
+      status: passed
+deferred_checks: []
+acceptance:
+  AC1:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/docs/release-signing.md
+  AC2:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/.github/workflows/release.yml
+  AC3:
+    status: passed
+    evidence:
+      - type: command
+        ref: scripts/sign-binary.sh soft skip when secrets absent
+  AC4:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/scripts/sign-binary.sh
+  AC5:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/README.md
+  AC6:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/.goreleaser.yml
+outputs:
+  - path: packages/capabilities-cli/docs/release-signing.md
+    description: Maintainer signing secrets doc
+  - path: packages/capabilities-cli/scripts/sign-binary.sh
+    description: Soft-gated signing hook
+  - path: packages/capabilities-cli/.goreleaser.yml
+    description: Post hooks wired
+  - path: packages/capabilities-cli/.github/workflows/release.yml
+    description: Conditional signing steps
+  - path: packages/capabilities-cli/README.md
+    description: Links signing doc
+  - path: packages/capabilities-cli/cmd/capabilities/release_signing_test.go
+    description: Unit tests for signing scaffold
+  - path: packages/capabilities-cli/CHANGELOG.md
+    description: Unreleased note

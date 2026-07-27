@@ -1,0 +1,72 @@
+
+req: REQ-062
+status: done
+commit: 01ff576
+closure_proof: "checkpoint_log:passed commit:01ff576 steps:3/3 verification AC1-AC6 passed"
+last_good_step: 3
+failed_step: 0
+checkpoint_log:
+  status: passed
+  checkpoints:
+    - step: 1
+      total: 3
+      type: runtime
+      command: "test -f packages/capabilities-cli/.github/workflows/release.yml"
+      expected: "tag trigger present"
+      actual: "present"
+      status: passed
+    - step: 2
+      total: 3
+      type: runtime
+      command: "python3 yaml.safe_load release.yml"
+      expected: "exits 0"
+      actual: "OK"
+      status: passed
+    - step: 3
+      total: 3
+      type: test
+      command: "go test ./... -count=1"
+      expected: "green"
+      actual: "ok"
+      status: passed
+deferred_checks: []
+acceptance:
+  AC1:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/.github/workflows/release.yml
+  AC2:
+    status: passed
+    evidence:
+      - type: test
+        ref: packages/capabilities-cli/cmd/capabilities/release_workflow_test.go
+  AC3:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/.github/workflows/release.yml
+  AC4:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/.goreleaser.yml
+  AC5:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/.github/workflows/release.yml
+  AC6:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/README.md
+outputs:
+  - path: packages/capabilities-cli/.github/workflows/release.yml
+    description: Tag-triggered GoReleaser release workflow
+  - path: packages/capabilities-cli/cmd/capabilities/release_workflow_test.go
+    description: Unit tests for release workflow
+  - path: packages/capabilities-cli/README.md
+    description: Documents automated GitHub Releases
+  - path: .github/workflows/split-packages.yml
+    description: Comment pointer CLI release package-owned

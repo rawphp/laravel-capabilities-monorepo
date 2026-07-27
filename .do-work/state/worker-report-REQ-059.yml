@@ -1,0 +1,49 @@
+
+req: REQ-059
+status: done
+commit: 0dc2c1d
+closure_proof: "checkpoint_log:passed commit:0dc2c1d steps:2/2 AC1-AC3 passed"
+last_good_step: 2
+failed_step: 0
+checkpoint_log:
+  status: passed
+  checkpoints:
+    - step: 1
+      total: 2
+      type: test
+      command: "archive child REQs check"
+      expected: "REQ-060..064 present"
+      actual: "all done"
+      status: passed
+    - step: 2
+      total: 2
+      type: runtime
+      command: "test -f .goreleaser.yml && test -f release.yml"
+      expected: "both exist"
+      actual: "PASS"
+      status: passed
+deferred_checks:
+  - step: "push monorepo tag and confirm GitHub Release assets"
+    category: human
+    reason: "Requires maintainer tag push"
+acceptance:
+  AC1:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/docs/release-path.md
+  AC2:
+    status: passed
+    evidence:
+      - type: file
+        ref: .do-work/archive/REQ-060-embed-version-ldflags.md
+  AC3:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/.goreleaser.yml
+outputs:
+  - path: packages/capabilities-cli/docs/release-path.md
+    description: Path-unit maintainer map
+  - path: packages/capabilities-cli/cmd/capabilities/release_path_test.go
+    description: Path-unit unit tests

@@ -1,0 +1,81 @@
+req: REQ-058
+status: done
+commit: 69ef74d
+reason: ""
+details: ""
+isolation: worktree
+closure_proof: "checkpoint_log:passed commit:69ef74d tests:go_test_cmd_capabilities+runtime_mcp_help"
+last_good_step: 3
+failed_step: 0
+checkpoint_log:
+  status: passed
+  checkpoints:
+    - step: 1
+      total: 3
+      type: test
+      command: "go test ./cmd/capabilities/ -count=1"
+      expected: "all tests pass including TestExecuteSubcommandHelpFlags"
+      actual: "ok github.com/rawphp/capabilities-cli/cmd/capabilities"
+      status: passed
+      handoff: "test->impl"
+    - step: 2
+      total: 3
+      type: runtime
+      command: "go build -o /tmp/capabilities-ur010 ./cmd/capabilities && /tmp/capabilities-ur010 mcp --help"
+      expected: "exit 0; stdout includes mcp usage"
+      actual: "exit 0; mcp — MCP stdio bridge USAGE shown"
+      status: passed
+      handoff: "command->stdout"
+    - step: 3
+      total: 3
+      type: runtime
+      command: "/tmp/capabilities-ur010 run --help; /tmp/capabilities-ur010 catalog --help"
+      expected: "each prints CommandHelp exit 0"
+      actual: "both exit 0 with usage text"
+      status: passed
+      handoff: "command->stdout"
+deferred_checks: []
+acceptance:
+  AC1:
+    status: passed
+    evidence:
+      - type: test
+        ref: "TestExecuteSubcommandHelpFlags/mcp_--help"
+  AC2:
+    status: passed
+    evidence:
+      - type: test
+        ref: "TestExecuteSubcommandHelpFlags/mcp_-h"
+  AC3:
+    status: passed
+    evidence:
+      - type: test
+        ref: "TestExecuteSubcommandHelpFlags/mcp_--profile=default_--help"
+  AC4:
+    status: passed
+    evidence:
+      - type: test
+        ref: "TestExecuteSubcommandHelpFlags logged-in empty-stdout guard"
+  AC5:
+    status: passed
+    evidence:
+      - type: test
+        ref: "TestExecuteSubcommandHelpFlags catalog/describe/run/approvals"
+  AC6:
+    status: passed
+    evidence:
+      - type: test
+        ref: "TestExecuteHelpSubcommands existing help mcp"
+  AC7:
+    status: passed
+    evidence:
+      - type: test
+        ref: "go test ./cmd/capabilities/"
+milestone_complete: false
+milestone: ""
+retry_count: 0
+outputs:
+  - path: packages/capabilities-cli/cmd/capabilities/cli.go
+    description: wantsHelp early-exit on mcp/catalog/describe/run/approvals
+  - path: packages/capabilities-cli/cmd/capabilities/cli_integration_test.go
+    description: TestExecuteSubcommandHelpFlags covering auth-free help paths

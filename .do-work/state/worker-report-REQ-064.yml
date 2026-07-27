@@ -1,0 +1,76 @@
+
+req: REQ-064
+status: done
+commit: 0c2e42f
+closure_proof: "checkpoint_log:passed commit:0c2e42f steps:3/3 AC1-AC6 passed"
+last_good_step: 3
+failed_step: 0
+checkpoint_log:
+  status: passed
+  checkpoints:
+    - step: 1
+      total: 3
+      type: runtime
+      command: "rg GitHub Release"
+      expected: "release automation described"
+      actual: "present"
+      status: passed
+    - step: 2
+      total: 3
+      type: runtime
+      command: "no ../../docs links"
+      expected: "no relative monorepo docs links"
+      actual: "PASS"
+      status: passed
+    - step: 3
+      total: 3
+      type: test
+      command: "go test ./... -count=1"
+      expected: "green"
+      actual: "ok"
+      status: passed
+deferred_checks: []
+acceptance:
+  AC1:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/README.md
+  AC2:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/dist/README.md
+  AC3:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/docs/user-guide.md
+  AC4:
+    status: passed
+    evidence:
+      - type: file
+        ref: docs/versioning.md
+  AC5:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/capabilities-cli/CHANGELOG.md
+  AC6:
+    status: passed
+    evidence:
+      - type: command
+        ref: no relative ../../docs links from package docs
+outputs:
+  - path: packages/capabilities-cli/README.md
+    description: Release flow docs
+  - path: packages/capabilities-cli/dist/README.md
+    description: Primary CI release path
+  - path: packages/capabilities-cli/docs/user-guide.md
+    description: Install GitHub Release binaries
+  - path: packages/capabilities-cli/CHANGELOG.md
+    description: Unreleased automation notes
+  - path: docs/versioning.md
+    description: Residual CLI path updated
+  - path: README.md
+    description: Packaging row updated
