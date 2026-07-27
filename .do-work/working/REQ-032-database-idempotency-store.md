@@ -1,7 +1,13 @@
 # REQ-032: Database IdempotencyStore
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.3027
+**Claimed at:** 2026-07-27T05:06:06Z
+**Heartbeat:** 2026-07-27T05:06:06Z
+<!-- claimed-end -->
+
 **UR:** UR-004
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
