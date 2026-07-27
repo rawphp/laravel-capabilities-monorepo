@@ -7,18 +7,29 @@ Downloadable client for end users and local agents. Authenticates to a deploymen
 **Module:** `github.com/rawphp/capabilities-cli`  
 **Binary name:** `capabilities`  
 **Language:** Go 1.22+ (D-016)  
-**Status:** 0.x pre-stable; build from source until signed binary releases exist  
+**Status:** 0.x pre-stable; prefer release binaries when available, or build from source  
 **Repo:** [github.com/rawphp/capabilities-cli](https://github.com/rawphp/capabilities-cli)
 
 **No domain `run()` on the laptop.** The server always re-validates and authorizes.
 
-## Before you start
+## Install
 
-- Go toolchain for build/test
-- A running Laravel app with `rawphp/laravel-capabilities` HTTP surface enabled and reachable
-- Credentials the app accepts for CLI (server derives caller `cli` from token abilities / auth — see core `clients.token_abilities`)
+### GitHub Release binaries (recommended when tagged)
 
-## Build and test
+After a monorepo `v*` tag is split into this package remote, CI publishes multi-arch
+`capabilities` archives to
+[GitHub Releases](https://github.com/rawphp/capabilities-cli/releases)
+(darwin / linux / windows × amd64 / arm64, plus `checksums.txt`).
+
+1. Open the latest (or desired) release on that page.
+2. Download the archive for your OS/arch.
+3. Extract the `capabilities` binary, place it on your `PATH`, and run `capabilities version`.
+
+Assets may be **unsigned** unless platform-signing secrets are configured on the
+package repo (see [`release-signing.md`](release-signing.md)). Source build remains
+fully supported either way.
+
+### Build from source
 
 ```bash
 # from this package root (monorepo: packages/capabilities-cli)
@@ -34,6 +45,12 @@ GOOS=darwin GOARCH=arm64 go build -o dist/capabilities-darwin-arm64 ./cmd/capabi
 ```
 
 Single static binary — no Node or PHP on the user machine.
+
+## Before you start
+
+- A running Laravel app with `rawphp/laravel-capabilities` HTTP surface enabled and reachable
+- Credentials the app accepts for CLI (server derives caller `cli` from token abilities / auth — see core `clients.token_abilities`)
+- Go toolchain only if building from source (not required for release binaries)
 
 ## Principles
 
@@ -171,7 +188,7 @@ internal/
   run/              # validate locally → POST invoke
   mcpstdio/         # optional MCP stdio bridge
   api/              # HTTP client
-dist/               # cross-compile notes + future release artifacts
+dist/               # cross-compile notes; CI release uses GoReleaser
 ```
 
 ## How you know it worked

@@ -22,15 +22,22 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 - Secret-gated macOS codesign/notarization + Windows Authenticode scaffold
   (workflow conditions + soft-skip hooks). See `docs/release-signing.md`. When secrets
   are absent, releases still publish unsigned multi-arch assets + checksums.
+- **Release automation path:** monorepo git tag `v*` → package split/mirror → child-repo
+  GitHub Release on `rawphp/capabilities-cli` (`.github/workflows/release.yml` + GoReleaser).
+  Install/download pointer and residual wording updated in package README, `dist/README.md`,
+  and user guide.
 
 ### Notes
 
-- **Not a Packagist package** (Go module). Distributed as source / binary release artifacts
-  via GoReleaser on the mirrored package remote (`dist/` documents the matrix + ldflags).
+- **Not a Packagist package** (Go module). Preferred consumer install is a **GitHub Release**
+  binary from the mirrored package remote; source build and ad-hoc cross-compile remain
+  documented (`dist/` matrix + ldflags).
 - Module path: `github.com/rawphp/capabilities-cli` (see `go.mod`).
 - Version marker is the monorepo git tag pattern `v0.Y.Z` (mirrored to this package remote);
   release builds inject the tag-without-`v` via ldflags (see `dist/README.md`).
 - This package tree is mirrored from the monorepo to `github.com/rawphp/capabilities-cli` on push.
+- Platform **signing** still depends on secrets configured on the child repo; without them
+  releases publish unsigned multi-arch assets (not a hard release failure).
 
 <!--
   First tagged 0.x.y scaffold (Keep a Changelog):

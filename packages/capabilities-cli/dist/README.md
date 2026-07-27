@@ -1,13 +1,13 @@
 # Cross-compile targets
 
-Release artifacts for the `capabilities` binary are produced by **GoReleaser**
-using the package-root config [`.goreleaser.yml`](../.goreleaser.yml) (GoReleaser
-**v2** schema: `version: 2`). On `v*` tags in `rawphp/capabilities-cli` (after
-monorepo split), the package release workflow runs GoReleaser and attaches
-archives + `checksums.txt` to a GitHub Release.
+**Primary release path (CI):** monorepo tag `v*` → split mirrors into
+`rawphp/capabilities-cli` → package workflow [`.github/workflows/release.yml`](../.github/workflows/release.yml)
+runs **GoReleaser** ([`.goreleaser.yml`](../.goreleaser.yml), schema **v2**) and
+publishes multi-arch archives + `checksums.txt` to a
+[GitHub Release](https://github.com/rawphp/capabilities-cli/releases).
 
-For local / ad-hoc builds without GoReleaser, use Go’s standard cross-compile
-flags below.
+Manual / ad-hoc builds without GoReleaser remain available for contributors
+(matrix and examples below). They are **not** the only distribution path.
 
 ## Supported GOOS / GOARCH matrix
 
@@ -68,7 +68,7 @@ Config: `packages/capabilities-cli/.goreleaser.yml` (self-contained after split)
 | Matrix | darwin/linux/windows × amd64/arm64 |
 | Version ldflags | `-X main.Version={{.Version}}` (tag `v1.2.3` → `1.2.3`) |
 | Checksums | `checksums.txt` (sha256) |
-| Signing | Not in base config; secret-gated in a later release step |
+| Signing | Secret-gated (macOS + Windows); **unsigned** assets still publish when secrets are missing — see [`docs/release-signing.md`](../docs/release-signing.md) |
 
 ```bash
 # from packages/capabilities-cli (requires goreleaser v2.x on PATH)
