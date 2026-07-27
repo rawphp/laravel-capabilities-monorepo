@@ -164,7 +164,7 @@ Matrix source: `packages/laravel-capabilities/src/Adapters/PeerSupportMatrix.php
 ### `assertSchemaSnapshot` always passes but CI did not lock schema
 
 **Cause:** Name-only call does not lock.  
-**Fix:** Pass file path, conventional directory, or envelope — see [core guide](packages/laravel-capabilities.md#testing-helpers-d-020).
+**Fix:** Pass file path, conventional directory, or envelope — see [core guide](../packages/laravel-capabilities/docs/README.md#testing-helpers-d-020).
 
 ### `assertParity` throws `InvalidArgumentException`
 
@@ -179,7 +179,7 @@ Matrix source: `packages/laravel-capabilities/src/Adapters/PeerSupportMatrix.php
 ## Still stuck
 
 1. [Concepts](concepts.md) — confirm the model  
-2. Package guides under [docs/packages/](packages/)  
+2. Package guides under each package `docs/` (see [docs/README.md](README.md#package-local-docs))  
 3. [spec.md](spec.md) — design oracle when behaviour is ambiguous  
 4. Package unit tests under `packages/*/tests` — behavioural contract for the monorepo design  
 

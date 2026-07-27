@@ -11,7 +11,7 @@ Implements core `ConversationIngress` / `ApprovalNotifier` contracts. **Never** 
 | Doc | Path |
 |---|---|
 | Docs index | [docs/README.md](../../docs/README.md) |
-| Messaging user guide | [docs/packages/laravel-capabilities-messaging.md](../../docs/packages/laravel-capabilities-messaging.md) |
+| Messaging user guide | [docs/README.md](docs/README.md) |
 | Getting started (optional messaging) | [docs/getting-started.md](../../docs/getting-started.md) |
 | Concepts | [docs/concepts.md](../../docs/concepts.md) |
 | Troubleshooting | [docs/troubleshooting.md](../../docs/troubleshooting.md) |

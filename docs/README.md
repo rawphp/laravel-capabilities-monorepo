@@ -10,9 +10,9 @@ Task-based **user guides** live here alongside design docs and tutorials. Start 
 |---|---|
 | [Getting started](getting-started.md) | Install path/VCS → first capability → optional messaging → optional CLI |
 | [Concepts](concepts.md) | Mental model: bus, surfaces, `run()`, profiles, approval, idempotency, messaging, CLI |
-| [Core package](packages/laravel-capabilities.md) | Define, invoke, surfaces, config, peers, D-020 helpers |
-| [Messaging package](packages/laravel-capabilities-messaging.md) | Telegram sibling: webhooks, identity, agent profile |
-| [Product CLI](packages/capabilities-cli.md) | Build `capabilities`, auth, catalog, run, MCP stdio |
+| [Core package](../packages/laravel-capabilities/docs/README.md) | Define, invoke, surfaces, config, peers, D-020 helpers |
+| [Messaging package](../packages/laravel-capabilities-messaging/docs/README.md) | Telegram sibling: webhooks, identity, agent profile |
+| [Product CLI](../packages/capabilities-cli/docs/README.md) | Build `capabilities`, auth, catalog, run, MCP stdio |
 | [Troubleshooting](troubleshooting.md) | Boot, peers, auth, CLI, messaging failures |
 
 ## Tutorials
@@ -47,3 +47,15 @@ Per-package changelogs live next to each package. Monorepo map and readiness res
 4. **Something broke** → [Troubleshooting](troubleshooting.md)
 
 Design docs are kept as the oracle. User guides summarize verified behaviour; they do not replace `spec.md`.
+
+## Package-local docs
+
+Guides that belong to a single package live under that package:
+
+| Package | Path |
+|---|---|
+| Core | [packages/laravel-capabilities/docs/](../packages/laravel-capabilities/docs/README.md) |
+| Messaging | [packages/laravel-capabilities-messaging/docs/](../packages/laravel-capabilities-messaging/docs/README.md) |
+| CLI | [packages/capabilities-cli/docs/](../packages/capabilities-cli/docs/README.md) |
+
+Monorepo-wide guides (getting started, concepts, troubleshooting, spec) stay under `docs/`.

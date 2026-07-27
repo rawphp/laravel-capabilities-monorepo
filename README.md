@@ -16,9 +16,9 @@ Task-based guides for app integrators (0.x honesty preserved). Start at the docs
 |---|---|
 | [Getting started](docs/getting-started.md) | Path/VCS install → first capability → optional messaging → optional CLI |
 | [Concepts](docs/concepts.md) | Bus, surfaces, `run()`, profiles, approval, idempotency, messaging, CLI |
-| [Core package](docs/packages/laravel-capabilities.md) | Define, invoke, HTTP, config, peers, D-020 |
-| [Messaging package](docs/packages/laravel-capabilities-messaging.md) | Telegram sibling: webhooks, identity, agent profile |
-| [Product CLI](docs/packages/capabilities-cli.md) | Build `capabilities`, auth, catalog, run, MCP stdio |
+| [Core package](packages/laravel-capabilities/docs/README.md) | Define, invoke, HTTP, config, peers, D-020 |
+| [Messaging package](packages/laravel-capabilities-messaging/docs/README.md) | Telegram sibling: webhooks, identity, agent profile |
+| [Product CLI](packages/capabilities-cli/docs/README.md) | Build `capabilities`, auth, catalog, run, MCP stdio |
 | [Troubleshooting](docs/troubleshooting.md) | Boot, peers, auth, CLI, messaging |
 | **[First capability tutorial](docs/tutorials/first-capability.md)** | End-to-end define + invoke + HTTP + D-020 helpers |
 | [docs/versioning.md](docs/versioning.md) | 0.x policy, path/VCS install, CHANGELOG locations, Packagist publish checklist (human) |

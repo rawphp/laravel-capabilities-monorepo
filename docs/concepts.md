@@ -80,7 +80,7 @@ Core **composes** these packages as adapters when agent/MCP surfaces are enabled
 
 1. [Getting started](getting-started.md) — install  
 2. [First capability tutorial](tutorials/first-capability.md) — define and invoke  
-3. Package guides: [core](packages/laravel-capabilities.md) · [messaging](packages/laravel-capabilities-messaging.md) · [CLI](packages/capabilities-cli.md)  
+3. Package guides: [core](../packages/laravel-capabilities/docs/README.md) · [messaging](../packages/laravel-capabilities-messaging/docs/README.md) · [CLI](../packages/capabilities-cli/docs/README.md)  
 4. Design depth: [spec.md](spec.md)
 
 ## Related
