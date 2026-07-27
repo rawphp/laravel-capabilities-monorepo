@@ -22,6 +22,7 @@ final class CapabilitiesConfig
         'rate_limits',
         'observability',
         'clients',
+        'peers',
     ];
 
     /**

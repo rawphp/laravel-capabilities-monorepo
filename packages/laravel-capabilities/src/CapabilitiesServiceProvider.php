@@ -40,7 +40,17 @@ class CapabilitiesServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../config/capabilities.php', 'capabilities');
 
-        $this->app->singleton(PeerVersionProbe::class, static fn () => new PeerVersionProbe);
+        $this->app->singleton(PeerVersionProbe::class, static function ($app) {
+            $support = null;
+            if (isset($app['config'])) {
+                $configured = $app['config']->get('capabilities.peers.support');
+                if (is_array($configured) && $configured !== []) {
+                    $support = $configured;
+                }
+            }
+
+            return new PeerVersionProbe(supportedVersions: $support);
+        });
 
         $this->app->singleton(Metrics::class, function ($app) {
             $config = self::configFromApp($app);

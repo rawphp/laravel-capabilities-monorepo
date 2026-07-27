@@ -144,4 +144,24 @@ return [
         'privilege_order' => ['http', 'cli', 'mcp', 'agent', 'job'],
         'reject_upgrade_attempts' => false,
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Peer support matrix (D-011)
+    |--------------------------------------------------------------------------
+    |
+    | Declared Composer-style version constraints for optional peers.
+    | Runtime source of truth is PeerSupportMatrix; this key mirrors it for
+    | published config / host overrides. PeerVersionProbe defaults to the matrix.
+    | Do not use bare '*' as the sole constraint forever.
+    |
+    */
+    'peers' => [
+        'support' => class_exists(\Rawphp\Capabilities\Adapters\PeerSupportMatrix::class)
+            ? \Rawphp\Capabilities\Adapters\PeerSupportMatrix::constraints()
+            : [
+                'laravel/ai' => ['^0.1', '^1.0'],
+                'laravel/mcp' => ['^0.1', '^1.0'],
+            ],
+    ],
 ];
