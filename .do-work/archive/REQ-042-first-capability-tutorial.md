@@ -1,19 +1,14 @@
 # REQ-042: First capability tutorial
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.49422
-**Claimed at:** 2026-07-27T05:47:57Z
-**Heartbeat:** 2026-07-27T05:47:57Z
-<!-- claimed-end -->
 
 **UR:** UR-007
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-039
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:1297266
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** M
@@ -30,12 +25,12 @@ Brief: first-capability tutorial missing. Ideate: pick one primary path to avoid
 
 ## Acceptance Criteria
 
-- [ ] `docs/tutorials/first-capability.md` exists with end-to-end steps: install/path, define one capability with input/output schema, authorize/run skeleton, invoke via registry
-- [ ] Tutorial picks one primary definition style and briefly cross-links the alternate style
-- [ ] Tutorial states monorepo path-require (or VCS) install, not a false Packagist-only flow
-- [ ] Tutorial links or section-points to testing helpers / D-020 (may note “see Testing helpers docs” if REQ-045 not yet merged — use stable heading anchors or package README)
-- [ ] Root README links to the tutorial under a Getting started or Docs section
-- [ ] Sample code uses real namespaces/classes (`Rawphp\Capabilities\…`) that exist in package source
+- [x] `docs/tutorials/first-capability.md` exists with end-to-end steps: install/path, define one capability with input/output schema, authorize/run skeleton, invoke via registry
+- [x] Tutorial picks one primary definition style and briefly cross-links the alternate style
+- [x] Tutorial states monorepo path-require (or VCS) install, not a false Packagist-only flow
+- [x] Tutorial links or section-points to testing helpers / D-020 (may note “see Testing helpers docs” if REQ-045 not yet merged — use stable heading anchors or package README)
+- [x] Root README links to the tutorial under a Getting started or Docs section
+- [x] Sample code uses real namespaces/classes (`Rawphp\Capabilities\…`) that exist in package source
 
 ## Verification Steps
 
@@ -45,3 +40,10 @@ Brief: first-capability tutorial missing. Ideate: pick one primary path to avoid
    - Expected: at least root README links the tutorial
 3. **runtime** `rg -n "class Capability|function define|namespace Rawphp\\\\Capabilities" packages/laravel-capabilities/src -g '*.php' | head -20`
    - Expected: cited symbols resolve in package source (spot-check)
+
+
+## Outputs
+
+- docs/tutorials/first-capability.md — first capability tutorial
+- README.md — Getting started link
+- packages/laravel-capabilities/README.md — package link
