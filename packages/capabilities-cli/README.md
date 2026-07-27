@@ -3,10 +3,14 @@
 > **Package:** `rawphp/capabilities-cli`  
 > **Language:** Go (D-016)  
 > **Binary:** `capabilities`  
-> **Status:** 0.x pre-stable — build from source until binary releases exist  
+> **Status:** 0.x pre-stable — prefer GitHub Release binaries on `v*` tags; source build still supported  
 > **Repo:** [github.com/rawphp/capabilities-cli](https://github.com/rawphp/capabilities-cli) (mirrored from the monorepo on push)
 
 Downloadable client for end users and local agents. Auth + catalog + run + optional MCP stdio against a remote Laravel app’s **same** HTTP capability API (D-009). **No domain `run()` on the laptop.**
+
+### Releases
+
+Automated **GitHub Releases** (multi-arch `capabilities` binaries + checksums) run on this package repo when a monorepo tag matching `v*` is split/mirrored here. The package-owned workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) runs **GoReleaser** (see [`.goreleaser.yml`](.goreleaser.yml)); retags **replace** the existing release assets. Unsigned publish needs only `GITHUB_TOKEN` (`contents: write`) — no monorepo `SPLIT_GITHUB_TOKEN`. Cross-compile notes: [`dist/README.md`](dist/README.md).
 
 | Doc | Where |
 |---|---|
