@@ -53,8 +53,19 @@ it("happy: happy fail and edge kinds cover success denial and boundaries [COV]",
     expect($inv)->toContain('happy:')->and($inv)->toContain('fail:')->and($inv)->toContain('edge:');
 });
 
-it("happy: go CLI stubs use t.Skip TODO until implemented [COV]", function () {
+it("happy: go CLI unit tests use stable *_test.go names [COV]", function () {
     $cli = A::MONOREPO_ROOT.'/packages/capabilities-cli';
     expect(is_dir($cli) || is_file($cli.'/go.mod'))->toBeTrue();
+    // Implemented CLI suite lives under stable Go test names (not generator-era *_todo_test.go).
+    if (is_dir($cli)) {
+        $todo = [];
+        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($cli, \FilesystemIterator::SKIP_DOTS));
+        foreach ($it as $file) {
+            if ($file->isFile() && str_ends_with($file->getFilename(), '_todo_test.go')) {
+                $todo[] = $file->getPathname();
+            }
+        }
+        expect($todo)->toBe([]);
+    }
 });
 
