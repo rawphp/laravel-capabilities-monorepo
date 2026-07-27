@@ -39,6 +39,7 @@ final class CapabilityDefinition
         public readonly ?string $output = null,
         public readonly array $aliases = [],
         public readonly bool $deprecated = false,
+        public readonly ?string $deprecated_at = null,
         public readonly ?string $successor = null,
         public readonly ?string $sunset_at = null,
         public readonly array $groups = [],
@@ -56,6 +57,7 @@ final class CapabilityDefinition
         public readonly mixed $run = null,
         public readonly string $schemaVersion = '1',
         public readonly string $source = 'attribute',
+        public readonly mixed $canDiscover = null,
     ) {
         if (trim($name) === '') {
             throw new InvalidArgumentException('Capability definition name must not be empty.');
@@ -191,6 +193,46 @@ final class CapabilityDefinition
         }
 
         return $this->output::jsonSchema();
+    }
+
+    /**
+     * Whether this capability may appear in tool/catalog listings for the actor (D-008).
+     */
+    public function isDiscoverable(mixed $actor = null): bool
+    {
+        if ($this->canDiscover === null) {
+            return true;
+        }
+
+        if (is_bool($this->canDiscover)) {
+            return $this->canDiscover;
+        }
+
+        if (is_callable($this->canDiscover)) {
+            return (bool) ($this->canDiscover)($actor);
+        }
+
+        return true;
+    }
+
+    /**
+     * True when sunset_at is set and is at or before $now (D-012).
+     */
+    public function isSunset(?\DateTimeInterface $now = null): bool
+    {
+        if ($this->sunset_at === null || $this->sunset_at === '') {
+            return false;
+        }
+
+        try {
+            $sunset = new \DateTimeImmutable($this->sunset_at);
+        } catch (\Exception) {
+            return false;
+        }
+
+        $now = $now ?? new \DateTimeImmutable('now');
+
+        return $now >= $sunset;
     }
 
     /**

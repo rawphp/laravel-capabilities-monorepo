@@ -23,9 +23,13 @@ final class CapabilityDefinitionBuilder
 
     private bool $deprecated = false;
 
+    private ?string $deprecated_at = null;
+
     private ?string $successor = null;
 
     private ?string $sunset_at = null;
+
+    private mixed $canDiscover = null;
 
     /** @var list<string> */
     private array $groups = [];
@@ -122,6 +126,13 @@ final class CapabilityDefinitionBuilder
         return $this;
     }
 
+    public function deprecatedAt(?string $deprecatedAt): self
+    {
+        $this->deprecated_at = $deprecatedAt;
+
+        return $this;
+    }
+
     public function successor(?string $successor): self
     {
         $this->successor = $successor;
@@ -132,6 +143,16 @@ final class CapabilityDefinitionBuilder
     public function sunsetAt(?string $sunsetAt): self
     {
         $this->sunset_at = $sunsetAt;
+
+        return $this;
+    }
+
+    /**
+     * @param  bool|callable|null  $canDiscover
+     */
+    public function canDiscover(bool|callable|null $canDiscover): self
+    {
+        $this->canDiscover = $canDiscover;
 
         return $this;
     }
@@ -252,6 +273,7 @@ final class CapabilityDefinitionBuilder
             output: $this->output,
             aliases: $this->aliases,
             deprecated: $this->deprecated,
+            deprecated_at: $this->deprecated_at,
             successor: $this->successor,
             sunset_at: $this->sunset_at,
             groups: $this->groups,
@@ -269,6 +291,7 @@ final class CapabilityDefinitionBuilder
             run: $this->run,
             schemaVersion: $this->schemaVersion,
             source: 'fluent',
+            canDiscover: $this->canDiscover,
         );
     }
 
