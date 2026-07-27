@@ -14,6 +14,10 @@ it("happy: agent loop allows when budget=1 calls=1 [D-013]", function () {
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();
 
+it("happy: agent loop allows when budget=1 calls=1 (case 1) [D-013]", function () {
+    // TODO: implement unit test with mocks/fakes (no DB).
+})->todo();
+
 it("fail: agent loop stops when budget=1 calls=2 [D-013]", function () {
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();

@@ -7,11 +7,11 @@ When implemented, the tests are the source of truth for what the product is and 
 
 Policy: **unit tests only**, no DB, mocks/fakes, **≥95% coverage** when implemented (`AGENTS.md`).
 
-**Total TODO cases:** 5001
+**Total TODO cases:** 5010
 
-- happy: 2024
-- fail: 1735
-- edge: 975
+- happy: 2029
+- fail: 1737
+- edge: 977
 - go: 267
 
 Regenerate:
@@ -741,7 +741,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] happy: idempotency_key tool arg passed through [D-005]
 - [ ] fail: authorization deny through mcp does not mutate [D-011]
 
-### `Surfaces/AiAdapterTest.php` (8)
+### `Surfaces/AiAdapterTest.php` (9)
 
 - [ ] happy: AiToolAdapterV1 builds tools from profile selection [D-011]
 - [ ] happy: tool handle validates and invokes registry with caller agent [D-022]
@@ -749,6 +749,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] happy: max_tool_calls_per_turn enforced on agent loop budget [D-013]
 - [ ] edge: tool input_schema equals catalog input_schema [D-004]
 - [ ] fail: agent surface disabled registers no tools [SURF-003]
+- [ ] happy: idempotency_key tool arg passed through (case 1) [D-005]
 - [ ] fail: authorization deny through ai does not mutate [D-011]
 - [ ] edge: messaging agent turn still caller agent with messaging metadata [D-007]
 
@@ -848,12 +849,13 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] edge: core composer suggest lists messaging optional [D-007]
 - [ ] fail: core does not require TELEGRAM_BOT_TOKEN [D-021]
 
-### `TestingHelpers/ParityAndSnapshotsTest.php` (12)
+### `TestingHelpers/ParityAndSnapshotsTest.php` (13)
 
 - [ ] happy: assertSchemaSnapshot fails when input_schema changes without update [D-020]
 - [ ] happy: assertSchemaSnapshot passes when schema matches snapshot [D-020]
 - [ ] happy: assertParity same success class across registry surfaces with mocks [D-020]
 - [ ] happy: assertCannotInvokeAcrossTenant fails test on cross-tenant success [D-003]
+- [ ] happy: assertScopeResolvedTo fails when scope mismatches (case 1) [D-003]
 - [ ] happy: assertLastScopeTenant reflects SystemActor first-class tenant not smuggled input [P2-005]
 - [ ] edge: assertParity same deny class across registry http and ai with mocks [D-020]
 - [ ] edge: assertParity can include surface path for agent [D-020]
@@ -1040,11 +1042,12 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] edge: policy custom allows authorized decision [D-006]
 - [ ] fail: policy custom forbids unauthorized decision [D-006]
 
-### `Schema/SchemaValidationMatrixTest.php` (27)
+### `Schema/SchemaValidationMatrixTest.php` (28)
 
 - [ ] fail: portable validation rejects integer when string [D-004]
 - [ ] happy: portable validation accepts valid integer [D-004]
 - [ ] fail: portable validation rejects integer when null_when_required [D-004]
+- [ ] happy: portable validation accepts valid integer (case 1) [D-004]
 - [ ] fail: portable validation rejects string when integer [D-004]
 - [ ] happy: portable validation accepts valid string [D-004]
 - [ ] fail: portable validation rejects boolean when string [D-004]
@@ -2093,14 +2096,16 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] happy: resume algorithm includes step complete_idempotency [P2-004]
 - [ ] happy: resume algorithm includes step emit_metrics [P2-004]
 
-### `Idempotency/WireFormatMatrixTest.php` (14)
+### `Idempotency/WireFormatMatrixTest.php` (16)
 
 - [ ] happy: idempotency key accepted via http header [D-005]
 - [ ] edge: idempotency key identity includes surface actor scope for http [D-005]
 - [ ] happy: idempotency key accepted via http body [D-005]
+- [ ] edge: idempotency key identity includes surface actor scope for http (case 1) [D-005]
 - [ ] happy: idempotency key accepted via cli auto_uuid [D-005]
 - [ ] edge: idempotency key identity includes surface actor scope for cli [D-005]
 - [ ] happy: idempotency key accepted via cli manual_flag [D-005]
+- [ ] edge: idempotency key identity includes surface actor scope for cli (case 1) [D-005]
 - [ ] happy: idempotency key accepted via mcp tool_arg [D-005]
 - [ ] edge: idempotency key identity includes surface actor scope for mcp [D-005]
 - [ ] happy: idempotency key accepted via agent tool_arg [D-005]
@@ -2112,15 +2117,15 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 
 ### `Idempotency/KeyFormatMatrixTest.php` (9)
 
-- [ ] happy: key format accepts 'a' [D-005]
-- [ ] happy: key format accepts 'len128' [D-005]
-- [ ] fail: key format rejects 'len129' [D-005]
-- [ ] fail: key format rejects '' [D-005]
-- [ ] happy: key format accepts 'good.key-1:2' [D-005]
-- [ ] fail: key format rejects 'bad key' [D-005]
-- [ ] fail: key format rejects 'bad/key' [D-005]
-- [ ] fail: key format rejects 'bad@key' [D-005]
-- [ ] happy: key format accepts 'len24' [D-005]
+- [ ] happy: key format accepts single_char_a [D-005]
+- [ ] happy: key format accepts len128 [D-005]
+- [ ] fail: key format rejects len129 [D-005]
+- [ ] fail: key format rejects empty_string [D-005]
+- [ ] happy: key format accepts alnum_dot_dash_colon [D-005]
+- [ ] fail: key format rejects contains_space [D-005]
+- [ ] fail: key format rejects contains_slash [D-005]
+- [ ] fail: key format rejects contains_at [D-005]
+- [ ] happy: key format accepts uuid_style [D-005]
 
 ### `Catalog/ListFieldMatrixTest.php` (26)
 
@@ -3922,7 +3927,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] fail: context build refuses invalid_mcp_auth_profile [CTX-001]
 - [ ] fail: context build refuses missing_job_acting_as_metadata [CTX-001]
 
-### `Job/SystemNamesMatrixTest.php` (13)
+### `Job/SystemNamesMatrixTest.php` (14)
 
 - [ ] happy: system actor scheduler allowed when listed [D-002]
 - [ ] fail: system actor scheduler denied when not listed [D-002]
@@ -3937,6 +3942,7 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] happy: system actor unknown allowed when listed [D-002]
 - [ ] fail: system actor unknown denied when not listed [D-002]
 - [ ] fail: empty system actor name rejected [D-002]
+- [ ] fail: empty system actor name rejected (case 1) [D-002]
 
 ### `Surfaces/ArtisanFlagsTest.php` (5)
 
@@ -4021,10 +4027,11 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] edge: approval messaging metadata may include message_id [D-006]
 - [ ] happy: telegram notifier can edit message using message_id [D-006]
 
-### `RateLimiting/AgentTurnBudgetMatrixTest.php` (19)
+### `RateLimiting/AgentTurnBudgetMatrixTest.php` (20)
 
 - [ ] happy: agent loop allows when budget=1 calls=0 [D-013]
 - [ ] happy: agent loop allows when budget=1 calls=1 [D-013]
+- [ ] happy: agent loop allows when budget=1 calls=1 (case 1) [D-013]
 - [ ] fail: agent loop stops when budget=1 calls=2 [D-013]
 - [ ] happy: agent loop allows when budget=2 calls=0 [D-013]
 - [ ] happy: agent loop allows when budget=2 calls=1 [D-013]
@@ -5424,9 +5431,11 @@ Do not hand-edit generated test stubs; extend the catalog in the generator and r
 - [ ] happy: step order 06 tools [MSG-003]
 - [ ] happy: step order 07 reply [MSG-003]
 
-### `Architecture/TestingPolicyTest.php` (1)
+### `Architecture/TestingPolicyTest.php` (3)
 
 - [ ] fail: no tests/Feature directory in messaging package [POLICY]
+- [ ] fail: tests do not require database connection (case 1) [POLICY]
+- [ ] happy: tests live under tests/Unit (case 1) [POLICY]
 
 ### `Telegram/CallerAgentMetadataBulkTest.php` (10)
 

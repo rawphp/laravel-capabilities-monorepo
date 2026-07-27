@@ -22,6 +22,10 @@ it("happy: assertCannotInvokeAcrossTenant fails test on cross-tenant success [D-
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();
 
+it("happy: assertScopeResolvedTo fails when scope mismatches (case 1) [D-003]", function () {
+    // TODO: implement unit test with mocks/fakes (no DB).
+})->todo();
+
 it("happy: assertLastScopeTenant reflects SystemActor first-class tenant not smuggled input [P2-005]", function () {
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();

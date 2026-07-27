@@ -57,3 +57,7 @@ it("fail: system actor unknown denied when not listed [D-002]", function () {
 it("fail: empty system actor name rejected [D-002]", function () {
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();
+
+it("fail: empty system actor name rejected (case 1) [D-002]", function () {
+    // TODO: implement unit test with mocks/fakes (no DB).
+})->todo();
