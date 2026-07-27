@@ -1,7 +1,13 @@
 # REQ-053: Pre-stable 0.x release path
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.40419
+**Claimed at:** 2026-07-27T06:54:55Z
+**Heartbeat:** 2026-07-27T06:54:55Z
+<!-- claimed-end -->
+
 **UR:** UR-008
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:** Maintainer prepares monorepo packages for a pre-stable 0.x consumer install (tag + Packagist residual)
