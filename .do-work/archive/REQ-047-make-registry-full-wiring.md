@@ -1,19 +1,14 @@
 # REQ-047: makeRegistry full config wiring
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.40419
-**Claimed at:** 2026-07-27T06:12:35Z
-**Heartbeat:** 2026-07-27T06:12:35Z
-<!-- claimed-end -->
 
 **UR:** UR-008
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-046
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (3/3) commit:4482f3b
 **Criteria approved:** agent-drafted
 **Priority:** 3
 **Size:** L
@@ -30,15 +25,15 @@ Hotspot: `ContainerBindings::makeRegistry` returns `new CapabilityRegistry(clock
 
 ## Acceptance Criteria
 
-- [ ] `makeRegistry` uses config (or defaults) for globally enabled surfaces from `surfaces.*.enabled`
-- [ ] Injects approval store consistent with `makeApprovalManager` driver resolution for the same config
-- [ ] Injects idempotency store consistent with `makeIdempotencyStore` for the same config
-- [ ] Applies audit mode/enabled/required/driver-related settings via existing registry APIs
-- [ ] Injects `ScopeResolver` (default `DefaultScopeResolver` or from config/binding hook if already present)
-- [ ] Applies rate limit, validation/output, transactions wrap, events, and tool surface profile config when present on config array
-- [ ] Clock remains `SystemClock` by default; tests may still inject `FixedClock` via constructor/withClock
-- [ ] Unit tests fail on pre-change bare factory (prove config is not ignored) then pass after wiring
-- [ ] Challenger: when `approval.store=database` and `idempotency.driver=memory`, registry gets matching mixed drivers without inventing a second store type
+- [x] `makeRegistry` uses config (or defaults) for globally enabled surfaces from `surfaces.*.enabled`
+- [x] Injects approval store consistent with `makeApprovalManager` driver resolution for the same config
+- [x] Injects idempotency store consistent with `makeIdempotencyStore` for the same config
+- [x] Applies audit mode/enabled/required/driver-related settings via existing registry APIs
+- [x] Injects `ScopeResolver` (default `DefaultScopeResolver` or from config/binding hook if already present)
+- [x] Applies rate limit, validation/output, transactions wrap, events, and tool surface profile config when present on config array
+- [x] Clock remains `SystemClock` by default; tests may still inject `FixedClock` via constructor/withClock
+- [x] Unit tests fail on pre-change bare factory (prove config is not ignored) then pass after wiring
+- [x] Challenger: when `approval.store=database` and `idempotency.driver=memory`, registry gets matching mixed drivers without inventing a second store type
 
 ## Verification Steps
 
@@ -56,3 +51,10 @@ Hotspot: `ContainerBindings::makeRegistry` returns `new CapabilityRegistry(clock
 **Data dependencies:** `config/capabilities.php` / `CapabilitiesConfig::defaults()` — surfaces, approval, idempotency, audit, rate_limits, validation, transactions, events, tool profiles.
 
 **Service dependencies:** `CapabilityRegistry` with* injectors; `makeApprovalManager` / `makeIdempotencyStore`; `DefaultScopeResolver`; `SystemClock`.
+
+## Outputs
+
+- packages/laravel-capabilities/src/Boot/ContainerBindings.php — makeRegistry full wiring
+- packages/laravel-capabilities/src/Registry/CapabilityRegistry.php — accessors for stores/scope/audit
+- packages/laravel-capabilities/tests/Unit/Boot/ConfigDrivenBindingsTest.php — wiring unit tests
+- packages/laravel-capabilities/tests/Unit/Boot/ContainerBindingsTest.php — smoke wiring tests
