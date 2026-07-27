@@ -18,6 +18,10 @@ it("fail: portable validation rejects integer when null_when_required [D-004]", 
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();
 
+it("happy: portable validation accepts valid integer (case 1) [D-004]", function () {
+    // TODO: implement unit test with mocks/fakes (no DB).
+})->todo();
+
 it("fail: portable validation rejects string when integer [D-004]", function () {
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();

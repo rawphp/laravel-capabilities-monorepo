@@ -6,38 +6,38 @@
 
 declare(strict_types=1);
 
-it("happy: key format accepts 'a' [D-005]", function () {
+it("happy: key format accepts single_char_a [D-005]", function () {
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();
 
-it("happy: key format accepts 'len128' [D-005]", function () {
+it("happy: key format accepts len128 [D-005]", function () {
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();
 
-it("fail: key format rejects 'len129' [D-005]", function () {
+it("fail: key format rejects len129 [D-005]", function () {
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();
 
-it("fail: key format rejects '' [D-005]", function () {
+it("fail: key format rejects empty_string [D-005]", function () {
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();
 
-it("happy: key format accepts 'good.key-1:2' [D-005]", function () {
+it("happy: key format accepts alnum_dot_dash_colon [D-005]", function () {
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();
 
-it("fail: key format rejects 'bad key' [D-005]", function () {
+it("fail: key format rejects contains_space [D-005]", function () {
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();
 
-it("fail: key format rejects 'bad/key' [D-005]", function () {
+it("fail: key format rejects contains_slash [D-005]", function () {
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();
 
-it("fail: key format rejects 'bad@key' [D-005]", function () {
+it("fail: key format rejects contains_at [D-005]", function () {
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();
 
-it("happy: key format accepts 'len24' [D-005]", function () {
+it("happy: key format accepts uuid_style [D-005]", function () {
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();

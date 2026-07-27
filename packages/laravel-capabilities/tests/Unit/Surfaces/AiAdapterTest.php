@@ -30,6 +30,10 @@ it("fail: agent surface disabled registers no tools [SURF-003]", function () {
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();
 
+it("happy: idempotency_key tool arg passed through (case 1) [D-005]", function () {
+    // TODO: implement unit test with mocks/fakes (no DB).
+})->todo();
+
 it("fail: authorization deny through ai does not mutate [D-011]", function () {
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();

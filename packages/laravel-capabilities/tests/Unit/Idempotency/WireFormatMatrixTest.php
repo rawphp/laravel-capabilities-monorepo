@@ -18,6 +18,10 @@ it("happy: idempotency key accepted via http body [D-005]", function () {
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();
 
+it("edge: idempotency key identity includes surface actor scope for http (case 1) [D-005]", function () {
+    // TODO: implement unit test with mocks/fakes (no DB).
+})->todo();
+
 it("happy: idempotency key accepted via cli auto_uuid [D-005]", function () {
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();
@@ -27,6 +31,10 @@ it("edge: idempotency key identity includes surface actor scope for cli [D-005]"
 })->todo();
 
 it("happy: idempotency key accepted via cli manual_flag [D-005]", function () {
+    // TODO: implement unit test with mocks/fakes (no DB).
+})->todo();
+
+it("edge: idempotency key identity includes surface actor scope for cli (case 1) [D-005]", function () {
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();
 

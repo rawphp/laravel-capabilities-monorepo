@@ -15,12 +15,36 @@ Policy (AGENTS.md): unit tests only, no DB, mocks/fakes.
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from textwrap import dedent
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def pest_evaluable(description: str) -> str:
+    """Mirror Pest\\Support\\Str::evaluable so generated it() titles stay unique per file.
+
+    Pest doubles existing underscores, replaces spaces with underscores, then
+    replaces non [A-Za-z0-9_\\x80-\\xff] with underscores. Distinct labels that
+    only differ by punctuation (e.g. 'bad key' vs 'bad/key') collapse to the
+    same method name and fatal with Cannot redeclare.
+    """
+    code = description.replace("_", "__")
+    code = "__pest_evaluable_" + code.replace(" ", "_")
+    return re.sub(r"[^a-zA-Z0-9_\x80-\xff]", "_", code)
+
+
+def go_test_func_name(title: str) -> str:
+    """Stable Go Test* function name from a catalog title (never drops scenarios)."""
+    if title.startswith("Test"):
+        return title
+    safe = "".join(ch if ch.isalnum() else "_" for ch in title)
+    while "__" in safe:
+        safe = safe.replace("__", "_")
+    return "Test" + "".join(p.capitalize() for p in safe.split("_") if p)
 
 CALLERS = ["agent", "mcp", "http", "cli", "job"]
 SURFACES = ["agent", "mcp", "http", "cli", "job", "artisan", "messaging"]
@@ -1913,24 +1937,27 @@ def build_catalog() -> list[FileSpec]:
         idem_w.edge(f"idempotency key identity includes surface actor scope for {surface}", "D-005")
     files.append(idem_w)
 
-    # Key format validation matrix
+    # Key format validation matrix.
+    # Tags (not raw sample repr) keep Pest method names unique: punctuation in
+    # samples like "bad key" / "bad/key" / "bad@key" collapses under Str::evaluable.
     keyf = F("core", "Idempotency/KeyFormatMatrixTest.php")
-    for sample, ok in [
-        ("a", True),
-        ("A" * 128, True),
-        ("A" * 129, False),
-        ("", False),
-        ("good.key-1:2", True),
-        ("bad key", False),
-        ("bad/key", False),
-        ("bad@key", False),
-        ("uuid-style-123e4567-e89b", True),
+    for sample, ok, tag in [
+        ("a", True, "single_char_a"),
+        ("A" * 128, True, "len128"),
+        ("A" * 129, False, "len129"),
+        ("", False, "empty_string"),
+        ("good.key-1:2", True, "alnum_dot_dash_colon"),
+        ("bad key", False, "contains_space"),
+        ("bad/key", False, "contains_slash"),
+        ("bad@key", False, "contains_at"),
+        ("uuid-style-123e4567-e89b", True, "uuid_style"),
     ]:
-        label = sample if len(sample) <= 20 else f"len{len(sample)}"
         if ok:
-            keyf.happy(f"key format accepts {label!r}", "D-005")
+            keyf.happy(f"key format accepts {tag}", "D-005")
         else:
-            keyf.fail(f"key format rejects {label!r}", "D-005")
+            keyf.fail(f"key format rejects {tag}", "D-005")
+        # Sample retained on Case.note for implementers (not part of Pest title).
+        keyf.cases[-1].note = f"sample={sample!r}"
     files.append(keyf)
 
     # Catalog list field presence × capability flags
@@ -3701,14 +3728,7 @@ def go_file_content(spec: FileSpec) -> str:
         "",
     ]
     for case in spec.cases:
-        # Go titles are stored in case.title for kind=go
-        name = case.title if case.kind == "go" else case.title
-        if not name.startswith("Test"):
-            # slugify
-            safe = "".join(ch if ch.isalnum() else "_" for ch in name)
-            while "__" in safe:
-                safe = safe.replace("__", "_")
-            name = "Test" + "".join(p.capitalize() for p in safe.split("_") if p)
+        name = go_test_func_name(case.title)
         lines.append(f"func {name}(t *testing.T) {{")
         lines.append("\tt.Helper()")
         req = f" [{case.req}]" if case.req else ""
@@ -3767,18 +3787,55 @@ def inventory_content(files: list[FileSpec]) -> str:
             lines.append("")
             for c in f.cases:
                 if c.kind == "go":
-                    name = c.title if c.title.startswith("Test") else c.title
-                    if not name.startswith("Test"):
-                        safe = "".join(ch if ch.isalnum() else "_" for ch in name)
-                        while "__" in safe:
-                            safe = safe.replace("__", "_")
-                        name = "Test" + "".join(p.capitalize() for p in safe.split("_") if p)
+                    name = go_test_func_name(c.title)
                     suffix = f" [{c.req}]" if c.req else ""
                     lines.append(f"- [ ] {name}{suffix}")
                 else:
                     lines.append(f"- [ ] {c.label()}")
             lines.append("")
     return "\n".join(lines)
+
+
+def ensure_unique_cases(files: list[FileSpec]) -> None:
+    """Make inventory labels, Pest method names, and Go Test funcs unique without dropping scenarios.
+
+    Exact catalog duplicates and punctuation-collapsing Pest titles get a stable
+    disambiguating suffix on Case.title so inventory + stubs stay 1:1 complete.
+    """
+    global_keys: set[str] = set()
+    go_funcs_by_package: dict[str, set[str]] = defaultdict(set)
+
+    for f in files:
+        file_methods: set[str] = set()
+        unique: list[Case] = []
+        for c in f.cases:
+            base_title = c.title
+            n = 0
+            while True:
+                c.title = base_title if n == 0 else (
+                    f"{base_title}_{n}" if c.kind == "go" else f"{base_title} (case {n})"
+                )
+                if c.kind == "go":
+                    key = go_test_func_name(c.title)
+                    pkg = f.go_package or f.relpath
+                    if key in global_keys or key in go_funcs_by_package[pkg]:
+                        n += 1
+                        continue
+                    global_keys.add(key)
+                    go_funcs_by_package[pkg].add(key)
+                    unique.append(c)
+                    break
+
+                label = c.label()
+                method = pest_evaluable(label)
+                if label in global_keys or method in file_methods:
+                    n += 1
+                    continue
+                global_keys.add(label)
+                file_methods.add(method)
+                unique.append(c)
+                break
+        f.cases = unique
 
 
 def write_files(files: list[FileSpec]) -> dict:
@@ -3827,22 +3884,8 @@ def write_files(files: list[FileSpec]) -> dict:
 
 def main() -> None:
     files = build_catalog()
-    # de-dupe case labels globally (inventory + stubs stay 1:1 unique contracts)
-    global_seen: set[str] = set()
-    for f in files:
-        unique = []
-        for c in f.cases:
-            key = c.label() if c.kind != "go" else (c.title if c.title.startswith("Test") else c.title)
-            if c.kind == "go" and not str(key).startswith("Test"):
-                safe = "".join(ch if ch.isalnum() else "_" for ch in c.title)
-                while "__" in safe:
-                    safe = safe.replace("__", "_")
-                key = "Test" + "".join(p.capitalize() for p in safe.split("_") if p)
-            if key in global_seen:
-                continue
-            global_seen.add(key)
-            unique.append(c)
-        f.cases = unique
+    # Uniquify (never drop): inventory labels + Pest evaluable method names + Go Test funcs.
+    ensure_unique_cases(files)
 
     stats = write_files(files)
     total = stats["cases"]

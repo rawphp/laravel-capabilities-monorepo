@@ -9,3 +9,11 @@ declare(strict_types=1);
 it("fail: no tests/Feature directory in messaging package [POLICY]", function () {
     // TODO: implement unit test with mocks/fakes (no DB).
 })->todo();
+
+it("fail: tests do not require database connection (case 1) [POLICY]", function () {
+    // TODO: implement unit test with mocks/fakes (no DB).
+})->todo();
+
+it("happy: tests live under tests/Unit (case 1) [POLICY]", function () {
+    // TODO: implement unit test with mocks/fakes (no DB).
+})->todo();
