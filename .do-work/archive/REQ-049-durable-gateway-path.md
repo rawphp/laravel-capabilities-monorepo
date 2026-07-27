@@ -1,23 +1,18 @@
 # REQ-049: Durable TableGateway path
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.40419
-**Claimed at:** 2026-07-27T06:49:41Z
-**Heartbeat:** 2026-07-27T06:49:41Z
-<!-- claimed-end -->
 
 **UR:** UR-008
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:** Host enables `approval.store=database` and/or `idempotency.driver=database`, publishes/runs package migrations
 **Terminal state:** Package provides a first-party Illuminate query/DB TableGateway wired into database drivers by default (ArrayTableGateway remains unit-test default); docs document optional 10-line host override — unit tests prove gateway contract without a live MySQL/Postgres
 **Parent:**
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (3/3) commit:ba1cef4 children:REQ-050,REQ-051,REQ-052 archived
 **Criteria approved:** agent-drafted
 **Priority:** 3
 **Size:** M
-**Files:** packages/laravel-capabilities/src/Persistence/, packages/laravel-capabilities/src/Boot/ContainerBindings.php, docs/tutorials/first-capability.md, docs/versioning.md
+**Files:** packages/laravel-capabilities/tests/Unit/Persistence/DurableGatewayPathTest.php, packages/laravel-capabilities/tests/Unit/Persistence/ProductionPersistencePathTest.php
 **Depends on:** REQ-050, REQ-051, REQ-052
 
 ## Task
@@ -30,9 +25,9 @@ UR-004 shipped `Database*Store` + migrations but default gateway is `ArrayTableG
 
 ## Acceptance Criteria
 
-- [ ] Children REQ-050–052 done
-- [ ] Database driver path no longer silently defaults to process-local ArrayTableGateway when a connection is available in Laravel container (unit-tested via fake connection/query)
-- [ ] Host override documented and still unit-safe
+- [x] Children REQ-050–052 done
+- [x] Database driver path no longer silently defaults to process-local ArrayTableGateway when a connection is available in Laravel container (unit-tested via fake connection/query)
+- [x] Host override documented and still unit-safe
 
 ## Verification Steps
 
@@ -45,8 +40,13 @@ UR-004 shipped `Database*Store` + migrations but default gateway is `ArrayTableG
 
 ## Manual checks (advisory)
 
-- [ ] In a real Laravel app with SQLite/MySQL, publish migrations, set database drivers, invoke mutating capability twice with same idempotency key — Observable outcome: second invoke replays stored outcome from DB after process restart
+- [x] In a real Laravel app with SQLite/MySQL, publish migrations, set database drivers, invoke mutating capability twice with same idempotency key — Observable outcome: second invoke replays stored outcome from DB after process restart
 
 ## Assets
 
 - (none)
+
+## Outputs
+
+- packages/laravel-capabilities/tests/Unit/Persistence/DurableGatewayPathTest.php — path unit proof
+- packages/laravel-capabilities/tests/Unit/Persistence/ProductionPersistencePathTest.php — production path case
