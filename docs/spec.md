@@ -1,8 +1,9 @@
 # Laravel Capabilities
 
-> **Status:** future package design (not published).  
+> **Status:** monorepo **unit-complete design** (v0.1–v0.5 largely unit-tested in-package) — **not Packagist-published**, **not a stable public API**.  
 > **Working title:** `rawphp/laravel-capabilities`  
-> **Job:** one domain capability → many agent-era surfaces, without dual mutation paths.
+> **Job:** one domain capability → many agent-era surfaces, without dual mutation paths.  
+> **Install today:** monorepo path repository or VCS (`docs/versioning.md`). Unit-green monorepo ≠ shipped product — see root README readiness residuals.
 
 ---
 
@@ -3315,15 +3316,19 @@ Run on **every PR** that touches `Adapters/` or peer matrix config. Optional **c
 
 ## Roadmap (indicative)
 
-| Phase | Package | Scope |
-|---|---|---|
-| **v0.1** | **core** | Registry, package-native DTOs (D-015), single HTTP API (D-009), **D-022** caller derivation, D-002/D-003, D-012 names, D-014 output validation, D-017 discovery, conversation contracts |
-| **v0.2** | **core + cli (Go)** | Product CLI as HTTP client (D-016); CLI tokens map to `caller: cli` (D-022); schema validate; auto idempotency; error envelope (D-018) |
-| **v0.3** | **core** | `laravel/ai` + `laravel/mcp` adapters; **D-005** / **D-008**; **D-023** MCP auth profiles; **D-011** support matrix + adapter contract CI |
-| **v0.4** | **core** | D-006 approval SM + **P2-004 resume/atomic crash recovery**; jobs; CLI MCP stdio; D-010 audit/events; D-013 rate limits; D-019 metrics/OTel (`approvals_stuck_approved_total`); D-020 parity helpers |
-| **v0.5** | **messaging** (new package) | Telegram webhooks, identity, threads, signed callbacks, chat approvals via contracts |
-| **v0.6** | **messaging** | Harden Telegram; schema snapshots; docs |
-| **Later** | **messaging** / core | Slack / WhatsApp / email adapters; Livewire helpers; OpenAPI; soft A2A |
+**Status vs roadmap:** roadmap phases describe design scope. **Unit coverage in this monorepo does not mean Packagist ship or a frozen public API.** Markers below are honesty labels for maintainers/consumers — not marketing release status.
+
+| Phase | Package | Scope | Unit monorepo | Residual / publish |
+|---|---|---|---|---|
+| **v0.1** | **core** | Registry, package-native DTOs (D-015), single HTTP API (D-009), **D-022** caller derivation, D-002/D-003, D-012 names, D-014 output validation, D-017 discovery, conversation contracts | largely covered | path/VCS only; no Packagist |
+| **v0.2** | **core + cli (Go)** | Product CLI as HTTP client (D-016); CLI tokens map to `caller: cli` (D-022); schema validate; auto idempotency; error envelope (D-018) | largely covered | CLI binary releases not published |
+| **v0.3** | **core** | `laravel/ai` + `laravel/mcp` adapters; **D-005** / **D-008**; **D-023** MCP auth profiles; **D-011** support matrix + adapter contract CI | unit matrix + fixtures green | **live peer CI residual** (consumer-app path) |
+| **v0.4** | **core** | D-006 approval SM + **P2-004 resume/atomic crash recovery**; jobs; CLI MCP stdio; D-010 audit/events; D-013 rate limits; D-019 metrics/OTel (`approvals_stuck_approved_total`); D-020 parity helpers | largely covered; **D-020 helpers done** (`assertSchemaSnapshot` + `assertParity` unit-path) | not multi-surface live HTTP feature suite; no Packagist |
+| **v0.5** | **messaging** (new package) | Telegram webhooks, identity, threads, signed callbacks, chat approvals via contracts | package unit-covered (mocked Bot API) | messaging defaults off; no Packagist |
+| **v0.6** | **messaging** | Harden Telegram; schema snapshots; docs | partial / residual | first-capability tutorial residual; hardening residual |
+| **Later** | **messaging** / core | Slack / WhatsApp / email adapters; Livewire helpers; OpenAPI; soft A2A | not started | future |
+
+Cross-cutting residuals (also in root README): packaging/Packagist publish, first-capability tutorial, live peer CI. Release notes / per-package CHANGELOGs and D-020 unit helpers are **done** relative to monorepo design work — still pre-stable 0.x.
 
 Non-goals for core: generative UI, multi-app workspaces, template galleries, Artisan-as-product-CLI, shipping Telegram in `laravel-capabilities`, full agent-native Dispatch clone.
 

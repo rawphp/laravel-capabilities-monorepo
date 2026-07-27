@@ -9,7 +9,7 @@ Shared project instructions for all AI coding agents. **AGENTS.md is the source 
 - A *capability* is a real product operation (create invoice, void subscription, …) defined once with name/description, schema, authorization, single `run()`, optional approval + audit — then exposed as needed.
 - Surfaces: in-app agent (`laravel/ai`), MCP (`laravel/mcp`), HTTP, product CLI (downloadable client), jobs. Messaging is a **sibling package**, not core.
 - Working titles: `rawphp/laravel-capabilities` (core), `rawphp/laravel-capabilities-messaging`, `rawphp/capabilities-cli` (Go).
-- **Status:** future package design; monorepo is scaffolded, not published. Spec is the design bible until code supersedes it.
+- **Status:** monorepo **unit-complete design** (package unit suites largely cover v0.1–v0.5 scope) — **not Packagist-published**, **not a stable public API**. Spec remains the design oracle where tests are silent; unit-green ≠ shipped product. See root README readiness residuals.
 
 One sentence: *Define what the product can do once; let every agent-era channel invoke it under the same law.*
 
@@ -150,7 +150,7 @@ Do **not** put package behaviour tests under monorepo-root `tests/`. Each Compos
 - **MCP principals** are explicit auth profiles: user_pat | integration | user_delegated (D-023) — not vague “token user.”
 - **Peer support matrix + adapter contract tests** gate releases for `laravel/ai` / `laravel/mcp` (D-011). `AdapterApi` versions the bridge. Those contract tests are still **unit tests with mocks/fakes** — not feature/DB tests (see Testing).
 - **Testing: unit only, zero feature tests, no DB required** — mock every external boundary. **≥95% coverage** is blocking. This is a monorepo policy, not a suggestion.
-- **Roadmap (indicative):** v0.1 core bus → v0.2 Go CLI → v0.3 AI/MCP adapters → v0.4 approval/jobs/ops → v0.5+ messaging.
+- **Roadmap (indicative):** v0.1 core bus → v0.2 Go CLI → v0.3 AI/MCP adapters → v0.4 approval/jobs/ops → v0.5+ messaging — phases are **unit-covered design targets** in-monorepo, not Packagist release labels (see `docs/spec.md` roadmap status columns + root README residuals).
 
 ## Conventions
 
@@ -166,7 +166,7 @@ Do **not** put package behaviour tests under monorepo-root `tests/`. Each Compos
 
 - Spec-first: behaviour that conflicts with `docs/spec.md` is wrong until the spec is intentionally updated (and decisions recorded).
 - Thin framework, fat domain: keep package glue thin; do not grow a second app framework, chat UI kit, or template gallery.
-- Scaffold is mostly empty class stubs — implement with **unit-test TDD**; do not treat stub bodies as real behaviour.
+- Prefer **unit-test TDD** for new behaviour; implemented package tests (not empty stubs) define monorepo behaviour — do not invent second mutation paths outside the registry.
 - Scope changes to the package that owns the concern (core vs messaging vs CLI). Cross-package only via published contracts/HTTP.
 - If you catch yourself reaching for a feature test or a test database, stop and mock the boundary instead.
 
