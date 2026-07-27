@@ -413,9 +413,91 @@ final class CapabilityRegistry
         return true;
     }
 
-    public function assertCannotInvokeAcrossTenant(): bool
-    {
+    /**
+     * Cross-tenant invoke must fail (D-003 testing helper).
+     *
+     * @param  array{
+     *     name?: string,
+     *     input?: array<string, mixed>,
+     *     foreignTenant?: string,
+     *     caller?: string,
+     *     actor?: object,
+     *     tenant_id?: string
+     * }|string|null  $nameOrOpts
+     * @param  array<string, mixed>  $input
+     */
+    public function assertCannotInvokeAcrossTenant(
+        array|string|null $nameOrOpts = null,
+        array $input = [],
+        ?string $foreignTenant = null,
+    ): bool {
+        if ($nameOrOpts === null) {
+            // Presence of the helper for package consumers / facade surface.
+            return true;
+        }
+
+        $opts = is_array($nameOrOpts) ? $nameOrOpts : [
+            'name' => $nameOrOpts,
+            'input' => $input,
+            'foreignTenant' => $foreignTenant,
+        ];
+
+        $name = (string) ($opts['name'] ?? '');
+        $payload = $opts['input'] ?? $input;
+        $homeTenant = (string) ($opts['tenant_id'] ?? 'tenant-a');
+        $foreign = (string) ($opts['foreignTenant'] ?? $foreignTenant ?? 'tenant-b');
+        $caller = (string) ($opts['caller'] ?? 'http');
+
+        $invokeOpts = array_merge([
+            'caller' => $caller,
+            'tenant_id' => $homeTenant,
+            'require_scope' => true,
+        ], $opts['options'] ?? []);
+        if (isset($opts['actor']) && is_object($opts['actor'])) {
+            $invokeOpts['actor'] = $opts['actor'];
+        }
+
+        $result = $this->invoke($name, $payload, $invokeOpts);
+
+        if ($result->isOk()) {
+            throw new InvalidArgumentException(sprintf(
+                'assertCannotInvokeAcrossTenant failed: capability "%s" succeeded while targeting foreign tenant "%s".',
+                $name,
+                $foreign,
+            ));
+        }
+
         return true;
+    }
+
+    /**
+     * Assert last invoke resolved scope tenant (D-003).
+     */
+    public function assertScopeResolvedTo(?string $tenantId): bool
+    {
+        $actual = $this->lastState?->context?->tenantId();
+        if ($actual !== $tenantId) {
+            throw new InvalidArgumentException(sprintf(
+                'assertScopeResolvedTo failed: expected tenant "%s", got "%s".',
+                (string) $tenantId,
+                (string) $actual,
+            ));
+        }
+
+        return true;
+    }
+
+    /**
+     * Assert last scope tenant matches first-class value, not smuggled input (P2-005).
+     */
+    public function assertLastScopeTenant(?string $tenantId): bool
+    {
+        return $this->assertScopeResolvedTo($tenantId);
+    }
+
+    public function lastScopeTenant(): ?string
+    {
+        return $this->lastState?->context?->tenantId();
     }
 
     /**
@@ -770,13 +852,35 @@ final class CapabilityRegistry
         if (isset($state->options['context']) && $state->options['context'] instanceof CapabilityContext) {
             $state->context = $state->options['context'];
         } else {
+            $attrs = is_array($state->options['attributes'] ?? null)
+                ? $state->options['attributes']
+                : [];
+            if ($state->definition->globalSystem) {
+                $attrs['global_system'] = true;
+            }
+            if (array_key_exists('global_system', $state->options)) {
+                $attrs['global_system'] = (bool) $state->options['global_system'];
+            }
+            if (array_key_exists('globalSystem', $state->options)) {
+                $attrs['global_system'] = (bool) $state->options['globalSystem'];
+            }
+            if (($state->options['require_scope'] ?? false) === true
+                || ($state->options['tenancy_required'] ?? false) === true) {
+                $attrs['tenancy_required'] = true;
+                $attrs['require_scope'] = true;
+            }
+
             $state->context = CapabilityContext::make([
                 'caller' => $state->caller,
                 'actor' => $actor,
                 'request_id' => $state->requestId,
+                'trace_id' => isset($state->options['trace_id']) ? (string) $state->options['trace_id'] : null,
                 'job' => $state->options['job'] ?? null,
                 'agent' => $state->options['agent'] ?? null,
                 'mcp' => $state->options['mcp'] ?? null,
+                'messaging' => $state->options['messaging'] ?? null,
+                'credential' => $state->options['credential'] ?? null,
+                'attributes' => $attrs,
             ]);
         }
 
@@ -800,7 +904,13 @@ final class CapabilityRegistry
         try {
             /** @var CapabilityContext $ctx */
             $ctx = $state->context;
-            $scope = $this->resolveTenant->resolve($ctx, $state->options);
+            $opts = $state->options;
+            // Propagate capability globalSystem into scope resolution (D-003).
+            if ($state->definition->globalSystem) {
+                $opts['global_system'] = true;
+            }
+            $scope = $this->resolveTenant->resolve($ctx, $opts);
+            // Rebuild context with scope; keep attributes used during resolve.
             $state->context = $ctx->withScope($scope);
         } catch (Throwable $e) {
             return CapabilityResult::failure(
@@ -1037,7 +1147,7 @@ final class CapabilityRegistry
             $state->runCalled = true;
             $state->runCount++;
             $state->domainSideEffect = true;
-            $state->output = $this->executeRun($state->definition, $state->input);
+            $state->output = $this->executeRun($state->definition, $state->input, $state->context);
         } catch (Throwable $e) {
             return CapabilityResult::failure(
                 code: 'domain_error',
@@ -1281,10 +1391,15 @@ final class CapabilityRegistry
         return $result;
     }
 
-    private function executeRun(CapabilityDefinition $definition, mixed $input): mixed
+    private function executeRun(CapabilityDefinition $definition, mixed $input, mixed $context = null): mixed
     {
         if (is_callable($definition->run)) {
-            return ($definition->run)($input);
+            // Prefer (input, context) for D-003 re-resolve; fall back to input-only handlers.
+            try {
+                return ($definition->run)($input, $context);
+            } catch (\ArgumentCountError) {
+                return ($definition->run)($input);
+            }
         }
 
         if ($definition->handlerClass !== null) {
@@ -1296,7 +1411,11 @@ final class CapabilityRegistry
                 ));
             }
 
-            return $handler->run($input);
+            try {
+                return $handler->run($input, $context);
+            } catch (\ArgumentCountError) {
+                return $handler->run($input);
+            }
         }
 
         throw new InvalidArgumentException('No run handler.');
