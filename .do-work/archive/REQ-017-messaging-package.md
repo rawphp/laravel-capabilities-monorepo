@@ -1,19 +1,14 @@
 # REQ-017: Messaging package Telegram bus
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.49422
-**Claimed at:** 2026-07-27T03:22:13Z
-**Heartbeat:** 2026-07-27T03:22:13Z
-<!-- claimed-end -->
 
 **UR:** UR-001
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** messaging
 **Entry point:** Telegram webhook → identity → thread → agent tools / approval callbacks
 **Terminal state:** composer test:messaging exits 0; messaging implements core contracts only; no domain run outside registry.
 **Parent:** 
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:73b09a0 messaging 254 tests 97% coverage
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** L
@@ -32,12 +27,12 @@ Original brief: implement all package tests and business logic so all tests pass
 
 ## Acceptance Criteria
 
-- [ ] Telegram/* Identity/* Threads/* Notifiers/* Boot/* Config/* Architecture/* messaging tests pass
-- [ ] No domain run outside registry path
-- [ ] Mocks only — no real Telegram network
-- [ ] Coverage ≥95% on packages/laravel-capabilities-messaging/src
+- [x] Telegram/* Identity/* Threads/* Notifiers/* Boot/* Config/* Architecture/* messaging tests pass
+- [x] No domain run outside registry path
+- [x] Mocks only — no real Telegram network
+- [x] Coverage ≥95% on packages/laravel-capabilities-messaging/src
 
-- [ ] Unauthenticated or invalid Telegram webhook payloads are rejected without invoking registry/run
+- [x] Unauthenticated or invalid Telegram webhook payloads are rejected without invoking registry/run
 
 ## Verification Steps
 
@@ -58,3 +53,8 @@ Original brief: implement all package tests and business logic so all tests pass
 
 - docs/spec.md — design bible / conflict oracle
 - docs/requirements-inventory.md — scenario checklist
+
+
+## Outputs
+
+- messaging package green
