@@ -1,7 +1,13 @@
 # REQ-035: Peer contract residual path
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.95896
+**Claimed at:** 2026-07-27T05:40:22Z
+**Heartbeat:** 2026-07-27T05:40:22Z
+<!-- claimed-end -->
+
 **UR:** UR-006
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:** Maintainer prepares a release that touches AI/MCP adapters or the peer support matrix; consumer app may optionally run peer-live checks against installed `laravel/ai` / `laravel/mcp`
