@@ -44,6 +44,7 @@ use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\CapabilityScope;
 use Rawphp\Capabilities\Support\ErrorCodeMap;
 use Rawphp\Capabilities\Support\InMemoryRateLimiter;
+use Rawphp\Capabilities\Support\SchemaSnapshot;
 use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Support\SystemClock;
@@ -748,12 +749,49 @@ final class CapabilityRegistry implements CapabilityBus
         return true;
     }
 
-    public function assertSchemaSnapshot(string $name, ?array $expected = null): bool
-    {
-        $schema = $this->get($name)->inputSchema();
-        if ($expected !== null && $schema !== $expected) {
-            throw new InvalidArgumentException('Schema snapshot mismatch for '.$name);
+    /**
+     * Lock catalog input_schema + output_schema for a capability (D-020).
+     *
+     * Contract: returns `true` on match; throws {@see \Rawphp\Capabilities\Support\SchemaSnapshotException}
+     * on drift or missing snapshot file. Never throws on match.
+     *
+     * Modes:
+     * - In-memory expected envelope: `assertSchemaSnapshot($name, ['input_schema' => …, 'output_schema' => …])`
+     * - Durable file path: `assertSchemaSnapshot($name, '/path/to/name.schema.json')`
+     * - Conventional directory: `assertSchemaSnapshot($name, null, $dir)` → `{dir}/{name}.schema.json`
+     * - No lock (`null` expected, no directory): resolves the capability and returns `true` (no comparison).
+     *
+     * @param  array{
+     *     input_schema?: array<string, mixed>|null,
+     *     output_schema?: array<string, mixed>|null
+     * }|string|null  $expected  Envelope array, absolute/relative snapshot JSON path, or null
+     * @param  string|null  $snapshotDirectory  When set (and $expected is null), load conventional file under this dir
+     */
+    public function assertSchemaSnapshot(
+        string $name,
+        array|string|null $expected = null,
+        ?string $snapshotDirectory = null,
+    ): bool {
+        $definition = $this->get($name);
+        $actualInput = $definition->inputSchema();
+        $actualOutput = $definition->outputSchema();
+
+        $locked = null;
+
+        if (is_string($expected)) {
+            $locked = SchemaSnapshot::loadFile($name, $expected);
+        } elseif (is_array($expected)) {
+            $locked = SchemaSnapshot::normalizeExpectedArray($expected);
+        } elseif ($snapshotDirectory !== null && $snapshotDirectory !== '') {
+            $path = SchemaSnapshot::conventionalPath($snapshotDirectory, $name);
+            $locked = SchemaSnapshot::loadFile($name, $path);
         }
+
+        if ($locked === null) {
+            return true;
+        }
+
+        SchemaSnapshot::compare($name, $locked, $actualInput, $actualOutput);
 
         return true;
     }

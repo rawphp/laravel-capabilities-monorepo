@@ -17,8 +17,18 @@ it("happy: testing helper fake exists for package consumers [D-020]", function (
 
 it("happy: testing helper assertSchemaSnapshot exists for package consumers [D-020]", function () {
     $h = CatalogHelpers::harness();
+    $def = $h['registry']->get($h['name']);
+    $snap = [
+        'input_schema' => $def->inputSchema(),
+        'output_schema' => $def->outputSchema(),
+    ];
     expect(method_exists($h['registry'], 'assertSchemaSnapshot'))->toBeTrue()
-        ->and($h['registry']->assertSchemaSnapshot($h['name']))->toBeTrue();
+        ->and($h['registry']->assertSchemaSnapshot($h['name'], $snap))->toBeTrue();
+    // drift must name the mismatched side
+    $bad = $snap;
+    $bad['output_schema'] = ['type' => 'boolean'];
+    expect(fn () => $h['registry']->assertSchemaSnapshot($h['name'], $bad))
+        ->toThrow(\Rawphp\Capabilities\Support\SchemaSnapshotException::class, 'output_schema');
 });
 
 it("happy: testing helper assertParity exists for package consumers [D-020]", function () {
