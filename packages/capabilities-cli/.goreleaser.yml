@@ -9,8 +9,10 @@
 # Package is mirrored self-contained to github.com/rawphp/capabilities-cli.
 # Do not publish from monorepo PHP packages.
 #
-# Signing (macOS notarization / Windows Authenticode / cosign) is secret-gated
-# in REQ-063 — this base config has no hard dependency on signing secrets.
+# Signing (macOS codesign + notarization / Windows Authenticode) is secret-gated
+# (REQ-063): post-build hook scripts/sign-binary.sh soft-skips with clear logs
+# when secrets are absent. Do not use {{ .Env.APPLE_* }} / {{ .Env.WINDOWS_* }}
+# expansions that hard-fail empty secrets. Checksums always publish.
 
 version: 2
 
@@ -40,6 +42,11 @@ builds:
     flags:
       - -trimpath
     mod_timestamp: "{{ .CommitTimestamp }}"
+    # Soft-gated platform signing (REQ-063). Script exits 0 when secrets missing.
+    hooks:
+      post:
+        - cmd: bash scripts/sign-binary.sh "{{ .Path }}" "{{ .Os }}" "{{ .Arch }}"
+          output: true
 
 archives:
   - id: default
@@ -62,11 +69,9 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
-# Placeholders for secret-gated signing (REQ-063). Do not enable here with
-# required env lookups — soft path when secrets are missing lives in the
-# package release workflow.
+# Cosign/GPG artifact signatures are out of scope for the soft-path scaffold.
+# Platform Authenticode/codesign runs via hooks above when secrets exist.
 # signs: []
-# notarize: {}
 
 changelog:
   # Prefer package CHANGELOG.md / release notes from workflow; disable auto

@@ -11,7 +11,9 @@
 #     retags overwrite assets/notes instead of failing.
 #
 # Permissions: contents: write is enough for unsigned publish via GITHUB_TOKEN.
-# Signing secrets (REQ-063) are optional and not required here.
+# Platform signing (REQ-063) is secret-gated: when Apple/Windows secrets are
+# absent the release still publishes unsigned multi-arch assets + checksums and
+# logs "signing skipped". See docs/release-signing.md for secret names.
 
 name: Release
 
@@ -38,6 +40,45 @@ jobs:
         with:
           go-version: stable
 
+      - name: Platform signing status
+        id: signing
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -n "${APPLE_CERTIFICATE_BASE64}" ] || [ -n "${WINDOWS_CERT_BASE64}" ]; then
+            echo "enabled=true" >> "${GITHUB_OUTPUT}"
+            echo "Platform signing secrets detected; hooks will sign when tooling/runner allow (see docs/release-signing.md)."
+            if [ -n "${APPLE_CERTIFICATE_BASE64}" ]; then
+              echo "Apple secrets present (APPLE_CERTIFICATE_BASE64)."
+            fi
+            if [ -n "${WINDOWS_CERT_BASE64}" ]; then
+              echo "Windows secrets present (WINDOWS_CERT_BASE64)."
+            fi
+          else
+            echo "enabled=false" >> "${GITHUB_OUTPUT}"
+            echo "signing skipped: no APPLE_* / WINDOWS_* secrets present; publishing unsigned multi-arch assets"
+          fi
+
+      - name: Install osslsigncode (Windows Authenticode, secret-gated)
+        if: ${{ secrets.WINDOWS_CERT_BASE64 != '' }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y osslsigncode
+          osslsigncode -v || true
+
+      - name: Apple signing notice (secret-gated)
+        if: ${{ secrets.APPLE_CERTIFICATE_BASE64 != '' }}
+        run: |
+          set -euo pipefail
+          echo "Apple signing secrets present (APPLE_CERTIFICATE_BASE64)."
+          echo "Full codesign/notarization requires a macOS runner; on ubuntu-latest the"
+          echo "post-build hook soft-skips darwin with a clear 'signing skipped' log."
+          echo "See docs/release-signing.md for APPLE_CERTIFICATE_PASSWORD, APPLE_TEAM_ID,"
+          echo "APPLE_ID / APPLE_ID_PASSWORD, APPLE_API_KEY_ID / APPLE_API_ISSUER / APPLE_API_KEY_P8."
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -50,3 +91,16 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Apple (optional — empty when unset; hooks soft-skip).
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          # Windows Authenticode (optional — empty when unset; hooks soft-skip).
+          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}

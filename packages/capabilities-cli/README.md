@@ -12,9 +12,12 @@ Downloadable client for end users and local agents. Auth + catalog + run + optio
 
 Automated **GitHub Releases** (multi-arch `capabilities` binaries + checksums) run on this package repo when a monorepo tag matching `v*` is split/mirrored here. The package-owned workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) runs **GoReleaser** (see [`.goreleaser.yml`](.goreleaser.yml)); retags **replace** the existing release assets. Unsigned publish needs only `GITHUB_TOKEN` (`contents: write`) — no monorepo `SPLIT_GITHUB_TOKEN`. Cross-compile notes: [`dist/README.md`](dist/README.md).
 
+**Platform signing** (macOS codesign/notarization, Windows Authenticode) is **secret-gated**: when secrets are absent the release still publishes **unsigned** assets with clear skip logs; when secrets are present, signing hooks run. Secret names and setup: [`docs/release-signing.md`](docs/release-signing.md). Never commit private keys or certificates.
+
 | Doc | Where |
 |---|---|
 | User guide | [docs/user-guide.md](docs/user-guide.md) |
+| Release signing (secret-gated) | [docs/release-signing.md](docs/release-signing.md) |
 | Changelog | [CHANGELOG.md](CHANGELOG.md) |
 | Server HTTP API | [laravel-capabilities user guide](https://github.com/rawphp/laravel-capabilities/blob/main/docs/user-guide.md) |
 | Monorepo design | [laravel-capabilities-monorepo](https://github.com/rawphp/laravel-capabilities-monorepo) |

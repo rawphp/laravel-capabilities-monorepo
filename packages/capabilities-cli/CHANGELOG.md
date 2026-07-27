@@ -18,7 +18,10 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 - No embedded domain logic; server re-validates and derives `caller: cli` from credentials.
 - Package-root `.goreleaser.yml` (GoReleaser v2): multi-arch `capabilities` binary
   (darwin/linux/windows × amd64/arm64), `-X main.Version={{.Version}}` (strip `v` from
-  tag), `checksums.txt`; no hard dependency on signing secrets (signing secret-gated later).
+  tag), `checksums.txt`; secret-gated platform signing via `scripts/sign-binary.sh`.
+- Secret-gated macOS codesign/notarization + Windows Authenticode scaffold
+  (workflow conditions + soft-skip hooks). See `docs/release-signing.md`. When secrets
+  are absent, releases still publish unsigned multi-arch assets + checksums.
 
 ### Notes
 
