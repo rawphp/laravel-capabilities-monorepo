@@ -80,6 +80,14 @@ final class QueryTableGateway implements TableGateway
         $this->reverseColumnMap = array_flip($this->columnMap);
     }
 
+    /**
+     * Physical table this gateway targets (MigrationCatalog names in production).
+     */
+    public function tableName(): string
+    {
+        return $this->table;
+    }
+
     public function insert(array $row): array
     {
         $id = $this->resolveId($row);

@@ -50,4 +50,13 @@ final class BootException extends RuntimeException
             "Unknown capabilities audit.mode: \"{$mode}\". Supported: best_effort, strict."
         );
     }
+
+    public static function missingDatabaseConnection(string $table): self
+    {
+        return new self(
+            "Database driver for table [{$table}] requires an Illuminate database connection "
+            .'(inject ConnectionInterface, bind db.connection, or set approval.connection / '
+            .'idempotency.connection). Refusing silent ArrayTableGateway fallback (REQ-051).'
+        );
+    }
 }

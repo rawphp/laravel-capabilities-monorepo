@@ -9,6 +9,7 @@ use Rawphp\Capabilities\Audit\AuditLogger;
 use Rawphp\Capabilities\Boot\BootException;
 use Rawphp\Capabilities\Boot\CapabilitiesConfig;
 use Rawphp\Capabilities\Boot\ContainerBindings;
+use Rawphp\Capabilities\Persistence\ArrayTableGateway;
 use Rawphp\Capabilities\CapabilitiesServiceProvider;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
@@ -66,8 +67,10 @@ it('memory drivers construct in-memory stores and approval manager', function ()
 
 it('registry factory returns a shared empty map instance shape for discovery/fluent', function () {
     $config = CapabilitiesConfig::defaults();
-    $a = ContainerBindings::makeRegistry($config);
-    $b = ContainerBindings::makeRegistry($config);
+    // defaults use approval.store=database — unit path injects ArrayTableGateway (REQ-051)
+    $gw = new ArrayTableGateway;
+    $a = ContainerBindings::makeRegistry($config, $gw);
+    $b = ContainerBindings::makeRegistry($config, $gw);
 
     expect($a)->toBeInstanceOf(CapabilityRegistry::class)
         ->and($b)->toBeInstanceOf(CapabilityRegistry::class)
@@ -93,9 +96,10 @@ it('database drivers resolve to Database store concretes without package_default
         ->and($resolved['drivers']['idempotency']['package_default'])->toBeFalse()
         ->and($resolved['drivers']['idempotency']['concrete'])->toBe(\Rawphp\Capabilities\Persistence\DatabaseIdempotencyStore::class);
 
-    expect(ContainerBindings::makeIdempotencyStore($config))->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseIdempotencyStore::class)
-        ->and(ContainerBindings::makeApprovalManager($config))->toBeInstanceOf(ApprovalManager::class)
-        ->and(ContainerBindings::makeApprovalManager($config)->store())->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseApprovalStore::class);
+    $gw = new ArrayTableGateway;
+    expect(ContainerBindings::makeIdempotencyStore($config, $gw))->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseIdempotencyStore::class)
+        ->and(ContainerBindings::makeApprovalManager($config, $gw))->toBeInstanceOf(ApprovalManager::class)
+        ->and(ContainerBindings::makeApprovalManager($config, $gw)->store())->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseApprovalStore::class);
 });
 
 it('memory drivers still construct in-memory stores', function () {
@@ -155,7 +159,7 @@ it('makeRegistry applies globally enabled surfaces from surfaces.*.enabled', fun
         ]),
     ]);
 
-    $registry = ContainerBindings::makeRegistry($config);
+    $registry = ContainerBindings::makeRegistry($config, new ArrayTableGateway);
     $global = $registry->globallyEnabledSurfaces();
 
     expect($global['http'])->toBeFalse()
@@ -167,9 +171,10 @@ it('makeRegistry applies globally enabled surfaces from surfaces.*.enabled', fun
 it('makeRegistry injects approval store matching makeApprovalManager driver', function () {
     $memory = BootHelpers::config(['approval' => ['store' => 'memory']]);
     $database = BootHelpers::config(['approval' => ['store' => 'database']]);
+    $gw = new ArrayTableGateway;
 
     $memReg = ContainerBindings::makeRegistry($memory);
-    $dbReg = ContainerBindings::makeRegistry($database);
+    $dbReg = ContainerBindings::makeRegistry($database, $gw);
 
     expect($memReg->approvals()->store())->toBeInstanceOf(\Rawphp\Capabilities\Support\InMemoryApprovalStore::class)
         ->and($memReg->approvalStore())->toBeInstanceOf(\Rawphp\Capabilities\Support\InMemoryApprovalStore::class)
@@ -177,21 +182,22 @@ it('makeRegistry injects approval store matching makeApprovalManager driver', fu
         ->toBeInstanceOf(\Rawphp\Capabilities\Support\InMemoryApprovalStore::class)
         ->and($dbReg->approvals()->store())->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseApprovalStore::class)
         ->and($dbReg->approvalStore())->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseApprovalStore::class)
-        ->and(ContainerBindings::makeApprovalManager($database)->store())
+        ->and(ContainerBindings::makeApprovalManager($database, $gw)->store())
         ->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseApprovalStore::class);
 });
 
 it('makeRegistry injects idempotency store matching makeIdempotencyStore driver', function () {
-    $memory = BootHelpers::config(['idempotency' => ['driver' => 'memory']]);
-    $database = BootHelpers::config(['idempotency' => ['driver' => 'database']]);
+    $memory = BootHelpers::config(['idempotency' => ['driver' => 'memory'], 'approval' => ['store' => 'memory']]);
+    $database = BootHelpers::config(['idempotency' => ['driver' => 'database'], 'approval' => ['store' => 'memory']]);
+    $gw = new ArrayTableGateway;
 
     $memReg = ContainerBindings::makeRegistry($memory);
-    $dbReg = ContainerBindings::makeRegistry($database);
+    $dbReg = ContainerBindings::makeRegistry($database, $gw);
 
     expect($memReg->idempotencyStore())->toBeInstanceOf(InMemoryIdempotencyStore::class)
         ->and(ContainerBindings::makeIdempotencyStore($memory))->toBeInstanceOf(InMemoryIdempotencyStore::class)
         ->and($dbReg->idempotencyStore())->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseIdempotencyStore::class)
-        ->and(ContainerBindings::makeIdempotencyStore($database))
+        ->and(ContainerBindings::makeIdempotencyStore($database, $gw))
         ->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseIdempotencyStore::class);
 });
 
@@ -206,7 +212,7 @@ it('makeRegistry applies audit mode/enabled/required/driver via registry APIs', 
         ],
     ]);
 
-    $registry = ContainerBindings::makeRegistry($config);
+    $registry = ContainerBindings::makeRegistry($config, new ArrayTableGateway);
 
     expect($registry->auditEnabled())->toBeFalse()
         ->and($registry->auditMode())->toBe('strict')
@@ -215,7 +221,10 @@ it('makeRegistry applies audit mode/enabled/required/driver via registry APIs', 
 });
 
 it('makeRegistry injects DefaultScopeResolver', function () {
-    $registry = ContainerBindings::makeRegistry(CapabilitiesConfig::defaults());
+    $registry = ContainerBindings::makeRegistry(
+        CapabilitiesConfig::defaults(),
+        new ArrayTableGateway,
+    );
 
     expect($registry->scopeResolver())->toBeInstanceOf(\Rawphp\Capabilities\Support\DefaultScopeResolver::class);
 });
@@ -249,7 +258,7 @@ it('makeRegistry applies rate limit, validation, transactions, events, and tool 
         ],
     ]);
 
-    $registry = ContainerBindings::makeRegistry($config);
+    $registry = ContainerBindings::makeRegistry($config, new ArrayTableGateway);
 
     expect($registry->rateLimitConfig()['enabled'])->toBeFalse()
         ->and($registry->rateLimitConfig()['defaults']['per_minute'])->toBe(12)
@@ -279,9 +288,10 @@ it('challenger: mixed approval.database + idempotency.memory drivers without inv
         'idempotency' => ['driver' => 'memory'],
         'audit' => ['driver' => 'memory', 'mode' => 'best_effort'],
     ]);
+    $gw = new ArrayTableGateway;
 
-    $registry = ContainerBindings::makeRegistry($config);
-    $approval = ContainerBindings::makeApprovalManager($config);
+    $registry = ContainerBindings::makeRegistry($config, $gw);
+    $approval = ContainerBindings::makeApprovalManager($config, $gw);
     $idempotency = ContainerBindings::makeIdempotencyStore($config);
 
     expect($registry->approvalStore())->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseApprovalStore::class)
@@ -411,6 +421,12 @@ it('provider register applies config-driven factories against a fake app', funct
     };
 
     $provider->register();
+
+    // Unit path: force memory approval so SP does not require a DB connection (REQ-051).
+    $merged = $app->make('config')->get('capabilities', []);
+    $merged['approval']['store'] = 'memory';
+    $merged['idempotency']['driver'] = 'memory';
+    $app->make('config')->set('capabilities', $merged);
 
     $registry = $app->make(CapabilityRegistry::class);
     $idempotency = $app->make(IdempotencyStore::class);

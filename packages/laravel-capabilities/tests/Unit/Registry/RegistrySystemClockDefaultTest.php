@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 use Rawphp\Capabilities\Boot\CapabilitiesConfig;
 use Rawphp\Capabilities\Boot\ContainerBindings;
+use Rawphp\Capabilities\Persistence\ArrayTableGateway;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Support\SystemClock;
@@ -18,7 +19,7 @@ it('default construction uses SystemClock not a frozen FixedClock', function () 
 });
 
 it('makeRegistry production path uses SystemClock', function () {
-    $registry = ContainerBindings::makeRegistry(CapabilitiesConfig::defaults());
+    $registry = ContainerBindings::makeRegistry(CapabilitiesConfig::defaults(), new ArrayTableGateway);
 
     expect($registry->clock())->toBeInstanceOf(SystemClock::class)
         ->and($registry->clock())->not->toBeInstanceOf(FixedClock::class);

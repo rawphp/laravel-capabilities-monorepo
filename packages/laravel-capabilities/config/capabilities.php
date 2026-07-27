@@ -93,8 +93,22 @@ return [
         'enabled' => true,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Approval store
+    |--------------------------------------------------------------------------
+    |
+    | store: memory | in_memory | array | database | db | eloquent
+    | connection: optional Illuminate connection name when store=database.
+    |             Defaults to the app default connection (db.connection).
+    | Host may bind TableGateway (e.g. ArrayTableGateway in unit tests) or
+    | ConnectionInterface; package builds QueryTableGateway on
+    | capabilities_approvals (MigrationCatalog::TABLE_APPROVALS).
+    |
+    */
     'approval' => [
         'store' => 'database',
+        'connection' => $env('CAPABILITIES_APPROVAL_CONNECTION', null),
         'ttl_hours' => 24,
         'default_policy' => 'requester_or_role',
         'execution' => $env('CAPABILITIES_APPROVAL_EXECUTION', 'deferred'),
@@ -107,10 +121,22 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Idempotency store
+    |--------------------------------------------------------------------------
+    |
+    | driver: memory | in_memory | array | database | db | eloquent
+    | connection: optional Illuminate connection name when driver=database.
+    | Package default is memory; host apps enable database for durable keys.
+    | Dual-table: database path uses capabilities_idempotency (not approvals).
+    |
+    */
     'idempotency' => [
         'enabled' => true,
         // Package default is memory; host apps may rebind a database driver.
         'driver' => $env('CAPABILITIES_IDEMPOTENCY_DRIVER', 'memory'),
+        'connection' => $env('CAPABILITIES_IDEMPOTENCY_CONNECTION', null),
         'ttl_hours' => 24,
         'header' => 'Idempotency-Key',
         'warn_missing_key' => $env('CAPABILITIES_IDEMPOTENCY_WARN', true),

@@ -20,9 +20,9 @@ use Rawphp\Capabilities\Contracts\ScopeResolver;
 use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\Capabilities\Discovery\CapabilityDiscoveryBoot;
 use Rawphp\Capabilities\Http\HttpRouteRegistrar;
+use Illuminate\Database\ConnectionInterface;
 use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\Capabilities\Observability\LogFallbackMetrics;
-use Rawphp\Capabilities\Persistence\ArrayTableGateway;
 use Rawphp\Capabilities\Persistence\TableGateway;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\DefaultScopeResolver;
@@ -70,14 +70,19 @@ class CapabilitiesServiceProvider extends ServiceProvider
         });
         $this->app->alias(Tracer::class, 'Tracer');
 
-        // Shared gateway first so database approval/idempotency drivers cannot diverge (REQ-048).
-        $this->app->singleton(TableGateway::class, static fn () => new ArrayTableGateway);
-        $this->app->alias(TableGateway::class, 'TableGateway');
+        // TableGateway is NOT bound to ArrayTableGateway by default (REQ-051).
+        // Host may bind TableGateway for unit isolation, or we resolve ConnectionInterface /
+        // db.connection and build per-table QueryTableGateway in the factories.
+        // When both approval and idempotency are database, each store gets its own table gateway
+        // (capabilities_approvals vs capabilities_idempotency) unless host injects one gateway.
 
         $this->app->singleton(IdempotencyStore::class, function ($app) {
+            $config = self::configFromApp($app);
+
             return ContainerBindings::makeIdempotencyStore(
-                self::configFromApp($app),
-                $app->make(TableGateway::class),
+                $config,
+                self::boundTableGatewayOrNull($app),
+                self::boundConnectionOrNull($app, $config, 'idempotency'),
             );
         });
         $this->app->alias(IdempotencyStore::class, 'IdempotencyStore');
@@ -92,9 +97,12 @@ class CapabilitiesServiceProvider extends ServiceProvider
 
         // ApprovalManager before CapabilityRegistry so the registry reuses the same store.
         $this->app->singleton(ApprovalManager::class, function ($app) {
+            $config = self::configFromApp($app);
+
             return ContainerBindings::makeApprovalManager(
-                self::configFromApp($app),
-                $app->make(TableGateway::class),
+                $config,
+                self::boundTableGatewayOrNull($app),
+                self::boundConnectionOrNull($app, $config, 'approval'),
             );
         });
         $this->app->alias(ApprovalManager::class, 'ApprovalManager');
@@ -108,12 +116,89 @@ class CapabilitiesServiceProvider extends ServiceProvider
 
             return ContainerBindings::makeRegistry(
                 $config,
-                $app->make(TableGateway::class),
+                self::boundTableGatewayOrNull($app),
                 $approval->store(),
                 $idempotency,
+                self::boundConnectionOrNull($app, $config, null),
             );
         });
         $this->app->alias(CapabilityRegistry::class, 'CapabilityRegistry');
+    }
+
+    /**
+     * Host-bound TableGateway override (ArrayTableGateway in unit tests, custom backends).
+     * Unbound → null so factories build QueryTableGateway from connection.
+     */
+    private static function boundTableGatewayOrNull(object $app): ?TableGateway
+    {
+        try {
+            if (method_exists($app, 'bound') && ! $app->bound(TableGateway::class)) {
+                return null;
+            }
+            $gateway = $app->make(TableGateway::class);
+
+            return $gateway instanceof TableGateway ? $gateway : null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Resolve Illuminate connection for QueryTableGateway construction.
+     *
+     * Order: bound ConnectionInterface → config connection name via db manager → null.
+     *
+     * @param  array<string, mixed>  $config
+     * @param  'approval'|'idempotency'|null  $storeKey
+     */
+    private static function boundConnectionOrNull(object $app, array $config, ?string $storeKey): ?ConnectionInterface
+    {
+        try {
+            if (method_exists($app, 'bound') && $app->bound(ConnectionInterface::class)) {
+                $connection = $app->make(ConnectionInterface::class);
+                if ($connection instanceof ConnectionInterface) {
+                    return $connection;
+                }
+            }
+        } catch (\Throwable) {
+            // try db manager next
+        }
+
+        try {
+            $connection = $app->make(ConnectionInterface::class);
+            if ($connection instanceof ConnectionInterface) {
+                return $connection;
+            }
+        } catch (\Throwable) {
+            // try db manager next
+        }
+
+        $name = null;
+        if ($storeKey === 'approval') {
+            $name = $config['approval']['connection'] ?? null;
+        } elseif ($storeKey === 'idempotency') {
+            $name = $config['idempotency']['connection'] ?? null;
+        }
+        if ($name === null || $name === '') {
+            $name = $config['database']['connection'] ?? $config['connection'] ?? null;
+        }
+        if (is_string($name) && $name === '') {
+            $name = null;
+        }
+
+        try {
+            $db = $app->make('db');
+            if (is_object($db) && method_exists($db, 'connection')) {
+                $connection = $db->connection(is_string($name) ? $name : null);
+                if ($connection instanceof ConnectionInterface) {
+                    return $connection;
+                }
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return null;
     }
 
     public function boot(): void

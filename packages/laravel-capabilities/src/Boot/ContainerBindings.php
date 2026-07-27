@@ -14,12 +14,15 @@ use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\Metrics as MetricsContract;
 use Rawphp\Capabilities\Contracts\ScopeResolver;
 use Rawphp\Capabilities\Contracts\Tracer as TracerContract;
+use Illuminate\Database\ConnectionInterface;
 use Rawphp\Capabilities\Observability\InMemoryMetrics;
 use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\Capabilities\Observability\LogFallbackMetrics;
 use Rawphp\Capabilities\Persistence\ArrayTableGateway;
 use Rawphp\Capabilities\Persistence\DatabaseApprovalStore;
 use Rawphp\Capabilities\Persistence\DatabaseIdempotencyStore;
+use Rawphp\Capabilities\Persistence\MigrationCatalog;
+use Rawphp\Capabilities\Persistence\QueryTableGateway;
 use Rawphp\Capabilities\Persistence\TableGateway;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\DefaultScopeResolver;
@@ -30,10 +33,21 @@ use Rawphp\Capabilities\Support\SystemClock;
  * Declarative container binding plan (BOOT-001 / REQ-023 / REQ-033).
  *
  * Pure function of config — unit tests assert without a Laravel app.
- * Database drivers construct Database* stores (gateway injectable; default ArrayTableGateway).
+ * Database drivers construct Database* stores via {@see QueryTableGateway}
+ * (per-table; connection required). Host may inject {@see TableGateway}
+ * (e.g. {@see ArrayTableGateway}) for unit isolation. No silent Array fallback.
  */
 final class ContainerBindings
 {
+    /**
+     * Logical store keys remapped to MigrationCatalog physical columns (approvals).
+     *
+     * @var array<string, string>
+     */
+    public const APPROVAL_COLUMN_MAP = [
+        'scope' => 'scope_json',
+        'messaging' => 'channel_meta_json',
+    ];
     public const PUBLISH_TAGS = [
         'capabilities-config',
         'capabilities-migrations',
@@ -114,6 +128,9 @@ final class ContainerBindings
         $metricsEnabled = (bool) ($config['observability']['metrics'] ?? true);
         $tracingEnabled = (bool) ($config['observability']['tracing'] ?? true);
 
+        $usesDatabaseGateway = $approvalStore['resolved'] === 'database'
+            || $idempotency['resolved'] === 'database';
+
         $bindings = [
             'CapabilityRegistry' => CapabilityRegistry::class,
             CapabilityRegistry::class => CapabilityRegistry::class,
@@ -121,7 +138,11 @@ final class ContainerBindings
             ApprovalManager::class => ApprovalManager::class,
             'IdempotencyStore' => IdempotencyStore::class,
             IdempotencyStore::class => $idempotency['concrete'],
-            TableGateway::class => ArrayTableGateway::class,
+            // Production: QueryTableGateway per table + connection. Memory-only plans
+            // still advertise ArrayTableGateway for unit isolation / host overrides.
+            TableGateway::class => $usesDatabaseGateway
+                ? QueryTableGateway::class
+                : ArrayTableGateway::class,
             'AuditLogger' => AuditLogger::class,
             AuditLogger::class => AuditLogger::class,
             'ScopeResolver' => ScopeResolver::class,
@@ -190,8 +211,9 @@ final class ContainerBindings
      *
      * When $approvalStore / $idempotencyStore are provided (service-provider path), those
      * instances are injected as-is so invoke and accept paths cannot diverge (REQ-048).
-     * Standalone calls without prebuilt stores still construct via the shared factories and
-     * a single gateway for database drivers.
+     * Standalone database drivers without prebuilt stores build per-table
+     * {@see QueryTableGateway} instances (approvals vs idempotency) from $connection.
+     * Optional host $gateway (typically {@see ArrayTableGateway} in unit tests) overrides.
      *
      * @param  array<string, mixed>  $config
      */
@@ -200,23 +222,23 @@ final class ContainerBindings
         ?TableGateway $gateway = null,
         ?ApprovalStore $approvalStore = null,
         ?IdempotencyStore $idempotencyStore = null,
+        ?ConnectionInterface $connection = null,
     ): CapabilityRegistry {
         $full = $config === [] ? CapabilitiesConfig::defaults() : $config;
         // Validate drivers/modes early (fail closed) using the shared resolve path.
         self::resolve($full);
 
-        $gateway ??= new ArrayTableGateway;
         $registry = new CapabilityRegistry(clock: new SystemClock);
 
         $registry->withGloballyEnabledSurfaces(CapabilitiesConfig::globallyEnabledSurfaces($full));
 
         if ($approvalStore === null) {
-            $approvalStore = self::makeApprovalManager($full, $gateway)->store();
+            $approvalStore = self::makeApprovalManager($full, $gateway, $connection)->store();
         }
         $registry->withApprovalStore($approvalStore);
 
         if ($idempotencyStore === null) {
-            $idempotencyStore = self::makeIdempotencyStore($full, $gateway);
+            $idempotencyStore = self::makeIdempotencyStore($full, $gateway, $connection);
         }
         $registry->withIdempotencyStore($idempotencyStore);
 
@@ -327,17 +349,62 @@ final class ContainerBindings
     }
 
     /**
+     * Resolve a TableGateway for a database-backed store.
+     *
+     * Host-provided $gateway wins (unit isolation / custom backends). Otherwise builds
+     * {@see QueryTableGateway} for $table using $connection. Never substitutes ArrayTableGateway.
+     *
+     * @param  array<string, mixed>  $config
+     * @param  array<string, string>  $columnMap
+     */
+    public static function makeDatabaseTableGateway(
+        string $table,
+        array $config = [],
+        ?TableGateway $gateway = null,
+        ?ConnectionInterface $connection = null,
+        array $columnMap = [],
+    ): TableGateway {
+        if ($gateway !== null) {
+            return $gateway;
+        }
+
+        // Named connection resolution lives in CapabilitiesServiceProvider (db manager).
+        // Pure factories require an injected ConnectionInterface — never invent ArrayTableGateway.
+        if ($connection === null) {
+            throw BootException::missingDatabaseConnection($table);
+        }
+
+        return new QueryTableGateway(
+            $connection,
+            $table,
+            columnMap: $columnMap,
+        );
+    }
+
+    /**
      * @param  array<string, mixed>  $config
      */
-    public static function makeIdempotencyStore(array $config = [], ?TableGateway $gateway = null): IdempotencyStore
-    {
-        $resolved = self::resolve($config === [] ? null : $config);
+    public static function makeIdempotencyStore(
+        array $config = [],
+        ?TableGateway $gateway = null,
+        ?ConnectionInterface $connection = null,
+    ): IdempotencyStore {
+        $full = $config === [] ? CapabilitiesConfig::defaults() : $config;
+        $resolved = self::resolve($full);
         $driver = $resolved['drivers']['idempotency']['resolved'];
         $clock = new SystemClock;
 
         return match ($driver) {
             'memory' => new InMemoryIdempotencyStore($clock),
-            'database' => new DatabaseIdempotencyStore($gateway ?? new ArrayTableGateway, $clock),
+            'database' => new DatabaseIdempotencyStore(
+                self::makeDatabaseTableGateway(
+                    MigrationCatalog::TABLE_IDEMPOTENCY,
+                    $full,
+                    $gateway,
+                    $connection,
+                ),
+                $clock,
+            ),
             default => throw BootException::unknownDriver('idempotency.driver', $driver),
         };
     }
@@ -345,8 +412,11 @@ final class ContainerBindings
     /**
      * @param  array<string, mixed>  $config
      */
-    public static function makeApprovalManager(array $config = [], ?TableGateway $gateway = null): ApprovalManager
-    {
+    public static function makeApprovalManager(
+        array $config = [],
+        ?TableGateway $gateway = null,
+        ?ConnectionInterface $connection = null,
+    ): ApprovalManager {
         $full = $config === [] ? CapabilitiesConfig::defaults() : $config;
         $resolved = self::resolve($full);
         $driver = $resolved['drivers']['approval_store']['resolved'];
@@ -358,7 +428,16 @@ final class ContainerBindings
         }
 
         if ($driver === 'database') {
-            $store = new DatabaseApprovalStore($gateway ?? new ArrayTableGateway, $clock);
+            $store = new DatabaseApprovalStore(
+                self::makeDatabaseTableGateway(
+                    MigrationCatalog::TABLE_APPROVALS,
+                    $full,
+                    $gateway,
+                    $connection,
+                    self::APPROVAL_COLUMN_MAP,
+                ),
+                $clock,
+            );
 
             return (new ApprovalManager($store, $clock, $approvalConfig))->withConfig($approvalConfig);
         }

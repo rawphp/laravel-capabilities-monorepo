@@ -236,6 +236,9 @@ it('REQ-048 database: registry and ApprovalManager share the same approval store
         'idempotency' => ['driver' => 'database'],
     ]));
 
+    $app->instance(TableGateway::class, new ArrayTableGateway);
+    unset($app->resolved[CapabilityRegistry::class], $app->resolved[ApprovalManager::class], $app->resolved[IdempotencyStore::class]);
+
     $registry = $app->make(CapabilityRegistry::class);
     $approval = $app->make(ApprovalManager::class);
 
@@ -249,6 +252,9 @@ it('REQ-048 database: registry and IdempotencyStore share the same store instanc
         'approval' => ['store' => 'database'],
         'idempotency' => ['driver' => 'database'],
     ]));
+
+    $app->instance(TableGateway::class, new ArrayTableGateway);
+    unset($app->resolved[CapabilityRegistry::class], $app->resolved[ApprovalManager::class], $app->resolved[IdempotencyStore::class]);
 
     $registry = $app->make(CapabilityRegistry::class);
     $idempotency = $app->make(IdempotencyStore::class);
