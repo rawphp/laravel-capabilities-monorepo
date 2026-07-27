@@ -1,7 +1,13 @@
 # REQ-052: Host TableGateway binding docs
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.40419
+**Claimed at:** 2026-07-27T06:46:09Z
+**Heartbeat:** 2026-07-27T06:46:09Z
+<!-- claimed-end -->
+
 **UR:** UR-008
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
