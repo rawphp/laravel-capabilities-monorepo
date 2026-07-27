@@ -1,7 +1,13 @@
 # REQ-031: Database ApprovalStore
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.79622
+**Claimed at:** 2026-07-27T05:04:27Z
+**Heartbeat:** 2026-07-27T05:04:27Z
+<!-- claimed-end -->
+
 **UR:** UR-004
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
