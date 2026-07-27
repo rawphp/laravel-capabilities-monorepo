@@ -1,10 +1,18 @@
 # Laravel Capabilities (monorepo)
 
 > **Status:** monorepo **unit-complete design** (v0.1–v0.5 surfaces largely covered by package unit tests) — **not a stable public API**, **not published on Packagist**.  
-> **Spec:** [docs/spec.md](docs/spec.md) · **Versioning & install:** [docs/versioning.md](docs/versioning.md)  
+> **Spec:** [docs/spec.md](docs/spec.md) · **Versioning & install:** [docs/versioning.md](docs/versioning.md) · **First capability:** [docs/tutorials/first-capability.md](docs/tutorials/first-capability.md)  
 > Unit-green ≠ shipped product: treat path/VCS install + package CHANGELOGs as pre-release readiness, not Packagist release.
 
 Product capability bus for Laravel: define once, expose via agent, MCP, HTTP, product CLI, and jobs — same rules, one `run()`.
+
+## Getting started
+
+| Guide | Audience |
+|---|---|
+| **[First capability tutorial](docs/tutorials/first-capability.md)** | App integrators: path/VCS install, define once (fluent primary + attribute alternate), registry invoke, HTTP note, D-020 helpers |
+| [docs/versioning.md](docs/versioning.md) | 0.x policy, path/VCS install, CHANGELOG locations |
+| [docs/spec.md](docs/spec.md) | Full design, decisions D-002–D-023, pipeline, roadmap |
 
 ## Consumer readiness (residuals)
 
@@ -14,7 +22,7 @@ Honest picture of what the monorepo has vs what a production consumer still lack
 |---|---|---|
 | **Packaging / Packagist publish** | residual | Install via monorepo **path** repository or VCS only; no Packagist listing or signed binary releases |
 | **Release notes** | done | Per-package [CHANGELOG](packages/laravel-capabilities/CHANGELOG.md) + [docs/versioning.md](docs/versioning.md) (0.x pre-stable policy) |
-| **First-capability tutorial** | residual | No guided “define your first capability” path (fluent vs attribute vs multi-surface) yet |
+| **First-capability tutorial** | done | [docs/tutorials/first-capability.md](docs/tutorials/first-capability.md) — path install, fluent define + attribute alternate, registry invoke, HTTP, D-020 helpers |
 | **D-020 helpers** (`assertSchemaSnapshot`, `assertParity`) | done | Full unit-path DX: durable input+output schema snapshots; multi-surface success/deny class parity via registry/adapters with mocks/fakes — **not** a live multi-surface HTTP/feature suite |
 | **Live peer CI** (`laravel/ai`, `laravel/mcp`) | residual | Default package CI is unit-only (matrix + contract fixtures). Live peer minors remain an optional **consumer-app** path (D-011) |
 
@@ -52,6 +60,7 @@ packages/
 docs/
   spec.md
   versioning.md                   # 0.x policy, path/VCS install, changelog locations
+  tutorials/first-capability.md   # app integrator first capability walkthrough
   requirements-inventory.md       # complete contract checklist (happy/fail/edge)
 tools/
   generate_requirement_stubs.py   # regenerates inventory + package unit stubs 1:1
