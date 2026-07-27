@@ -17,6 +17,7 @@ use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\Metrics;
 use Rawphp\Capabilities\Contracts\ScopeResolver;
 use Rawphp\Capabilities\Contracts\Tracer;
+use Rawphp\Capabilities\Discovery\CapabilityDiscoveryBoot;
 use Rawphp\Capabilities\Http\HttpRouteRegistrar;
 use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\Capabilities\Observability\LogFallbackMetrics;
@@ -83,6 +84,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->bootHttpRoutes();
+        $this->bootCapabilityDiscovery();
 
         if ($this->app->runningInConsole()) {
             $this->publishes([
@@ -93,6 +95,29 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 __DIR__.'/../database/migrations' => database_path('migrations'),
             ], 'capabilities-migrations');
         }
+    }
+
+
+    /**
+     * Auto-discover #[Capability] classes from config path into the shared registry (REQ-022 / D-017).
+     *
+     * @return list<string> newly registered capability names
+     */
+    public function bootCapabilityDiscovery(?array $config = null): array
+    {
+        $config ??= self::configFromApp($this->app);
+
+        try {
+            $registry = $this->app->make(CapabilityRegistry::class);
+        } catch (\Throwable) {
+            return [];
+        }
+
+        if (! $registry instanceof CapabilityRegistry) {
+            return [];
+        }
+
+        return CapabilityDiscoveryBoot::run($registry, $config);
     }
 
     /**
