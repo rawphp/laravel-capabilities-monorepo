@@ -1,19 +1,14 @@
 # REQ-054: Release prep metadata
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.40419
-**Claimed at:** 2026-07-27T06:12:37Z
-**Heartbeat:** 2026-07-27T06:12:37Z
-<!-- claimed-end -->
 
 **UR:** UR-008
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-053
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (2/2 runtime) commit:5e188cb green_docs_checklist:C1-C5
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** M
@@ -30,11 +25,11 @@ Packages already have CHANGELOGs and versioning.md. This REQ prepares for taggin
 
 ## Acceptance Criteria
 
-- [ ] Core (and messaging if present) composer.json branch-alias / version fields consistent with 0.x-dev policy in docs/versioning.md
-- [ ] CHANGELOGs ready for a first 0.x.y section structure (Unreleased kept or split per Keep a Changelog)
-- [ ] versioning.md documents exact tag name pattern (e.g. `v0.1.0` / package-specific tags if monorepo)
-- [ ] No false claim that packages are already on Packagist
-- [ ] Messaging/cli code not required to change beyond changelog/metadata if not needed
+- [x] Core (and messaging if present) composer.json branch-alias / version fields consistent with 0.x-dev policy in docs/versioning.md
+- [x] CHANGELOGs ready for a first 0.x.y section structure (Unreleased kept or split per Keep a Changelog)
+- [x] versioning.md documents exact tag name pattern (e.g. `v0.1.0` / package-specific tags if monorepo)
+- [x] No false claim that packages are already on Packagist
+- [x] Messaging/cli code not required to change beyond changelog/metadata if not needed
 
 ## Verification Steps
 
@@ -46,3 +41,10 @@ Packages already have CHANGELOGs and versioning.md. This REQ prepares for taggin
 ## Assets
 
 - (none)
+
+## Outputs
+
+- docs/versioning.md — 0.x-dev branch-alias policy + exact monorepo tag pattern v0.Y.Z and CHANGELOG handoff
+- packages/laravel-capabilities/CHANGELOG.md — First tagged 0.x.y Keep a Changelog scaffold retained Unreleased
+- packages/laravel-capabilities-messaging/CHANGELOG.md — First tagged 0.x.y Keep a Changelog scaffold (metadata only)
+- packages/capabilities-cli/CHANGELOG.md — First tagged 0.x.y scaffold + monorepo tag note (docs only)
