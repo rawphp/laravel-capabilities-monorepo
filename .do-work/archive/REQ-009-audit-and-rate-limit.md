@@ -1,23 +1,18 @@
 # REQ-009: Audit modes and rate limiting
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.49422
-**Claimed at:** 2026-07-27T01:46:03Z
-**Heartbeat:** 2026-07-27T01:46:03Z
-<!-- claimed-end -->
 
 **UR:** UR-001
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** Post-run audit stage + rate_limit stage
 **Terminal state:** best_effort audit failure does not roll back domain; strict mode fails; RateLimiting/* and Audit/* tests pass.
 **Parent:** 
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (2/2) commit:d5f38be Audit:98 RateLimiting:98
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** M
-**Files:** packages/laravel-capabilities/src/Audit packages/laravel-capabilities/src packages/laravel-capabilities/tests/Unit/Audit packages/laravel-capabilities/tests/Unit/RateLimiting
+**Files:** packages/laravel-capabilities/src/Audit packages/laravel-capabilities/src/RateLimiting packages/laravel-capabilities/src/Registry/CapabilityRegistry.php packages/laravel-capabilities/src/Events packages/laravel-capabilities/src/Support/InMemoryRateLimiter.php packages/laravel-capabilities/src/Support/ErrorCodeMap.php packages/laravel-capabilities/src/Support/FailingAuditWriter.php packages/laravel-capabilities/tests/Fixtures/AuditHelpers.php packages/laravel-capabilities/tests/Fixtures/RateLimitHelpers.php packages/laravel-capabilities/tests/Unit/Audit packages/laravel-capabilities/tests/Unit/RateLimiting
 **Depends on:** REQ-005
 
 ## Task
@@ -32,10 +27,10 @@ Original brief: implement all package tests and business logic so all tests pass
 
 ## Acceptance Criteria
 
-- [ ] best_effort audit failure after success does not undo domain result
-- [ ] strict mode fails invoke on audit failure
-- [ ] Rate limit key/config/agent budget matrices pass
-- [ ] Unit-only
+- [x] best_effort audit failure after success does not undo domain result
+- [x] strict mode fails invoke on audit failure
+- [x] Rate limit key/config/agent budget matrices pass
+- [x] Unit-only
 
 ## Verification Steps
 
@@ -56,3 +51,9 @@ Original brief: implement all package tests and business logic so all tests pass
 
 - docs/spec.md — design bible / conflict oracle
 - docs/requirements-inventory.md — scenario checklist
+
+
+## Outputs
+
+- packages/laravel-capabilities/src/Audit/* — D-010
+- packages/laravel-capabilities/src/RateLimiting/* — D-013
