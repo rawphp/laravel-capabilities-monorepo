@@ -5,7 +5,8 @@ namespace Rawphp\Capabilities\Persistence;
 /**
  * Minimal row gateway so database stores stay unit-testable without a live DB.
  *
- * Production can bind an Eloquent/query implementation; tests use {@see ArrayTableGateway}.
+ * Production: {@see QueryTableGateway} (Illuminate query builder / connection).
+ * Tests: {@see ArrayTableGateway} (in-process, no connection).
  */
 interface TableGateway
 {
