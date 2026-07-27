@@ -1,7 +1,13 @@
 # REQ-030: Core persistence migrations
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.32097
+**Claimed at:** 2026-07-27T05:01:30Z
+**Heartbeat:** 2026-07-27T05:01:30Z
+<!-- claimed-end -->
+
 **UR:** UR-004
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
