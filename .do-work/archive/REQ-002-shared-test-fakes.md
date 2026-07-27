@@ -1,19 +1,14 @@
 # REQ-002: Shared core test fakes and doubles
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.49422
-**Claimed at:** 2026-07-27T00:38:44Z
-**Heartbeat:** 2026-07-27T00:38:44Z
-<!-- claimed-end -->
 
 **UR:** UR-001
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** packages/laravel-capabilities/tests support helpers constructing fakes
 **Terminal state:** Unit tests can inject in-memory stores/clocks/authorizers without DB/HTTP/peers.
 **Parent:** 
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:36818e7 verification:InMemory+Fake filters green
 **Criteria approved:** agent-drafted
 **Priority:** 3
 **Size:** M
@@ -32,12 +27,12 @@ Original brief: implement all package tests and business logic so all tests pass
 
 ## Acceptance Criteria
 
-- [ ] In-memory (or pure fake) implementations exist for approval, idempotency, and audit store/writer contracts used by the pipeline
-- [ ] Fakes are constructible in Pest unit tests with no DB, Redis, queue, or network
-- [ ] At least one smoke unit test proves a fake can record and read back a pending approval / idempotency outcome
-- [ ] No tests/Feature, RefreshDatabase, or real DB connection required
+- [x] In-memory (or pure fake) implementations exist for approval, idempotency, and audit store/writer contracts used by the pipeline
+- [x] Fakes are constructible in Pest unit tests with no DB, Redis, queue, or network
+- [x] At least one smoke unit test proves a fake can record and read back a pending approval / idempotency outcome
+- [x] No tests/Feature, RefreshDatabase, or real DB connection required
 
-- [ ] Constructing fakes without required contracts fails loudly (type/constructor error) rather than silently returning null stores
+- [x] Constructing fakes without required contracts fails loudly (type/constructor error) rather than silently returning null stores
 
 ## Verification Steps
 
@@ -56,3 +51,11 @@ Original brief: implement all package tests and business logic so all tests pass
 
 - docs/spec.md — design bible / conflict oracle
 - docs/requirements-inventory.md — scenario checklist
+
+
+## Outputs
+
+- packages/laravel-capabilities/src/Contracts/* — store/authorizer/clock/rate limiter contracts
+- packages/laravel-capabilities/src/Support/InMemory* — in-memory doubles
+- packages/laravel-capabilities/tests/Support/SharedFakes.php — factory helper
+- packages/laravel-capabilities/tests/Unit/Support/* — smoke unit tests
