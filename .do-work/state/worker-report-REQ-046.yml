@@ -1,0 +1,51 @@
+req: REQ-046
+status: done
+commit: 8d48df2
+reason: ""
+details: "path unit closed"
+isolation: worktree
+closure_proof: "checkpoint_log:passed (2/2) commit:8d48df2 children:REQ-047,REQ-048 archived"
+last_good_step: 2
+failed_step: 0
+checkpoint_log:
+  status: passed
+  checkpoints:
+    - step: 1
+      total: 2
+      type: test
+      command: "composer test:core -- --filter=RegistryFactory"
+      expected: "pass"
+      actual: "4 passed"
+      status: passed
+    - step: 2
+      total: 2
+      type: test
+      command: "composer test:core"
+      expected: "green"
+      actual: "4696 passed"
+      status: passed
+deferred_checks: []
+acceptance:
+  AC1:
+    status: passed
+    evidence:
+      - type: file
+        ref: ".do-work/archive/REQ-047-make-registry-full-wiring.md"
+      - type: file
+        ref: ".do-work/archive/REQ-048-registry-store-singleton-parity.md"
+  AC2:
+    status: passed
+    evidence:
+      - type: test
+        ref: "RegistryFactoryPathTest shares stores and config domains"
+  AC3:
+    status: passed
+    evidence:
+      - type: test
+        ref: "RegistryFactoryPathTest dual independent diverges + prebuilt closes"
+milestone_complete: false
+milestone: ""
+retry_count: 0
+outputs:
+  - path: packages/laravel-capabilities/tests/Unit/Boot/RegistryFactoryPathTest.php
+    description: path-unit closure tests

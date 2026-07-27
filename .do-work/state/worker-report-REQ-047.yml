@@ -1,0 +1,92 @@
+req: REQ-047
+status: done
+commit: 4482f3b
+reason: ""
+details: "makeRegistry full config wiring"
+isolation: worktree
+closure_proof: "checkpoint_log:passed (3/3) commit:4482f3b"
+last_good_step: 3
+failed_step: 0
+checkpoint_log:
+  status: passed
+  checkpoints:
+    - step: 1
+      total: 3
+      type: test
+      command: "composer test:core -- --filter=ContainerBindings"
+      expected: "tests pass"
+      actual: "19 passed"
+      status: passed
+    - step: 2
+      total: 3
+      type: test
+      command: "composer test:core -- --filter=makeRegistry"
+      expected: "green"
+      actual: "9 passed"
+      status: passed
+    - step: 3
+      total: 3
+      type: test
+      command: "composer test:core"
+      expected: "suite green"
+      actual: "4674 passed"
+      status: passed
+deferred_checks: []
+acceptance:
+  AC1:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/laravel-capabilities/tests/Unit/Boot/ConfigDrivenBindingsTest.php::makeRegistry applies globally enabled surfaces"
+  AC2:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/laravel-capabilities/tests/Unit/Boot/ConfigDrivenBindingsTest.php::makeRegistry injects approval store"
+  AC3:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/laravel-capabilities/tests/Unit/Boot/ConfigDrivenBindingsTest.php::makeRegistry injects idempotency store"
+  AC4:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/laravel-capabilities/tests/Unit/Boot/ConfigDrivenBindingsTest.php::makeRegistry applies audit settings"
+  AC5:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/laravel-capabilities/tests/Unit/Boot/ConfigDrivenBindingsTest.php::makeRegistry injects DefaultScopeResolver"
+  AC6:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/laravel-capabilities/tests/Unit/Boot/ConfigDrivenBindingsTest.php::makeRegistry applies rate/validation/tx/events/tools"
+  AC7:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/laravel-capabilities/tests/Unit/Boot/ConfigDrivenBindingsTest.php::makeRegistry clock remains SystemClock"
+  AC8:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/laravel-capabilities/tests/Unit/Boot/ContainerBindingsTest.php::makeRegistry wiring smoke"
+  AC9:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/laravel-capabilities/tests/Unit/Boot/ConfigDrivenBindingsTest.php::mixed database+memory drivers"
+milestone_complete: false
+milestone: ""
+retry_count: 0
+outputs:
+  - path: packages/laravel-capabilities/src/Boot/ContainerBindings.php
+    description: makeRegistry full wiring
+  - path: packages/laravel-capabilities/src/Registry/CapabilityRegistry.php
+    description: accessors for stores/scope/audit
+  - path: packages/laravel-capabilities/tests/Unit/Boot/ConfigDrivenBindingsTest.php
+    description: wiring unit tests
+  - path: packages/laravel-capabilities/tests/Unit/Boot/ContainerBindingsTest.php
+    description: smoke wiring tests

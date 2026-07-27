@@ -1,19 +1,14 @@
 # REQ-046: Config-wired registry path
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.40419
-**Claimed at:** 2026-07-27T06:28:57Z
-**Heartbeat:** 2026-07-27T06:31:48Z
-<!-- claimed-end -->
 
 **UR:** UR-008
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:** Laravel container resolves `CapabilityRegistry` (or `Capability::invoke` / facade) after package boot with published or default `config/capabilities.php`
 **Terminal state:** The shared registry singleton applies surface/governance config and uses the same approval store, idempotency store, audit settings, and scope resolver as the configured container bindings — unit tests prove inject parity and no dual-manager drift
 **Parent:**
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (2/2) commit:8d48df2 children:REQ-047,REQ-048 archived
 **Criteria approved:** agent-drafted
 **Priority:** 3
 **Size:** M
@@ -43,8 +38,12 @@ UR-008 item 1: "Registry factory fully applies config + injects approval/idempot
 
 ## Manual checks (advisory)
 
-- [ ] Integrator following first-capability tutorial can enable `approval.store=database` and confirm invoke + approval accept share durability semantics — Observable outcome: no process-local-only approval after host gateway binding (after REQ-049–051)
+- [x] Integrator following first-capability tutorial can enable `approval.store=database` and confirm invoke + approval accept share durability semantics — Observable outcome: no process-local-only approval after host gateway binding (after REQ-049–051)
 
 ## Assets
 
 - (none)
+
+## Outputs
+
+- packages/laravel-capabilities/tests/Unit/Boot/RegistryFactoryPathTest.php — path-unit closure tests

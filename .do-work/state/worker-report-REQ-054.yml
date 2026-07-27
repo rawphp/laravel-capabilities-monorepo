@@ -1,0 +1,77 @@
+req: REQ-054
+status: done
+commit: 5e188cb
+reason: ""
+details: "Documented monorepo git tag pattern v0.Y.Z, branch-alias 0.x-dev consistency policy, Keep a Changelog first 0.x.y handoff scaffolding on all three package CHANGELOGs. composer.json already had correct branch-alias (no edit). No Packagist claim; no tags pushed."
+isolation: worktree
+closure_proof: "checkpoint_log:passed (2/2 runtime) commit:5e188cb green_docs_checklist:C1-C5"
+last_good_step: 2
+failed_step: 0
+checkpoint_log:
+  status: passed
+  checkpoints:
+    - step: 1
+      total: 2
+      type: runtime
+      command: "rg -n \"branch-alias|0.x\" packages/laravel-capabilities/composer.json packages/laravel-capabilities-messaging/composer.json docs/versioning.md"
+      expected: "consistent 0.x story (branch-alias + 0.x-dev policy)"
+      actual: "both packages alias dev-main→0.x-dev; versioning.md documents branch-alias policy and tag pattern"
+      status: passed
+      handoff: "composer.json -> versioning.md"
+    - step: 2
+      total: 2
+      type: runtime
+      command: "test -f packages/laravel-capabilities/CHANGELOG.md"
+      expected: "changelog exists and mentions pre-stable"
+      actual: "file exists; pre-stable + Not published on Packagist + first tagged 0.x.y scaffold"
+      status: passed
+      handoff: "changelog -> consumer honesty"
+deferred_checks: []
+acceptance:
+  AC1:
+    status: passed
+    evidence:
+      - type: command
+        ref: "rg -n '\"dev-main\": \"0.x-dev\"' packages/laravel-capabilities/composer.json packages/laravel-capabilities-messaging/composer.json"
+      - type: file
+        ref: docs/versioning.md
+  AC2:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/laravel-capabilities/CHANGELOG.md
+      - type: file
+        ref: packages/laravel-capabilities-messaging/CHANGELOG.md
+      - type: file
+        ref: packages/capabilities-cli/CHANGELOG.md
+  AC3:
+    status: passed
+    evidence:
+      - type: file
+        ref: docs/versioning.md
+      - type: command
+        ref: "rg -n 'Git tag naming|v0.<minor>.<patch>|coordinated monorepo tag' docs/versioning.md"
+  AC4:
+    status: passed
+    evidence:
+      - type: command
+        ref: "rg -n 'Not published on Packagist|Not claimed' docs/versioning.md packages/*/CHANGELOG.md"
+  AC5:
+    status: passed
+    evidence:
+      - type: file
+        ref: packages/laravel-capabilities-messaging/CHANGELOG.md
+      - type: file
+        ref: packages/capabilities-cli/CHANGELOG.md
+milestone_complete: false
+milestone: ""
+retry_count: 0
+outputs:
+  - path: docs/versioning.md
+    description: "0.x-dev branch-alias policy + exact monorepo tag pattern v0.Y.Z and CHANGELOG handoff"
+  - path: packages/laravel-capabilities/CHANGELOG.md
+    description: "First tagged 0.x.y Keep a Changelog scaffold retained Unreleased"
+  - path: packages/laravel-capabilities-messaging/CHANGELOG.md
+    description: "First tagged 0.x.y Keep a Changelog scaffold (metadata only)"
+  - path: packages/capabilities-cli/CHANGELOG.md
+    description: "First tagged 0.x.y scaffold + monorepo tag note (docs only)"

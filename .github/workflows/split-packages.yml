@@ -1,0 +1,115 @@
+# Mirror each packages/* tree into its public package repo on every push to main,
+# and re-publish monorepo tags (v*) onto those repos for Packagist / releases.
+#
+# Setup (one-time, monorepo repo settings):
+#   1. Create a fine-grained PAT (or classic) with Contents: Read and write
+#      on rawphp/laravel-capabilities, rawphp/laravel-capabilities-messaging,
+#      and rawphp/capabilities-cli.
+#   2. Add it as repo secret: SPLIT_GITHUB_TOKEN
+#   3. Ensure the three package repos exist (empty is fine) and default branch is main.
+#
+# Packagist: submit each *package* repo URL (not this monorepo). Tags drive versions.
+
+name: Split packages
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: split-packages-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - path: packages/laravel-capabilities
+            repo: rawphp/laravel-capabilities
+          - path: packages/laravel-capabilities-messaging
+            repo: rawphp/laravel-capabilities-messaging
+          - path: packages/capabilities-cli
+            repo: rawphp/capabilities-cli
+
+    steps:
+      - name: Checkout monorepo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync package tree to ${{ matrix.repo }}
+        env:
+          SPLIT_TOKEN: ${{ secrets.SPLIT_GITHUB_TOKEN }}
+          PACKAGE_PATH: ${{ matrix.path }}
+          TARGET_REPO: ${{ matrix.repo }}
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_REF: ${{ github.ref }}
+          SOURCE_REF_NAME: ${{ github.ref_name }}
+          SOURCE_REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! -d "$PACKAGE_PATH" ]]; then
+            echo "Missing package path: $PACKAGE_PATH"
+            exit 1
+          fi
+
+          work="$(mktemp -d)"
+          remote="https://x-access-token:${SPLIT_TOKEN}@github.com/${TARGET_REPO}.git"
+
+          # Prefer cloning existing history so main advances with normal commits.
+          # Empty / brand-new repos fall back to a fresh git init.
+          if git ls-remote --exit-code "$remote" HEAD >/dev/null 2>&1; then
+            git clone --depth 50 "$remote" "$work"
+          else
+            git init -b main "$work"
+            git -C "$work" remote add origin "$remote"
+          fi
+
+          # Replace tracked tree with monorepo package contents (keep .git).
+          find "$work" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          rsync -a --delete \
+            --exclude '.git' \
+            --exclude 'vendor/' \
+            --exclude 'node_modules/' \
+            --exclude 'dist/' \
+            --exclude 'coverage/' \
+            --exclude '.phpunit.result.cache' \
+            "${PACKAGE_PATH}/" "$work/"
+
+          git -C "$work" config user.name "github-actions[bot]"
+          git -C "$work" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git -C "$work" add -A
+
+          if git -C "$work" diff --cached --quiet; then
+            echo "No file changes for ${TARGET_REPO}"
+          else
+            msg="sync: monorepo ${SOURCE_SHA:0:7} (${PACKAGE_PATH})"
+            git -C "$work" commit -m "$msg"
+            # main tracking branch may not exist yet on first push
+            if git -C "$work" rev-parse --verify main >/dev/null 2>&1; then
+              git -C "$work" push origin "HEAD:main"
+            else
+              git -C "$work" branch -M main
+              git -C "$work" push -u origin main
+            fi
+            echo "Pushed main → ${TARGET_REPO}"
+          fi
+
+          # Monorepo tags (v*) are mirrored onto each package repo for Packagist.
+          if [[ "$SOURCE_REF_TYPE" == "tag" ]]; then
+            tag="$SOURCE_REF_NAME"
+            # Point tag at current package tree (after sync commit if any).
+            git -C "$work" tag -f "$tag"
+            git -C "$work" push origin "refs/tags/${tag}" --force
+            echo "Pushed tag ${tag} → ${TARGET_REPO}"
+          fi
