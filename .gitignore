@@ -5,6 +5,7 @@
 .pest/
 .idea/
 .vscode/
+.worktrees/*
 *.swp
 .DS_Store
 
