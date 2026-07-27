@@ -15,7 +15,7 @@ Downloadable client for end users and local agents. Auth + catalog + run + optio
 | CLI user guide | [docs/user-guide.md](docs/user-guide.md) |
 | Getting started (optional CLI) | [docs/getting-started.md](../../docs/getting-started.md) |
 | Troubleshooting | [docs/troubleshooting.md](../../docs/troubleshooting.md) |
-| Core HTTP API (server) | [docs/user-guide.md](docs/user-guide.md) |
+| Core HTTP API (server) | [laravel-capabilities user guide](../laravel-capabilities/docs/user-guide.md) |
 
 ## Layout
 
