@@ -1,8 +1,41 @@
 ---
 ur: UR-011
 received: 2026-07-28
-status: intake
+status: captured
+classification: feature
+layers_in_scope: [core, messaging, cli]
+layer_decisions:
+  core: no
+  messaging: no
+reqs:
+  - { id: REQ-059, layer: none, integration_confidence: n/a }
+  - { id: REQ-060, layer: cli, integration_confidence: high }
+  - { id: REQ-061, layer: cli, integration_confidence: high }
+  - { id: REQ-062, layer: cli, integration_confidence: high }
+  - { id: REQ-063, layer: cli, integration_confidence: high }
+  - { id: REQ-064, layer: cli, integration_confidence: high }
+acknowledged_partials: []
 ---
+
+<!-- capture-summary-start -->
+## Capture summary (2026-07-28)
+
+| Item | Value |
+|---|---|
+| Classification | feature |
+| Layers in scope | core, messaging, cli |
+| Layer decisions | core: no, messaging: no |
+| REQs generated | 6 |
+
+| REQ | Layer | Integration confidence |
+|---|---|---|
+| REQ-059 | none | n/a |
+| REQ-060 | cli | high |
+| REQ-061 | cli | high |
+| REQ-062 | cli | high |
+| REQ-063 | cli | high |
+| REQ-064 | cli | high |
+<!-- capture-summary-end -->
 
 # UR-011: User Request
 

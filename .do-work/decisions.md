@@ -29,3 +29,6 @@
 2026-07-27 | UR-009 | bug-fix single REQ plan+provider+tests | avoid plan/provider drift and second registry singleton
 2026-07-27 | UR-009 | layers messaging/cli not prompted | bug-fix classification; core package DI only
 2026-07-28 | UR-010 | one REQ: shared subcommand --help early-exit for mcp+siblings (not mcp-only) | avoid leaving same footgun on catalog/run/describe/approvals
+2026-07-28 | UR-011 | layer "core" out of scope | user answered "No" at layer-coverage prompt
+2026-07-28 | UR-011 | layer "messaging" out of scope | user answered "No" at layer-coverage prompt
+2026-07-28 | UR-011 | package-owned GoReleaser release on mirrored v* tags; secret-gated full platform signing; replace release on retag | question + capture
