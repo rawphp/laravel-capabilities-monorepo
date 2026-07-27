@@ -1,19 +1,14 @@
 # REQ-056: Update readiness residuals
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.40419
-**Claimed at:** 2026-07-27T06:49:42Z
-**Heartbeat:** 2026-07-27T06:49:42Z
-<!-- claimed-end -->
 
 **UR:** UR-008
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-053
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (2/2) commit:ecc9bec
 **Criteria approved:** agent-drafted
 **Priority:** 1
 **Size:** S
@@ -30,10 +25,10 @@ Root README Consumer readiness table is the honesty surface. After items 1–2 c
 
 ## Acceptance Criteria
 
-- [ ] Readiness table distinguishes: registry factory wired (done when code archived), durable gateway (done), Packagist (residual until human)
-- [ ] Spec/README status lines still say pre-stable / not stable public API until tag+publish
-- [ ] First-capability tutorial linked where relevant
-- [ ] No marketing language claiming 8.5/10 adoption; residual-driven honesty only
+- [x] Readiness table distinguishes: registry factory wired (done when code archived), durable gateway (done), Packagist (residual until human)
+- [x] Spec/README status lines still say pre-stable / not stable public API until tag+publish
+- [x] First-capability tutorial linked where relevant
+- [x] No marketing language claiming 8.5/10 adoption; residual-driven honesty only
 
 ## Verification Steps
 
@@ -45,3 +40,9 @@ Root README Consumer readiness table is the honesty surface. After items 1–2 c
 ## Assets
 
 - (none)
+
+## Outputs
+
+- README.md — readiness table
+- docs/spec.md — roadmap residuals
+- packages/laravel-capabilities/README.md — status banner
