@@ -15,3 +15,4 @@
 2026-07-27 | UR-004 | ship approvals+idempotency drivers + shared migrations including audit_outbox schema; no separate audit writer REQ this UR | brief stresses approval/idempotency; schema matches spec layout
 2026-07-27 | UR-004 | layer "messaging" out of scope | user answered "No" at layer-coverage prompt
 2026-07-27 | UR-004 | layer "cli" out of scope | user answered "No" at layer-coverage prompt
+2026-07-27 | UR-005 | registry constructor + makeRegistry default SystemClock; tests inject FixedClock | align Clock contract and avoid frozen singleton in apps
