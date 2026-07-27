@@ -279,16 +279,17 @@ Messaging is **not** a second mutation API. Telegram does not call Eloquent. It 
 
 ### Peer support matrix (maintained in README + CI)
 
-Versions below are **illustrative placeholders** until first release; CI and this table must stay in lockstep.
+Versions below are **illustrative placeholders** until first release; the machine-readable source of truth is package `PeerSupportMatrix` (mirrored in `config/capabilities.php` → `peers.support`). Package README documents the D-011 release gate.
 
 | `rawphp/laravel-capabilities` | Laravel | `laravel/ai` | `laravel/mcp` | Adapter API |
 |---|---|---|---|---|
-| `^0.1` | `^11.0` \| `^12.0` | `^0.x` (pin in CI) | `^0.x` (pin in CI) | `v1` |
+| `^0.1` | `^11.0` \| `^12.0` | matrix constraints (see `PeerSupportMatrix`) | matrix constraints (see `PeerSupportMatrix`) | `v1` |
 | `^0.2` (example) | … | … | … | `v1` or `v2` |
 
-- **Composer `suggest`** lists peers; **composer.json `conflict`** / test matrix pins known-bad combos when discovered.  
-- Each release notes which peer minors were contract-tested.  
-- Bumping the matrix without green adapter contract jobs is a release blocker (D-011).
+- **Composer `suggest`** lists peers; **composer.json `conflict`** / test matrix pins known-bad combos when discovered.
+- **Default package CI does not install live `laravel/ai` / `laravel/mcp`.** Package honesty = matrix + unit contract fixtures (mocks/fakes). Live peer minors are an **optional consumer-app** path.
+- Each release notes declared peer constraints; consumer apps that run peer-live may record which minors they exercised.
+- Bumping the matrix without a green **unit** adapter contract suite is a release blocker (D-011).
 
 ### Distributed separately (same monorepo, different Composer packages)
 
@@ -659,7 +660,7 @@ TELEGRAM_WEBHOOK_SECRET=...
 6. **`messaging` requires `agent` + messaging package** — package presence checked at boot if surface enabled; **Telegram secrets validated on first HTTP traffic / setup command**, not on every `artisan migrate` (D-021).
 7. **Telegram token/secret** required only by the **messaging** package when its telegram channel is on **and** a messaging request or `messaging:telegram-setup` runs.
 8. **Catalog** only lists capabilities with at least one *effective* invoke surface for that caller.
-9. **CI** must run adapter contract tests against the [peer support matrix](#peer-support-matrix-maintained-in-readme--ci) before release (D-011).
+9. **CI** must run **unit** adapter contract tests (matrix + fixtures; no live peers in default package CI) before release (D-011).
 10. **`CAPABILITIES_SKIP_BOOT_CHECKS=true`** only for tightly controlled CI; never production (D-021).
 
 ---
@@ -3184,18 +3185,19 @@ Silent half-broken tools are worse than a loud boot failure.
 
 ### Decision
 
-1. **Publish an explicit support matrix** (this README + release notes).  
-2. **CI contract tests** against pinned `laravel/ai` and `laravel/mcp` versions for every supported cell in the matrix.  
-3. **Version the adapter layer** inside this package (`AdapterApi::V1`, …).  
-4. **On missing or incompatible peer:** `on_incompatible` = `fail` (default) or `disable` with CRITICAL log — no partial tool registration.  
-5. **Release gate:** matrix change or adapter change without green contract jobs is not shippable.
+1. **Publish an explicit support matrix** (package `PeerSupportMatrix` + README release gate + release notes).
+2. **Package CI contract tests** are **unit-only** (fixtures + mocks/fakes for tool shapes, probe, boot fail/disable). Default monorepo CI does **not** install live `laravel/ai` / `laravel/mcp`.
+3. **Version the adapter layer** inside this package (`AdapterApi::V1`, …).
+4. **On missing or incompatible peer:** `on_incompatible` = `fail` (default) or `disable` with CRITICAL log — no partial tool registration.
+5. **Release gate:** matrix change or adapter change without a green **unit** contract suite is not shippable.
+6. **Optional consumer peer-live:** apps that install real peers may run their own smoke/integration jobs against pinned minors and confirm matrix cells — package-owned but not package-default CI.
 
 ### Support matrix
 
-See [Peer support matrix](#peer-support-matrix-maintained-in-readme--ci). Maintainers update the table when:
+See [Peer support matrix](#peer-support-matrix-maintained-in-readme--ci) and package README **Peer support / D-011 release gate**. Maintainers update the matrix when:
 
-- Adding a new peer minor/major after contract tests pass  
-- Dropping a peer version (document migration)  
+- Adding a new peer minor/major after unit contract fixtures stay green
+- Dropping a peer version (document migration)
 - Bumping `AdapterApi` when this package’s bridge API breaks
 
 ```text
@@ -3203,12 +3205,14 @@ composer.json (illustrative)
   suggest: laravel/ai, laravel/mcp
   # optional conflict: with known-broken peer versions
 
-.github/workflows/adapters.yml
-  matrix:
-    laravel: [11, 12]
-    ai: [pinned-a, pinned-b]
-    mcp: [pinned-c, pinned-d]
-  steps: composer install && pest --group=adapters
+# Default package CI (monorepo policy — unit only, no live peers):
+composer test:core -- --filter=PeerSupportMatrix
+composer test:core -- --filter=PeerContract
+composer test:core -- --filter=Adapter
+
+# Optional consumer app job (not default package CI):
+#   composer require laravel/ai laravel/mcp
+#   run app-owned peer-live smoke against pinned minors
 ```
 
 ### Adapter interface versioning
@@ -3264,19 +3268,20 @@ Health endpoint (optional): `GET /capabilities/health` reports surface status (`
 
 ### Contract tests (CI)
 
-Minimum suite tagged `adapters` / `group('adapters')`:
+Minimum **unit** suite (package default CI — mock/fake peers only; no live `laravel/ai` / `laravel/mcp`):
 
 | Test | Asserts |
 |---|---|
-| Tool schema mapping | Capability JSON Schema → peer tool definition fields present |
-| Invoke round-trip | Peer-shaped tool call → registry `run` → result shape peer expects |
+| Tool schema mapping | Capability JSON Schema → peer tool definition fields present (fixtures) |
+| Invoke round-trip | Peer-shaped tool call → registry `run` → result shape peer expects (mocks) |
 | Profile filter | D-008 selection still applies through adapter |
 | Authorization deny | Peer call with unauthorized user does not mutate |
 | Idempotency header/arg | Passed through when present |
 | Missing peer | Boot/disable path as configured |
 | Unsupported peer version (mock/pin) | `supportsInstalledPeer` false → fail/disable |
+| Frozen fixtures / AdapterApi | Shape drift fails unit suite; bump rule via `requiresBump` |
 
-Run on **every PR** that touches `Adapters/` or `composer.json`, and on a **nightly** matrix against latest peer minors (non-blocking or blocking per policy — recommend blocking before release).
+Run on **every PR** that touches `Adapters/` or peer matrix config. Optional **consumer** peer-live jobs (install real peer minors) are app-owned and never required for default package green.
 
 ### What we refuse
 
@@ -3298,10 +3303,13 @@ Run on **every PR** that touches `Adapters/` or `composer.json`, and on a **nigh
 
 ### Maintainer checklist (each release)
 
-- [ ] Support matrix updated  
-- [ ] Adapter contract jobs green on all matrix cells  
-- [ ] CHANGELOG lists tested peer versions  
-- [ ] Known-bad peers `conflict`ed or documented  
+- [ ] Support matrix (`PeerSupportMatrix`) updated
+- [ ] Unit adapter contract suite green (PeerSupportMatrix / PeerContract / Adapter filters)
+- [ ] Default package CI still does not install live peers
+- [ ] CHANGELOG lists declared peer constraints (and any consumer peer-live notes if applicable)
+- [ ] Known-bad peers `conflict`ed or documented
+- [ ] `AdapterApi` bumped if bridge call shapes changed
+
 
 ---
 
