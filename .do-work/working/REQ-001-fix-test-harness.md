@@ -1,7 +1,13 @@
 # REQ-001: Fix unit test harness load
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.49422
+**Claimed at:** 2026-07-27T00:27:56Z
+**Heartbeat:** 2026-07-27T00:27:56Z
+<!-- claimed-end -->
+
 **UR:** UR-001
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:** composer test:core | composer test:messaging | composer test:cli
