@@ -1,19 +1,14 @@
 # REQ-058: Fix subcommand --help flags
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.57067
-**Claimed at:** 2026-07-27T20:22:27Z
-**Heartbeat:** 2026-07-27T20:22:27Z
-<!-- claimed-end -->
 
 **UR:** UR-010
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-28
 **Layer:** none
 **Entry point:**
 **Terminal state:**
 **Parent:**
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:69ef74d tests:go_test_cmd_capabilities+runtime_mcp_help
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** S
@@ -40,13 +35,13 @@ Scope decision (this UR): fix the shared footgun for all top-level subcommands m
 
 ## Acceptance Criteria
 
-- [ ] `CaptureExecute([]string{"mcp", "--help"}, …)` returns exit code 0, stdout contains mcp usage text from `CommandHelp("mcp")` (e.g. "MCP stdio" / "capabilities mcp"), and does **not** require a token or call auth/network
-- [ ] `CaptureExecute([]string{"mcp", "-h"}, …)` behaves the same
-- [ ] `CaptureExecute([]string{"mcp", "--profile=default", "--help"}, …)` still prints mcp help (help wins regardless of flag order)
-- [ ] With a fake logged-in config root, `mcp --help` still prints help and does **not** start the MCP bridge (no empty success path)
-- [ ] `catalog --help`, `describe --help`, `run --help`, and `approvals --help` print their respective `CommandHelp` and exit 0 without auth/network
-- [ ] Existing `capabilities help mcp` / root `--help` behaviour remains unchanged
-- [ ] `go test ./cmd/capabilities/` passes
+- [x] `CaptureExecute([]string{"mcp", "--help"}, …)` returns exit code 0, stdout contains mcp usage text from `CommandHelp("mcp")` (e.g. "MCP stdio" / "capabilities mcp"), and does **not** require a token or call auth/network
+- [x] `CaptureExecute([]string{"mcp", "-h"}, …)` behaves the same
+- [x] `CaptureExecute([]string{"mcp", "--profile=default", "--help"}, …)` still prints mcp help (help wins regardless of flag order)
+- [x] With a fake logged-in config root, `mcp --help` still prints help and does **not** start the MCP bridge (no empty success path)
+- [x] `catalog --help`, `describe --help`, `run --help`, and `approvals --help` print their respective `CommandHelp` and exit 0 without auth/network
+- [x] Existing `capabilities help mcp` / root `--help` behaviour remains unchanged
+- [x] `go test ./cmd/capabilities/` passes
 
 ## Verification Steps
 
@@ -59,3 +54,9 @@ Scope decision (this UR): fix the shared footgun for all top-level subcommands m
 
 3. **runtime** `/tmp/capabilities-ur010 run --help` and `/tmp/capabilities-ur010 catalog --help`
    - Expected: each prints its command help and exits 0 without requiring login or network
+
+## Outputs
+
+- packages/capabilities-cli/cmd/capabilities/cli.go — wantsHelp early-exit on mcp/catalog/describe/run/approvals
+- packages/capabilities-cli/cmd/capabilities/cli_integration_test.go — TestExecuteSubcommandHelpFlags covering auth-free help paths
+
