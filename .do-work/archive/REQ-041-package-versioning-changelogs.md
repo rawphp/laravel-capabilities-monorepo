@@ -1,19 +1,14 @@
 # REQ-041: Package versioning and changelogs
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.95896
-**Claimed at:** 2026-07-27T05:28:56Z
-**Heartbeat:** 2026-07-27T05:28:56Z
-<!-- claimed-end -->
 
 **UR:** UR-007
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-039
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (3/3 runtime) commit:0207fa6
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** M
@@ -30,12 +25,12 @@ Brief: packaging and release notes missing. Ideate: packaging = monorepo readine
 
 ## Acceptance Criteria
 
-- [ ] `packages/laravel-capabilities/CHANGELOG.md` exists with at least an Unreleased or 0.x section describing current monorepo capability surface at a high level
-- [ ] Messaging and CLI packages have CHANGELOG.md stubs or initial entries so release-notes path is consistent across monorepo packages
-- [ ] `docs/versioning.md` (or equivalent section linked from README) states: 0.x pre-stable expectations, install-from-path/VCS, that Packagist publish is not claimed until done, and where CHANGELOGs live
-- [ ] Core `composer.json` remains valid JSON; any version/branch-alias addition is intentional and documented in versioning doc
-- [ ] Root README links to versioning doc and/or CHANGELOGs
-- [ ] No secrets, tokens, or live publish steps are introduced
+- [x] `packages/laravel-capabilities/CHANGELOG.md` exists with at least an Unreleased or 0.x section describing current monorepo capability surface at a high level
+- [x] Messaging and CLI packages have CHANGELOG.md stubs or initial entries so release-notes path is consistent across monorepo packages
+- [x] `docs/versioning.md` (or equivalent section linked from README) states: 0.x pre-stable expectations, install-from-path/VCS, that Packagist publish is not claimed until done, and where CHANGELOGs live
+- [x] Core `composer.json` remains valid JSON; any version/branch-alias addition is intentional and documented in versioning doc
+- [x] Root README links to versioning doc and/or CHANGELOGs
+- [x] No secrets, tokens, or live publish steps are introduced
 
 ## Verification Steps
 
@@ -45,3 +40,13 @@ Brief: packaging and release notes missing. Ideate: packaging = monorepo readine
    - Expected: `ok`
 3. **runtime** `rg -n "CHANGELOG|versioning|0\\.x|path" README.md docs/versioning.md | head -30`
    - Expected: consumer-facing pointers present
+
+## Outputs
+
+- packages/laravel-capabilities/CHANGELOG.md — Core Keep a Changelog with Unreleased + 0.x monorepo surface notes
+- packages/laravel-capabilities-messaging/CHANGELOG.md — Messaging package CHANGELOG stub
+- packages/capabilities-cli/CHANGELOG.md — Go CLI CHANGELOG stub
+- docs/versioning.md — 0.x policy, path/VCS install, Packagist honesty
+- packages/laravel-capabilities/composer.json — branch-alias dev-main → 0.x-dev
+- packages/laravel-capabilities-messaging/composer.json — branch-alias dev-main → 0.x-dev
+- README.md — Links versioning doc and CHANGELOGs
