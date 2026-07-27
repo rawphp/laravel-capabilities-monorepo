@@ -1,19 +1,14 @@
 # REQ-033: Wire database store bindings
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.14839
-**Claimed at:** 2026-07-27T05:07:23Z
-**Heartbeat:** 2026-07-27T05:07:23Z
-<!-- claimed-end -->
 
 **UR:** UR-004
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-029
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:a85745a tests:ConfigDrivenBindings+core
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** M
@@ -30,13 +25,13 @@ REQ-023 introduced config-driven resolve with database → memory package_defaul
 
 ## Acceptance Criteria
 
-- [ ] `ContainerBindings::resolve` for database approval store sets `package_default: false` and concrete to Database ApprovalStore class
-- [ ] Same for idempotency database driver
-- [ ] `makeApprovalManager` / `makeIdempotencyStore` construct DB-backed types when config says database (may inject connection factory that unit tests replace)
-- [ ] Memory drivers still construct InMemory* types
-- [ ] Unknown drivers still throw BootException
-- [ ] Unit tests cover resolve matrix memory vs database without live DB
-- [ ] Existing Boot/ConfigDriven bindings tests updated and green
+- [x] `ContainerBindings::resolve` for database approval store sets `package_default: false` and concrete to Database ApprovalStore class
+- [x] Same for idempotency database driver
+- [x] `makeApprovalManager` / `makeIdempotencyStore` construct DB-backed types when config says database (may inject connection factory that unit tests replace)
+- [x] Memory drivers still construct InMemory* types
+- [x] Unknown drivers still throw BootException
+- [x] Unit tests cover resolve matrix memory vs database without live DB
+- [x] Existing Boot/ConfigDriven bindings tests updated and green
 
 ## Verification Steps
 
@@ -56,3 +51,8 @@ REQ-023 introduced config-driven resolve with database → memory package_defaul
 ## Assets
 
 - packages/laravel-capabilities/src/Boot/ContainerBindings.php
+
+
+## Outputs
+
+- packages/laravel-capabilities/src/Boot/ContainerBindings.php — database drivers bind Database* stores
