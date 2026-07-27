@@ -1,0 +1,86 @@
+# GoReleaser config for rawphp/capabilities-cli (binary: capabilities).
+#
+# Schema pin: GoReleaser v2 (version: 2 below). CI should install a v2.x
+# goreleaser (see package release workflow — REQ-062). Validate with:
+#   goreleaser check
+# Snapshot (no publish):
+#   goreleaser release --snapshot --clean --skip=publish
+#
+# Package is mirrored self-contained to github.com/rawphp/capabilities-cli.
+# Do not publish from monorepo PHP packages.
+#
+# Signing (macOS notarization / Windows Authenticode / cosign) is secret-gated
+# in REQ-063 — this base config has no hard dependency on signing secrets.
+
+version: 2
+
+project_name: capabilities
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: capabilities
+    main: ./cmd/capabilities
+    binary: capabilities
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # Strip symbols; inject version matching REQ-060 / dist/README.md.
+    # {{.Version}} is the git tag with leading "v" stripped (v1.2.3 → 1.2.3).
+    ldflags:
+      - -s -w -X main.Version={{.Version}}
+    flags:
+      - -trimpath
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    # Windows gets zip; others tar.gz (GoReleaser default format_overrides pattern).
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    files:
+      - none*
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+# Placeholders for secret-gated signing (REQ-063). Do not enable here with
+# required env lookups — soft path when secrets are missing lives in the
+# package release workflow.
+# signs: []
+# notarize: {}
+
+changelog:
+  # Prefer package CHANGELOG.md / release notes from workflow; disable auto
+  # GitHub changelog generation so monorepo history does not dominate.
+  disable: true
+
+release:
+  # Draft false: child-repo workflow (REQ-062) owns GitHub Release create/replace.
+  # name_template keeps tag-without-v consistency with binary Version.
+  name_template: "v{{.Version}}"
+  draft: false
+  replace_existing_artifacts: true
+  mode: replace
+
+snapshot:
+  # Local/CI dry-runs: version still flows into -X main.Version via {{.Version}}.
+  version_template: "{{ incpatch .Version }}-next"

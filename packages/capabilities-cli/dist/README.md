@@ -1,8 +1,13 @@
 # Cross-compile targets
 
-Release artifacts for the `capabilities` binary land here (e.g. via goreleaser).
-Until automated release packaging lands, build locally with Go’s standard
-cross-compile flags.
+Release artifacts for the `capabilities` binary are produced by **GoReleaser**
+using the package-root config [`.goreleaser.yml`](../.goreleaser.yml) (GoReleaser
+**v2** schema: `version: 2`). On `v*` tags in `rawphp/capabilities-cli` (after
+monorepo split), the package release workflow runs GoReleaser and attaches
+archives + `checksums.txt` to a GitHub Release.
+
+For local / ad-hoc builds without GoReleaser, use Go’s standard cross-compile
+flags below.
 
 ## Supported GOOS / GOARCH matrix
 
@@ -50,7 +55,25 @@ go build -ldflags "-X main.Version=0.2.0" -o dist/capabilities ./cmd/capabilitie
 ```
 
 Without `-ldflags`, the binary keeps the source default in `Version` (dev string).
-GoReleaser should set the same `-X main.Version=...` (typically via `{{.Version}}`,
-which is already tag-without-`v` in GoReleaser).
+
+## GoReleaser (release path)
+
+Config: `packages/capabilities-cli/.goreleaser.yml` (self-contained after split).
+
+| Item | Value |
+|------|--------|
+| Schema | GoReleaser **v2** (`version: 2` in YAML) |
+| Main | `./cmd/capabilities` |
+| Binary | `capabilities` |
+| Matrix | darwin/linux/windows × amd64/arm64 |
+| Version ldflags | `-X main.Version={{.Version}}` (tag `v1.2.3` → `1.2.3`) |
+| Checksums | `checksums.txt` (sha256) |
+| Signing | Not in base config; secret-gated in a later release step |
+
+```bash
+# from packages/capabilities-cli (requires goreleaser v2.x on PATH)
+goreleaser check
+goreleaser release --snapshot --clean --skip=publish
+```
 
 Single static binary per target — no Node/PHP runtime required on the user machine (D-016).
