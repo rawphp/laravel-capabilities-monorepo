@@ -1,23 +1,18 @@
 # REQ-016: Core package full suite green
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.49422
-**Claimed at:** 2026-07-27T02:57:18Z
-**Heartbeat:** 2026-07-27T02:57:18Z
-<!-- claimed-end -->
 
 **UR:** UR-001
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** composer test:core
 **Terminal state:** All packages/laravel-capabilities unit tests pass (0 failures, 0 fatals); coverage ≥95% on packages/laravel-capabilities/src.
 **Parent:** 
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:f972ceb 4567 passed coverage 95.1%
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** L
-**Files:** packages/laravel-capabilities docs/spec.md
+**Files:** packages/laravel-capabilities/tests/Unit/CoverageGreen packages/laravel-capabilities docs/spec.md
 **Depends on:** REQ-015
 
 ## Task
@@ -32,9 +27,9 @@ Original brief: implement all package tests and business logic so all tests pass
 
 ## Acceptance Criteria
 
-- [ ] composer test:core exits 0 with no failed tests and no incomplete todos remaining for core contract scenarios
-- [ ] Coverage on packages/laravel-capabilities/src is ≥95% (PCOV/Xdebug)
-- [ ] No tests/Feature introduced; no DB required
+- [x] composer test:core exits 0 with no failed tests and no incomplete todos remaining for core contract scenarios
+- [x] Coverage on packages/laravel-capabilities/src is ≥95% (PCOV/Xdebug)
+- [x] No tests/Feature introduced; no DB required
 
 ## Verification Steps
 
@@ -55,3 +50,8 @@ Original brief: implement all package tests and business logic so all tests pass
 
 - docs/spec.md — design bible / conflict oracle
 - docs/requirements-inventory.md — scenario checklist
+
+
+## Outputs
+
+- core suite green 4567 tests, 95.1% coverage
