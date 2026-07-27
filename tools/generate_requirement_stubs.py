@@ -3690,7 +3690,7 @@ def build_catalog() -> list[FileSpec]:
     close.happy("each patch P2-004 P2-005 P2-007 is represented in scenarios", "COV")
     close.fail("hand-edited generated stubs are not the source process", "COV")
     close.happy("happy fail and edge kinds cover success denial and boundaries", "COV")
-    close.happy("go CLI stubs use t.Skip TODO until implemented", "COV")
+    close.happy("go CLI unit tests use stable *_test.go names", "COV")
     files.append(close)
 
     return files
@@ -3756,21 +3756,25 @@ def inventory_content(files: list[FileSpec]) -> str:
         "",
         "Policy: **unit tests only**, no DB, mocks/fakes, **≥95% coverage** when implemented (`AGENTS.md`).",
         "",
-        f"**Total TODO cases:** {total}",
+        # Status counts are filled by tools/sync_requirements_inventory.py against the suite.
+        # Generator always emits unchecked boxes; run sync after regenerate.
+        f"**Cases: {total} total — 0 implemented, {total} remaining**",
         "",
         f"- happy: {by_kind.get('happy', 0)}",
         f"- fail: {by_kind.get('fail', 0)}",
         f"- edge: {by_kind.get('edge', 0)}",
         f"- go: {by_kind.get('go', 0)}",
         "",
-        "Regenerate (safe — does not wipe implemented tests):",
+        "Regenerate scaffold (safe — does not wipe implemented tests):",
         "",
         "```bash",
         "python3 tools/generate_requirement_stubs.py",
+        "python3 tools/sync_requirements_inventory.py",
         "```",
         "",
         "Only missing files and pure AUTO-GENERATED stubs are rewritten; implemented suites",
         "(no AUTO-GENERATED marker) are skipped with a written/skipped count on stdout/stderr.",
+        "Then sync marks inventory cases done when matching Pest `it()` / Go `Test*` exist.",
         "Extend the catalog in the generator and re-run; do not hand-edit pure stubs.",
         "",
     ]
