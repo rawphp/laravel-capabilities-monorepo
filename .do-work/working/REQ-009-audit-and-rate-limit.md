@@ -1,7 +1,13 @@
 # REQ-009: Audit modes and rate limiting
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.49422
+**Claimed at:** 2026-07-27T01:46:03Z
+**Heartbeat:** 2026-07-27T01:46:03Z
+<!-- claimed-end -->
+
 **UR:** UR-001
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** Post-run audit stage + rate_limit stage
