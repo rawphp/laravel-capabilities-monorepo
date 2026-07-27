@@ -18,6 +18,9 @@ final class PeerVersionProbe
     /**
      * Representative classes for feature detection (not version-locked).
      *
+     * Frozen peer contract fixtures (tests/Fixtures/PeerContractFixtures) document
+     * this list; unit tests fail if either side drifts (D-011 / REQ-037).
+     *
      * @var array<string, list<string>>
      */
     private const PEER_CLASSES = [
@@ -32,6 +35,16 @@ final class PeerVersionProbe
             'Laravel\\Mcp\\Facades\\Mcp',
         ],
     ];
+
+    /**
+     * Documented probe class lists for contract fixtures (no live peer load).
+     *
+     * @return array<string, list<string>>
+     */
+    public static function peerClasses(): array
+    {
+        return self::PEER_CLASSES;
+    }
 
     /**
      * @var array<string, list<string>>
