@@ -1,0 +1,57 @@
+=== REQ-053 release prep docs ===
+versioning.md: present
+docs/versioning.md:5:published on Packagist or that stable release tags already exist.
+docs/versioning.md:25:- `1.x` stability, Packagist versions, and signed CLI binaries are **future** — not asserted here.
+docs/versioning.md:29:Packages are developed in this monorepo. Preferred consumer paths until Packagist publish:
+docs/versioning.md:75:repository is structured. Until a dedicated package repository or Packagist listing exists,
+docs/versioning.md:88:## Composer version field and branch-alias
+docs/versioning.md:93:| `extra.branch-alias` | **Set intentionally** on both PHP packages: `dev-main` → `0.x-dev` so path/VCS consumers resolve a stable-looking 0.x constraint without claiming a Packagist release. |
+docs/versioning.md:95:| Packagist | **Not claimed.** `composer require rawphp/...` from the public registry is aspirational until packages are submitted and accepted. Root README install snippets remain the intended end-state; this doc is the honest “how to install now.” |
+docs/versioning.md:106:  "branch-alias": {
+docs/versioning.md:119:- Go CLI has no Composer `branch-alias`; its version story is git tags + module path only (see tag naming).
+docs/versioning.md:126:v0.<minor>.<patch>
+docs/versioning.md:129:Examples: `v0.1.0`, `v0.1.1`, `v0.2.0`.
+docs/versioning.md:133:| **Prefix** | Leading lowercase `v` is required (`v0.1.0`, not `0.1.0`). |
+docs/versioning.md:136:| **Not used (v0.x prep)** | Package-scoped tags such as `laravel-capabilities/v0.1.0` or `packages/laravel-capabilities@0.1.0` — out of scope for the first pre-stable line. Revisit only if packages split to separate remotes. |
+docs/versioning.md:137:| **First pre-stable target** | `v0.1.0` when a human deliberately cuts the first tag (not automated by this monorepo alone). |
+docs/versioning.md:138:| **Annotated preferred** | Prefer annotated tags: `git tag -a v0.1.0 -m "Pre-stable 0.1.0"`. |
+docs/versioning.md:139:| **Push / Packagist** | Tag **create and push** are human-gated. This document does **not** create tags or publish to Packagist. |
+docs/versioning.md:146:2. When cutting tag `v0.Y.Z`, **move** Unreleased bullets into a new dated section:
+docs/versioning.md:157:Go CLI versioning is documented here only (CLI layer implementation out of scope for prep REQs): the same monorepo tag `v0.Y.Z` is the release marker; binary embedding of that string is a later release step.
+docs/versioning.md:159:## Packagist + git tag publish checklist (human steps)
+docs/versioning.md:161:**State:** Packagist publish remains a **residual** until a maintainer completes the manual checks below.
+docs/versioning.md:163:call Packagist, create tags, or hold API tokens. Do **not** claim publish is done because this
+docs/versioning.md:170:| `rawphp/laravel-capabilities` | `packages/laravel-capabilities` | Packagist (Composer) |
+docs/versioning.md:171:| `rawphp/laravel-capabilities-messaging` | `packages/laravel-capabilities-messaging` | Packagist (Composer) — sibling of core |
+docs/versioning.md:172:| `rawphp/capabilities-cli` (Go module / binary `capabilities`) | `packages/capabilities-cli` | **Not Packagist** — CLI binary residual (GitHub Releases / install docs; separate from Composer) |
+docs/versioning.md:176:- The git remote is a **monorepo**. Packagist expects each Composer package root to contain its own
+docs/versioning.md:180:  (b) document an explicit Packagist/subtree strategy before the first public tag. Path/VCS install
+docs/versioning.md:187:### Human checklist (maintainer)
+docs/versioning.md:192:   - [ ] `branch-alias` remains `dev-main` → `0.x-dev` on both PHP packages (no top-level `"version"`).
+docs/versioning.md:194:   - [ ] Confirm monorepo unit suites green locally (`composer test:core`, messaging as needed). **No** live Packagist network call is part of unit CI.
+docs/versioning.md:196:2. **Packagist submit (each PHP package)**
+docs/versioning.md:197:   - [ ] Log into [Packagist](https://packagist.org/) with the org/maintainer account that owns `rawphp/*`.
+docs/versioning.md:204:   - [ ] Verify Packagist shows the correct git remote and default branch (`main`).
+docs/versioning.md:205:   - [ ] Ensure the package repository is public (or Packagist has access) so consumers can clone.
+docs/versioning.md:208:   - [ ] On the git host (e.g. GitHub), add Packagist’s **auto-update webhook** (or GitHub service integration)
+docs/versioning.md:209:     so new tags/commits update Packagist without manual “Update” clicks.
+docs/versioning.md:210:   - [ ] Fire a test push or use Packagist “Update” once to confirm the hook works.
+docs/versioning.md:213:   - [ ] Create annotated monorepo tag per pattern: `git tag -a v0.Y.Z -m "Pre-stable 0.Y.Z"` (first target often `v0.1.0`).
+docs/versioning.md:214:   - [ ] Push the tag: `git push origin v0.Y.Z` (and package split remotes if used).
+docs/versioning.md:218:   - [ ] After Packagist indexes the tag: `composer show rawphp/laravel-capabilities` (and messaging) resolves a version.
+docs/versioning.md:220:   - [ ] Only then update root README / consumer docs to drop “not on Packagist” residual wording for those packages.
+3:> **Status:** monorepo **unit-complete design** (v0.1–v0.5 surfaces largely covered by package unit tests) — **not a stable public API**, **not published on Packagist**.  
+5:> Unit-green ≠ shipped product: treat path/VCS install + package CHANGELOGs as pre-release readiness, not Packagist release.
+13:| **[First capability tutorial](docs/tutorials/first-capability.md)** | App integrators: path/VCS install, define once (fluent primary + attribute alternate), durable stores / `QueryTableGateway`, registry invoke, HTTP note, D-020 helpers |
+14:| [docs/versioning.md](docs/versioning.md) | 0.x policy, path/VCS install, durable persistence path, CHANGELOG locations, Packagist publish checklist (human) |
+16:| [Core package README — durable persistence](packages/laravel-capabilities/README.md#durable-persistence-querytablegateway) | `QueryTableGateway` default, config keys, host `TableGateway` override |
+18:## Consumer readiness (residuals)
+20:Honest picture of what the monorepo has vs what a production consumer still lacks. Markers match code and docs at this commit — residual-driven honesty only (not a marketing score or “stable” claim). **Packagist remains residual until a human completes publish**; closed monorepo gaps below do not change that.
+24:| **Registry factory (`makeRegistry`) config wiring** | done | `ContainerBindings::makeRegistry` applies config and injects approval store, idempotency store, audit settings, and scope resolver; SP registry / `ApprovalManager` / `IdempotencyStore` share store instances (no bare SystemClock-only factory) |
+25:| **Durable persistence / TableGateway** | done | First-party `QueryTableGateway` for database drivers (`approval.store`, `idempotency.driver` + connection keys); publish `capabilities-migrations`; host override docs in [tutorial](docs/tutorials/first-capability.md) + [core README](packages/laravel-capabilities/README.md#durable-persistence-querytablegateway). Unit-tested with fakes — not a live-DB feature suite |
+26:| **Release prep (0.x metadata)** | done | Branch-alias / 0.x-dev policy, CHANGELOG scaffolds, tag naming in [docs/versioning.md](docs/versioning.md); per-package [CHANGELOG](packages/laravel-capabilities/CHANGELOG.md). Prep only — **does not** mean tagged or Packagist-published |
+27:| **Packaging / Packagist publish** | residual | **Residual until human completes** the Packagist + git tag publish **checklist** in [docs/versioning.md](docs/versioning.md#packagist--git-tag-publish-checklist-human-steps) (submit, VCS, webhook, first tag, `composer show` / clean `composer require`). Install today via monorepo **path** or VCS only; CLI binary is a separate residual (not Packagist) |
+28:| **First-capability tutorial** | done | [docs/tutorials/first-capability.md](docs/tutorials/first-capability.md) — path install, fluent define + attribute alternate, durable stores (`QueryTableGateway` / host `TableGateway` override), registry invoke, HTTP, D-020 helpers |
+42:Packages are **not** on Packagist yet. Use a monorepo **path** repository or VCS require — full policy, 0.x caveats, and Composer `branch-alias` notes: **[docs/versioning.md](docs/versioning.md)**.
+65:  versioning.md                   # 0.x policy, path/VCS install, Packagist checklist, changelogs
+72:Tests live **inside each package**, not at the monorepo root. The inventory and stubs are the contract scaffold; implemented unit tests are the behavioural source of truth for monorepo design — they do **not** prove Packagist readiness or a frozen public API.

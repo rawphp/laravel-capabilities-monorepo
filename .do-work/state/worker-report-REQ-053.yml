@@ -1,0 +1,55 @@
+req: REQ-053
+status: done
+commit: 8080751
+reason: ""
+details: "prestable release path closed"
+isolation: worktree
+closure_proof: "checkpoint_log:passed (2/2) commit:8080751 children:REQ-054,REQ-055,REQ-056 archived; Packagist remains advisory residual"
+last_good_step: 2
+failed_step: 0
+checkpoint_log:
+  status: passed
+  checkpoints:
+    - step: 1
+      total: 2
+      type: runtime
+      command: "rg Packagist docs"
+      expected: "present"
+      actual: "present"
+      status: passed
+    - step: 2
+      total: 2
+      type: test
+      command: "composer test:core"
+      expected: "green"
+      actual: "4712 passed"
+      status: passed
+deferred_checks: []
+acceptance:
+  AC1:
+    status: passed
+    evidence:
+      - type: file
+        ref: ".do-work/archive/REQ-054-release-prep-metadata.md"
+      - type: file
+        ref: ".do-work/archive/REQ-055-packagist-publish-checklist.md"
+      - type: file
+        ref: ".do-work/archive/REQ-056-update-readiness-residuals.md"
+  AC2:
+    status: passed
+    evidence:
+      - type: file
+        ref: "docs/versioning.md"
+  AC3:
+    status: passed
+    evidence:
+      - type: file
+        ref: "README.md"
+milestone_complete: false
+milestone: ""
+retry_count: 0
+outputs:
+  - path: docs/versioning.md
+    description: release checklist verified
+  - path: README.md
+    description: readiness residuals verified

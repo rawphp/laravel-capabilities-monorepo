@@ -1,0 +1,62 @@
+req: REQ-049
+status: done
+commit: ba1cef4
+reason: ""
+details: "durable gateway path unit closed"
+isolation: worktree
+closure_proof: "checkpoint_log:passed (3/3) commit:ba1cef4 children:REQ-050,REQ-051,REQ-052 archived"
+last_good_step: 3
+failed_step: 0
+checkpoint_log:
+  status: passed
+  checkpoints:
+    - step: 1
+      total: 3
+      type: test
+      command: "composer test:core -- --filter=TableGateway"
+      expected: "pass"
+      actual: "25 passed"
+      status: passed
+    - step: 2
+      total: 3
+      type: test
+      command: "composer test:core -- --filter=Persistence"
+      expected: "pass"
+      actual: "40 passed"
+      status: passed
+    - step: 3
+      total: 3
+      type: test
+      command: "composer test:core"
+      expected: "green"
+      actual: "4712 passed"
+      status: passed
+deferred_checks: []
+acceptance:
+  AC1:
+    status: passed
+    evidence:
+      - type: file
+        ref: ".do-work/archive/REQ-050-query-table-gateway.md"
+      - type: file
+        ref: ".do-work/archive/REQ-051-wire-gateway-bindings.md"
+      - type: file
+        ref: ".do-work/archive/REQ-052-host-gateway-docs.md"
+  AC2:
+    status: passed
+    evidence:
+      - type: test
+        ref: "DurableGatewayPathTest"
+  AC3:
+    status: passed
+    evidence:
+      - type: test
+        ref: "host override + docs"
+milestone_complete: false
+milestone: ""
+retry_count: 0
+outputs:
+  - path: packages/laravel-capabilities/tests/Unit/Persistence/DurableGatewayPathTest.php
+    description: path unit proof
+  - path: packages/laravel-capabilities/tests/Unit/Persistence/ProductionPersistencePathTest.php
+    description: production path case

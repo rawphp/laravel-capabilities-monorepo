@@ -1,0 +1,18 @@
+--- makeRegistry injects ---
+238:        $registry->withApprovalStore($approvalStore);
+243:        $registry->withIdempotencyStore($idempotencyStore);
+245:        $registry->withScopeResolver(new DefaultScopeResolver);
+249:            $registry->withAuditConfig(self::registryAuditConfig($audit));
+360:    public static function makeDatabaseTableGateway(
+400:                self::makeDatabaseTableGateway(
+432:                self::makeDatabaseTableGateway(
+--- QueryTableGateway class ---
+present
+--- SP shared stores ---
+17:use Rawphp\Capabilities\Contracts\IdempotencyStore;
+79:        $this->app->singleton(IdempotencyStore::class, function ($app) {
+82:            return ContainerBindings::makeIdempotencyStore(
+88:        $this->app->alias(IdempotencyStore::class, 'IdempotencyStore');
+114:            /** @var IdempotencyStore $idempotency */
+115:            $idempotency = $app->make(IdempotencyStore::class);
+117:            return ContainerBindings::makeRegistry(

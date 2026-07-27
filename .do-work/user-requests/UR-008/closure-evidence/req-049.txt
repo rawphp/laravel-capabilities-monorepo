@@ -1,0 +1,242 @@
+=== REQ-049 Durable TableGateway path ===
+
+  [44;1m INFO [49;22m Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Caller/AdapterSetCallerTest.php on line 28
+
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Caller/AdapterSetCallerTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Caller/AdapterSetCallerTest.php on line 30
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Caller/CredentialMatrixTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Caller/CredentialMatrixTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Caller/CredentialMatrixTest.php on line 30
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Caller/DerivationTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Caller/DerivationTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Caller/DerivationTest.php on line 30
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Caller/HeaderVsCredentialMatrixTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Caller/HeaderVsCredentialMatrixTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Caller/HeaderVsCredentialMatrixTest.php on line 30
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Caller/PrivilegeOrderMatrixTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Caller/PrivilegeOrderMatrixTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Caller/PrivilegeOrderMatrixTest.php on line 30
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Caller/SpoofAttemptsMatrixTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Caller/SpoofAttemptsMatrixTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Caller/SpoofAttemptsMatrixTest.php on line 30
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Context/BuildFailurePointsTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Context/BuildFailurePointsTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Context/BuildFailurePointsTest.php on line 30
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Context/CapabilityContextTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Context/CapabilityContextTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Context/CapabilityContextTest.php on line 30
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Context/ContextFieldMatrixTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Context/ContextFieldMatrixTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Context/ContextFieldMatrixTest.php on line 30
+
+Warning: The use statement with non-compound name 'DateTimeImmutable' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/CoverageGreen/CoverageBoost2Test.php on line 33
+
+Warning: The use statement with non-compound name 'DateInterval' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/CoverageGreen/CoverageBoost3Test.php on line 31
+
+Warning: The use statement with non-compound name 'DateTimeImmutable' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/CoverageGreen/CoverageBoost3Test.php on line 32
+
+Warning: The use statement with non-compound name 'DateTimeImmutable' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/CoverageGreen/CoverageBoostTest.php on line 60
+
+Warning: The use statement with non-compound name 'DateTimeImmutable' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Facades/CapabilityFacadeTest.php on line 24
+
+Warning: The use statement with non-compound name 'DateTimeImmutable' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Facades/ErrorPropagationTest.php on line 24
+
+Warning: The use statement with non-compound name 'DateTimeImmutable' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Facades/FacadeMethodMatrixTest.php on line 24
+
+Warning: The use statement with non-compound name 'DateInterval' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Idempotency/TtlMatrixTest.php on line 7
+
+Warning: The use statement with non-compound name 'DateTimeImmutable' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Idempotency/TtlMatrixTest.php on line 8
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/ActorIdentityTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/ActorIdentityTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/ActorIdentityTest.php on line 30
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/FailedJobHooksTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/FailedJobHooksTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/FailedJobHooksTest.php on line 30
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/FailurePointsTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/FailurePointsTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/FailurePointsTest.php on line 30
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/JobTenancyMatrixTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/JobTenancyMatrixTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/JobTenancyMatrixTest.php on line 30
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/PayloadContractTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/PayloadContractTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/PayloadContractTest.php on line 30
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/SystemAllowlistMatrixTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/SystemAllowlistMatrixTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/SystemAllowlistMatrixTest.php on line 30
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/SystemNamesMatrixTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/SystemNamesMatrixTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Job/SystemNamesMatrixTest.php on line 30
+
+Warning: The use statement with non-compound name 'DateTimeImmutable' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Naming/DeprecationLifecycleMatrixTest.php on line 9
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Naming/DeprecationLifecycleMatrixTest.php on line 10
+
+Warning: The use statement with non-compound name 'DateTimeImmutable' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Naming/DeprecationTest.php on line 9
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Naming/DeprecationTest.php on line 10
+
+Warning: The use statement with non-compound name 'DateTimeImmutable' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Pipeline/MiddlewareUnitsTest.php on line 24
+
+Warning: The use statement with non-compound name 'DateTimeImmutable' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Registry/AfterRunCallerMatrixTest.php on line 24
+
+Warning: The use statement with non-compound name 'DateTimeImmutable' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Registry/AuthorizeActorMatchTest.php on line 24
+
+Warning: The use statement with non-compound name 'DateTimeImmutable' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Registry/AuthorizeMatrixTest.php on line 24
+
+Warning: The use statement with non-compound name 'DateTimeImmutable' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Registry/InvokePipelineTest.php on line 24
+
+Warning: The use statement with non-compound name 'DateTimeImmutable' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Registry/LookupMatrixTest.php on line 24
+
+Warning: The use statement with non-compound name 'DateTimeImmutable' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Registry/PipelineOrderTest.php on line 24
+
+Warning: The use statement with non-compound name 'DateTimeImmutable' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Registry/PipelineOutcomeMatrixTest.php on line 24
+
+Warning: The use statement with non-compound name 'DateTimeImmutable' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Registry/PipelineStageCallerMatrixTest.php on line 24
+
+Warning: The use statement with non-compound name 'DateTimeImmutable' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Registry/StageErrorMappingTest.php on line 24
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Scope/AttackVectorsMatrixTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Scope/AttackVectorsMatrixTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Scope/AttackVectorsMatrixTest.php on line 30
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Scope/CrossTenantCallerBulkTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Scope/CrossTenantCallerBulkTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Scope/CrossTenantCallerBulkTest.php on line 30
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Scope/CrossTenantDatasetTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Scope/CrossTenantDatasetTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Scope/CrossTenantDatasetTest.php on line 30
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Scope/ReresolveInAuthorizeAndRunTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Scope/ReresolveInAuthorizeAndRunTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Scope/ReresolveInAuthorizeAndRunTest.php on line 30
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Scope/ResolverOutcomesTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Scope/ResolverOutcomesTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Scope/ResolverOutcomesTest.php on line 30
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Scope/TenancyTest.php on line 28
+
+Warning: The use statement with non-compound name 'RuntimeException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Scope/TenancyTest.php on line 29
+
+Warning: The use statement with non-compound name 'stdClass' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/Scope/TenancyTest.php on line 30
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/TestingHelpers/HelperSurfaceTest.php on line 7
+
+Warning: The use statement with non-compound name 'InvalidArgumentException' has no effect in /Users/tomkaczocha/EA/projects/laravel-capabilities/packages/laravel-capabilities/tests/Unit/TestingHelpers/ParityAndSnapshotsTest.php on line 7.
+
+  [30;42;1m PASS [39;49;22m[39m Packages\laravelcapabilities\tests\Unit\Boot\ContainerBindingsTest[39m
+  [32;1m✓[39;22m[90m [39m[90mit makeRegistry wiring: disabled surfaces and store drivers are app[39m[90m…[39m [90m0.02s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit happy: container binds CapabilityRegistry [BOOT-001][39m
+  [32;1m✓[39;22m[90m [39m[90mit edge: tests can rebind CapabilityRegistry to fake [BOOT-001][39m
+  [32;1m✓[39;22m[90m [39m[90mit happy: container binds ApprovalManager [BOOT-001][39m
+  [32;1m✓[39;22m[90m [39m[90mit edge: tests can rebind ApprovalManager to fake [BOOT-001][39m
+  [32;1m✓[39;22m[90m [39m[90mit happy: container binds IdempotencyStore [BOOT-001][39m
+  [32;1m✓[39;22m[90m [39m[90mit edge: tests can rebind IdempotencyStore to fake [BOOT-001][39m
+  [32;1m✓[39;22m[90m [39m[90mit happy: container binds AuditLogger [BOOT-001][39m
+  [32;1m✓[39;22m[90m [39m[90mit edge: tests can rebind AuditLogger to fake [BOOT-001][39m
+  [32;1m✓[39;22m[90m [39m[90mit happy: container binds ScopeResolver [BOOT-001][39m
+  [32;1m✓[39;22m[90m [39m[90mit edge: tests can rebind ScopeResolver to fake [BOOT-001][39m
+  [32;1m✓[39;22m[90m [39m[90mit happy: container binds AiToolAdapter [BOOT-001][39m
+  [32;1m✓[39;22m[90m [39m[90mit edge: tests can rebind AiToolAdapter to fake [BOOT-001][39m
+  [32;1m✓[39;22m[90m [39m[90mit happy: container binds McpToolAdapter [BOOT-001][39m
+  [32;1m✓[39;22m[90m [39m[90mit edge: tests can rebind McpToolAdapter to fake [BOOT-001][39m
+  [32;1m✓[39;22m[90m [39m[90mit happy: container binds Metrics [BOOT-001][39m
+  [32;1m✓[39;22m[90m [39m[90mit edge: tests can rebind Metrics to fake [BOOT-001][39m
+  [32;1m✓[39;22m[90m [39m[90mit happy: container binds Tracer [BOOT-001][39m
+  [32;1m✓[39;22m[90m [39m[90mit edge: tests can rebind Tracer to fake [BOOT-001][39m
+  [32;1m✓[39;22m[90m [39m[90mit REQ-051: database approval path constructs QueryTableGateway wit[39m[90m…[39m [90m0.02s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit REQ-051: database idempotency path constructs QueryTableGateway with idempotency table[39m
+  [32;1m✓[39;22m[90m [39m[90mit REQ-051: dual-table database registry uses distinct QueryTableGateway table names[39m
+  [32;1m✓[39;22m[90m [39m[90mit REQ-051: memory drivers still use in-memory stores without QueryTableGateway[39m
+  [32;1m✓[39;22m[90m [39m[90mit REQ-051: explicit host TableGateway override is honored for database drivers[39m
+  [32;1m✓[39;22m[90m [39m[90mit REQ-051: database driver without gateway or connection fails closed (no silent ArrayTableGateway)[39m
+  [32;1m✓[39;22m[90m [39m[90mit REQ-051: plan maps TableGateway to QueryTableGateway when database drivers are configured[39m
+  [32;1m✓[39;22m[90m [39m[90mit REQ-051: plan keeps ArrayTableGateway when both stores are memory[39m
+
+  [30;42;1m PASS [39;49;22m[39m Packages\laravelcapabilities\tests\Unit\Persistence\DurableGatewayPathTest[39m
+  [32;1m✓[39;22m[90m [39m[90mit DurableGateway path: connection available → QueryTableGateway, n[39m[90m…[39m [90m0.26s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit DurableGateway path: factory without gateway or connection fails closed (no Array fallback)[39m
+  [32;1m✓[39;22m[90m [39m[90mit DurableGateway path: QueryTableGateway-backed stores survive pro[39m[90m…[39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit DurableGateway path: host TableGateway override remains unit-safe for database drivers[39m
+  [32;1m✓[39;22m[90m [39m[90mit DurableGateway path: memory drivers keep in-memory stores (Array only via host override)[39m
+  [32;1m✓[39;22m[90m [39m[90mit DurableGateway path: plan advertises QueryTableGateway when any database driver is set[39m
+  [32;1m✓[39;22m[90m [39m[90mit DurableGateway path: host override docs name real symbols and config keys[39m
+
+  [30;42;1m PASS [39;49;22m[39m Packages\laravelcapabilities\tests\Unit\Persistence\ProductionPersistencePathTest[39m
+  [32;1m✓[39;22m[90m [39m[90mit path: database + connection builds QueryTableGateway (not silent[39m[90m…[39m [90m0.07s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Packages\laravelcapabilities\tests\Unit\Persistence\QueryTableGatewayTest[39m
+  [32;1m✓[39;22m[90m [39m[90mit implements TableGateway for a named table[39m[90m                        [39m [90m0.04s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit insert and find round-trip scalar columns[39m
+  [32;1m✓[39;22m[90m [39m[90mit encodes and decodes JSON/array columns for store row shapes[39m
+  [32;1m✓[39;22m[90m [39m[90mit replace updates an existing row and returns null when missing[39m
+  [32;1m✓[39;22m[90m [39m[90mit updateWhere is conditional and returns null on miss (compareAndUpdate semantics)[39m
+  [32;1m✓[39;22m[90m [39m[90mit findWhere returns matching rows[39m
+  [32;1m✓[39;22m[90m [39m[90mit upsert inserts then updates by composite identity[39m
+  [32;1m✓[39;22m[90m [39m[90mit generates a primary key when insert omits id[39m
+  [32;1m✓[39;22m[90m [39m[90mit missing connection fails closed with a clear exception (no ArrayTableGateway fallback)[39m
+  [32;1m✓[39;22m[90m [39m[90mit empty table name fails closed[39m
+  [32;1m✓[39;22m[90m [39m[90mit has no dependency on messaging package[39m
+
+  [90mTests:[39m    [32;1m46 passed[39;22m[90m (170 assertions)[39m
+  [90mDuration:[39m [39m1.56s[39m
+
