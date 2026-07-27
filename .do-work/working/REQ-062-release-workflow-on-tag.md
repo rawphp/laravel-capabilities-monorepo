@@ -1,7 +1,13 @@
 # REQ-062: Package release workflow on tag
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.83526
+**Claimed at:** 2026-07-27T20:45:53Z
+**Heartbeat:** 2026-07-27T20:45:53Z
+<!-- claimed-end -->
+
 **UR:** UR-011
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-28
 **Layer:** cli
 **Entry point:**
