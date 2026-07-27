@@ -54,7 +54,7 @@ composer require laravel/ai laravel/mcp
 composer require rawphp/laravel-capabilities-messaging
 ```
 
-Install the **CLI** on the user’s machine (not the server) — binary name: `capabilities` (build from `packages/capabilities-cli` / `rawphp/capabilities-cli` until binary releases exist).
+Install the **CLI** on the user’s machine (not the server) — binary name: `capabilities`. Prefer [GitHub Releases](https://github.com/rawphp/capabilities-cli/releases) after a monorepo `v*` tag + split; or build from `packages/capabilities-cli` / `rawphp/capabilities-cli`.
 
 ## Layout
 
