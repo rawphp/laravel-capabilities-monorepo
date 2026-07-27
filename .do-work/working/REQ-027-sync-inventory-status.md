@@ -1,7 +1,13 @@
 # REQ-027: Sync inventory status to suite reality
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.68154
+**Claimed at:** 2026-07-27T05:03:47Z
+**Heartbeat:** 2026-07-27T05:03:47Z
+<!-- claimed-end -->
+
 **UR:** UR-003
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:**
