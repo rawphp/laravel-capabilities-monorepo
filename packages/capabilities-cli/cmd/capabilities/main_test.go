@@ -59,3 +59,30 @@ func TestVersioncommandexists(t *testing.T) {
 	}
 	_ = run.DocsExitCodes
 }
+
+// TestDefaultversionnonempty asserts the package-level Version default used when
+// release builds do not inject -ldflags -X main.Version=...
+func TestDefaultversionnonempty(t *testing.T) {
+	if strings.TrimSpace(Version) == "" {
+		t.Fatal("default Version must be non-empty for dev builds without ldflags")
+	}
+}
+
+// TestVersioncommandoutputcontainsversion asserts `capabilities version` prints
+// BinaryName and the Version var (overridable via -X main.Version at link time).
+func TestVersioncommandoutputcontainsversion(t *testing.T) {
+	code, out, _ := CaptureExecute([]string{"version"}, t.TempDir(), nil)
+	if code != 0 {
+		t.Fatalf("version exit code: %d", code)
+	}
+	if !strings.Contains(out, BinaryName) {
+		t.Fatalf("version output missing BinaryName %q: %q", BinaryName, out)
+	}
+	if !strings.Contains(out, Version) {
+		t.Fatalf("version output missing Version %q: %q", Version, out)
+	}
+	want := BinaryName + " " + Version
+	if !strings.Contains(out, want) {
+		t.Fatalf("expected %q in version output, got %q", want, out)
+	}
+}

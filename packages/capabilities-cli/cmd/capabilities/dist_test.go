@@ -75,3 +75,19 @@ func TestCrosscompiletargetsdocumented(t *testing.T) {
 		}
 	}
 }
+
+// TestVersionldflagsdocumented ensures release notes document the -X main.Version
+// ldflags key so GoReleaser (and manual release builds) inject the same symbol.
+func TestVersionldflagsdocumented(t *testing.T) {
+	root := moduleRoot(t)
+	b, err := os.ReadFile(filepath.Join(root, "dist", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	for _, needle := range []string{"-ldflags", "main.Version", "-X"} {
+		if !strings.Contains(s, needle) {
+			t.Fatalf("dist README must document version ldflags (missing %q)", needle)
+		}
+	}
+}
