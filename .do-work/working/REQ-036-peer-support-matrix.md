@@ -1,7 +1,13 @@
 # REQ-036: Peer support matrix source of truth
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.81144
+**Claimed at:** 2026-07-27T05:22:56Z
+**Heartbeat:** 2026-07-27T05:22:56Z
+<!-- claimed-end -->
+
 **UR:** UR-006
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
