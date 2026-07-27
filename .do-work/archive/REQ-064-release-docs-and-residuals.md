@@ -1,19 +1,14 @@
 # REQ-064: Release docs and residual updates
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.83526
-**Claimed at:** 2026-07-27T20:57:16Z
-**Heartbeat:** 2026-07-27T20:57:16Z
-<!-- claimed-end -->
 
 **UR:** UR-011
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-28
 **Layer:** cli
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-059
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:0c2e42f steps:3/3 AC1-AC6 passed
 **Criteria approved:** agent-drafted
 **Priority:** 1
 **Size:** S
@@ -30,12 +25,12 @@ Update consumer-facing and monorepo residual docs to reflect automated multi-arc
 
 ## Acceptance Criteria
 
-- [ ] CLI package README documents: monorepo tag `v*` → split → GitHub Release with multi-arch assets; install/download pointer to child repo Releases
-- [ ] `dist/README.md` points at GoReleaser + CI instead of “until automated release packaging lands” as the only path
-- [ ] User guide install section mentions release binaries when available
-- [ ] Monorepo `docs/versioning.md` updates CLI residual: automated unsigned (or secret-gated signed) release path exists; signed residual only if secrets not yet configured (wording accurate, not over-claiming)
-- [ ] CHANGELOG `[Unreleased]` notes release automation
-- [ ] No new relative monorepo links from `packages/capabilities-cli/README.md` into `../../docs/`
+- [x] CLI package README documents: monorepo tag `v*` → split → GitHub Release with multi-arch assets; install/download pointer to child repo Releases
+- [x] `dist/README.md` points at GoReleaser + CI instead of “until automated release packaging lands” as the only path
+- [x] User guide install section mentions release binaries when available
+- [x] Monorepo `docs/versioning.md` updates CLI residual: automated unsigned (or secret-gated signed) release path exists; signed residual only if secrets not yet configured (wording accurate, not over-claiming)
+- [x] CHANGELOG `[Unreleased]` notes release automation
+- [x] No new relative monorepo links from `packages/capabilities-cli/README.md` into `../../docs/`
 
 ## Verification Steps
 
@@ -55,3 +50,13 @@ Update consumer-facing and monorepo residual docs to reflect automated multi-arc
 **Service dependencies:** None at runtime; documentation only.
 
 ## Assets
+
+## Outputs
+
+- packages/capabilities-cli/README.md — Release flow docs
+- packages/capabilities-cli/dist/README.md — Primary CI release path
+- packages/capabilities-cli/docs/user-guide.md — Install GitHub Release binaries
+- packages/capabilities-cli/CHANGELOG.md — Unreleased automation notes
+- docs/versioning.md — Residual CLI path updated
+- README.md — Packaging row + CLI install pointer updated
+
