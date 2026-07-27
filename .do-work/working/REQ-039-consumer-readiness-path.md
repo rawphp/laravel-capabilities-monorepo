@@ -1,7 +1,13 @@
 # REQ-039: Consumer readiness path
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.49422
+**Claimed at:** 2026-07-27T05:59:23Z
+**Heartbeat:** 2026-07-27T05:59:23Z
+<!-- claimed-end -->
+
 **UR:** UR-007
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:** App integrator evaluates the monorepo for adoption — opens root README, package docs, and plans a first capability plus app CI parity/schema checks
