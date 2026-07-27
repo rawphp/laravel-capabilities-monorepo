@@ -1,0 +1,25 @@
+/vendor/
+/composer.lock
+.phpunit.result.cache
+.phpunit.cache
+.pest/
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# CLI build artifacts
+packages/capabilities-cli/dist/*
+!packages/capabilities-cli/dist/.gitkeep
+packages/capabilities-cli/**/bin/
+*.exe
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Coverage / static analysis
+coverage/
+.phpstan/
+build/

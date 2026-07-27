@@ -1,0 +1,61 @@
+{
+    "name": "rawphp/laravel-capabilities-messaging",
+    "description": "Conversation surfaces (Telegram first) for the Laravel Capabilities bus — webhooks, identity, threads",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "laravel",
+        "capabilities",
+        "telegram",
+        "messaging",
+        "agents"
+    ],
+    "authors": [
+        {
+            "name": "rawphp"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "rawphp/laravel-capabilities": "*",
+        "illuminate/support": "^11.0|^12.0",
+        "illuminate/http": "^11.0|^12.0",
+        "illuminate/routing": "^11.0|^12.0",
+        "illuminate/events": "^11.0|^12.0",
+        "illuminate/database": "^11.0|^12.0"
+    },
+    "require-dev": {
+        "pestphp/pest": "^3.0"
+    },
+    "suggest": {
+        "laravel/ai": "Required for agent turns behind conversation ingress"
+    },
+    "autoload": {
+        "psr-4": {
+            "Rawphp\\CapabilitiesMessaging\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Rawphp\\CapabilitiesMessaging\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Rawphp\\CapabilitiesMessaging\\MessagingServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "test": "pest --configuration=phpunit.xml --colors=always"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    }
+}

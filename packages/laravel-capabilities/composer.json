@@ -1,0 +1,69 @@
+{
+    "name": "rawphp/laravel-capabilities",
+    "description": "Product capability bus for Laravel — define once, expose via agent, MCP, HTTP, CLI, and jobs",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "laravel",
+        "capabilities",
+        "agents",
+        "mcp",
+        "ai"
+    ],
+    "authors": [
+        {
+            "name": "rawphp"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "illuminate/support": "^11.0|^12.0",
+        "illuminate/http": "^11.0|^12.0",
+        "illuminate/routing": "^11.0|^12.0",
+        "illuminate/console": "^11.0|^12.0",
+        "illuminate/bus": "^11.0|^12.0",
+        "illuminate/events": "^11.0|^12.0",
+        "illuminate/database": "^11.0|^12.0",
+        "illuminate/validation": "^11.0|^12.0"
+    },
+    "require-dev": {
+        "pestphp/pest": "^3.0",
+        "phpstan/phpstan": "^2.0"
+    },
+    "suggest": {
+        "laravel/ai": "Required when surfaces.agent is enabled",
+        "laravel/mcp": "Required when surfaces.mcp is enabled",
+        "rawphp/laravel-capabilities-messaging": "Conversation surfaces (Telegram, …)"
+    },
+    "autoload": {
+        "psr-4": {
+            "Rawphp\\Capabilities\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Rawphp\\Capabilities\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Rawphp\\Capabilities\\CapabilitiesServiceProvider"
+            ],
+            "aliases": {
+                "Capability": "Rawphp\\Capabilities\\Facades\\Capability"
+            }
+        }
+    },
+    "scripts": {
+        "test": "pest --configuration=phpunit.xml --colors=always"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    }
+}
