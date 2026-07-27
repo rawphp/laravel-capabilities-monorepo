@@ -17,14 +17,15 @@ Product capability bus for Laravel: define once, expose via agent, MCP, HTTP, pr
 
 ## Consumer readiness (residuals)
 
-Honest picture of what the monorepo has vs what a production consumer still lacks. Markers match code and docs at this commit — not marketing “stable.”
+Honest picture of what the monorepo has vs what a production consumer still lacks. Markers match code and docs at this commit — residual-driven honesty only (not a marketing score or “stable” claim). **Packagist remains residual until a human completes publish**; closed monorepo gaps below do not change that.
 
 | Area | State | Notes |
 |---|---|---|
+| **Registry factory (`makeRegistry`) config wiring** | done | `ContainerBindings::makeRegistry` applies config and injects approval store, idempotency store, audit settings, and scope resolver; SP registry / `ApprovalManager` / `IdempotencyStore` share store instances (no bare SystemClock-only factory) |
+| **Durable persistence / TableGateway** | done | First-party `QueryTableGateway` for database drivers (`approval.store`, `idempotency.driver` + connection keys); publish `capabilities-migrations`; host override docs in [tutorial](docs/tutorials/first-capability.md) + [core README](packages/laravel-capabilities/README.md#durable-persistence-querytablegateway). Unit-tested with fakes — not a live-DB feature suite |
+| **Release prep (0.x metadata)** | done | Branch-alias / 0.x-dev policy, CHANGELOG scaffolds, tag naming in [docs/versioning.md](docs/versioning.md); per-package [CHANGELOG](packages/laravel-capabilities/CHANGELOG.md). Prep only — **does not** mean tagged or Packagist-published |
 | **Packaging / Packagist publish** | residual | **Residual until human completes** the Packagist + git tag publish **checklist** in [docs/versioning.md](docs/versioning.md#packagist--git-tag-publish-checklist-human-steps) (submit, VCS, webhook, first tag, `composer show` / clean `composer require`). Install today via monorepo **path** or VCS only; CLI binary is a separate residual (not Packagist) |
-| **Release notes** | done | Per-package [CHANGELOG](packages/laravel-capabilities/CHANGELOG.md) + [docs/versioning.md](docs/versioning.md) (0.x pre-stable policy) |
 | **First-capability tutorial** | done | [docs/tutorials/first-capability.md](docs/tutorials/first-capability.md) — path install, fluent define + attribute alternate, durable stores (`QueryTableGateway` / host `TableGateway` override), registry invoke, HTTP, D-020 helpers |
-| **Durable persistence / TableGateway** | done | First-party `QueryTableGateway` for database drivers (`approval.store`, `idempotency.driver` + connection keys); publish `capabilities-migrations`; host override docs in tutorial + [core README](packages/laravel-capabilities/README.md#durable-persistence-querytablegateway). Unit-tested with fakes — not a live-DB feature suite. **Packagist still residual** |
 | **D-020 helpers** (`assertSchemaSnapshot`, `assertParity`) | done | Full unit-path DX: durable input+output schema snapshots; multi-surface success/deny class parity via registry/adapters with mocks/fakes — **not** a live multi-surface HTTP/feature suite |
 | **Live peer CI** (`laravel/ai`, `laravel/mcp`) | residual | Default package CI is unit-only (matrix + contract fixtures). Live peer minors remain an optional **consumer-app** path (D-011) |
 

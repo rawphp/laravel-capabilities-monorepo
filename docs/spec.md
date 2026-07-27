@@ -3348,10 +3348,10 @@ Run on **every PR** that touches `Adapters/` or peer matrix config. Optional **c
 | **v0.3** | **core** | `laravel/ai` + `laravel/mcp` adapters; **D-005** / **D-008**; **D-023** MCP auth profiles; **D-011** support matrix + adapter contract CI | unit matrix + fixtures green | **live peer CI residual** (consumer-app path) |
 | **v0.4** | **core** | D-006 approval SM + **P2-004 resume/atomic crash recovery**; jobs; CLI MCP stdio; D-010 audit/events; D-013 rate limits; D-019 metrics/OTel (`approvals_stuck_approved_total`); D-020 parity helpers | largely covered; **D-020 helpers done** (`assertSchemaSnapshot` + `assertParity` unit-path) | not multi-surface live HTTP feature suite; no Packagist |
 | **v0.5** | **messaging** (new package) | Telegram webhooks, identity, threads, signed callbacks, chat approvals via contracts | package unit-covered (mocked Bot API) | messaging defaults off; no Packagist |
-| **v0.6** | **messaging** | Harden Telegram; schema snapshots; docs | partial / residual | first-capability tutorial residual; hardening residual |
+| **v0.6** | **messaging** | Harden Telegram; schema snapshots; docs | partial / residual | first-capability tutorial **done** (monorepo docs); messaging harden residual |
 | **Later** | **messaging** / core | Slack / WhatsApp / email adapters; Livewire helpers; OpenAPI; soft A2A | not started | future |
 
-Cross-cutting residuals (also in root README): packaging/Packagist publish, first-capability tutorial, live peer CI. Release notes / per-package CHANGELOGs and D-020 unit helpers are **done** relative to monorepo design work — still pre-stable 0.x.
+Cross-cutting residuals (also in root README): **packaging / Packagist publish (human checklist)** and **live peer CI** (optional consumer-app path). Closed monorepo gaps (not Packagist ship): config-wired `makeRegistry` + store singleton parity, first-party `QueryTableGateway` durable path + host override docs, release-prep metadata / CHANGELOGs / versioning checklist, first-capability tutorial, D-020 unit helpers. Still **pre-stable 0.x** — unit-green ≠ tagged release or stable public API.
 
 Non-goals for core: generative UI, multi-app workspaces, template galleries, Artisan-as-product-CLI, shipping Telegram in `laravel-capabilities`, full agent-native Dispatch clone.
 
