@@ -34,7 +34,13 @@ it("happy: testing helper assertSchemaSnapshot exists for package consumers [D-0
 it("happy: testing helper assertParity exists for package consumers [D-020]", function () {
     $h = CatalogHelpers::harness();
     expect(method_exists($h['registry'], 'assertParity'))->toBeTrue()
-        ->and($h['registry']->assertParity())->toBeTrue();
+        ->and($h['registry']->assertParity($h['name'], [
+            'input' => CatalogHelpers::input(),
+            'surfaces' => ['http', 'cli'],
+        ]))->toBeTrue();
+    // empty-arg / missing options.surfaces rejected (D-020 shape required)
+    expect(fn () => $h['registry']->assertParity($h['name'], []))
+        ->toThrow(InvalidArgumentException::class);
 });
 
 it("happy: testing helper assertCannotInvokeAcrossTenant exists for package consumers [D-020]", function () {

@@ -44,6 +44,8 @@ use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\CapabilityScope;
 use Rawphp\Capabilities\Support\ErrorCodeMap;
 use Rawphp\Capabilities\Support\InMemoryRateLimiter;
+use Rawphp\Capabilities\Support\AssertParity;
+use Rawphp\Capabilities\Support\ParityAssertionException;
 use Rawphp\Capabilities\Support\SchemaSnapshot;
 use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Support\SystemActor;
@@ -735,14 +737,95 @@ final class CapabilityRegistry implements CapabilityBus
     }
 
     /**
-     * @param  list<string>|null  $surfaces
+     * D-020: invoke a capability on each listed surface path and require the same
+     * success/deny **class** (not identical payload shape unless `$options['assert']` checks it).
+     *
+     * Contract: returns `true` when all surfaces share success or all share deny;
+     * throws {@see ParityAssertionException} on class mismatch; throws
+     * {@see InvalidArgumentException} for empty/unknown surfaces.
+     *
+     * Optional `assert` callback runs **only on successful results** (deny-path parity
+     * skips the callback so deny fixtures need not produce data).
+     *
+     * Breaking vs presence-only API: first argument is capability name (not surfaces list).
+     *
+     * @param  array{
+     *     input?: array<string, mixed>,
+     *     surfaces?: list<string>,
+     *     assert?: callable(CapabilityResult): void,
+     *     actor?: object|null,
+     *     tenant_id?: string|null,
+     *     scope?: CapabilityScope|null,
+     *     options?: array<string, mixed>
+     * }  $options  D-020 shape: input + surfaces + optional assert; extra keys merge into invoke options
      */
-    public function assertParity(?array $surfaces = null): bool
+    public function assertParity(string $name, array $options = []): bool
     {
-        $surfaces ??= ['agent', 'mcp', 'http', 'cli', 'job'];
-        foreach ($surfaces as $surface) {
-            if (! is_string($surface) || $surface === '') {
-                throw new InvalidArgumentException('assertParity surfaces must be non-empty strings.');
+        $surfaces = AssertParity::normalizeSurfaces(
+            isset($options['surfaces']) && is_array($options['surfaces'])
+                ? $options['surfaces']
+                : null
+        );
+
+        $input = isset($options['input']) && is_array($options['input'])
+            ? $options['input']
+            : [];
+
+        $assert = $options['assert'] ?? null;
+        if ($assert !== null && ! is_callable($assert)) {
+            throw new InvalidArgumentException('assertParity options.assert must be callable when provided.');
+        }
+
+        // Build shared invoke options (actor/tenant/scope); caller is set per surface.
+        $invokeBase = [];
+        if (array_key_exists('actor', $options)) {
+            $invokeBase['actor'] = $options['actor'];
+        }
+        if (array_key_exists('tenant_id', $options)) {
+            $invokeBase['tenant_id'] = $options['tenant_id'];
+        }
+        if (array_key_exists('scope', $options)) {
+            $invokeBase['scope'] = $options['scope'];
+        }
+        if (isset($options['options']) && is_array($options['options'])) {
+            $invokeBase = array_merge($invokeBase, $options['options']);
+        }
+
+        /** @var array<string, string> $classesBySurface */
+        $classesBySurface = [];
+        /** @var list<CapabilityResult> $successResults */
+        $successResults = [];
+
+        foreach ($surfaces as $label) {
+            $caller = AssertParity::resolveCaller($label);
+            $invokeOptions = array_merge($invokeBase, [
+                'caller' => $caller,
+            ]);
+
+            // Job surface: ensure SystemActor-friendly job bag when not provided.
+            if ($caller === 'job' && ! isset($invokeOptions['job'])) {
+                $tenant = $invokeOptions['tenant_id'] ?? null;
+                $invokeOptions['job'] = is_string($tenant) && $tenant !== ''
+                    ? ['tenant_id' => $tenant]
+                    : ['tenant_id' => 't-parity'];
+            }
+
+            $result = $this->invoke($name, $input, $invokeOptions);
+            $classesBySurface[$label] = AssertParity::resultClass($result);
+
+            if ($result->isOk()) {
+                $successResults[] = $result;
+            }
+        }
+
+        $unique = array_unique(array_values($classesBySurface));
+        if (count($unique) > 1) {
+            throw ParityAssertionException::mismatch($name, $classesBySurface);
+        }
+
+        if (is_callable($assert)) {
+            foreach ($successResults as $result) {
+                $assert($result);
             }
         }
 

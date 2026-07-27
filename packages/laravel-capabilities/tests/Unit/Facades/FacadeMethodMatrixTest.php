@@ -111,8 +111,12 @@ it("happy: Capability facade exposes assertParity [FAC-001]", function () {
     Facade::clearResolvedInstances();
     CapabilityFacade::swap($h['registry']);
     expect(method_exists($h['registry'], 'assertParity'))->toBeTrue();
-    // exercise via facade when safe
-    expect(CapabilityFacade::assertParity())->toBeTrue();
+    // exercise via facade with D-020 options shape
+    expect(CapabilityFacade::assertParity($h['name'], [
+        'input' => PipelineHelpers::validInput(),
+        'surfaces' => ['http', 'cli'],
+        'actor' => PipelineHelpers::userActor(),
+    ]))->toBeTrue();
 });
 
 it("happy: Capability facade exposes assertSchemaSnapshot [FAC-001]", function () {
