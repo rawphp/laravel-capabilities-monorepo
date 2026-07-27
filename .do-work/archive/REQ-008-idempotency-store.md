@@ -1,19 +1,14 @@
 # REQ-008: Idempotency keys and outcome store
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.49422
-**Claimed at:** 2026-07-27T01:23:49Z
-**Heartbeat:** 2026-07-27T01:34:40Z
-<!-- claimed-end -->
 
 **UR:** UR-001
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** Idempotency-Key on mutating invokes
 **Terminal state:** Replays return stored outcomes without re-run; conflict/hash/key format matrices pass for Idempotency/*.
 **Parent:** 
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:a32c48c Idempotency:184
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** M
@@ -56,3 +51,8 @@ Original brief: implement all package tests and business logic so all tests pass
 
 - docs/spec.md — design bible / conflict oracle
 - docs/requirements-inventory.md — scenario checklist
+
+
+## Outputs
+
+- packages/laravel-capabilities — implementation commit a32c48c
