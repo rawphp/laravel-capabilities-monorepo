@@ -104,3 +104,85 @@ Consumer applications that install real peers can run an app-owned peer-live pat
 - [ ] `AdapterApi` bumped if bridge shapes changed
 - [ ] CHANGELOG / release notes list declared peer constraints
 - [ ] Default package CI still free of live peer installs
+
+---
+
+## Testing helpers (D-020)
+
+Consumer app CI should lock every capability’s catalog schema and, where dual-path risk matters, assert multi-surface **success/deny class** parity. Helpers live on `CapabilityRegistry` and the `Capability` facade.
+
+**Scope honesty:** these exercise **registry / adapter unit paths** with mocks/fakes. They are **not** a live multi-surface HTTP/feature suite against real `laravel/ai` / `laravel/mcp` peers.
+
+Full first-capability walkthrough: [docs/tutorials/first-capability.md](../../docs/tutorials/first-capability.md#7-lock-it-in-ci-d-020-helpers). Design: [docs/spec.md D-020](../../docs/spec.md#d-020--parity-tests-and-schema-snapshots-as-package-features).
+
+### `assertSchemaSnapshot`
+
+Locks **input_schema + output_schema** from the live catalog against a snapshot. Contract: returns `true` on match; throws `SchemaSnapshotException` on drift or missing snapshot file (names the capability and which side mismatched).
+
+```php
+use Rawphp\Capabilities\Facades\Capability;
+
+// 1) Durable file path (recommended for app CI):
+Capability::assertSchemaSnapshot(
+    'create-invoice',
+    base_path('tests/fixtures/capability-schemas/create-invoice.schema.json'),
+);
+
+// 2) Conventional directory → `{dir}/{name}.schema.json`:
+Capability::assertSchemaSnapshot(
+    'create-invoice',
+    null,
+    base_path('tests/fixtures/capability-schemas'),
+);
+
+// 3) In-memory envelope (unit convenience):
+Capability::assertSchemaSnapshot('create-invoice', [
+    'input_schema' => [/* JSON Schema */],
+    'output_schema' => [/* JSON Schema */],
+]);
+```
+
+Snapshot document shape:
+
+```json
+{
+  "input_schema": { "type": "object", "properties": { } },
+  "output_schema": { "type": "object", "properties": { } }
+}
+```
+
+**Important:** `assertSchemaSnapshot('create-invoice')` with **no** path/envelope/directory only resolves the capability and returns `true` — it does **not** lock schemas. Always pass a file path, conventional directory, or envelope in CI.
+
+App CI should run snapshots for every capability before release. Update the snapshot file intentionally when the schema change is deliberate.
+
+### `assertParity`
+
+Same valid (or deny-triggering) input → same **success/deny class** across listed surfaces via the registry choke point (`invoke` with surface-derived `caller`). Optional `assert` callback runs only on **successful** results.
+
+```php
+Capability::assertParity('create-invoice', [
+    'input' => [
+        'customer_id' => 1,
+        'amount_cents' => 2500,
+        'currency' => 'USD',
+    ],
+    'surfaces' => ['http', 'registry', 'ai', 'job'],
+    // optional shared invoke options:
+    // 'actor' => $user, 'tenant_id' => 't-1', 'scope' => $scope,
+    'assert' => function ($result): void {
+        // runs only when the surface result is success
+        expect($result->data['invoice_id'])->toBeInt();
+    },
+]);
+```
+
+| Option | Required | Role |
+|---|---|---|
+| `surfaces` | **yes** (non-empty) | Labels to invoke: `http`, `cli`, `agent`, `mcp`, `job`, `artisan`, plus aliases `ai` → agent, `registry` → http |
+| `input` | recommended | Capability input array (defaults to `[]`) |
+| `assert` | no | `callable(CapabilityResult): void` on success results only |
+| `actor` / `tenant_id` / `scope` / `options` | no | Shared invoke context (job surface auto-fills a test job bag when missing) |
+
+**Important:** empty options / missing `surfaces` throws `InvalidArgumentException`. There is **no** `assertParity()` no-arg form that proves multi-surface parity — you must list surfaces and supply real input for the scenario under test.
+
+Mismatch across surfaces throws `ParityAssertionException` naming the capability, surfaces, and result classes (`success` vs `deny`). Approval-required counts as **deny** class for parity.

@@ -2287,10 +2287,13 @@ def build_catalog() -> list[FileSpec]:
     hm.happy("health never requires telegram secrets at boot-only probe", "D-021")
     files.append(hm)
 
-    # Parity helpers existence
+    # Parity helpers (D-020) — behavioural titles for snapshot/parity; others remain surface checks
     ph = F("core", "TestingHelpers/HelperSurfaceTest.php")
+    ph.happy("testing helper fake exists for package consumers", "D-020")
+    ph.happy("testing helper assertSchemaSnapshot locks input and output for package consumers", "D-020")
+    ph.happy("testing helper assertParity compares success class across surfaces for package consumers", "D-020")
     for helper in [
-        "fake", "assertSchemaSnapshot", "assertParity", "assertCannotInvokeAcrossTenant",
+        "assertCannotInvokeAcrossTenant",
         "assertScopeResolvedTo", "assertLastScopeTenant", "assertOk", "assertFailed",
         "assertForbidden", "assertConflict", "assertExpired",
     ]:
