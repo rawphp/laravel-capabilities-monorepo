@@ -1,7 +1,13 @@
 # REQ-054: Release prep metadata
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.40419
+**Claimed at:** 2026-07-27T06:12:37Z
+**Heartbeat:** 2026-07-27T06:12:37Z
+<!-- claimed-end -->
+
 **UR:** UR-008
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:**
