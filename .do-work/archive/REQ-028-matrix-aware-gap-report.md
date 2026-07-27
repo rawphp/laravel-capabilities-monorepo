@@ -1,23 +1,18 @@
 # REQ-028: Matrix-aware inventory gap report
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.45746
-**Claimed at:** 2026-07-27T05:14:57Z
-**Heartbeat:** 2026-07-27T05:14:57Z
-<!-- claimed-end -->
 
 **UR:** UR-003
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:**
 **Terminal state:**
 **Parent:**
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (2/2) commit:3bf7103
 **Criteria approved:** agent-drafted
 **Priority:** 1
 **Size:** S
-**Files:** tools/report_inventory_gaps.py docs/requirements-inventory.md AGENTS.md
+**Files:** tools/report_inventory_gaps.py tools/tests/test_report_inventory_gaps.py AGENTS.md
 **Depends on:** REQ-027
 
 ## Task
@@ -30,11 +25,11 @@ Scaffold-sync only. Static string match under-counts matrix suites; this report 
 
 ## Acceptance Criteria
 
-- [ ] `python3 tools/report_inventory_gaps.py` exits 0 and prints totals: inventory cases, matched, unmatched, by package
-- [ ] Report does not treat implemented dynamic `it($title)` matrix cases as gaps when titles match inventory labels
-- [ ] CLI inventory Test* names that exist in `packages/capabilities-cli` are matched
-- [ ] Output is human-readable (stdout); optional JSON flag is fine but not required
-- [ ] AGENTS.md mentions the report command next to inventory/stub regenerate guidance
+- [x] `python3 tools/report_inventory_gaps.py` exits 0 and prints totals: inventory cases, matched, unmatched, by package
+- [x] Report does not treat implemented dynamic `it($title)` matrix cases as gaps when titles match inventory labels
+- [x] CLI inventory Test* names that exist in `packages/capabilities-cli` are matched
+- [x] Output is human-readable (stdout); optional JSON flag is fine but not required
+- [x] AGENTS.md mentions the report command next to inventory/stub regenerate guidance
 
 ## Verification Steps
 
@@ -44,3 +39,9 @@ Scaffold-sync only. Static string match under-counts matrix suites; this report 
    - Expected: exit 0
 
 ## Manual checks (advisory)
+
+## Outputs
+
+- tools/report_inventory_gaps.py — matrix-aware inventory gap report
+- tools/tests/test_report_inventory_gaps.py — hermetic unit tests
+- AGENTS.md — one-line usage for gap report
