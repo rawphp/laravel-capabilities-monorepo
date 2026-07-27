@@ -74,6 +74,8 @@ final class AuditLogger
                 'request_id' => $state->requestId,
             ],
             'request_id' => $state->requestId,
+            // D-023: MCP auth profile + client_id on every MCP invoke when present.
+            'mcp' => $ctx?->mcp(),
         ];
     }
 
