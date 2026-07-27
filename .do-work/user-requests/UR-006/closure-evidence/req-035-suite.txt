@@ -1,0 +1,26 @@
+  [32;1m✓[39;22m[90m [39m[90mit happy: README has Peer support / D-011 release gate section [D-0[39m[90m…[39m [90m0.22s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit happy: README lists required unit contract suite filters [D-011][39m
+  [32;1m✓[39;22m[90m [39m[90mit happy: README documents fail/disable boot behaviour [D-011][39m
+  [32;1m✓[39;22m[90m [39m[90mit happy: README documents AdapterApi bump rule [D-011][39m
+  [32;1m✓[39;22m[90m [39m[90mit happy: README states default package CI does not install live peers [D-011][39m
+  [32;1m✓[39;22m[90m [39m[90mit happy: README documents optional consumer peer-live checklist [D-011][39m
+
+  [30;42;1m PASS [39;49;22m[39m Packages\laravelcapabilities\tests\Unit\Adapters\PeerSupportMatrixTest[39m
+  [32;1m✓[39;22m[90m [39m[90mit happy: PeerSupportMatrix is non-empty for laravel/ai and laravel[39m[90m…[39m [90m0.04s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit happy: PeerSupportMatrix constraints are not bare wildcard forever [D-011][39m
+  [32;1m✓[39;22m[90m [39m[90mit happy: PeerSupportMatrix peers() lists both official peers [D-011][39m
+  [32;1m✓[39;22m[90m [39m[90mit happy: matrix constraint match accepts in-range injected versions [D-011][39m
+  [32;1m✓[39;22m[90m [39m[90mit fail: matrix constraint match rejects out-of-range injected versions [D-011][39m
+  [32;1m✓[39;22m[90m [39m[90mit happy: PeerVersionProbe defaults supported versions from PeerSupportMatrix [D-011][39m
+  [32;1m✓[39;22m[90m [39m[90mit fail: PeerVersionProbe matrix defaults mark out-of-range version incompatible [D-011][39m
+  [32;1m✓[39;22m[90m [39m[90mit happy: PeerVersionProbe still accepts explicit supportedVersions overrides [D-011][39m
+  [32;1m✓[39;22m[90m [39m[90mit fail: incompatible injected version does not half-register tools via bootstrap [D-011][39m
+  [32;1m✓[39;22m[90m [39m[90mit happy: published config peers.support mirrors PeerSupportMatrix [D-011][39m
+
+  [30;42;1m PASS [39;49;22m[39m Packages\laravelcapabilities\tests\Unit\CoverageGreen\CoverageBoost3Test[39m
+  [32;1m✓[39;22m[90m [39m[90mit covers PeerVersionProbe installed/compatible branches[39m[90m            [39m [90m0.06s[39m  
+
+  [90mTests:[39m    [32;1m33 passed[39;22m[90m (198 assertions)[39m
+  [90mDuration:[39m [39m1.61s[39m
+
+not_required_ok
