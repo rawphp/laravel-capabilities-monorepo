@@ -16,4 +16,9 @@ final class CapabilityApprovalRequested
         public readonly string $caller = '',
         public readonly array $meta = [],
     ) {}
+
+    public static function listenersShouldUseAfterCommit(): bool
+    {
+        return true;
+    }
 }

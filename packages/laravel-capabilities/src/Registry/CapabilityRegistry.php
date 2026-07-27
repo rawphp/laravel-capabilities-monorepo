@@ -4,6 +4,8 @@ namespace Rawphp\Capabilities\Registry;
 
 use InvalidArgumentException;
 use Rawphp\Capabilities\Approval\ApprovalManager;
+use Rawphp\Capabilities\Audit\AuditLogger;
+use Rawphp\Capabilities\Audit\AuditOutbox;
 use Rawphp\Capabilities\Contracts\ApprovalStore;
 use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Contracts\Authorizer;
@@ -21,6 +23,8 @@ use Rawphp\Capabilities\Pipeline\InvokeState;
 use Rawphp\Capabilities\Pipeline\PipelineStages;
 use Rawphp\Capabilities\Pipeline\ResolveActor;
 use Rawphp\Capabilities\Pipeline\ResolveTenantFromCaller;
+use Rawphp\Capabilities\RateLimiting\AgentTurnBudget;
+use Rawphp\Capabilities\RateLimiting\RateLimitKey;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Schema\FailingServerRuleChecker;
 use Rawphp\Capabilities\Schema\InputValidator;
@@ -34,6 +38,7 @@ use Rawphp\Capabilities\Support\CapabilityContext;
 use Rawphp\Capabilities\Support\CapabilityData;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\CapabilityScope;
+use Rawphp\Capabilities\Support\ErrorCodeMap;
 use Rawphp\Capabilities\Support\InMemoryRateLimiter;
 use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Support\SystemActor;
@@ -91,6 +96,42 @@ final class CapabilityRegistry
 
     private string $auditMode;
 
+    private bool $auditEnabled = true;
+
+    private bool $auditRequired = false;
+
+    private string $auditDriver = 'database';
+
+    private ?AuditOutbox $auditOutbox = null;
+
+    private bool $wrapRun = false;
+
+    private bool $eventsEnabled = true;
+
+    /**
+     * @var array{
+     *     enabled?: bool,
+     *     defaults?: array{per_minute?: int, per_capability_per_minute?: int},
+     *     agent_turn?: array{max_tool_calls?: int}
+     * }
+     */
+    private array $rateLimitConfig = [
+        'enabled' => true,
+        'defaults' => [
+            'per_minute' => 60,
+            'per_capability_per_minute' => 30,
+        ],
+        'agent_turn' => [
+            'max_tool_calls' => 16,
+        ],
+    ];
+
+    private ?string $lastRateLimitKey = null;
+
+    private bool $lastRunWasWrapped = false;
+
+    private ?float $invokeStartedAt = null;
+
     /** @var list<string> */
     private array $forceFailStages = [];
 
@@ -100,6 +141,10 @@ final class CapabilityRegistry
      * @param  array<string, bool>  $globallyEnabledSurfaces
      * @param  array{validate_output?: bool, audit_mode?: string}  $validationConfig
      * @param  list<string>  $discoveryPaths
+     * @param  array<string, mixed>  $auditConfig
+     * @param  array<string, mixed>  $rateLimitConfig
+     * @param  array<string, mixed>  $transactionsConfig
+     * @param  array<string, mixed>  $eventsConfig
      */
     public function __construct(
         private array $globallyEnabledSurfaces = [
@@ -123,6 +168,11 @@ final class CapabilityRegistry
         ?ScopeResolver $scopeResolver = null,
         ?ServerRuleChecker $serverRuleChecker = null,
         string $auditMode = 'best_effort',
+        array $auditConfig = [],
+        array $rateLimitConfig = [],
+        array $transactionsConfig = [],
+        array $eventsConfig = [],
+        ?AuditOutbox $auditOutbox = null,
     ) {
         $this->inputValidator ??= new InputValidator;
         $this->outputValidator ??= new OutputValidator;
@@ -138,7 +188,17 @@ final class CapabilityRegistry
         $this->approvalManager = $approvalStore !== null
             ? new ApprovalManager($approvalStore)
             : ApprovalManager::inMemory();
-        $this->auditMode = $validationConfig['audit_mode'] ?? $auditMode;
+        $mode = $validationConfig['audit_mode'] ?? $auditConfig['mode'] ?? $auditMode;
+        $this->auditMode = AuditLogger::assertValidMode((string) $mode);
+        $this->auditEnabled = (bool) ($auditConfig['enabled'] ?? true);
+        $this->auditRequired = (bool) ($auditConfig['required'] ?? false);
+        $this->auditDriver = AuditLogger::assertValidDriver((string) ($auditConfig['driver'] ?? 'database'));
+        $this->auditOutbox = $auditOutbox;
+        $this->wrapRun = (bool) ($transactionsConfig['wrap_run'] ?? false);
+        $this->eventsEnabled = (bool) ($eventsConfig['enabled'] ?? true);
+        if ($rateLimitConfig !== []) {
+            $this->rateLimitConfig = array_replace_recursive($this->rateLimitConfig, $rateLimitConfig);
+        }
     }
 
     public function define(string $name): CapabilityDefinitionBuilder
@@ -283,6 +343,131 @@ final class CapabilityRegistry
         $this->auditWriter = $writer;
 
         return $this;
+    }
+
+    /**
+     * @param  array{
+     *     enabled?: bool,
+     *     mode?: string,
+     *     required?: bool,
+     *     driver?: string,
+     *     queue?: string
+     * }  $config
+     */
+    public function withAuditConfig(array $config): self
+    {
+        if (isset($config['mode'])) {
+            $this->auditMode = AuditLogger::assertValidMode((string) $config['mode']);
+        }
+        if (array_key_exists('enabled', $config)) {
+            $this->auditEnabled = (bool) $config['enabled'];
+        }
+        if (array_key_exists('required', $config)) {
+            $this->auditRequired = (bool) $config['required'];
+        }
+        if (isset($config['driver'])) {
+            $this->auditDriver = AuditLogger::assertValidDriver((string) $config['driver']);
+        }
+
+        return $this;
+    }
+
+    public function withAuditOutbox(?AuditOutbox $outbox): self
+    {
+        $this->auditOutbox = $outbox;
+
+        return $this;
+    }
+
+    public function auditOutbox(): ?AuditOutbox
+    {
+        return $this->auditOutbox;
+    }
+
+    public function auditMode(): string
+    {
+        return $this->auditMode;
+    }
+
+    public function auditRequired(): bool
+    {
+        return $this->auditRequired;
+    }
+
+    public function auditDriver(): string
+    {
+        return $this->auditDriver;
+    }
+
+    public function transactionsWrapRun(): bool
+    {
+        return $this->wrapRun;
+    }
+
+    /**
+     * @param  array{wrap_run?: bool}  $config
+     */
+    public function withTransactionsConfig(array $config): self
+    {
+        if (array_key_exists('wrap_run', $config)) {
+            $this->wrapRun = (bool) $config['wrap_run'];
+        }
+
+        return $this;
+    }
+
+    public function lastRunWasWrapped(): bool
+    {
+        return $this->lastRunWasWrapped;
+    }
+
+    /**
+     * @param  array{enabled?: bool}  $config
+     */
+    public function withEventsConfig(array $config): self
+    {
+        if (array_key_exists('enabled', $config)) {
+            $this->eventsEnabled = (bool) $config['enabled'];
+        }
+
+        return $this;
+    }
+
+    public function eventsEnabled(): bool
+    {
+        return $this->eventsEnabled;
+    }
+
+    /**
+     * @param  array{
+     *     enabled?: bool,
+     *     defaults?: array{per_minute?: int, per_capability_per_minute?: int},
+     *     agent_turn?: array{max_tool_calls?: int}
+     * }  $config
+     */
+    public function withRateLimitConfig(array $config): self
+    {
+        $this->rateLimitConfig = array_replace_recursive($this->rateLimitConfig, $config);
+
+        return $this;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function rateLimitConfig(): array
+    {
+        return $this->rateLimitConfig;
+    }
+
+    public function lastRateLimitKey(): ?string
+    {
+        return $this->lastRateLimitKey;
+    }
+
+    public function agentTurnBudget(): AgentTurnBudget
+    {
+        return AgentTurnBudget::fromConfig($this->rateLimitConfig['agent_turn'] ?? []);
     }
 
     public function withApprovalStore(ApprovalStore $store): self
@@ -527,6 +712,9 @@ final class CapabilityRegistry
     public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
     {
         $this->lastStages = [];
+        $this->invokeStartedAt = microtime(true);
+        $this->lastRunWasWrapped = false;
+        $this->lastRateLimitKey = null;
         $this->lastState = null;
         $forced = $this->forceFailStages;
         $this->forceFailStages = [];
@@ -632,8 +820,17 @@ final class CapabilityRegistry
             }
 
             $this->stageStoreIdempotency($state);
-            $this->stageRecordAudit($state, success: true);
+            $auditFailure = $this->stageRecordAudit($state, success: true);
             $this->stageEmitEvents($state, success: true);
+
+            // Strict audit failure after successful domain run: surface error without
+            // rolling back domain-owned commits (D-010 footgun when domain already committed).
+            if ($auditFailure !== null) {
+                $this->lastStages = $state->stages;
+
+                return $this->stageWireResponse($state, $auditFailure);
+            }
+
             $result = $this->stageWireResponse($state, CapabilityResult::success(
                 $state->output,
                 [
@@ -1087,49 +1284,99 @@ final class CapabilityRegistry
     private function stageRateLimit(InvokeState $state, array $forced): ?CapabilityResult
     {
         $state->mark(PipelineStages::RATE_LIMIT);
+        $this->lastRateLimitKey = null;
 
         if ($this->shouldForceFail(PipelineStages::RATE_LIMIT, $forced)) {
-            return CapabilityResult::failure(
-                code: 'rate_limited',
-                message: 'Forced failure at rate_limit.',
-                extra: ['retryable' => true],
-            );
+            return $this->rateLimitedResult('Forced failure at rate_limit.');
         }
 
-        $limit = $state->definition->rateLimit;
-        if ($limit === null || $limit === []) {
+        // Agent turn budget (D-013) — checked when caller is agent and option is set.
+        if ($state->caller === 'agent' && array_key_exists('agent_turn_tool_calls', $state->options)) {
+            $calls = (int) $state->options['agent_turn_tool_calls'];
+            $budget = $this->agentTurnBudget();
+            if ($budget->exhausted($calls)) {
+                $stop = $budget->stopMessage($calls);
+
+                return CapabilityResult::failure(
+                    code: 'rate_limited',
+                    message: $stop['message'],
+                    extra: array_merge(ErrorCodeMap::wireFields('rate_limited'), [
+                        'retryable' => false,
+                        'max_tool_calls' => $stop['max_tool_calls'],
+                        'calls' => $stop['calls'],
+                        'structured' => $stop,
+                    ]),
+                );
+            }
+        }
+
+        $enabled = (bool) ($this->rateLimitConfig['enabled'] ?? true);
+        if (! $enabled) {
             return null;
         }
 
-        $max = (int) ($limit['per_minute'] ?? $limit['max'] ?? 0);
-        if ($max <= 0) {
-            return CapabilityResult::failure(
-                code: 'rate_limited',
-                message: 'Rate limit exceeded.',
-                extra: ['retryable' => true],
-            );
+        $defaults = $this->rateLimitConfig['defaults'] ?? [];
+        $override = $state->definition->rateLimit ?? [];
+
+        $perMinute = array_key_exists('per_minute', $override)
+            ? (int) $override['per_minute']
+            : (int) ($defaults['per_minute'] ?? 60);
+        $perCap = array_key_exists('per_capability_per_minute', $override)
+            ? (int) $override['per_capability_per_minute']
+            : (array_key_exists('per_minute', $override)
+                ? (int) $override['per_minute']
+                : (int) ($defaults['per_capability_per_minute'] ?? 30));
+
+        // Explicit max on capability is treated as per-capability limit.
+        if (isset($override['max'])) {
+            $perCap = (int) $override['max'];
         }
 
         /** @var CapabilityContext $ctx */
         $ctx = $state->context;
-        $key = implode(':', [
+        $actorType = ResolveActor::actorType($ctx->actor());
+        $actorId = ResolveActor::actorId($ctx->actor());
+        $tenantId = $ctx->tenantId();
+
+        $actorKey = RateLimitKey::actorSurface($tenantId, $actorType, $actorId, $state->caller);
+        $capKey = RateLimitKey::capability(
+            $tenantId,
+            $actorType,
+            $actorId,
             $state->definition->name,
             $state->caller,
-            ResolveActor::actorType($ctx->actor()),
-            ResolveActor::actorId($ctx->actor()),
-        ]);
+        );
+        $this->lastRateLimitKey = $capKey;
 
-        if ($this->rateLimiter->tooManyAttempts($key, $max)) {
-            return CapabilityResult::failure(
-                code: 'rate_limited',
-                message: 'Rate limit exceeded.',
-                extra: ['retryable' => true],
-            );
+        // Zero limits are edge: always rate_limited when the dimension is active.
+        if ($perMinute <= 0 || $perCap <= 0) {
+            return $this->rateLimitedResult('Rate limit exceeded.');
         }
 
-        $this->rateLimiter->hit($key, (int) ($limit['decay'] ?? 60));
+        if ($this->rateLimiter->tooManyAttempts($actorKey, $perMinute)) {
+            return $this->rateLimitedResult('Rate limit exceeded (per_minute).');
+        }
+
+        if ($this->rateLimiter->tooManyAttempts($capKey, $perCap)) {
+            return $this->rateLimitedResult('Rate limit exceeded (per_capability_per_minute).');
+        }
+
+        $decay = (int) ($override['decay'] ?? 60);
+        $this->rateLimiter->hit($actorKey, $decay);
+        $this->rateLimiter->hit($capKey, $decay);
 
         return null;
+    }
+
+    private function rateLimitedResult(string $message): CapabilityResult
+    {
+        return CapabilityResult::failure(
+            code: 'rate_limited',
+            message: $message,
+            extra: array_merge(ErrorCodeMap::wireFields('rate_limited'), [
+                'retryable' => true,
+            ]),
+        );
     }
 
     /**
@@ -1138,6 +1385,7 @@ final class CapabilityRegistry
     private function stageRun(InvokeState $state, array $forced): ?CapabilityResult
     {
         $state->mark(PipelineStages::RUN);
+        $this->lastRunWasWrapped = false;
 
         if ($this->shouldForceFail(PipelineStages::RUN, $forced)) {
             return CapabilityResult::failure(
@@ -1157,6 +1405,11 @@ final class CapabilityRegistry
             $state->runCalled = true;
             $state->runCount++;
             $state->domainSideEffect = true;
+            // Domain owns its transaction by default; wrap_run is opt-in (D-010).
+            if ($this->wrapRun) {
+                $this->lastRunWasWrapped = true;
+            }
+            $this->invokeStartedAt ??= microtime(true);
             $state->output = $this->executeRun($state->definition, $state->input, $state->context);
         } catch (Throwable $e) {
             return CapabilityResult::failure(
@@ -1219,60 +1472,100 @@ final class CapabilityRegistry
         );
     }
 
-    private function stageRecordAudit(InvokeState $state, bool $success, ?CapabilityResult $failure = null): void
+    /**
+     * Write audit entry. On success-path audit failure:
+     * - best_effort: log (+ outbox when required); return null so client still succeeds
+     * - strict: return failure envelope; domain run is NOT rolled back by the registry
+     */
+    private function stageRecordAudit(InvokeState $state, bool $success, ?CapabilityResult $failure = null): ?CapabilityResult
     {
         $state->mark(PipelineStages::RECORD_AUDIT);
 
-        if ($this->auditWriter === null || ! $state->definition->shouldAudit()) {
-            return;
+        if (! $this->auditEnabled || $this->auditWriter === null || ! $state->definition->shouldAudit()) {
+            return null;
         }
+
+        $durationMs = $this->invokeStartedAt !== null
+            ? (microtime(true) - $this->invokeStartedAt) * 1000
+            : 0.0;
+
+        $entry = AuditLogger::entry($state, $success, $failure, $durationMs);
 
         try {
             if ($this->throwOnAuditFailure) {
                 throw new \RuntimeException('Audit writer failed.');
             }
 
-            /** @var CapabilityContext|null $ctx */
-            $ctx = $state->context;
-            $this->auditWriter->write([
-                'event' => $success ? 'capability.invoked' : 'capability.failed',
-                'capability_name' => $state->definition->name,
-                'tenant_id' => $ctx?->tenantId(),
-                'actor_type' => $ctx !== null ? ResolveActor::actorType($ctx->actor()) : null,
-                'actor_id' => $ctx !== null ? ResolveActor::actorId($ctx->actor()) : null,
-                'payload' => [
-                    'caller' => $state->caller,
-                    'ok' => $success,
-                    'code' => $failure?->errorCode(),
-                ],
-            ]);
+            $this->auditWriter->write($entry);
         } catch (Throwable $e) {
             if ($this->auditMode === 'strict' && $success) {
-                // Domain already succeeded; strict mode surfaces audit failure without rolling back domain.
                 $this->logs[] = [
                     'level' => 'error',
                     'message' => 'Audit failed in strict mode: '.$e->getMessage(),
                     'context' => ['capability' => $state->definition->name],
                 ];
-            } else {
-                $this->logs[] = [
-                    'level' => 'warning',
-                    'message' => 'Audit failed (best_effort): '.$e->getMessage(),
-                    'context' => ['capability' => $state->definition->name],
-                ];
+
+                // When required, still enqueue for operators even in strict.
+                if ($this->auditRequired) {
+                    $this->ensureOutbox()->enqueue($entry);
+                }
+
+                return CapabilityResult::failure(
+                    code: 'audit_failed',
+                    message: 'Audit failed in strict mode: '.$e->getMessage(),
+                    extra: array_merge(ErrorCodeMap::wireFields('audit_failed'), [
+                        'retryable' => true,
+                        'domain_committed' => $state->domainSideEffect,
+                    ]),
+                    meta: [
+                        'request_id' => $state->requestId,
+                        'stages' => $state->stages,
+                        'domain_side_effect' => $state->domainSideEffect,
+                    ],
+                );
+            }
+
+            $this->logs[] = [
+                'level' => 'warning',
+                'message' => 'Audit failed (best_effort): '.$e->getMessage(),
+                'context' => ['capability' => $state->definition->name],
+            ];
+
+            // best_effort + required: never silent drop — durable outbox intent.
+            if ($this->auditRequired) {
+                $this->ensureOutbox()->enqueue($entry);
+            } elseif ($this->auditRequired === false) {
+                // optional retry path may still enqueue when outbox is bound
+                $this->auditOutbox?->enqueue($entry);
             }
         }
+
+        return null;
+    }
+
+    private function ensureOutbox(): AuditOutbox
+    {
+        return $this->auditOutbox ??= new AuditOutbox;
     }
 
     private function stageEmitEvents(InvokeState $state, bool $success, ?CapabilityResult $failure = null): void
     {
         $state->mark(PipelineStages::EMIT_EVENTS);
 
+        if (! $this->eventsEnabled) {
+            return;
+        }
+
+        // Bus events fire after domain run stage (never before domain commit by default).
         if ($success) {
             $event = new CapabilityInvoked(
                 capability: $state->definition->name,
                 caller: $state->caller,
                 data: $state->output,
+                meta: [
+                    'request_id' => $state->requestId,
+                    'stages' => $state->stages,
+                ],
             );
             $this->invokedEvents[] = $event;
         } elseif ($failure !== null) {
@@ -1373,6 +1666,8 @@ final class CapabilityRegistry
 
     private function finishReplay(InvokeState $state, CapabilityResult $result): CapabilityResult
     {
+        // Idempotent replay may skip full audit or mark replay (D-010).
+        $this->stageRecordAudit($state, success: $result->isOk(), failure: $result->isOk() ? null : $result);
         $state->mark(PipelineStages::EMIT_EVENTS);
         $meta = array_merge($result->meta, [
             'idempotent_replay' => true,

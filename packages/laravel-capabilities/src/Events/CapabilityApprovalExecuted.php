@@ -18,4 +18,9 @@ final class CapabilityApprovalExecuted
         public readonly mixed $result = null,
         public readonly array $meta = [],
     ) {}
+
+    public static function listenersShouldUseAfterCommit(): bool
+    {
+        return true;
+    }
 }
