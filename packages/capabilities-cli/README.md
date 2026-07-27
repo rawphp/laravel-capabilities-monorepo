@@ -26,6 +26,7 @@ Cross-compile / local matrix notes: [`dist/README.md`](dist/README.md).
 | Doc | Where |
 |---|---|
 | User guide | [docs/user-guide.md](docs/user-guide.md) |
+| Release path (tag → GitHub Release) | [docs/release-path.md](docs/release-path.md) |
 | Release signing (secret-gated) | [docs/release-signing.md](docs/release-signing.md) |
 | Changelog | [CHANGELOG.md](CHANGELOG.md) |
 | Server HTTP API | [laravel-capabilities user guide](https://github.com/rawphp/laravel-capabilities/blob/main/docs/user-guide.md) |
