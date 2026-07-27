@@ -1,23 +1,18 @@
 # REQ-015: Architecture parity and remaining core matrices
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.49422
-**Claimed at:** 2026-07-27T02:48:15Z
-**Heartbeat:** 2026-07-27T02:48:15Z
-<!-- claimed-end -->
 
 **UR:** UR-001
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** Architecture/* Parity/* remaining matrix suites as contract guards
 **Terminal state:** Architecture and Parity unit suites pass; they encode refuse tables, non-goals, governance-everywhere, cross-caller parity using the implemented bus.
 **Parent:** 
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:25b44b1 Architecture:474 Parity:290
 **Criteria approved:** agent-drafted
 **Priority:** 1
 **Size:** L
-**Files:** packages/laravel-capabilities/tests/Unit/Architecture packages/laravel-capabilities/tests/Unit/Parity packages/laravel-capabilities/src docs/spec.md
+**Files:** packages/laravel-capabilities/tests/Unit/Architecture packages/laravel-capabilities/tests/Unit/Parity packages/laravel-capabilities/tests/Fixtures/ArchitectureHelpers.php packages/laravel-capabilities/tests/Fixtures/ParityHelpers.php packages/laravel-capabilities/src docs/spec.md
 **Depends on:** REQ-005, REQ-006, REQ-007, REQ-008, REQ-009, REQ-010, REQ-011, REQ-012, REQ-013, REQ-014
 
 ## Task
@@ -32,10 +27,10 @@ Original brief: implement all package tests and business logic so all tests pass
 
 ## Acceptance Criteria
 
-- [ ] Architecture unit tests pass (or only intentional documented skips with zero silent todos)
-- [ ] Parity cross-caller governance tests pass
-- [ ] No dual mutation path remains untested
-- [ ] Conflicts resolved via spec then test update, not by deleting scenarios without replacement
+- [x] Architecture unit tests pass (or only intentional documented skips with zero silent todos)
+- [x] Parity cross-caller governance tests pass
+- [x] No dual mutation path remains untested
+- [x] Conflicts resolved via spec then test update, not by deleting scenarios without replacement
 
 ## Verification Steps
 
@@ -56,3 +51,8 @@ Original brief: implement all package tests and business logic so all tests pass
 
 - docs/spec.md — design bible / conflict oracle
 - docs/requirements-inventory.md — scenario checklist
+
+
+## Outputs
+
+- Architecture + Parity contract guards
