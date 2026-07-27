@@ -1,19 +1,14 @@
 # REQ-040: Honest status and roadmap
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.49422
-**Claimed at:** 2026-07-27T05:43:53Z
-**Heartbeat:** 2026-07-27T05:43:53Z
-<!-- claimed-end -->
 
 **UR:** UR-007
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-039
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:efcfe43
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** M
@@ -30,12 +25,12 @@ Brief: README/spec advertise future/unpublished while v0.1–v0.5 look largely i
 
 ## Acceptance Criteria
 
-- [ ] Root `README.md` status banner states monorepo / unit-tested design status and that packages are not Packagist-published (or equivalent honest phrasing)
-- [ ] A readiness residual table (or equivalent) lists at least: packaging/publish, release notes, first-capability tutorial, D-020 helper completeness, live peer CI — with current residual or done markers consistent with code at commit time
-- [ ] `docs/spec.md` roadmap section gains status/residual columns or an adjacent “status vs roadmap” note so unit-green is not read as shipped product
-- [ ] `AGENTS.md` product status line aligns with README (no contradiction: future-only vs unit-complete monorepo)
-- [ ] Docs do not claim “stable public API” or full D-020 multi-surface parity unless corresponding code REQs are already merged; partial state is labeled partial
-- [ ] Historical “future package design” wording is updated, not merely duplicated beside new status text
+- [x] Root `README.md` status banner states monorepo / unit-tested design status and that packages are not Packagist-published (or equivalent honest phrasing)
+- [x] A readiness residual table (or equivalent) lists at least: packaging/publish, release notes, first-capability tutorial, D-020 helper completeness, live peer CI — with current residual or done markers consistent with code at commit time
+- [x] `docs/spec.md` roadmap section gains status/residual columns or an adjacent “status vs roadmap” note so unit-green is not read as shipped product
+- [x] `AGENTS.md` product status line aligns with README (no contradiction: future-only vs unit-complete monorepo)
+- [x] Docs do not claim “stable public API” or full D-020 multi-surface parity unless corresponding code REQs are already merged; partial state is labeled partial
+- [x] Historical “future package design” wording is updated, not merely duplicated beside new status text
 
 ## Verification Steps
 
@@ -43,3 +38,10 @@ Brief: README/spec advertise future/unpublished while v0.1–v0.5 look largely i
    - Expected: honest status language present; bare “future package design” alone is not the only status signal
 2. **runtime** `rg -n "Packagist|path repositor|monorepo|unit" README.md docs/spec.md | head -40`
    - Expected: consumer can see monorepo/path vs published packaging stance
+
+## Outputs
+
+- README.md — status banner + residual table
+- AGENTS.md — status alignment
+- docs/spec.md — roadmap status columns
+- packages/laravel-capabilities/README.md — package status banner
