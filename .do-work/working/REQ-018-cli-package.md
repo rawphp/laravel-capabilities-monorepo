@@ -1,7 +1,13 @@
 # REQ-018: Go capabilities CLI client
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.49422
+**Claimed at:** 2026-07-27T02:18:05Z
+**Heartbeat:** 2026-07-27T02:18:05Z
+<!-- claimed-end -->
+
 **UR:** UR-001
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** cli
 **Entry point:** capabilities CLI binary: auth, catalog, run, optional MCP stdio
