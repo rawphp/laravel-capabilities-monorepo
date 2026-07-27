@@ -1,7 +1,13 @@
 # REQ-020: Laravel glue boot path
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.76987
+**Claimed at:** 2026-07-27T04:54:27Z
+**Heartbeat:** 2026-07-27T04:54:27Z
+<!-- claimed-end -->
+
 **UR:** UR-002
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:** Composer package auto-discovery loads `Rawphp\Capabilities\CapabilitiesServiceProvider` into a host Laravel app (`packages/laravel-capabilities/composer.json` extra.laravel.providers)
@@ -12,7 +18,7 @@
 **Priority:** 1
 **Size:** S
 **Files:** packages/laravel-capabilities/src/CapabilitiesServiceProvider.php packages/laravel-capabilities/routes/capabilities.php packages/laravel-capabilities/src/Boot packages/laravel-capabilities/tests/Unit/Boot
-**Depends on:** REQ-021 REQ-022 REQ-023 REQ-024
+**Depends on:** REQ-021, REQ-022, REQ-023, REQ-024
 
 ## Task
 
