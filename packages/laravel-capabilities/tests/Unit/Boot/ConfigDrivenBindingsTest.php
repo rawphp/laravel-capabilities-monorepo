@@ -72,7 +72,7 @@ it('registry factory returns a shared empty map instance shape for discovery/flu
         ->and($a->all())->toBe([]);
 });
 
-it('database drivers fall back to package memory concretes with explicit metadata', function () {
+it('database drivers resolve to Database store concretes without package_default fallback', function () {
     $config = BootHelpers::config([
         'approval' => ['store' => 'database'],
         'audit' => ['driver' => 'database', 'mode' => 'best_effort'],
@@ -82,14 +82,27 @@ it('database drivers fall back to package memory concretes with explicit metadat
     $resolved = ContainerBindings::resolve($config);
 
     expect($resolved['drivers']['approval_store']['requested'])->toBe('database')
-        ->and($resolved['drivers']['approval_store']['resolved'])->toBe('memory')
-        ->and($resolved['drivers']['approval_store']['package_default'])->toBeTrue()
-        ->and($resolved['drivers']['audit']['requested'])->toBe('database')
-        ->and($resolved['drivers']['audit']['resolved'])->toBe('memory')
-        ->and($resolved['drivers']['idempotency']['package_default'])->toBeTrue();
+        ->and($resolved['drivers']['approval_store']['resolved'])->toBe('database')
+        ->and($resolved['drivers']['approval_store']['package_default'])->toBeFalse()
+        ->and($resolved['drivers']['approval_store']['concrete'])->toBe(\Rawphp\Capabilities\Persistence\DatabaseApprovalStore::class)
+        ->and($resolved['drivers']['idempotency']['resolved'])->toBe('database')
+        ->and($resolved['drivers']['idempotency']['package_default'])->toBeFalse()
+        ->and($resolved['drivers']['idempotency']['concrete'])->toBe(\Rawphp\Capabilities\Persistence\DatabaseIdempotencyStore::class);
 
-    expect(ContainerBindings::makeIdempotencyStore($config))->toBeInstanceOf(InMemoryIdempotencyStore::class)
-        ->and(ContainerBindings::makeApprovalManager($config))->toBeInstanceOf(ApprovalManager::class);
+    expect(ContainerBindings::makeIdempotencyStore($config))->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseIdempotencyStore::class)
+        ->and(ContainerBindings::makeApprovalManager($config))->toBeInstanceOf(ApprovalManager::class)
+        ->and(ContainerBindings::makeApprovalManager($config)->store())->toBeInstanceOf(\Rawphp\Capabilities\Persistence\DatabaseApprovalStore::class);
+});
+
+it('memory drivers still construct in-memory stores', function () {
+    $config = BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+    ]);
+    $resolved = ContainerBindings::resolve($config);
+    expect($resolved['drivers']['idempotency']['resolved'])->toBe('memory')
+        ->and(ContainerBindings::makeIdempotencyStore($config))->toBeInstanceOf(InMemoryIdempotencyStore::class)
+        ->and(ContainerBindings::makeApprovalManager($config)->store())->toBeInstanceOf(\Rawphp\Capabilities\Support\InMemoryApprovalStore::class);
 });
 
 it('unknown store driver fails closed with BootException', function () {
