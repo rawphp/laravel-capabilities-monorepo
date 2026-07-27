@@ -1,7 +1,13 @@
 # REQ-038: Peer release gate docs and optional consumer peer-live path
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.95896
+**Claimed at:** 2026-07-27T05:36:08Z
+**Heartbeat:** 2026-07-27T05:36:08Z
+<!-- claimed-end -->
+
 **UR:** UR-006
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
