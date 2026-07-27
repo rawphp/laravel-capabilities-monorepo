@@ -1,7 +1,13 @@
 # REQ-059: Tag-to-CLI release path
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.83526
+**Claimed at:** 2026-07-27T21:03:10Z
+**Heartbeat:** 2026-07-27T21:03:10Z
+<!-- claimed-end -->
+
 **UR:** UR-011
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-28
 **Layer:** none
 **Entry point:** Maintainer pushes monorepo git tag matching `v*` (split workflow mirrors the tag to `rawphp/capabilities-cli`)
