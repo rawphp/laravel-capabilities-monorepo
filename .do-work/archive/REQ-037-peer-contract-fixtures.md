@@ -1,23 +1,18 @@
 # REQ-037: Frozen peer contract fixtures and adapter shape tests
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.95896
-**Claimed at:** 2026-07-27T05:30:14Z
-**Heartbeat:** 2026-07-27T05:30:14Z
-<!-- claimed-end -->
 
 **UR:** UR-006
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-035
-**Closure proof:**
+**Closure proof:** checkpoint:.do-work/runs/RUN-034.yml#REQ-037 commit:f5e5015 tests:passed
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** L
-**Files:** packages/laravel-capabilities/src/Adapters packages/laravel-capabilities/tests/Unit/Adapters packages/laravel-capabilities/tests/Fixtures
+**Files:** packages/laravel-capabilities/src/Adapters/PeerVersionProbe.php packages/laravel-capabilities/tests/Fixtures/PeerContractFixtures.php packages/laravel-capabilities/tests/Unit/Adapters/PeerContractFixturesTest.php
 **Depends on:** REQ-036
 
 ## Task
@@ -30,12 +25,12 @@ Adapters map tools to arrays and probe via class_exists. Contract fixtures make 
 
 ## Acceptance Criteria
 
-- [ ] Fixture file(s) define expected AI tool map keys/shape and MCP tool registration shape for AdapterApi V1
-- [ ] Unit tests assert `AiToolAdapterV1` / `McpToolAdapterV1` (or exporters) produce fixture-compatible shapes with mock registry/definitions
-- [ ] Unit tests assert probe PEER_CLASSES / matrix cells remain documented in fixtures
-- [ ] AdapterApi CURRENT and supported() covered; requiresBump still fails on shape change
-- [ ] Default suite does not load or require live peer package classes (class_exists fakes only)
-- [ ] Existing PeerAdapters / ContractTable tests remain green or intentionally updated
+- [x] Fixture file(s) define expected AI tool map keys/shape and MCP tool registration shape for AdapterApi V1
+- [x] Unit tests assert `AiToolAdapterV1` / `McpToolAdapterV1` (or exporters) produce fixture-compatible shapes with mock registry/definitions
+- [x] Unit tests assert probe PEER_CLASSES / matrix cells remain documented in fixtures
+- [x] AdapterApi CURRENT and supported() covered; requiresBump still fails on shape change
+- [x] Default suite does not load or require live peer package classes (class_exists fakes only)
+- [x] Existing PeerAdapters / ContractTable tests remain green or intentionally updated
 
 ## Verification Steps
 
@@ -56,3 +51,10 @@ Adapters map tools to arrays and probe via class_exists. Contract fixtures make 
 
 - packages/laravel-capabilities/tests/Unit/Adapters/ContractTableTest.php
 - packages/laravel-capabilities/src/Adapters/AdapterApi.php
+
+## Outputs
+
+- packages/laravel-capabilities/tests/Fixtures/PeerContractFixtures.php — Frozen AdapterApi V1 peer contract snapshots
+- packages/laravel-capabilities/tests/Unit/Adapters/PeerContractFixturesTest.php — Drift-detection unit tests
+- packages/laravel-capabilities/src/Adapters/PeerVersionProbe.php — peerClasses() accessor for fixture lockstep
+
