@@ -1,7 +1,13 @@
 # REQ-046: Config-wired registry path
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.40419
+**Claimed at:** 2026-07-27T06:28:57Z
+**Heartbeat:** 2026-07-27T06:28:57Z
+<!-- claimed-end -->
+
 **UR:** UR-008
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:** Laravel container resolves `CapabilityRegistry` (or `Capability::invoke` / facade) after package boot with published or default `config/capabilities.php`
