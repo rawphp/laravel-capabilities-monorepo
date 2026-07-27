@@ -16,12 +16,17 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 - Downloadable Go product CLI: auth, catalog, local JSON Schema validation (UX only),
   invoke via the server’s single HTTP capability API, optional MCP stdio bridge (D-016 / D-009).
 - No embedded domain logic; server re-validates and derives `caller: cli` from credentials.
+- Package-root `.goreleaser.yml` (GoReleaser v2): multi-arch `capabilities` binary
+  (darwin/linux/windows × amd64/arm64), `-X main.Version={{.Version}}` (strip `v` from
+  tag), `checksums.txt`; no hard dependency on signing secrets (signing secret-gated later).
 
 ### Notes
 
-- **Not a Packagist package** (Go module). Distributed as source / future binary artifacts under `dist/`.
+- **Not a Packagist package** (Go module). Distributed as source / binary release artifacts
+  via GoReleaser on the mirrored package remote (`dist/` documents the matrix + ldflags).
 - Module path: `github.com/rawphp/capabilities-cli` (see `go.mod`).
-- Version marker for prep is the monorepo git tag pattern `v0.Y.Z` (mirrored to this package remote); binary embedding is a later release step.
+- Version marker is the monorepo git tag pattern `v0.Y.Z` (mirrored to this package remote);
+  release builds inject the tag-without-`v` via ldflags (see `dist/README.md`).
 - This package tree is mirrored from the monorepo to `github.com/rawphp/capabilities-cli` on push.
 
 <!--
