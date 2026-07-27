@@ -17,6 +17,8 @@ final class InMemoryRateLimiter implements RateLimiter
      */
     private array $hits = [];
 
+    private ?string $lastKey = null;
+
     public function tooManyAttempts(string $key, int $maxAttempts): bool
     {
         return $this->attemptCount($key) >= $maxAttempts;
@@ -27,6 +29,7 @@ final class InMemoryRateLimiter implements RateLimiter
         $now = microtime(true);
         $this->prune($key, $now, $decaySeconds);
         $this->hits[$key][] = $now;
+        $this->lastKey = $key;
 
         return count($this->hits[$key]);
     }
@@ -41,9 +44,25 @@ final class InMemoryRateLimiter implements RateLimiter
         unset($this->hits[$key]);
     }
 
-    private function attemptCount(string $key): int
+    /**
+     * @return list<string>
+     */
+    public function keys(): array
+    {
+        return array_keys($this->hits);
+    }
+
+    public function attemptCount(string $key): int
     {
         return count($this->hits[$key] ?? []);
+    }
+
+    /**
+     * Last key that received a hit (unit tests).
+     */
+    public function lastKey(): ?string
+    {
+        return $this->lastKey;
     }
 
     private function prune(string $key, float $now, int $decaySeconds): void

@@ -18,4 +18,9 @@ final class CapabilityApprovalDecided
         public readonly ?string $reason = null,
         public readonly array $meta = [],
     ) {}
+
+    public static function listenersShouldUseAfterCommit(): bool
+    {
+        return true;
+    }
 }

@@ -4,6 +4,8 @@ namespace Rawphp\Capabilities\Events;
 
 /**
  * Emitted after a successful capability run (and after audit stage).
+ *
+ * Listeners that touch DB should use afterCommit() (D-010).
  */
 final class CapabilityInvoked
 {
@@ -16,4 +18,12 @@ final class CapabilityInvoked
         public readonly mixed $data = null,
         public readonly array $meta = [],
     ) {}
+
+    /**
+     * Guidance for app listeners that touch the database (D-010).
+     */
+    public static function listenersShouldUseAfterCommit(): bool
+    {
+        return true;
+    }
 }
