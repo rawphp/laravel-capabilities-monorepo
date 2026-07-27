@@ -7,3 +7,6 @@
 2026-07-27 | UR-002 | layer "messaging" out of scope | user answered "No" at layer-coverage prompt
 2026-07-27 | UR-002 | layer "cli" out of scope | user answered "No" at layer-coverage prompt
 2026-07-27 | UR-002 | path-unit + 4 core glue children (routes, discovery, config bindings, artisan); apply UR-001 pure tables in provider | avoid reimplementing domain
+2026-07-27 | UR-003 | scaffold-sync only for test gaps (not re-implement inventory scenarios) | user chose minimal capture at classify gate
+2026-07-27 | UR-003 | other-as-bug-fix; layers_in_scope empty; all REQs layer none | no new product surface
+2026-07-27 | UR-003 | order harden-generator → rename go todo tests → inventory status sync → gap report | prevent regen wipe and path thrash
