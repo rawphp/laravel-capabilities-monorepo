@@ -1,7 +1,13 @@
 # REQ-064: Release docs and residual updates
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.83526
+**Claimed at:** 2026-07-27T20:57:16Z
+**Heartbeat:** 2026-07-27T20:57:16Z
+<!-- claimed-end -->
+
 **UR:** UR-011
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-28
 **Layer:** cli
 **Entry point:**
