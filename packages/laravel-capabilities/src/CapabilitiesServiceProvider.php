@@ -22,6 +22,8 @@ use Rawphp\Capabilities\Discovery\CapabilityDiscoveryBoot;
 use Rawphp\Capabilities\Http\HttpRouteRegistrar;
 use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\Capabilities\Observability\LogFallbackMetrics;
+use Rawphp\Capabilities\Persistence\ArrayTableGateway;
+use Rawphp\Capabilities\Persistence\TableGateway;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\DefaultScopeResolver;
 
@@ -68,8 +70,15 @@ class CapabilitiesServiceProvider extends ServiceProvider
         });
         $this->app->alias(Tracer::class, 'Tracer');
 
+        // Shared gateway first so database approval/idempotency drivers cannot diverge (REQ-048).
+        $this->app->singleton(TableGateway::class, static fn () => new ArrayTableGateway);
+        $this->app->alias(TableGateway::class, 'TableGateway');
+
         $this->app->singleton(IdempotencyStore::class, function ($app) {
-            return ContainerBindings::makeIdempotencyStore(self::configFromApp($app));
+            return ContainerBindings::makeIdempotencyStore(
+                self::configFromApp($app),
+                $app->make(TableGateway::class),
+            );
         });
         $this->app->alias(IdempotencyStore::class, 'IdempotencyStore');
 
@@ -81,15 +90,30 @@ class CapabilitiesServiceProvider extends ServiceProvider
         });
         $this->app->alias(AuditLogger::class, 'AuditLogger');
 
-        $this->app->singleton(CapabilityRegistry::class, function ($app) {
-            return ContainerBindings::makeRegistry(self::configFromApp($app));
-        });
-        $this->app->alias(CapabilityRegistry::class, 'CapabilityRegistry');
-
+        // ApprovalManager before CapabilityRegistry so the registry reuses the same store.
         $this->app->singleton(ApprovalManager::class, function ($app) {
-            return ContainerBindings::makeApprovalManager(self::configFromApp($app));
+            return ContainerBindings::makeApprovalManager(
+                self::configFromApp($app),
+                $app->make(TableGateway::class),
+            );
         });
         $this->app->alias(ApprovalManager::class, 'ApprovalManager');
+
+        $this->app->singleton(CapabilityRegistry::class, function ($app) {
+            $config = self::configFromApp($app);
+            /** @var ApprovalManager $approval */
+            $approval = $app->make(ApprovalManager::class);
+            /** @var IdempotencyStore $idempotency */
+            $idempotency = $app->make(IdempotencyStore::class);
+
+            return ContainerBindings::makeRegistry(
+                $config,
+                $app->make(TableGateway::class),
+                $approval->store(),
+                $idempotency,
+            );
+        });
+        $this->app->alias(CapabilityRegistry::class, 'CapabilityRegistry');
     }
 
     public function boot(): void
