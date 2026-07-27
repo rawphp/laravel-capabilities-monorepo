@@ -1,7 +1,13 @@
 # REQ-043: Schema snapshot DX
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.95896
+**Claimed at:** 2026-07-27T05:28:55Z
+**Heartbeat:** 2026-07-27T05:28:55Z
+<!-- claimed-end -->
+
 **UR:** UR-007
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
