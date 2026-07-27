@@ -1,7 +1,13 @@
 # REQ-016: Core package full suite green
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.49422
+**Claimed at:** 2026-07-27T02:57:18Z
+**Heartbeat:** 2026-07-27T02:57:18Z
+<!-- claimed-end -->
+
 **UR:** UR-001
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** composer test:core
