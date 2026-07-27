@@ -1,7 +1,13 @@
 # REQ-033: Wire database store bindings
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.14839
+**Claimed at:** 2026-07-27T05:07:23Z
+**Heartbeat:** 2026-07-27T05:07:23Z
+<!-- claimed-end -->
+
 **UR:** UR-004
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
