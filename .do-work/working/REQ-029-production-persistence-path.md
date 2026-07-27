@@ -1,7 +1,13 @@
 # REQ-029: Production persistence path
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.26592
+**Claimed at:** 2026-07-27T05:08:49Z
+**Heartbeat:** 2026-07-27T05:08:49Z
+<!-- claimed-end -->
+
 **UR:** UR-004
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:** Host app sets `approval.store` / `idempotency.driver` (and related keys) to `database` after publishing migrations, then boots `CapabilitiesServiceProvider`
