@@ -1,9 +1,36 @@
 ---
 ur: UR-009
 received: 2026-07-27
-status: intake
+status: captured
 source: https://github.com/rawphp/laravel-capabilities-monorepo/issues/2
+classification: bug-fix
+layers_in_scope: []
+layer_decisions: {}
+reqs:
+  - { id: REQ-057, layer: none, integration_confidence: n/a }
+acknowledged_partials: []
+open_gaps:
+  - "Host workaround removal is not package acceptance — package binding is SOT"
+  - "app(CapabilityController) wording is integration-y; monorepo needs unit plan/provider proof"
+  - "Wrong singleton pattern could split registry store identity (REQ-048 parity)"
+  - "Plan-only or provider-only fix leaves ContainerBindings vs provider drift"
+  - "String alias alone does not satisfy interface constructor injection"
 ---
+
+<!-- capture-summary-start -->
+## Capture summary (2026-07-27)
+
+| Item | Value |
+|---|---|
+| Classification | bug-fix |
+| Layers in scope | (none — bug-fix) |
+| Layer decisions | (none — all covered) |
+| REQs generated | 1 |
+
+| REQ | Layer | Integration confidence |
+|---|---|---|
+| REQ-057 | none | n/a |
+<!-- capture-summary-end -->
 
 # UR-009: User Request
 

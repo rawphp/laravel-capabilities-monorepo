@@ -26,3 +26,5 @@
 2026-07-27 | UR-008 | ship first-party QueryTableGateway + host override docs (not document-only) | brief lists first-party first; closes durable residual
 2026-07-27 | UR-008 | Packagist/tag publish is human-gated advisory; REQs cover prep + checklist only | no package credentials in monorepo CI
 2026-07-27 | UR-008 | path units: registry wiring, durable gateway, pre-stable release prep | three brief items as three reachable paths
+2026-07-27 | UR-009 | bug-fix single REQ plan+provider+tests | avoid plan/provider drift and second registry singleton
+2026-07-27 | UR-009 | layers messaging/cli not prompted | bug-fix classification; core package DI only
