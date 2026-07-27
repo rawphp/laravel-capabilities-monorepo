@@ -1,7 +1,13 @@
 # REQ-040: Honest status and roadmap
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.49422
+**Claimed at:** 2026-07-27T05:43:53Z
+**Heartbeat:** 2026-07-27T05:43:53Z
+<!-- claimed-end -->
+
 **UR:** UR-007
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:**
