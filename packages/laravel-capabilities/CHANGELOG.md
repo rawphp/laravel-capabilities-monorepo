@@ -26,10 +26,21 @@ with **0.x pre-stable** expectations (see [docs/versioning.md](../../docs/versio
 - Public Composer package name is reserved as `rawphp/laravel-capabilities`; tags and stable `1.x`
   are not claimed until a deliberate release process lands.
 
+<!--
+  First tagged 0.x.y scaffold (Keep a Changelog):
+  When cutting monorepo git tag v0.1.0, promote Unreleased bullets into:
+
+  ## [0.1.0] - YYYY-MM-DD
+
+  Then leave [Unreleased] empty for the next cycle. Section title has no leading "v";
+  git tag keeps the "v" prefix. See docs/versioning.md → Git tag naming.
+-->
+
 ## [0.x] — pre-stable monorepo
 
 Pre-1.0 development line. APIs may change without a major version bump while on 0.x.
 Consumers should pin a VCS ref or path checkout and read this changelog before upgrading.
+This banner is **not** a substitute for a concrete dated `## [0.x.y]` section at first tag.
 
 [Unreleased]: https://github.com/rawphp/laravel-capabilities
 [0.x]: https://github.com/rawphp/laravel-capabilities
