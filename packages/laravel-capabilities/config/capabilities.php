@@ -2,15 +2,43 @@
 
 /**
  * Scaffold defaults — full shape lives in docs/spec.md.
+ *
+ * Uses plain PHP defaults so unit tests can load this file without a Laravel
+ * app. When booted in Laravel, ServiceProvider merge + env() at host level
+ * still apply via published config overrides.
  */
+// Avoid Laravel's env() helper here — monorepo unit tests load this file without
+// a full Illuminate env repository (PhpOption). Host apps override via published config.
+$env = static function (string $key, mixed $default = null): mixed {
+    $v = $_ENV[$key] ?? $_SERVER[$key] ?? getenv($key);
+    if ($v === false || $v === null || $v === '') {
+        return $default;
+    }
+
+    return match (strtolower((string) $v)) {
+        'true', '(true)', '1' => true,
+        'false', '(false)', '0' => false,
+        'null', '(null)' => null,
+        default => $v,
+    };
+};
+
+$appPath = static function (string $path = ''): string {
+    if (function_exists('app_path')) {
+        return app_path($path);
+    }
+
+    return $path === '' ? 'app' : 'app/'.ltrim($path, '/');
+};
+
 return [
-    'path' => app_path('Capabilities'),
+    'path' => $appPath('Capabilities'),
 
     'surfaces' => [
         'agent' => [
-            'enabled' => env('CAPABILITIES_SURFACE_AGENT', true),
+            'enabled' => $env('CAPABILITIES_SURFACE_AGENT', true),
             'require_package' => true,
-            'on_incompatible' => env('CAPABILITIES_AGENT_ON_INCOMPATIBLE', 'fail'),
+            'on_incompatible' => $env('CAPABILITIES_AGENT_ON_INCOMPATIBLE', 'fail'),
             'profiles' => [],
             'require_profile' => true,
             'max_tools_warn' => 32,
@@ -18,9 +46,9 @@ return [
             'max_tool_calls_per_turn' => 16,
         ],
         'mcp' => [
-            'enabled' => env('CAPABILITIES_SURFACE_MCP', true),
+            'enabled' => $env('CAPABILITIES_SURFACE_MCP', true),
             'require_package' => true,
-            'on_incompatible' => env('CAPABILITIES_MCP_ON_INCOMPATIBLE', 'fail'),
+            'on_incompatible' => $env('CAPABILITIES_MCP_ON_INCOMPATIBLE', 'fail'),
             'profiles' => [],
             'require_profile' => true,
             'auth' => [
@@ -31,27 +59,27 @@ return [
             ],
         ],
         'http' => [
-            'enabled' => env('CAPABILITIES_SURFACE_HTTP', true),
+            'enabled' => $env('CAPABILITIES_SURFACE_HTTP', true),
             'prefix' => 'capabilities',
             'middleware' => ['api', 'auth:sanctum'],
         ],
         'cli' => [
-            'enabled' => env('CAPABILITIES_SURFACE_CLI', true),
+            'enabled' => $env('CAPABILITIES_SURFACE_CLI', true),
         ],
         'job' => [
-            'enabled' => env('CAPABILITIES_SURFACE_JOB', true),
+            'enabled' => $env('CAPABILITIES_SURFACE_JOB', true),
         ],
         'artisan' => [
-            'enabled' => env('CAPABILITIES_SURFACE_ARTISAN', true),
+            'enabled' => $env('CAPABILITIES_SURFACE_ARTISAN', true),
         ],
         'messaging' => [
-            'enabled' => env('CAPABILITIES_SURFACE_MESSAGING', false),
+            'enabled' => $env('CAPABILITIES_SURFACE_MESSAGING', false),
         ],
     ],
 
     'audit' => [
         'enabled' => true,
-        'mode' => env('CAPABILITIES_AUDIT_MODE', 'best_effort'),
+        'mode' => $env('CAPABILITIES_AUDIT_MODE', 'best_effort'),
         'driver' => 'database',
         'queue' => 'capabilities-audit',
         'required' => false,
@@ -69,7 +97,7 @@ return [
         'store' => 'database',
         'ttl_hours' => 24,
         'default_policy' => 'requester_or_role',
-        'execution' => env('CAPABILITIES_APPROVAL_EXECUTION', 'deferred'),
+        'execution' => $env('CAPABILITIES_APPROVAL_EXECUTION', 'deferred'),
         'resume' => [
             'enabled' => true,
             'every_seconds' => 60,
@@ -83,7 +111,7 @@ return [
         'enabled' => true,
         'ttl_hours' => 24,
         'header' => 'Idempotency-Key',
-        'warn_missing_key' => env('CAPABILITIES_IDEMPOTENCY_WARN', true),
+        'warn_missing_key' => $env('CAPABILITIES_IDEMPOTENCY_WARN', true),
     ],
 
     'validation' => [
