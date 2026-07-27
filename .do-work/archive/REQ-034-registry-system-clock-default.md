@@ -1,19 +1,14 @@
 # REQ-034: Registry production clock default
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.47897
-**Claimed at:** 2026-07-27T05:15:49Z
-**Heartbeat:** 2026-07-27T05:15:49Z
-<!-- claimed-end -->
 
 **UR:** UR-005
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:**
 **Terminal state:**
 **Parent:**
-**Closure proof:**
+**Closure proof:** checkpoint:.do-work/runs/RUN-027.yml#REQ-034 commit:d295f1c tests:passed
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** S
@@ -34,14 +29,14 @@ Out of scope: binding a separate `Clock` container abstract unless already requi
 
 ## Acceptance Criteria
 
-- [ ] `CapabilityRegistry` constructor null-clock default is `SystemClock` (not `FixedClock` with a hard-coded date)
-- [ ] Source no longer hard-codes `2026-07-27T00:00:00Z` (or any frozen calendar date) as the registry default clock
-- [ ] `ContainerBindings::makeRegistry` constructs the registry with an explicit `SystemClock` (or equivalent wall-clock implementation)
-- [ ] Unit test(s) assert production path: `makeRegistry(...)` / default construction → `clock()` is `SystemClock`
-- [ ] Unit test(s) assert tests can still freeze time: construct or `withClock(new FixedClock(...))` → `clock()` is that FixedClock
-- [ ] Any existing assert that expected the default to be `FixedClock` (e.g. CoverageBoostTest) is updated to the new contract
-- [ ] Time-sensitive registry/pipeline unit tests still pass deterministically (inject FixedClock where they rely on frozen time)
-- [ ] `composer test:core` passes
+- [x] `CapabilityRegistry` constructor null-clock default is `SystemClock` (not `FixedClock` with a hard-coded date)
+- [x] Source no longer hard-codes `2026-07-27T00:00:00Z` (or any frozen calendar date) as the registry default clock
+- [x] `ContainerBindings::makeRegistry` constructs the registry with an explicit `SystemClock` (or equivalent wall-clock implementation)
+- [x] Unit test(s) assert production path: `makeRegistry(...)` / default construction → `clock()` is `SystemClock`
+- [x] Unit test(s) assert tests can still freeze time: construct or `withClock(new FixedClock(...))` → `clock()` is that FixedClock
+- [x] Any existing assert that expected the default to be `FixedClock` (e.g. CoverageBoostTest) is updated to the new contract
+- [x] Time-sensitive registry/pipeline unit tests still pass deterministically (inject FixedClock where they rely on frozen time)
+- [x] `composer test:core` passes
 
 ## Verification Steps
 
@@ -55,3 +50,10 @@ Out of scope: binding a separate `Clock` container abstract unless already requi
 ## Manual checks (advisory)
 
 (none — fully unit-testable)
+
+## Outputs
+
+- packages/laravel-capabilities/src/Registry/CapabilityRegistry.php — Null clock default is SystemClock
+- packages/laravel-capabilities/src/Boot/ContainerBindings.php — makeRegistry passes SystemClock
+- packages/laravel-capabilities/tests/Unit/Registry/RegistrySystemClockDefaultTest.php — production default + FixedClock inject tests
+- packages/laravel-capabilities/tests/Unit/Boot/ConfigDrivenBindingsTest.php — makeRegistry asserts SystemClock
