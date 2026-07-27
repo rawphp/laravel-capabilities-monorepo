@@ -12,7 +12,7 @@
 **Priority:** 3
 **Size:** M
 **Files:** packages/capabilities-cli/.goreleaser.yml packages/capabilities-cli/.github/workflows/release.yml packages/capabilities-cli/cmd/capabilities/cli.go docs/versioning.md packages/capabilities-cli/README.md packages/capabilities-cli/dist/README.md
-**Depends on:** REQ-060 REQ-061 REQ-062 REQ-063 REQ-064
+**Depends on:** REQ-060, REQ-061, REQ-062, REQ-063, REQ-064
 
 ## Task
 

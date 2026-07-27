@@ -12,7 +12,7 @@
 **Priority:** 1
 **Size:** S
 **Files:** packages/capabilities-cli/README.md packages/capabilities-cli/dist/README.md packages/capabilities-cli/docs/user-guide.md packages/capabilities-cli/CHANGELOG.md docs/versioning.md README.md
-**Depends on:** REQ-062 REQ-063
+**Depends on:** REQ-062, REQ-063
 
 ## Task
 

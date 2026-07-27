@@ -12,7 +12,7 @@
 **Priority:** 1
 **Size:** L
 **Files:** packages/capabilities-cli/.goreleaser.yml packages/capabilities-cli/.github/workflows/release.yml packages/capabilities-cli/docs/release-signing.md packages/capabilities-cli/README.md
-**Depends on:** REQ-061 REQ-062
+**Depends on:** REQ-061, REQ-062
 
 ## Task
 
