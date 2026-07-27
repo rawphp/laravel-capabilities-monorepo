@@ -10,12 +10,14 @@ use Rawphp\Capabilities\CapabilitiesServiceProvider;
 use Illuminate\Database\Capsule\Manager as Capsule;
 use Illuminate\Database\ConnectionInterface;
 use Rawphp\Capabilities\Boot\BootException;
+use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Persistence\ArrayTableGateway;
 use Rawphp\Capabilities\Persistence\DatabaseApprovalStore;
 use Rawphp\Capabilities\Persistence\DatabaseIdempotencyStore;
 use Rawphp\Capabilities\Persistence\MigrationCatalog;
 use Rawphp\Capabilities\Persistence\QueryTableGateway;
 use Rawphp\Capabilities\Persistence\TableGateway;
+use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
 use Rawphp\Capabilities\Tests\Fixtures\BootHelpers;
@@ -200,6 +202,34 @@ it("edge: tests can rebind Tracer to fake [BOOT-001]", function () {
     $c->instance("Tracer", $fake);
     expect($c->get("Tracer"))->toBe($fake)
         ->and($c->get("Tracer")->tag)->toBe("fake-Tracer");
+});
+
+// --- REQ-057: CapabilityBus interface bound to CapabilityRegistry ---
+
+it('REQ-057 happy: container binds CapabilityBus interface to CapabilityRegistry [BOOT-001]', function () {
+    expect(ContainerBindings::binds(CapabilityBus::class))->toBeTrue()
+        ->and(ContainerBindings::binds('CapabilityBus'))->toBeTrue()
+        ->and(CapabilitiesServiceProvider::bindingAbstracts())->toContain(CapabilityBus::class)
+        ->and(CapabilitiesServiceProvider::bindingAbstracts())->toContain('CapabilityBus');
+
+    $plan = ContainerBindings::plan();
+    expect($plan[CapabilityBus::class] ?? null)->toBe(CapabilityRegistry::class)
+        ->and($plan['CapabilityBus'] ?? null)->toBe(CapabilityBus::class);
+
+    $c = ArrayContainer::fromPlan();
+    expect($c->bound(CapabilityBus::class))->toBeTrue()
+        ->and($c->bound('CapabilityBus'))->toBeTrue()
+        ->and($c->get(CapabilityBus::class))->toBe(CapabilityRegistry::class);
+});
+
+it('REQ-057 edge: tests can rebind CapabilityBus to fake [BOOT-001]', function () {
+    $c = ArrayContainer::fromPlan();
+    $fake = new class {
+        public string $tag = 'fake-CapabilityBus';
+    };
+    $c->instance(CapabilityBus::class, $fake);
+    expect($c->get(CapabilityBus::class))->toBe($fake)
+        ->and($c->get(CapabilityBus::class)->tag)->toBe('fake-CapabilityBus');
 });
 
 
