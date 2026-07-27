@@ -156,12 +156,91 @@ Per package `CHANGELOG.md`:
 
 Go CLI versioning is documented here only (CLI layer implementation out of scope for prep REQs): the same monorepo tag `v0.Y.Z` is the release marker; binary embedding of that string is a later release step.
 
+## Packagist + git tag publish checklist (human steps)
+
+**State:** Packagist publish remains a **residual** until a maintainer completes the manual checks below.
+This monorepo documents the steps only. Automated package CI stays **unit-only** and must **not**
+call Packagist, create tags, or hold API tokens. Do **not** claim publish is done because this
+checklist exists.
+
+### Package names and monorepo path layout
+
+| Composer / artifact name | Monorepo path | Publish surface |
+|---|---|---|
+| `rawphp/laravel-capabilities` | `packages/laravel-capabilities` | Packagist (Composer) |
+| `rawphp/laravel-capabilities-messaging` | `packages/laravel-capabilities-messaging` | Packagist (Composer) — sibling of core |
+| `rawphp/capabilities-cli` (Go module / binary `capabilities`) | `packages/capabilities-cli` | **Not Packagist** — CLI binary residual (GitHub Releases / install docs; separate from Composer) |
+
+**Monorepo path layout caveats (read before submit):**
+
+- The git remote is a **monorepo**. Packagist expects each Composer package root to contain its own
+  `composer.json`. Submitting the monorepo URL alone often fails or mis-discovers packages unless
+  you use a **subtree split**, **Satis / private mirror**, or separate package remotes.
+- Prefer either: (a) maintain split package remotes that track only `packages/<name>` history, or
+  (b) document an explicit Packagist/subtree strategy before the first public tag. Path/VCS install
+  from this monorepo remains valid until that lands.
+- Messaging depends on core (`rawphp/laravel-capabilities`). Publish **core first**, then messaging,
+  so `composer require` resolution does not hit a missing dependency.
+- Do not invent a third package name. Wire/catalog names stay exactly as in package `composer.json`
+  / Go module paths above.
+
+### Human checklist (maintainer)
+
+Complete in order. Checkboxes are for human operators — not CI.
+
+1. **Prep (docs already cover this)**
+   - [ ] `branch-alias` remains `dev-main` → `0.x-dev` on both PHP packages (no top-level `"version"`).
+   - [ ] CHANGELOGs: move `[Unreleased]` into a dated `## [0.Y.Z]` section before the tag (see handoff above).
+   - [ ] Confirm monorepo unit suites green locally (`composer test:core`, messaging as needed). **No** live Packagist network call is part of unit CI.
+
+2. **Packagist submit (each PHP package)**
+   - [ ] Log into [Packagist](https://packagist.org/) with the org/maintainer account that owns `rawphp/*`.
+   - [ ] **Submit package** for `rawphp/laravel-capabilities` pointing at the **package VCS URL** that
+     exposes that package’s `composer.json` at the repository root (split remote or agreed monorepo strategy — not a blind monorepo root if Composer cannot see the package).
+   - [ ] **Submit package** for `rawphp/laravel-capabilities-messaging` the same way (after core is listed or simultaneously only if both remotes are ready).
+   - [ ] Confirm package names match `composer.json` `name` fields exactly.
+
+3. **VCS linkage**
+   - [ ] Verify Packagist shows the correct git remote and default branch (`main`).
+   - [ ] Ensure the package repository is public (or Packagist has access) so consumers can clone.
+
+4. **Auto-update webhook**
+   - [ ] On the git host (e.g. GitHub), add Packagist’s **auto-update webhook** (or GitHub service integration)
+     so new tags/commits update Packagist without manual “Update” clicks.
+   - [ ] Fire a test push or use Packagist “Update” once to confirm the hook works.
+
+5. **First git tag**
+   - [ ] Create annotated monorepo tag per pattern: `git tag -a v0.Y.Z -m "Pre-stable 0.Y.Z"` (first target often `v0.1.0`).
+   - [ ] Push the tag: `git push origin v0.Y.Z` (and package split remotes if used).
+   - [ ] Do **not** treat tag create/push as automated by monorepo CI.
+
+6. **Verify public install**
+   - [ ] After Packagist indexes the tag: `composer show rawphp/laravel-capabilities` (and messaging) resolves a version.
+   - [ ] On a **clean** Laravel app (no path repository): `composer require rawphp/laravel-capabilities` succeeds.
+   - [ ] Only then update root README / consumer docs to drop “not on Packagist” residual wording for those packages.
+
+7. **CLI binary residual (separate track)**
+   - [ ] Go CLI is **not** published via Packagist. Track binary distribution (release assets, install script)
+     as its own residual; monorepo build (`go build` in `packages/capabilities-cli`) remains the interim path.
+
+### Residual marker
+
+| Surface | Residual until |
+|---|---|
+| Packagist listing for `rawphp/laravel-capabilities` | Human completes submit + webhook + first tag + `composer show` / clean `composer require` |
+| Packagist listing for `rawphp/laravel-capabilities-messaging` | Same, after core (dependency order) |
+| Signed/downloadable `capabilities` CLI binary | Separate human release track (not this checklist’s Packagist steps) |
+
+Until those human steps finish, **Packagist remains residual**. Root README consumer-readiness table must keep packaging as residual. Unit tests must not depend on Packagist availability.
+
 ## What this prep work does **not** do
 
 - No Packagist publish, API tokens, or `composer publish` automation.
 - No git tags or GitHub Releases created solely for versioning readiness.
 - No secrets, deploy keys, or live network release steps in-repo.
 - No claim that packages are already on Packagist or that tags already exist on a public remote.
+- No monorepo unit test that hits `packagist.org` or requires `composer show` against the public registry.
 
-When a real release process lands, cut tags using the pattern above, fill dated CHANGELOG sections,
-and only then claim public install via Packagist / binary distribution.
+When a maintainer completes the **Packagist + git tag publish checklist** above, cut tags using the
+pattern in **Git tag naming**, fill dated CHANGELOG sections, and only then claim public install via
+Packagist / binary distribution.
