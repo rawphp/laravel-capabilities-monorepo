@@ -1,23 +1,18 @@
 # REQ-006: Authorize actor and tenancy scope
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.49422
-**Claimed at:** 2026-07-27T01:23:47Z
-**Heartbeat:** 2026-07-27T01:23:47Z
-<!-- claimed-end -->
 
 **UR:** UR-001
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:** Pipeline stages resolve_actor, resolve_scope, authorize
 **Terminal state:** Caller/actor derivation and scope re-resolution enforce tenancy; Scope/* Caller/* Job actor inventory tests pass.
 **Parent:** 
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed commit:8df25a1
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** L
-**Files:** packages/laravel-capabilities/src packages/laravel-capabilities/tests/Unit/Scope packages/laravel-capabilities/tests/Unit/Caller packages/laravel-capabilities/tests/Unit/Job packages/laravel-capabilities/tests/Unit/Context
+**Files:** packages/laravel-capabilities/src/Adapters/RunCapabilityJob.php, packages/laravel-capabilities/src/Facades/Capability.php, packages/laravel-capabilities/src/Http/CallerDeriver.php, packages/laravel-capabilities/src/Http/DetectsCaller.php, packages/laravel-capabilities/src/Pipeline/ResolveTenantFromCaller.php, packages/laravel-capabilities/src/Registry/CapabilityRegistry.php, packages/laravel-capabilities/src/Support/CallerClaimRejectedException.php, packages/laravel-capabilities/src/Support/CapabilityContext.php, packages/laravel-capabilities/src/Support/DefaultScopeResolver.php, packages/laravel-capabilities/src/Support/InMemoryScopedQueryFactory.php, packages/laravel-capabilities/src/Support/MissingJobActorException.php, packages/laravel-capabilities/src/Support/MissingJobTenantException.php, packages/laravel-capabilities/src/Support/UnresolvedScopeException.php, packages/laravel-capabilities/tests/Fixtures/ScopeCallerJobHelpers.php, packages/laravel-capabilities/tests/Unit/Caller, packages/laravel-capabilities/tests/Unit/Context, packages/laravel-capabilities/tests/Unit/Job, packages/laravel-capabilities/tests/Unit/Scope
 **Depends on:** REQ-005
 
 ## Task
@@ -32,10 +27,10 @@ Original brief: implement all package tests and business logic so all tests pass
 
 ## Acceptance Criteria
 
-- [ ] Caller derivation tests pass for credential-derived caller kinds
-- [ ] Cross-tenant / attack-vector Scope matrix scenarios fail closed
-- [ ] Job SystemActor / allowlist inventory scenarios pass
-- [ ] Context field matrix scenarios covered with unit asserts
+- [x] Caller derivation tests pass for credential-derived caller kinds
+- [x] Cross-tenant / attack-vector Scope matrix scenarios fail closed
+- [x] Job SystemActor / allowlist inventory scenarios pass
+- [x] Context field matrix scenarios covered with unit asserts
 
 ## Verification Steps
 
@@ -60,3 +55,8 @@ Original brief: implement all package tests and business logic so all tests pass
 
 - docs/spec.md — design bible / conflict oracle
 - docs/requirements-inventory.md — scenario checklist
+
+
+## Outputs
+
+- packages/laravel-capabilities — implementation commit 8df25a1

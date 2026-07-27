@@ -3,7 +3,7 @@
 <!-- claimed-start -->
 **Claimed by:** Toms-MacBook-Pro.local.49422
 **Claimed at:** 2026-07-27T01:23:48Z
-**Heartbeat:** 2026-07-27T01:23:48Z
+**Heartbeat:** 2026-07-27T01:41:31Z
 <!-- claimed-end -->
 
 **UR:** UR-001
@@ -17,7 +17,7 @@
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** L
-**Files:** packages/laravel-capabilities/src/Approval packages/laravel-capabilities/tests/Unit/Approval
+**Files:** packages/laravel-capabilities/src/Approval packages/laravel-capabilities/src/Contracts/ApprovalStore.php packages/laravel-capabilities/src/Support/InMemoryApprovalStore.php packages/laravel-capabilities/src/Events/CapabilityApprovalDecided.php packages/laravel-capabilities/src/Events/CapabilityApprovalExecuted.php packages/laravel-capabilities/tests/Unit/Approval packages/laravel-capabilities/tests/Fixtures/ApprovalHelpers.php packages/laravel-capabilities/tests/bootstrap.php packages/laravel-capabilities/phpunit.xml packages/laravel-capabilities/tests/Pest.php
 **Depends on:** REQ-005
 
 ## Task
@@ -32,13 +32,13 @@ Original brief: implement all package tests and business logic so all tests pass
 
 ## Acceptance Criteria
 
-- [ ] needsApproval true stores pending and does not call run
-- [ ] Exactly-once algorithm and resume/lease matrix scenarios pass
-- [ ] Crash recovery scenarios pass
-- [ ] Who-may-approve / expiry / staleness matrices pass
-- [ ] No DB in tests
+- [x] needsApproval true stores pending and does not call run
+- [x] Exactly-once algorithm and resume/lease matrix scenarios pass
+- [x] Crash recovery scenarios pass
+- [x] Who-may-approve / expiry / staleness matrices pass
+- [x] No DB in tests
 
-- [ ] Double-execute after approval and crash-recovery races never call run() twice (assert single execution from inventory scenarios)
+- [x] Double-execute after approval and crash-recovery races never call run() twice (assert single execution from inventory scenarios)
 
 ## Verification Steps
 

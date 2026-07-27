@@ -3,7 +3,7 @@
 <!-- claimed-start -->
 **Claimed by:** Toms-MacBook-Pro.local.49422
 **Claimed at:** 2026-07-27T01:23:49Z
-**Heartbeat:** 2026-07-27T01:23:49Z
+**Heartbeat:** 2026-07-27T01:34:40Z
 <!-- claimed-end -->
 
 **UR:** UR-001
@@ -17,7 +17,7 @@
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** M
-**Files:** packages/laravel-capabilities/src/Idempotency packages/laravel-capabilities/tests/Unit/Idempotency
+**Files:** packages/laravel-capabilities/src/Idempotency, packages/laravel-capabilities/src/Pipeline/IdempotencyGuard.php, packages/laravel-capabilities/src/Registry/CapabilityRegistry.php, packages/laravel-capabilities/src/Schema/CatalogPresenter.php, packages/laravel-capabilities/src/Support/InMemoryIdempotencyStore.php, packages/laravel-capabilities/tests/Unit/Idempotency, packages/laravel-capabilities/tests/Fixtures/IdempotencyHelpers.php
 **Depends on:** REQ-005
 
 ## Task
@@ -32,12 +32,12 @@ Original brief: implement all package tests and business logic so all tests pass
 
 ## Acceptance Criteria
 
-- [ ] Completed result replay skips run()
-- [ ] Key format and status/hash matrix scenarios pass
-- [ ] Wire format / storage identity matrices pass
-- [ ] Unit-only fakes
+- [x] Completed result replay skips run()
+- [x] Key format and status/hash matrix scenarios pass
+- [x] Wire format / storage identity matrices pass
+- [x] Unit-only fakes
 
-- [ ] Conflicting idempotency payload for same key is rejected or returns stored outcome without re-running (per D-005 inventory fail cases)
+- [x] Conflicting idempotency payload for same key is rejected or returns stored outcome without re-running (per D-005 inventory fail cases)
 
 ## Verification Steps
 
