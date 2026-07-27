@@ -9,9 +9,10 @@
 *.swp
 .DS_Store
 
-# CLI build artifacts
+# CLI build artifacts (keep docs; ignore binaries)
 packages/capabilities-cli/dist/*
 !packages/capabilities-cli/dist/.gitkeep
+!packages/capabilities-cli/dist/README.md
 packages/capabilities-cli/**/bin/
 *.exe
 
