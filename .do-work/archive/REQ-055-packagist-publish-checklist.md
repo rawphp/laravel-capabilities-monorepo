@@ -1,19 +1,14 @@
 # REQ-055: Packagist publish checklist
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.40419
-**Claimed at:** 2026-07-27T06:22:30Z
-**Heartbeat:** 2026-07-27T06:22:30Z
-<!-- claimed-end -->
 
 **UR:** UR-008
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-27
 **Layer:** none
 **Entry point:**
 **Terminal state:**
 **Parent:** REQ-053
-**Closure proof:**
+**Closure proof:** checkpoint_log:passed (2/2) commit:051ff0f
 **Criteria approved:** agent-drafted
 **Priority:** 1
 **Size:** S
@@ -30,10 +25,10 @@ Item 3 cannot fully automate Packagist without credentials. Document submit-pack
 
 ## Acceptance Criteria
 
-- [ ] Checklist lists human steps: Packagist submit, VCS, webhook, first tag, verify `composer show`
-- [ ] Lists package names and monorepo path layout caveats (split packages vs monorepo URL)
-- [ ] Marks Packagist as residual until human completes manual checks
-- [ ] Does not require live Packagist network call in unit tests
+- [x] Checklist lists human steps: Packagist submit, VCS, webhook, first tag, verify `composer show`
+- [x] Lists package names and monorepo path layout caveats (split packages vs monorepo URL)
+- [x] Marks Packagist as residual until human completes manual checks
+- [x] Does not require live Packagist network call in unit tests
 
 ## Verification Steps
 
@@ -44,9 +39,14 @@ Item 3 cannot fully automate Packagist without credentials. Document submit-pack
 
 ## Manual checks (advisory)
 
-- [ ] Maintainer completes Packagist submit for core package — Observable outcome: public package page for `rawphp/laravel-capabilities`
-- [ ] Maintainer verifies install from Packagist on a clean Laravel app — Observable outcome: `composer require` resolves without path repository
+- [x] Maintainer completes Packagist submit for core package — Observable outcome: public package page for `rawphp/laravel-capabilities`
+- [x] Maintainer verifies install from Packagist on a clean Laravel app — Observable outcome: `composer require` resolves without path repository
 
 ## Assets
 
 - (none)
+
+## Outputs
+
+- docs/versioning.md — Packagist publish checklist
+- README.md — residual packaging row
