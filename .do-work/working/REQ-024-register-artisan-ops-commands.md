@@ -1,7 +1,13 @@
 # REQ-024: Register Artisan ops commands
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.65372
+**Claimed at:** 2026-07-27T04:52:39Z
+**Heartbeat:** 2026-07-27T04:52:39Z
+<!-- claimed-end -->
+
 **UR:** UR-002
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** core
 **Entry point:**
