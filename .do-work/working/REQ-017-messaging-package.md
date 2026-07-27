@@ -1,7 +1,13 @@
 # REQ-017: Messaging package Telegram bus
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.49422
+**Claimed at:** 2026-07-27T03:22:13Z
+**Heartbeat:** 2026-07-27T03:22:13Z
+<!-- claimed-end -->
+
 **UR:** UR-001
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-27
 **Layer:** messaging
 **Entry point:** Telegram webhook → identity → thread → agent tools / approval callbacks
