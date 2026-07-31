@@ -13,6 +13,7 @@ import (
 	"github.com/rawphp/capabilities-cli/internal/api"
 	"github.com/rawphp/capabilities-cli/internal/auth"
 	"github.com/rawphp/capabilities-cli/internal/catalog"
+	"github.com/rawphp/capabilities-cli/internal/flagschema"
 	"github.com/rawphp/capabilities-cli/internal/helpfmt"
 	"github.com/rawphp/capabilities-cli/internal/mcpstdio"
 	"github.com/rawphp/capabilities-cli/internal/run"
@@ -362,27 +363,21 @@ func cmdDomainOrUnknown(env Env, domain string, args []string) int {
 		return writeCapabilityHelp(env, domain, verb, canonical, jsonOut, profile, base, noCache)
 	}
 
-	// Capability invoke (stub: route to existing run by canonical name; full flagschema is ORI-175).
+	// Capability invoke — same pipeline as `run` (flagschema merge + HTTP).
 	canonical, ok := idx.Lookup(domain, verb)
 	if !ok {
 		return writeNotFound(env, fmt.Sprintf("unknown verb %q for domain %q", verb, domain),
 			fmt.Sprintf("try: capabilities %s --help", domain))
 	}
-	// Rebuild args for run: <name> + remaining flags/positionals.
-	runArgs := append([]string{canonical}, rest...)
-	if profile != "default" {
-		runArgs = append(runArgs, "--profile="+profile)
-	}
-	if base != "" {
-		runArgs = append(runArgs, "--base-url="+base)
-	}
-	if noCache {
-		runArgs = append(runArgs, "--no-cache")
-	}
-	if jsonOut {
-		runArgs = append(runArgs, "--json")
-	}
-	return cmdRun(env, runArgs)
+	input, rest := flagValue(rest, "--input")
+	inputFile, rest := flagValue(rest, "--input-file")
+	idem, rest := flagValue(rest, "--idempotency-key")
+	tenant, rest := flagValue(rest, "--tenant")
+	human, rest := flagBool(rest, "--human")
+	retryLast, rest := flagBool(rest, "--retry-last")
+	// jsonOut/noCache/profile/base already peeled above
+	st := store(env)
+	return invokeCapability(env, st, profile, base, canonical, input, inputFile, idem, tenant, jsonOut, human, noCache, retryLast, rest)
 }
 
 // loadSynthIndex returns the synthesis index and optional summaries.
@@ -611,6 +606,7 @@ func cmdRun(env Env, args []string) int {
 	idem, args := flagValue(args, "--idempotency-key")
 	tenant, args := flagValue(args, "--tenant")
 	jsonOut, args := flagBool(args, "--json")
+	human, args := flagBool(args, "--human")
 	noCache, args := flagBool(args, "--no-cache")
 	retryLast, args := flagBool(args, "--retry-last")
 	if len(args) == 0 {
@@ -618,6 +614,19 @@ func cmdRun(env Env, args []string) int {
 		return api.ExitValidation
 	}
 	name := args[0]
+	flagArgs := args[1:]
+	return invokeCapability(env, st, profile, base, name, input, inputFile, idem, tenant, jsonOut, human, noCache, retryLast, flagArgs)
+}
+
+// invokeCapability is the single validate→key→POST path for run and domain/verb (ORI-175).
+func invokeCapability(
+	env Env,
+	st *auth.Store,
+	profile, base, name string,
+	input, inputFile, idem, tenant string,
+	jsonOut, human, noCache, retryLast bool,
+	flagArgs []string,
+) int {
 	if err := auth.GuardAuth(st, profile, "run"); err != nil {
 		fmt.Fprintln(env.Stderr, err.Error())
 		return api.ExitAuth
@@ -628,21 +637,70 @@ func cmdRun(env Env, args []string) int {
 		return api.ExitAuth
 	}
 	svc := &catalog.Service{Client: c, Cache: catalog.NewCache(st.SchemaCacheDir(profile)), NoCache: noCache}
+
+	// Load schema for flag merge (cache / describe).
+	var schemaJSON []byte
+	entry, _, derr := svc.Describe(context.Background(), name)
+	if derr == nil && entry != nil {
+		schemaJSON = entry.InputSchema
+	}
+
+	fs, ferr := flagschema.FromJSONSchema(schemaJSON)
+	if ferr != nil {
+		fmt.Fprintln(env.Stderr, ferr.Error())
+		return api.ExitValidation
+	}
+
+	// Base JSON from --input / --input-file.
+	var baseJSON []byte
+	if inputFile != "" {
+		b, rerr := os.ReadFile(inputFile)
+		if rerr != nil {
+			fmt.Fprintln(env.Stderr, "read input file:", rerr.Error())
+			return api.ExitValidation
+		}
+		baseJSON = b
+	} else if input != "" {
+		baseJSON = []byte(input)
+	}
+
+	flagMap, rest, cerr := flagschema.CollectFlags(flagArgs)
+	if cerr != nil {
+		fmt.Fprintln(env.Stderr, cerr.Error())
+		return api.ExitValidation
+	}
+	if len(rest) > 0 {
+		fmt.Fprintf(env.Stderr, "unexpected arguments: %s (see --help)\n", strings.Join(rest, " "))
+		return api.ExitValidation
+	}
+
+	merged, merr := fs.MergeJSON(baseJSON, flagMap)
+	if merr != nil {
+		fmt.Fprintln(env.Stderr, merr.Error())
+		// Point agents at help for required / usage errors.
+		if strings.Contains(merr.Error(), "required") || strings.Contains(merr.Error(), "unknown flag") {
+			fmt.Fprintln(env.Stderr, "hint: capabilities run", name, "--help")
+		}
+		return api.ExitValidation
+	}
+
 	opts := run.Options{
 		Profile:        profile,
 		BaseURL:        base,
 		Capability:     name,
-		InputJSON:      []byte(input),
-		InputFile:      inputFile,
+		InputJSON:      merged,
 		IdempotencyKey: idem,
 		RetryLast:      retryLast,
 		NoCache:        noCache,
-		JSON:           jsonOut,
+		JSON:           true, // always machine envelope
+		Human:          human,
 		TenantHint:     tenant,
 		Store:          st,
 		Client:         c,
 		Catalog:        svc,
 	}
+	// JSON field kept true for compatibility; Run always writes envelope to stdout.
+	_ = jsonOut
 	result := run.Run(context.Background(), opts)
 	if result.Stderr != "" {
 		fmt.Fprint(env.Stderr, result.Stderr)
@@ -655,7 +713,7 @@ func cmdRun(env Env, args []string) int {
 		if !strings.HasSuffix(result.Stdout, "\n") {
 			fmt.Fprintln(env.Stdout)
 		}
-	} else if jsonOut && len(result.Envelope) > 0 {
+	} else if len(result.Envelope) > 0 {
 		fmt.Fprintln(env.Stdout, string(result.Envelope))
 	}
 	return result.ExitCode
