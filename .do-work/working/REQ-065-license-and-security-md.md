@@ -1,7 +1,13 @@
 # REQ-065: Add MIT LICENSE and SECURITY.md
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.68388
+**Claimed at:** 2026-07-31T08:45:20Z
+**Heartbeat:** 2026-07-31T08:45:20Z
+<!-- claimed-end -->
+
 **UR:** UR-012
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-31
 **Layer:** none
 **Entry point:**
