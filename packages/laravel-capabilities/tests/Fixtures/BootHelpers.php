@@ -21,11 +21,20 @@ use Rawphp\Capabilities\Support\SystemActor;
 final class BootHelpers
 {
     /**
+     * Package defaults use rate_limits.driver=cache (production multi-worker).
+     * Unit tests default to memory unless a test opts into cache + RateLimitCache.
+     *
      * @return array<string, mixed>
      */
     public static function config(array $overrides = []): array
     {
-        return array_replace_recursive(CapabilitiesConfig::defaults(), $overrides);
+        $unitDefaults = [
+            'rate_limits' => [
+                'driver' => 'memory',
+            ],
+        ];
+
+        return array_replace_recursive(CapabilitiesConfig::defaults(), $unitDefaults, $overrides);
     }
 
     /**

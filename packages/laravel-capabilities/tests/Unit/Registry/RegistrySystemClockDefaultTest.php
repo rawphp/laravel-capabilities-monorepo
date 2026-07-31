@@ -19,7 +19,11 @@ it('default construction uses SystemClock not a frozen FixedClock', function () 
 });
 
 it('makeRegistry production path uses SystemClock', function () {
-    $registry = ContainerBindings::makeRegistry(CapabilitiesConfig::defaults(), new ArrayTableGateway);
+    // rate_limits.driver defaults to cache; unit path uses memory (L-008 / REQ-073).
+    $config = array_replace_recursive(CapabilitiesConfig::defaults(), [
+        'rate_limits' => ['driver' => 'memory'],
+    ]);
+    $registry = ContainerBindings::makeRegistry($config, new ArrayTableGateway);
 
     expect($registry->clock())->toBeInstanceOf(SystemClock::class)
         ->and($registry->clock())->not->toBeInstanceOf(FixedClock::class);

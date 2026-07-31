@@ -13,6 +13,8 @@ use Rawphp\Capabilities\Contracts\ApprovalStore;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\Metrics as MetricsContract;
+use Rawphp\Capabilities\Contracts\RateLimitCache;
+use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\ScopeResolver;
 use Rawphp\Capabilities\Contracts\Tracer as TracerContract;
 use Illuminate\Database\ConnectionInterface;
@@ -28,6 +30,8 @@ use Rawphp\Capabilities\Persistence\TableGateway;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\DefaultScopeResolver;
 use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
+use Rawphp\Capabilities\Support\InMemoryRateLimiter;
+use Rawphp\Capabilities\Support\LaravelCacheRateLimiter;
 use Rawphp\Capabilities\Support\SystemClock;
 
 /**
@@ -58,6 +62,9 @@ final class ContainerBindings
 
     public const DATABASE_DRIVERS = ['database', 'db', 'eloquent'];
 
+    /** Rate-limit drivers that share counters via RateLimitCache (L-008). */
+    public const CACHE_RATE_LIMIT_DRIVERS = ['cache', 'redis', 'shared'];
+
     /**
      * @param  array<string, mixed>|null  $config
      * @return list<string>
@@ -83,7 +90,8 @@ final class ContainerBindings
      *     drivers: array{
      *         approval_store: array{requested: string, resolved: string, concrete: class-string, package_default: bool},
      *         audit: array{requested: string, resolved: string, mode: string, concrete: class-string, package_default: bool},
-     *         idempotency: array{requested: string, resolved: string, concrete: class-string, package_default: bool}
+     *         idempotency: array{requested: string, resolved: string, concrete: class-string, package_default: bool},
+     *         rate_limits: array{requested: string, resolved: string, concrete: class-string, package_default: bool}
      *     },
      *     clients: array<string, mixed>,
      *     surfaces: array<string, mixed>,
@@ -127,6 +135,11 @@ final class ContainerBindings
             databaseConcrete: DatabaseIdempotencyStore::class,
         );
 
+        $rateLimits = self::resolveRateLimitDriver(
+            // Package default cache for multi-worker shared counters (L-008).
+            requested: (string) (($config['rate_limits']['driver'] ?? null) ?: 'cache'),
+        );
+
         $metricsEnabled = (bool) ($config['observability']['metrics'] ?? true);
         $tracingEnabled = (bool) ($config['observability']['tracing'] ?? true);
 
@@ -152,6 +165,8 @@ final class ContainerBindings
             AuditLogger::class => AuditLogger::class,
             'ScopeResolver' => ScopeResolver::class,
             ScopeResolver::class => DefaultScopeResolver::class,
+            RateLimiter::class => $rateLimits['concrete'],
+            'RateLimiter' => RateLimiter::class,
             'AiToolAdapter' => AiToolAdapter::class,
             AiToolAdapter::class => AiToolAdapterV1::class,
             'McpToolAdapter' => McpToolAdapter::class,
@@ -184,6 +199,12 @@ final class ContainerBindings
                     'resolved' => $idempotency['resolved'],
                     'concrete' => $idempotency['concrete'],
                     'package_default' => $idempotency['package_default'],
+                ],
+                'rate_limits' => [
+                    'requested' => $rateLimits['requested'],
+                    'resolved' => $rateLimits['resolved'],
+                    'concrete' => $rateLimits['concrete'],
+                    'package_default' => $rateLimits['package_default'],
                 ],
             ],
             'clients' => (array) ($config['clients'] ?? []),
@@ -228,6 +249,8 @@ final class ContainerBindings
         ?ApprovalStore $approvalStore = null,
         ?IdempotencyStore $idempotencyStore = null,
         ?ConnectionInterface $connection = null,
+        ?RateLimitCache $rateLimitCache = null,
+        ?RateLimiter $rateLimiter = null,
     ): CapabilityRegistry {
         $full = $config === [] ? CapabilitiesConfig::defaults() : $config;
         // Validate drivers/modes early (fail closed) using the shared resolve path.
@@ -259,6 +282,10 @@ final class ContainerBindings
             $registry->withRateLimitConfig($rateLimits);
         }
 
+        $registry->withRateLimiter(
+            $rateLimiter ?? self::makeRateLimiter($full, $rateLimitCache),
+        );
+
         $validation = (array) ($full['validation'] ?? []);
         if ($validation !== []) {
             $registry->withValidationConfig($validation);
@@ -280,6 +307,39 @@ final class ContainerBindings
         }
 
         return $registry;
+    }
+
+    /**
+     * Select rate limiter from rate_limits.driver (L-008).
+     *
+     * memory → {@see InMemoryRateLimiter} (unit tests / single process).
+     * cache  → {@see LaravelCacheRateLimiter} over injected {@see RateLimitCache}
+     *          (Illuminate cache in production; ArrayRateLimitCache in unit tests).
+     *
+     * @param  array<string, mixed>  $config
+     */
+    public static function makeRateLimiter(
+        array $config = [],
+        ?RateLimitCache $cache = null,
+    ): RateLimiter {
+        $full = $config === [] ? CapabilitiesConfig::defaults() : $config;
+        $resolved = self::resolve($full);
+        $driver = $resolved['drivers']['rate_limits']['resolved'];
+
+        return match ($driver) {
+            'memory' => new InMemoryRateLimiter,
+            'cache' => self::makeCacheRateLimiter($cache),
+            default => throw BootException::unknownDriver('rate_limits.driver', $driver),
+        };
+    }
+
+    private static function makeCacheRateLimiter(?RateLimitCache $cache): LaravelCacheRateLimiter
+    {
+        if ($cache === null) {
+            throw BootException::missingRateLimitCache();
+        }
+
+        return new LaravelCacheRateLimiter($cache);
     }
 
     /**
@@ -493,5 +553,36 @@ final class ContainerBindings
         }
 
         throw BootException::unknownDriver($kind, $requested);
+    }
+
+    /**
+     * @return array{requested: string, resolved: string, concrete: class-string, package_default: bool}
+     */
+    private static function resolveRateLimitDriver(string $requested): array
+    {
+        $normalized = strtolower(trim($requested));
+        if ($normalized === '') {
+            $normalized = 'cache';
+        }
+
+        if (in_array($normalized, self::MEMORY_DRIVERS, true)) {
+            return [
+                'requested' => $normalized,
+                'resolved' => 'memory',
+                'concrete' => InMemoryRateLimiter::class,
+                'package_default' => false,
+            ];
+        }
+
+        if (in_array($normalized, self::CACHE_RATE_LIMIT_DRIVERS, true)) {
+            return [
+                'requested' => $normalized,
+                'resolved' => 'cache',
+                'concrete' => LaravelCacheRateLimiter::class,
+                'package_default' => false,
+            ];
+        }
+
+        throw BootException::unknownDriver('rate_limits.driver', $requested);
     }
 }

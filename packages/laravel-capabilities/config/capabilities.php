@@ -148,8 +148,25 @@ return [
         'validate_output' => true,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Rate limits (D-013 / L-008)
+    |--------------------------------------------------------------------------
+    |
+    | driver: memory | cache
+    |   memory — process-local InMemoryRateLimiter (unit tests / single worker only)
+    |   cache  — LaravelCacheRateLimiter over shared Illuminate cache (Redis, etc.)
+    |
+    | Package default is cache so multi-worker FPM/queue hosts share counters.
+    | Unit tests must pass rate_limits.driver=memory or inject RateLimitCache
+    | (ArrayRateLimitCache). Production multi-worker MUST keep driver=cache and
+    | ensure the app cache store is shared (typically redis) — memory gives a
+    | false sense of protection under scale-out.
+    |
+    */
     'rate_limits' => [
         'enabled' => true,
+        'driver' => $env('CAPABILITIES_RATE_LIMITS_DRIVER', 'cache'),
         'defaults' => [
             'per_minute' => 60,
             'per_capability_per_minute' => 30,

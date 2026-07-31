@@ -20,10 +20,13 @@ use Rawphp\Capabilities\Boot\CapabilitiesConfig;
 use Rawphp\Capabilities\Boot\ContainerBindings;
 use Rawphp\Capabilities\Boot\RegistrationPlan;
 use Rawphp\Capabilities\Boot\SurfaceNames;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Rawphp\Capabilities\Contracts\AuthTokenIssuer;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\Metrics;
+use Rawphp\Capabilities\Contracts\RateLimitCache;
+use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\ScopeResolver;
 use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\Capabilities\Discovery\CapabilityDiscoveryBoot;
@@ -35,6 +38,7 @@ use Rawphp\Capabilities\Observability\LogFallbackMetrics;
 use Rawphp\Capabilities\Persistence\TableGateway;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\DefaultScopeResolver;
+use Rawphp\Capabilities\Support\IlluminateRateLimitCache;
 
 /**
  * Core package service provider.
@@ -116,12 +120,24 @@ class CapabilitiesServiceProvider extends ServiceProvider
         });
         $this->app->alias(ApprovalManager::class, 'ApprovalManager');
 
+        $this->app->singleton(RateLimiter::class, function ($app) {
+            $config = self::configFromApp($app);
+
+            return ContainerBindings::makeRateLimiter(
+                $config,
+                self::boundRateLimitCacheOrNull($app),
+            );
+        });
+        $this->app->alias(RateLimiter::class, 'RateLimiter');
+
         $this->app->singleton(CapabilityRegistry::class, function ($app) {
             $config = self::configFromApp($app);
             /** @var ApprovalManager $approval */
             $approval = $app->make(ApprovalManager::class);
             /** @var IdempotencyStore $idempotency */
             $idempotency = $app->make(IdempotencyStore::class);
+            /** @var RateLimiter $rateLimiter */
+            $rateLimiter = $app->make(RateLimiter::class);
 
             return ContainerBindings::makeRegistry(
                 $config,
@@ -129,6 +145,8 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 $approval->store(),
                 $idempotency,
                 self::boundConnectionOrNull($app, $config, null),
+                self::boundRateLimitCacheOrNull($app),
+                $rateLimiter,
             );
         });
         $this->app->alias(CapabilityRegistry::class, 'CapabilityRegistry');
@@ -215,6 +233,48 @@ class CapabilitiesServiceProvider extends ServiceProvider
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    /**
+     * Shared cache for rate_limits.driver=cache (L-008).
+     *
+     * Order: bound RateLimitCache → cache.store / Cache Repository → null (fail closed in factory).
+     */
+    private static function boundRateLimitCacheOrNull(object $app): ?RateLimitCache
+    {
+        try {
+            if (method_exists($app, 'bound') && $app->bound(RateLimitCache::class)) {
+                $custom = $app->make(RateLimitCache::class);
+
+                return $custom instanceof RateLimitCache ? $custom : null;
+            }
+        } catch (\Throwable) {
+            // fall through to Illuminate cache
+        }
+
+        try {
+            if (method_exists($app, 'bound') && $app->bound('cache.store')) {
+                $repo = $app->make('cache.store');
+                if ($repo instanceof CacheRepository) {
+                    return new IlluminateRateLimitCache($repo);
+                }
+            }
+        } catch (\Throwable) {
+            // try Repository class binding
+        }
+
+        try {
+            if (method_exists($app, 'bound') && $app->bound(CacheRepository::class)) {
+                $repo = $app->make(CacheRepository::class);
+                if ($repo instanceof CacheRepository) {
+                    return new IlluminateRateLimitCache($repo);
+                }
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return null;
     }
 
     /**

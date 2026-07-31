@@ -35,7 +35,11 @@ it('REQ-070: bare CapabilityRegistry denies invoke when capability has no author
 });
 
 it('REQ-070: makeRegistry defaults deny when no host authorizer and no per-capability authorize', function () {
-    $registry = ContainerBindings::makeRegistry(CapabilitiesConfig::defaults(), new ArrayTableGateway);
+    // rate_limits.driver defaults to cache; unit path uses memory (L-008 / REQ-073).
+    $config = array_replace_recursive(CapabilitiesConfig::defaults(), [
+        'rate_limits' => ['driver' => 'memory'],
+    ]);
+    $registry = ContainerBindings::makeRegistry($config, new ArrayTableGateway);
     $registry->register(new CapabilityDefinition(
         name: 'deny-make-registry-cap',
         description: 'no authorize',
