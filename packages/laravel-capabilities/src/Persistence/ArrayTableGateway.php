@@ -60,6 +60,29 @@ final class ArrayTableGateway implements TableGateway
         return null;
     }
 
+    public function updateWhereLeaseFree(
+        array $where,
+        string $leaseColumn,
+        string $nowIso,
+        array $attributes,
+    ): ?array {
+        foreach ($this->byId as $id => $row) {
+            if (! $this->matches($row, $where)) {
+                continue;
+            }
+            if (! $this->leaseIsFree($row[$leaseColumn] ?? null, $nowIso)) {
+                return null;
+            }
+            $merged = array_merge($row, $attributes);
+            $merged['id'] = $id;
+            $this->byId[$id] = $merged;
+
+            return $merged;
+        }
+
+        return null;
+    }
+
     public function findWhere(array $where): array
     {
         $out = [];
@@ -120,5 +143,25 @@ final class ArrayTableGateway implements TableGateway
         $this->sequence++;
 
         return 'row-'.$this->sequence;
+    }
+
+    private function leaseIsFree(mixed $lease, string $nowIso): bool
+    {
+        if ($lease === null || $lease === '') {
+            return true;
+        }
+        if (! is_string($lease)) {
+            return true;
+        }
+
+        try {
+            $until = new \DateTimeImmutable($lease);
+            $now = new \DateTimeImmutable($nowIso);
+
+            return ! ($now < $until);
+        } catch (\Exception) {
+            // unparseable lease = free (matches DatabaseApprovalStore historical semantics)
+            return true;
+        }
     }
 }

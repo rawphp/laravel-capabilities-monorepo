@@ -41,6 +41,24 @@ interface TableGateway
     public function updateWhere(array $where, array $attributes): ?array;
 
     /**
+     * Conditional update when $where equalities match AND the lease column is free.
+     *
+     * Lease is free when the column is null, empty string, or not held past `$nowIso`
+     * (ISO-8601; held means now < lease expiry). Single atomic predicate — no TOCTOU
+     * between read and write (D-006 claimLease).
+     *
+     * @param  array<string, mixed>  $where
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>|null  null when no row matched or lease still held
+     */
+    public function updateWhereLeaseFree(
+        array $where,
+        string $leaseColumn,
+        string $nowIso,
+        array $attributes,
+    ): ?array;
+
+    /**
      * @param  array<string, mixed>  $where
      * @return list<array<string, mixed>>
      */

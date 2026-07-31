@@ -37,6 +37,7 @@ function queryTableGatewayFixture(
             messaging text,
             scope text,
             channel_meta_json text,
+            execution_lease_until text,
             execution_attempt integer default 0
         )
     SQL);
@@ -251,4 +252,65 @@ it('has no dependency on messaging package', function () {
 
     expect($src)->not->toContain('CapabilitiesMessaging')
         ->and($src)->not->toContain('Rawphp\\CapabilitiesMessaging');
+});
+
+// REQ-069 / L-007: atomic lease-free conditional update (SQL-side predicate).
+it('updateWhereLeaseFree claims only when lease null empty or expired', function () {
+    [, $gateway] = queryTableGatewayFixture();
+    $gateway->insert([
+        'id' => 'lease-1',
+        'status' => 'approved',
+        'capability_name' => 'x',
+        'execution_lease_until' => null,
+        'execution_attempt' => 0,
+    ]);
+    $gateway->insert([
+        'id' => 'lease-2',
+        'status' => 'approved',
+        'capability_name' => 'x',
+        'execution_lease_until' => '2026-07-27T12:05:00Z',
+        'execution_attempt' => 0,
+    ]);
+    $gateway->insert([
+        'id' => 'lease-3',
+        'status' => 'approved',
+        'capability_name' => 'x',
+        'execution_lease_until' => '2026-07-27T11:00:00Z',
+        'execution_attempt' => 0,
+    ]);
+
+    $now = '2026-07-27T12:00:00Z';
+    $free = $gateway->updateWhereLeaseFree(
+        ['id' => 'lease-1', 'status' => 'approved'],
+        'execution_lease_until',
+        $now,
+        ['execution_lease_until' => '2026-07-27T12:05:00Z', 'execution_attempt' => 1],
+    );
+    $held = $gateway->updateWhereLeaseFree(
+        ['id' => 'lease-2', 'status' => 'approved'],
+        'execution_lease_until',
+        $now,
+        ['execution_lease_until' => '2026-07-27T12:10:00Z', 'execution_attempt' => 1],
+    );
+    $expired = $gateway->updateWhereLeaseFree(
+        ['id' => 'lease-3', 'status' => 'approved'],
+        'execution_lease_until',
+        $now,
+        ['execution_lease_until' => '2026-07-27T12:05:00Z', 'execution_attempt' => 1],
+    );
+    $secondOnFree = $gateway->updateWhereLeaseFree(
+        ['id' => 'lease-1', 'status' => 'approved'],
+        'execution_lease_until',
+        $now,
+        ['execution_lease_until' => '2026-07-27T12:10:00Z', 'execution_attempt' => 2],
+    );
+
+    expect($free)->not->toBeNull()
+        ->and($free['execution_attempt'])->toBe(1)
+        ->and($held)->toBeNull()
+        ->and($expired)->not->toBeNull()
+        ->and($expired['execution_attempt'])->toBe(1)
+        ->and($secondOnFree)->toBeNull()
+        ->and($gateway->find('lease-1')['execution_attempt'])->toBe(1)
+        ->and($gateway->find('lease-2')['execution_attempt'])->toBe(0);
 });

@@ -148,6 +148,42 @@ final class QueryTableGateway implements TableGateway
         return $rows[0] ?? null;
     }
 
+    public function updateWhereLeaseFree(
+        array $where,
+        string $leaseColumn,
+        string $nowIso,
+        array $attributes,
+    ): ?array {
+        if ($where === []) {
+            return null;
+        }
+
+        $physicalLease = $this->physicalColumn($leaseColumn);
+        $query = $this->query();
+        $this->applyWhere($query, $where);
+
+        // Atomic free-lease predicate: null, empty, or not held past $nowIso (DATE_ATOM-safe).
+        $query->where(function (Builder $q) use ($physicalLease, $nowIso): void {
+            $q->whereNull($physicalLease)
+                ->orWhere($physicalLease, '=', '')
+                ->orWhere($physicalLease, '<=', $nowIso);
+        });
+
+        $affected = $query->limit(1)->update($this->encodePhysical($attributes));
+        if ($affected < 1) {
+            return null;
+        }
+
+        if (array_key_exists($this->primaryKey, $where)) {
+            return $this->find((string) $where[$this->primaryKey]);
+        }
+
+        $lookup = array_merge($where, $attributes);
+        $rows = $this->findWhere($lookup);
+
+        return $rows[0] ?? null;
+    }
+
     public function findWhere(array $where): array
     {
         $query = $this->query();

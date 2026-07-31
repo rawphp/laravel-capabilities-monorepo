@@ -2,7 +2,6 @@
 
 namespace Rawphp\Capabilities\Persistence;
 
-use DateTimeImmutable;
 use Rawphp\Capabilities\Contracts\ApprovalStore;
 use Rawphp\Capabilities\Contracts\Clock;
 
@@ -14,8 +13,6 @@ use Rawphp\Capabilities\Contracts\Clock;
  */
 final class DatabaseApprovalStore implements ApprovalStore
 {
-    private int $sequence = 0;
-
     public function __construct(
         private readonly TableGateway $table,
         private readonly Clock $clock,
@@ -26,7 +23,7 @@ final class DatabaseApprovalStore implements ApprovalStore
         $now = $this->clock->now()->format(DATE_ATOM);
         $id = isset($record['id']) && is_string($record['id']) && $record['id'] !== ''
             ? $record['id']
-            : $this->nextId();
+            : $this->newId();
 
         $row = [
             'id' => $id,
@@ -92,31 +89,13 @@ final class DatabaseApprovalStore implements ApprovalStore
         string $nowIso,
         array $attributes,
     ): ?array {
-        $row = $this->table->find($id);
-        if ($row === null) {
-            return null;
-        }
-        if (($row['status'] ?? null) !== $expectedStatus) {
-            return null;
-        }
-
-        $lease = $row['execution_lease_until'] ?? null;
-        if (is_string($lease) && $lease !== '') {
-            try {
-                $until = new DateTimeImmutable($lease);
-                $now = new DateTimeImmutable($nowIso);
-                if ($now < $until) {
-                    return null;
-                }
-            } catch (\Exception) {
-                // unparseable lease = free
-            }
-        }
-
+        // Single conditional update: id + status + free/expired lease (no TOCTOU find).
         $attributes['updated_at'] = $this->clock->now()->format(DATE_ATOM);
 
-        return $this->table->updateWhere(
+        return $this->table->updateWhereLeaseFree(
             ['id' => $id, 'status' => $expectedStatus],
+            'execution_lease_until',
+            $nowIso,
             $attributes,
         );
     }
@@ -126,10 +105,12 @@ final class DatabaseApprovalStore implements ApprovalStore
         return $this->table->findWhere(['status' => $status]);
     }
 
-    private function nextId(): string
+    /**
+     * Unguessable durable id (same shape as {@see QueryTableGateway} newId).
+     * Not process-local sequential approval-{n} (L-005).
+     */
+    private function newId(): string
     {
-        $this->sequence++;
-
-        return 'approval-'.$this->sequence;
+        return bin2hex(random_bytes(16));
     }
 }
