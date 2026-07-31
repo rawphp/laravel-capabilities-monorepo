@@ -34,7 +34,7 @@ feedback:
 
 parallel:
   stale_threshold_seconds: 900
-  max_workers: 1
+  max_workers: 6
 
 review:
   required: true
@@ -89,3 +89,30 @@ verify:
   threshold: 90
 
 routing: []
+
+# Work-item tracker backend. Default markdown = today's .do-work/ + lib/*.sh loop.
+tracker:
+  backend: linear          # markdown | linear — unset/empty/missing key also means markdown
+  linear:
+    team_id: "90eb3f11-da37-4bbb-a4a0-bfe245646f5d"
+    team_key: ""
+    default_assignee_id: ""
+    # Shared Linear Project for all UR milestones + Issues
+    product_project: ""  # laravel-capabilities product Project (or name "laravel-capabilities")
+    ur_milestone_name_pattern: "{ur_id}: {title}"
+    # Deprecated (ignored for UR home / alias):
+    project_name_pattern: "laravel-capabilities/{ur_id}"
+    initiative_title_pattern: "{ur_id}: {title}"
+    status_map:
+      backlog: "Todo"
+      in_progress: "In Progress"
+      stopped: "Canceled"
+      done: "Done"
+    labels:
+      layer_prefix: "Layer/"
+      path_unit: "path-unit"
+      size_prefix: "Size/"
+    agent_claim_marker: "<!-- laravel-capabilities-claim -->"
+    heartbeat_max_age_seconds: null
+    decisions_doc_title: "laravel-capabilities/decisions"
+    calibration_doc_title: "laravel-capabilities/calibration"

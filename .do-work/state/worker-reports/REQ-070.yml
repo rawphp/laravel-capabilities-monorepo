@@ -1,0 +1,24 @@
+req: REQ-070
+status: done
+commit: e1b57f2
+isolation: worktree
+closure_proof: "checkpoint_log:passed commit:e1b57f2"
+last_good_step: 2
+failed_step: 0
+checkpoint_log:
+  status: passed
+  checkpoints:
+    - step: 1
+      total: 1
+      type: test
+      command: "worker suite"
+      expected: "pass"
+      actual: "pass"
+      status: passed
+deferred_checks: []
+acceptance:
+  AC1:
+    status: passed
+    evidence:
+      - type: test
+        ref: "worker verification"
