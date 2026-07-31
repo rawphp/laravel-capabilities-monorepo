@@ -101,7 +101,33 @@ capabilities auth status [--profile=NAME]
 capabilities catalog [--json] [--no-cache] [--refresh] [--profile=NAME]
 ```
 
-Lists capabilities from `GET /capabilities` (via the HTTP client).
+Lists capabilities from `GET /capabilities` (via the HTTP client). With `--json`, rows may include client-side synthesis fields:
+
+| Field | Meaning |
+|---|---|
+| `cli.domain` / `cli.verb` | Routing metadata from the server (when fully set) |
+| `mapped_command` | Client-derived `"domain verb"` after synth index build |
+| `mapping_error` | Client suppressed synthesis (e.g. collision) — use `run <name>` |
+
+### Agent quickstart (domain/verb synthesis)
+
+After auth, agents can discover and invoke without reading prose:
+
+```bash
+capabilities catalog --json
+capabilities invoices --help                 # list verbs under domain
+capabilities invoices create --help --json   # capability_help envelope (fields[], schemas)
+capabilities invoices create --customer-id=42 --amount-cents=2500 --currency=USD
+# or full JSON / hybrid:
+capabilities invoices create --input='{"customer_id":42,"amount_cents":2500,"currency":"USD"}'
+```
+
+Parse **stdout** as a JSON envelope. Branch on **exit code**. Optional `--human` writes a short summary to **stderr** only — it never replaces the stdout envelope.
+
+Reserved meta-commands always win over domain tokens of the same name:
+`auth` · `catalog` · `describe` · `run` · `mcp` · `approvals` · `version` · `help`
+
+Unmapped capabilities (no `cli` metadata and no mechanical `domain.verb` / `domain/verb` name) stay available via `run` / `describe` only.
 
 ### `describe`
 
@@ -111,13 +137,16 @@ capabilities describe <name> [--json] [--no-cache] [--profile=NAME]
 
 Fetches JSON Schema / description for one capability.
 
-### `run`
+### `run` and synthesized `<domain> <verb>`
 
 ```bash
-capabilities run <name> --input=JSON|--input-file=PATH [flags]
+capabilities run <name> [scalar flags | --input=JSON | --input-file=PATH] [shared flags]
+capabilities <domain> <verb> [same]
 ```
 
-Flags:
+Scalar flags and JSON are **equal** first-class inputs. Merge rule: base = `--input` / `--input-file` (or `{}`), then each scalar flag overwrites that key (**flag wins**). Object/array fields are **json-only** (no flag). Unknown flags and json-only flags → exit **2**.
+
+Shared invoke flags:
 
 | Flag | Role |
 |---|---|
@@ -126,19 +155,23 @@ Flags:
 | `--idempotency-key=KEY` | Manual key (default: new UUID) |
 | `--retry-last` | Reuse last Idempotency-Key after network failure |
 | `--no-cache` | Re-fetch schema |
-| `--json` | Envelope on stdout |
+| `--json` | Legacy alias — stdout is always the machine envelope |
+| `--human` | Human summary on **stderr** only |
 | `--tenant=ID` | Tenant **hint** only — not authoritative scope |
 | `--profile=NAME` | Auth profile |
 | `--base-url=URL` | Base URL override |
 
-Flow: load input → local schema validate (fail closed before network when schema available) → ensure idempotency key → `POST /capabilities/{name}`.
+Flow (single path for flags, JSON, and hybrid): merge → load schema → local JSON Schema validate → ensure Idempotency-Key → `POST /capabilities/{canonicalName}`. No second mutation path.
 
-Example:
+Empty invoke with an all-optional schema may POST `{}`. Missing required fields → exit **2** (point at `--help`).
+
+Examples:
 
 ```bash
 capabilities run create-invoice \
-  --input='{"customer_id":42,"amount_cents":2500,"currency":"USD"}' \
-  --json
+  --input='{"customer_id":42,"amount_cents":2500,"currency":"USD"}'
+
+capabilities invoices create --customer-id=42 --amount-cents=2500 --currency=USD --human
 ```
 
 ### `mcp`
@@ -184,7 +217,10 @@ capabilities help run
 cmd/capabilities/   # main + command wiring
 internal/
   auth/             # keychain / config-dir token store
-  catalog/          # fetch + cache JSON Schema
+  catalog/          # fetch + cache JSON Schema; client mapping enrich
+  synth/            # domain/verb index from catalog
+  helpfmt/          # human + machine schema help
+  flagschema/       # scalar flags + merge with JSON
   run/              # validate locally → POST invoke
   mcpstdio/         # optional MCP stdio bridge
   api/              # HTTP client

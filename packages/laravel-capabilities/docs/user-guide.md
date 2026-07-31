@@ -49,6 +49,41 @@ Capability::define('create-invoice')
 
 Builder highlights (non-exhaustive): `description`, `surfaces`, `input`, `output`, `aliases`, deprecation fields, `groups`, `tags`, `idempotent`, `authorize`, `run`, approval-related setters, `register`.
 
+### CLI routing metadata (`domain` / `verb`)
+
+Optional product-CLI synthesis metadata. When **both** domain and verb are set, catalog list/describe emit:
+
+```json
+"cli": { "domain": "invoices", "verb": "create" }
+```
+
+Agents then call `capabilities invoices create …` instead of only `capabilities run create-invoice`.
+
+```php
+Capability::define('create-invoice')
+    // …
+    ->cli('invoices', 'create')
+    ->register($registry);
+
+// Attribute form:
+#[Capability(
+    name: 'create-invoice',
+    // …
+    cliDomain: 'invoices',
+    cliVerb: 'create',
+)]
+```
+
+Rules (fail closed):
+
+- Domain and verb tokens: lowercase `[a-z][a-z0-9-]*`
+- Incomplete metadata (only domain or only verb) → definition error
+- Domain must not collide with reserved CLI meta-commands (`auth`, `catalog`, `describe`, `run`, `mcp`, `approvals`, `version`, `help`)
+- Two definitions claiming the same `(domain, verb)` → register/boot failure (server authoritative)
+- Omit `cli` when unmapped — entry stays valid; clients use `run <name>` only
+- `cli` is **routing only** — JSON Schema remains the sole input/output contract
+
+
 ### Attribute + discovery (canonical path)
 
 Place classes under `config('capabilities.path')` (default `app/Capabilities`) with `#[Rawphp\Capabilities\Attributes\Capability]` implementing `Rawphp\Capabilities\Contracts\DefinesCapability`. Boot discovery runs through the service provider — do not invent a third registration mechanism.
