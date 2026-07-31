@@ -1,7 +1,13 @@
 # REQ-068: CLI release go test and pin Go version
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.22569
+**Claimed at:** 2026-07-31T08:52:52Z
+**Heartbeat:** 2026-07-31T08:52:52Z
+<!-- claimed-end -->
+
 **UR:** UR-012
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-31
 **Layer:** none
 **Entry point:**
