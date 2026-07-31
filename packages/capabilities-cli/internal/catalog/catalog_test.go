@@ -127,6 +127,32 @@ func TestCatalogomitsdisabledsurfaces(t *testing.T) {
 	}
 }
 
+func TestCataloglistparsesclimeta(t *testing.T) {
+	c, _ := clientServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"ok":true,"data":{"capabilities":[{"name":"create-invoice","cli":{"domain":"invoices","verb":"create"}}]}}`))
+	})
+	list, _, err := (&Service{Client: c}).List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].CLI == nil || list[0].CLI.Domain != "invoices" || list[0].CLI.Verb != "create" {
+		t.Fatalf("%#v", list)
+	}
+}
+
+func TestDescribepreservesclimeta(t *testing.T) {
+	c, _ := clientServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"ok":true,"data":{"name":"create-invoice","schema_version":"1","input_schema":{},"cli":{"domain":"invoices","verb":"create"}}}`))
+	})
+	e, _, err := (&Service{Client: c, Cache: NewCache(t.TempDir())}).Describe(context.Background(), "create-invoice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.CLI == nil || e.CLI.Domain != "invoices" || e.CLI.Verb != "create" {
+		t.Fatalf("%#v", e)
+	}
+}
+
 func TestSchemacacheetaginvalidation(t *testing.T) {
 	cache := NewCache(t.TempDir())
 	_ = cache.Put(&CacheEntry{Name: "x", SchemaVersion: "1", ETag: "v1", InputSchema: json.RawMessage(`{}`)})
