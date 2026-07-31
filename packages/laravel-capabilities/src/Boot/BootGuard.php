@@ -16,6 +16,47 @@ use Rawphp\Capabilities\Registry\CapabilityDefinition;
 final class BootGuard
 {
     /**
+     * Server-authoritative: two definitions claiming the same CLI (domain, verb) fail boot (CLI-002).
+     *
+     * Unmapped definitions (null domain/verb) are ignored. Pair uniqueness is also enforced at
+     * {@see \Rawphp\Capabilities\Registry\CapabilityRegistry::register()}; this is the boot-time
+     * sweep for assembled definition lists.
+     *
+     * @param  iterable<CapabilityDefinition>  $definitions
+     *
+     * @throws BootException
+     */
+    public static function assertUniqueCliPairs(iterable $definitions): void
+    {
+        /** @var array<string, string> $seen domain\0verb => capability name */
+        $seen = [];
+
+        foreach ($definitions as $definition) {
+            if (! $definition instanceof CapabilityDefinition) {
+                continue;
+            }
+
+            $domain = $definition->cliDomain;
+            $verb = $definition->cliVerb;
+            if ($domain === null || $verb === null) {
+                continue;
+            }
+
+            $key = $domain."\0".$verb;
+            if (isset($seen[$key])) {
+                throw BootException::duplicateCliPair(
+                    $domain,
+                    $verb,
+                    $seen[$key],
+                    $definition->name,
+                );
+            }
+
+            $seen[$key] = $definition->name;
+        }
+    }
+
+    /**
      * @param  array<string, mixed>  $config  full capabilities config
      */
     public function __construct(
