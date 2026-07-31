@@ -10,7 +10,9 @@ use Rawphp\Capabilities\Http\HttpRequestContext;
 use Rawphp\Capabilities\Http\RouteTable;
 use Rawphp\Capabilities\Tests\Fixtures\HttpHelpers;
 
-it("happy: auth flow token available when http enabled and issuer bound [D-009]", function () {
+// Inventory titles: "when cli or http auth enabled". Happy paths still require
+// http surface enabled + bound AuthTokenIssuer (fail-closed without issuer: L-002).
+it("happy: auth flow token available when cli or http auth enabled [D-009]", function () {
     $auth = new AuthController(['enabled' => true], ['enabled' => true], HttpHelpers::fakeAuthTokenIssuer());
     expect($auth->tokenFlowAvailable())->toBeTrue()
         ->and($auth->registeredFlows())->toContain(RouteTable::ROUTE_AUTH_TOKEN);
@@ -27,7 +29,7 @@ it("fail: auth flow token not registered when http disabled [D-009]", function (
     expect(RouteTable::has(HttpHelpers::routes(['enabled' => false]), RouteTable::ROUTE_AUTH_TOKEN))->toBeFalse();
 });
 
-it("happy: auth flow device_code available when http enabled and issuer bound [D-009]", function () {
+it("happy: auth flow device_code available when cli or http auth enabled [D-009]", function () {
     $auth = new AuthController(['enabled' => true], ['enabled' => false], HttpHelpers::fakeAuthTokenIssuer());
     expect($auth->deviceCodeFlowAvailable())->toBeTrue();
     $res = $auth->device(new HttpRequestContext(jsonBody: []));
@@ -40,7 +42,7 @@ it("fail: auth flow device_code not registered when http disabled [D-009]", func
     expect(RouteTable::has(HttpHelpers::routes(['enabled' => false]), RouteTable::ROUTE_AUTH_DEVICE))->toBeFalse();
 });
 
-it("happy: auth flow oauth_callback available when http enabled and issuer bound [D-009]", function () {
+it("happy: auth flow oauth_callback available when cli or http auth enabled [D-009]", function () {
     $auth = new AuthController(['enabled' => true], ['enabled' => true], HttpHelpers::fakeAuthTokenIssuer());
     expect($auth->oauthCallbackFlowAvailable())->toBeTrue();
     $res = $auth->oauthCallback(new HttpRequestContext(query: ['code' => 'abc']));
