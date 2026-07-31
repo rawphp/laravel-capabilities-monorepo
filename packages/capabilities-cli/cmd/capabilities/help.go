@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 
+	"github.com/rawphp/capabilities-cli/internal/helpfmt"
 	"github.com/rawphp/capabilities-cli/internal/run"
 )
 
@@ -139,4 +140,25 @@ func CommandExists(name string) bool {
 		return true
 	}
 	return false
+}
+
+// CapabilityHelpHuman formats schema-driven human capability help (INPUT table, OUTPUT, examples).
+// Domain/Verb empty → run <name> usage (domain/verb null in machine form). Full dispatch is ORI-173.
+func CapabilityHelpHuman(info helpfmt.CapabilityInfo) string {
+	return helpfmt.FormatHumanCapability(helpfmt.BuildCapabilityHelp(info))
+}
+
+// CapabilityHelpJSON returns the machine capability_help envelope for --help --json (stdout; no invoke).
+func CapabilityHelpJSON(info helpfmt.CapabilityInfo) []byte {
+	return helpfmt.FormatMachineCapability(helpfmt.BuildCapabilityHelp(info))
+}
+
+// DomainHelpHuman lists domain verbs with one-line descriptions and canonical names.
+func DomainHelpHuman(domain string, verbs []helpfmt.DomainVerb) string {
+	return helpfmt.FormatHumanDomain(domain, verbs)
+}
+
+// DomainHelpJSON returns the machine domain_help list envelope (--json).
+func DomainHelpJSON(domain string, verbs []helpfmt.DomainVerb) []byte {
+	return helpfmt.FormatMachineDomain(domain, verbs)
 }
