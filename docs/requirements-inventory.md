@@ -7,7 +7,7 @@ When implemented, the tests are the source of truth for what the product is and 
 
 Policy: **unit tests only**, no DB, mocks/fakes, **≥95% coverage** when implemented (`AGENTS.md`).
 
-**Cases: 5010 total — 4993 implemented, 17 remaining**
+**Cases: 5010 total — 5010 implemented, 0 remaining**
 
 - happy: 2029
 - fail: 1737
@@ -1887,7 +1887,7 @@ Extend the catalog in the generator and re-run; do not hand-edit pure stubs.
 - [x] happy: idempotent flag 'optional' stored on definition [D-005]
 - [x] happy: idempotent flag 'required' stored on definition [D-005]
 - [x] happy: idempotent flag 'none' stored on definition [D-005]
-- [ ] happy: idempotent flag False stored on definition [D-005]
+- [x] happy: idempotent flag False stored on definition [D-005]
 - [x] happy: readOnly=True stored on definition [D-017]
 - [x] happy: readOnly=False stored on definition [D-017]
 
@@ -4264,22 +4264,22 @@ Extend the catalog in the generator and re-run; do not hand-edit pure stubs.
 
 ### `Http/RouteRegistrationMatrixTest.php` (16)
 
-- [ ] happy: registers http_enabled=True GET list [D-009]
-- [ ] happy: registers http_enabled=True GET describe [D-009]
-- [ ] happy: registers http_enabled=True POST invoke [D-009]
-- [ ] happy: registers http_enabled=True POST accept [D-009]
-- [ ] happy: registers http_enabled=True POST reject [D-009]
-- [ ] happy: registers http_enabled=True GET health [D-009]
-- [ ] happy: registers http_enabled=True POST auth_token [D-009]
-- [ ] happy: registers http_enabled=True POST auth_device [D-009]
-- [ ] fail: does not register http_enabled=False GET list [D-009]
-- [ ] fail: does not register http_enabled=False GET describe [D-009]
-- [ ] fail: does not register http_enabled=False POST invoke [D-009]
-- [ ] fail: does not register http_enabled=False POST accept [D-009]
-- [ ] fail: does not register http_enabled=False POST reject [D-009]
-- [ ] fail: does not register http_enabled=False GET health [D-009]
-- [ ] fail: does not register http_enabled=False POST auth_token [D-009]
-- [ ] fail: does not register http_enabled=False POST auth_device [D-009]
+- [x] happy: registers http_enabled=True GET list [D-009]
+- [x] happy: registers http_enabled=True GET describe [D-009]
+- [x] happy: registers http_enabled=True POST invoke [D-009]
+- [x] happy: registers http_enabled=True POST accept [D-009]
+- [x] happy: registers http_enabled=True POST reject [D-009]
+- [x] happy: registers http_enabled=True GET health [D-009]
+- [x] happy: registers http_enabled=True POST auth_token [D-009]
+- [x] happy: registers http_enabled=True POST auth_device [D-009]
+- [x] fail: does not register http_enabled=False GET list [D-009]
+- [x] fail: does not register http_enabled=False GET describe [D-009]
+- [x] fail: does not register http_enabled=False POST invoke [D-009]
+- [x] fail: does not register http_enabled=False POST accept [D-009]
+- [x] fail: does not register http_enabled=False POST reject [D-009]
+- [x] fail: does not register http_enabled=False GET health [D-009]
+- [x] fail: does not register http_enabled=False POST auth_token [D-009]
+- [x] fail: does not register http_enabled=False POST auth_device [D-009]
 
 ### `Registry/StageErrorMappingTest.php` (90)
 
