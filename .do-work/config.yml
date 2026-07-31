@@ -98,7 +98,7 @@ tracker:
     team_key: ""
     default_assignee_id: ""
     # Shared Linear Project for all UR milestones + Issues
-    product_project: "laravel-capabilities"
+    product_project: "20d9e048-63e0-4453-86e4-4b1223f9967d"
     ur_milestone_name_pattern: "{ur_id}: {title}"
     # Deprecated (ignored for UR home / alias):
     project_name_pattern: "laravel-capabilities/{ur_id}"
