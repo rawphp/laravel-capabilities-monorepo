@@ -1,19 +1,14 @@
 # REQ-065: Add MIT LICENSE and SECURITY.md
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.68388
-**Claimed at:** 2026-07-31T08:45:20Z
-**Heartbeat:** 2026-07-31T08:45:20Z
-<!-- claimed-end -->
 
 **UR:** UR-012
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-31
 **Layer:** none
 **Entry point:**
 **Terminal state:**
 **Parent:**
-**Closure proof:**
+**Closure proof:** LICENSE + SECURITY.md at root and all packages (X-004, X-010). Verified file existence + MIT/security content. commit:463d78d
 **Criteria approved:** agent-drafted
 **Priority:** 2
 **Size:** S
@@ -30,9 +25,9 @@ Architecture audit: all composer.json declare MIT but no LICENSE files exist. Pa
 
 ## Acceptance Criteria
 
-- [ ] MIT LICENSE present at monorepo root and under each of packages/laravel-capabilities, packages/laravel-capabilities-messaging, packages/capabilities-cli
-- [ ] SECURITY.md at monorepo root and each package with private reporting guidance and 0.x support policy
-- [ ] License text is standard MIT with copyright holder rawphp (or consistent project holder)
+- [x] MIT LICENSE present at monorepo root and under each of packages/laravel-capabilities, packages/laravel-capabilities-messaging, packages/capabilities-cli
+- [x] SECURITY.md at monorepo root and each package with private reporting guidance and 0.x support policy
+- [x] License text is standard MIT with copyright holder rawphp (or consistent project holder)
 
 ## Verification Steps
 
@@ -44,3 +39,10 @@ Architecture audit: all composer.json declare MIT but no LICENSE files exist. Pa
 ## Integration
 
 Omit — docs/meta only.
+
+## Outputs
+
+- LICENSE — Root MIT LICENSE
+- SECURITY.md — Root vulnerability reporting
+- packages/*/LICENSE — Package MIT LICENSE for split
+- packages/*/SECURITY.md — Package SECURITY.md for split

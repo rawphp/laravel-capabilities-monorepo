@@ -1,19 +1,14 @@
 # REQ-071: HTTP Illuminate Request/Response bridge
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.68388
-**Claimed at:** 2026-07-31T08:45:19Z
-**Heartbeat:** 2026-07-31T08:45:19Z
-<!-- claimed-end -->
 
 **UR:** UR-012
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-31
 **Layer:** core
 **Entry point:**
 **Terminal state:**
 **Parent:**
-**Closure proof:**
+**Closure proof:** IlluminateHttpBridge + thin wrappers; filter=Http 719 passed (L-001). commit:34f77b0
 **Criteria approved:** agent-drafted
 **Priority:** 3
 **Size:** L
@@ -30,11 +25,11 @@ Critical audit finding: controllers accept package DTOs Laravel cannot inject; d
 
 ## Acceptance Criteria
 
-- [ ] Edge adapter maps Illuminate Request (or array fixture stand-in) to HttpRequestContext (user, headers, body, authKind/credential from server-derived auth)
-- [ ] HttpResponse converts to Illuminate Response / Responsable with status, headers, JSON body
-- [ ] Controllers used on RouteTable are invokable from Laravel-style resolution OR thin wrappers exist
-- [ ] Unit tests cover mapping happy path + unauthenticated defaults; no Feature suite
-- [ ] Client-claimed caller/tenant ignored per D-022
+- [x] Edge adapter maps Illuminate Request (or array fixture stand-in) to HttpRequestContext (user, headers, body, authKind/credential from server-derived auth)
+- [x] HttpResponse converts to Illuminate Response / Responsable with status, headers, JSON body
+- [x] Controllers used on RouteTable are invokable from Laravel-style resolution OR thin wrappers exist
+- [x] Unit tests cover mapping happy path + unauthenticated defaults; no Feature suite
+- [x] Client-claimed caller/tenant ignored per D-022
 
 ## Verification Steps
 
@@ -48,3 +43,9 @@ Critical audit finding: controllers accept package DTOs Laravel cannot inject; d
 **Reachability:** CapabilitiesServiceProvider route registration → CapabilityController / AuthController
 **Data dependencies:** HttpRequestContext, HttpResponse DTOs
 **Service dependencies:** CapabilityRegistry catalog/invoke; HttpAuthGate
+
+## Outputs
+
+- packages/laravel-capabilities/src/Http/IlluminateHttpBridge.php
+- packages/laravel-capabilities/src/Adapters/Http/IlluminateCapabilityController.php
+- packages/laravel-capabilities/tests/Unit/Http/IlluminateHttpBridgeTest.php

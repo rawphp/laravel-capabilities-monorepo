@@ -1,23 +1,18 @@
 # REQ-069: Random approval IDs and atomic claimLease
 
-<!-- claimed-start -->
-**Claimed by:** Toms-MacBook-Pro.local.68388
-**Claimed at:** 2026-07-31T08:45:18Z
-**Heartbeat:** 2026-07-31T08:45:18Z
-<!-- claimed-end -->
 
 **UR:** UR-012
-**Status:** in-progress
+**Status:** done
 **Created:** 2026-07-31
 **Layer:** core
 **Entry point:**
 **Terminal state:**
 **Parent:**
-**Closure proof:**
+**Closure proof:** Random approval IDs + atomic claimLease (L-005/L-007). composer test:core --filter=Approval green. commit:29827b0
 **Criteria approved:** agent-drafted
 **Priority:** 3
 **Size:** M
-**Files:** packages/laravel-capabilities/src/Persistence/DatabaseApprovalStore.php, packages/laravel-capabilities/src/Persistence/QueryTableGateway.php, packages/laravel-capabilities/tests/Unit/**
+**Files:** packages/laravel-capabilities/src/Persistence/DatabaseApprovalStore.php, packages/laravel-capabilities/src/Persistence/QueryTableGateway.php, packages/laravel-capabilities/src/Persistence/TableGateway.php, packages/laravel-capabilities/src/Persistence/ArrayTableGateway.php, packages/laravel-capabilities/tests/Unit/Persistence/DatabaseApprovalStoreTest.php, packages/laravel-capabilities/tests/Unit/Persistence/QueryTableGatewayTest.php
 **Depends on:**
 
 ## Task
@@ -30,11 +25,11 @@ Audit: multi-worker collisions on approval-{n}; claimLease is check-then-act und
 
 ## Acceptance Criteria
 
-- [ ] DatabaseApprovalStore no longer pre-assigns approval-{n} sequential IDs for durable puts
-- [ ] New approval IDs are unguessable random (or gateway resolveId) across store instances
-- [ ] claimLease fails second concurrent claim while lease held (atomic update condition)
-- [ ] Unit tests cover uniqueness across two store instances and lease claim race
-- [ ] No feature/DB tests; mock/fake gateways only
+- [x] DatabaseApprovalStore no longer pre-assigns approval-{n} sequential IDs for durable puts
+- [x] New approval IDs are unguessable random (or gateway resolveId) across store instances
+- [x] claimLease fails second concurrent claim while lease held (atomic update condition)
+- [x] Unit tests cover uniqueness across two store instances and lease claim race
+- [x] No feature/DB tests; mock/fake gateways only
 
 ## Verification Steps
 
@@ -48,3 +43,9 @@ Audit: multi-worker collisions on approval-{n}; claimLease is check-then-act und
 **Reachability:** CapabilityRegistry approval pipeline → DatabaseApprovalStore (packages/laravel-capabilities/src/Persistence/DatabaseApprovalStore.php)
 **Data dependencies:** approvals table rows via QueryTableGateway
 **Service dependencies:** ApprovalStore contract; Clock for lease expiry
+
+## Outputs
+
+- packages/laravel-capabilities/src/Persistence/DatabaseApprovalStore.php
+- packages/laravel-capabilities/src/Persistence/TableGateway.php
+- packages/laravel-capabilities/tests/Unit/Persistence/DatabaseApprovalStoreTest.php
