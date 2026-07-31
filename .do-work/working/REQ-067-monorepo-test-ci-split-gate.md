@@ -1,7 +1,13 @@
 # REQ-067: Monorepo test CI and gate package split
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.68388
+**Claimed at:** 2026-07-31T08:45:18Z
+**Heartbeat:** 2026-07-31T08:45:18Z
+<!-- claimed-end -->
+
 **UR:** UR-012
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-31
 **Layer:** none
 **Entry point:**
