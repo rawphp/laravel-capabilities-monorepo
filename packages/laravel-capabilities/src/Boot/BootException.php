@@ -72,4 +72,19 @@ final class BootException extends RuntimeException
             .'Refusing process-local InMemoryRateLimiter fallback under cache driver (L-008 / multi-worker).'
         );
     }
+
+    public static function duplicateCliPair(
+        string $domain,
+        string $verb,
+        string $firstCapability,
+        string $secondCapability,
+    ): self {
+        return new self(sprintf(
+            'Duplicate CLI routing pair (domain="%s", verb="%s") at boot: capability "%s" collides with "%s".',
+            $domain,
+            $verb,
+            $secondCapability,
+            $firstCapability,
+        ));
+    }
 }

@@ -139,11 +139,15 @@ final class CatalogPresenter
     /**
      * Shared list/describe metadata (CAT-001 / D-012). No Laravel rule strings.
      *
+     * Emits nested `cli: {domain, verb}` only when both are present (CLI-002).
+     * Omit when unmapped so old clients ignore unknown fields and new clients
+     * treat missing `cli` as unmapped.
+     *
      * @return array<string, mixed>
      */
     private function metadataFields(CapabilityDefinition $definition): array
     {
-        return [
+        $fields = [
             'name' => $definition->name,
             'description' => $definition->description,
             'surfaces' => $definition->effectiveSurfaces($this->registry->globallyEnabledSurfaces()),
@@ -158,6 +162,15 @@ final class CatalogPresenter
             'groups' => $definition->groups,
             'tags' => $definition->tags,
         ];
+
+        if ($definition->cliDomain !== null && $definition->cliVerb !== null) {
+            $fields['cli'] = [
+                'domain' => $definition->cliDomain,
+                'verb' => $definition->cliVerb,
+            ];
+        }
+
+        return $fields;
     }
 
     /**
