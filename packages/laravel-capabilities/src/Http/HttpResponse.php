@@ -2,13 +2,21 @@
 
 namespace Rawphp\Capabilities\Http;
 
+use Illuminate\Contracts\Support\Responsable;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\ErrorCodeMap;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
  * Wire HTTP response from a capability result / catalog payload (unit-test friendly).
+ *
+ * Implements {@see Responsable} so the Laravel kernel can emit this DTO when returned
+ * from a route action (L-001). Prefer thin Illuminate wrappers +
+ * {@see IlluminateHttpBridge::toIlluminate()} for typed controller return values.
  */
-final class HttpResponse
+final class HttpResponse implements Responsable
 {
     /**
      * @param  array<string, mixed>  $body
@@ -87,5 +95,23 @@ final class HttpResponse
         $code = $this->body['error']['code'] ?? null;
 
         return is_string($code) ? $code : null;
+    }
+
+    /**
+     * Illuminate kernel entry — maps to JsonResponse with status/headers/body.
+     *
+     * @param  Request  $request
+     */
+    public function toResponse($request): JsonResponse|SymfonyResponse
+    {
+        return IlluminateHttpBridge::toIlluminate($this);
+    }
+
+    /**
+     * Explicit conversion helper (same as bridge).
+     */
+    public function toIlluminate(): JsonResponse
+    {
+        return IlluminateHttpBridge::toIlluminate($this);
     }
 }
