@@ -40,3 +40,7 @@ it("fail: tests do not require database connection (case 1) [POLICY]", function 
 it("happy: tests live under tests/Unit (case 1) [POLICY]", function () {
     expect(is_dir(H::MSG_ROOT.'/tests/Unit'))->toBeTrue();
 });
+
+it('happy: MessagingHelpers fixture class is autoloadable [POLICY]', function () {
+    expect(class_exists(\Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers::class))->toBeTrue();
+});
