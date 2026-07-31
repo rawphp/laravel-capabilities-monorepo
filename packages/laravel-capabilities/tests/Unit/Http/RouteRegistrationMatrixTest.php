@@ -27,8 +27,9 @@ $matrix = [
 ];
 
 foreach ($matrix as [$enabledLabel, $method, $label, $key, $enabled]) {
+    $kind = $enabled ? 'happy' : 'fail';
     $verb = $enabled ? 'registers' : 'does not register';
-    it("{$verb}: http_enabled={$enabledLabel} {$method} {$label} [D-009]", function () use ($key, $enabled, $method) {
+    it("{$kind}: {$verb} http_enabled={$enabledLabel} {$method} {$label} [D-009]", function () use ($key, $enabled, $method) {
         $routes = HttpHelpers::routes(['enabled' => $enabled, 'prefix' => 'capabilities']);
         if ($enabled) {
             expect(RouteTable::has($routes, $key))->toBeTrue();
