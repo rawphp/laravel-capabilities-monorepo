@@ -100,6 +100,8 @@ final class AttributeDiscoverer
             authorize: null,
             run: null,
             source: 'attribute',
+            cliDomain: $attr->cliDomain,
+            cliVerb: $attr->cliVerb,
         );
     }
 

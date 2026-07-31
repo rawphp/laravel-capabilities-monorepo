@@ -62,6 +62,10 @@ final class CapabilityDefinitionBuilder
 
     private string $schemaVersion = '1';
 
+    private ?string $cliDomain = null;
+
+    private ?string $cliVerb = null;
+
     private function __construct(string $name)
     {
         $this->name = $name;
@@ -263,6 +267,17 @@ final class CapabilityDefinitionBuilder
         return $this;
     }
 
+    /**
+     * Optional CLI runtime synthesis routing (domain + verb). Both required when set.
+     */
+    public function cli(string $domain, string $verb): self
+    {
+        $this->cliDomain = $domain;
+        $this->cliVerb = $verb;
+
+        return $this;
+    }
+
     public function toDefinition(): CapabilityDefinition
     {
         return new CapabilityDefinition(
@@ -292,6 +307,8 @@ final class CapabilityDefinitionBuilder
             schemaVersion: $this->schemaVersion,
             source: 'fluent',
             canDiscover: $this->canDiscover,
+            cliDomain: $this->cliDomain,
+            cliVerb: $this->cliVerb,
         );
     }
 

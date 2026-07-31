@@ -19,6 +19,8 @@ final class Capability
      * @param  array<string, mixed>|null  $rateLimit
      * @param  bool|string|null  $idempotent  true|'required'|'optional'|false|'none'
      * @param  array<string, mixed>|bool|null  $audit
+     * @param  string|null  $cliDomain  Optional CLI synthesis domain ([a-z][a-z0-9-]*); requires cliVerb
+     * @param  string|null  $cliVerb  Optional CLI synthesis verb ([a-z][a-z0-9-]*); requires cliDomain
      */
     public function __construct(
         public string $name,
@@ -40,5 +42,7 @@ final class Capability
         public ?array $rateLimit = null,
         public bool|string|null $idempotent = null,
         public array|bool|null $audit = null,
+        public ?string $cliDomain = null,
+        public ?string $cliVerb = null,
     ) {}
 }
