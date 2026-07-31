@@ -12,6 +12,8 @@ final class MessagingConfig
     /** @var list<string> */
     public const TOP_LEVEL_KEYS = [
         'telegram',
+        'queue_driver',
+        'bot_driver',
         'agent_profile',
         'identity',
         'skip_boot_checks',
@@ -38,6 +40,8 @@ final class MessagingConfig
                 'callback_secret' => null,
                 'callback_ttl_seconds' => 900,
             ],
+            'queue_driver' => 'auto',
+            'bot_driver' => 'auto',
             'agent_profile' => 'support',
             'identity' => [
                 'mode' => 'code_link',

@@ -3,7 +3,6 @@
 namespace Rawphp\CapabilitiesMessaging\Telegram;
 
 use Rawphp\CapabilitiesMessaging\MessagingConfig;
-use Rawphp\CapabilitiesMessaging\Support\FakeQueue;
 use Rawphp\CapabilitiesMessaging\Support\UpdateQueue;
 use RuntimeException;
 
@@ -11,6 +10,8 @@ use RuntimeException;
  * Inbound Telegram webhook — verify secret, enqueue ProcessTelegramUpdate.
  *
  * Never invokes CapabilityRegistry or domain run() (D-007).
+ * UpdateQueue is required (L-004) — no FakeQueue default outside tests.
+ * Production container injects LaravelUpdateQueue; unit tests inject FakeQueue.
  */
 final class TelegramWebhookController
 {
@@ -21,14 +22,10 @@ final class TelegramWebhookController
 
     private int $registryInvokeCount = 0;
 
-    private readonly UpdateQueue $queue;
-
     public function __construct(
         private readonly MessagingConfig $config,
-        ?UpdateQueue $queue = null,
-    ) {
-        $this->queue = $queue ?? new FakeQueue;
-    }
+        private readonly UpdateQueue $queue,
+    ) {}
 
     /**
      * Handle an inbound webhook request (unit-testable; no Laravel Request required).

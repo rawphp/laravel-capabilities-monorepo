@@ -42,7 +42,10 @@ it("fail: invalid webhook secret rejects request [MSG-003]", function () {
 it("fail: missing webhook secret when channel enabled fails on first request not boot [D-021]", function () {
     $plan = MessagingServiceProvider::registrationPlan(['telegram' => ['enabled' => true, 'webhook_secret' => null]]);
     expect($plan['secrets_required_at_boot'])->toBeFalse();
-    $ctrl = new TelegramWebhookController(H::config(['telegram' => ['webhook_secret' => null, 'bot_token' => 't']]));
+    $ctrl = new TelegramWebhookController(
+        H::config(['telegram' => ['webhook_secret' => null, 'bot_token' => 't']]),
+        H::queue(),
+    );
     $r = $ctrl->handle([], H::telegramUpdate());
     expect($r['ok'])->toBeFalse();
 });

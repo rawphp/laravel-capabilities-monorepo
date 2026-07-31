@@ -13,6 +13,15 @@ return [
         'callback_ttl_seconds' => (int) env('TELEGRAM_CALLBACK_TTL_SECONDS', 900),
     ],
 
+    /**
+     * L-004 drivers (production bindings).
+     * queue_driver: auto | laravel | fake  — auto uses fake in testing, Laravel bus otherwise
+     * bot_driver:   auto | http | fake     — auto uses fake in testing, HTTP client otherwise
+     * Fake* must not be the production default.
+     */
+    'queue_driver' => env('CAPABILITIES_MESSAGING_QUEUE_DRIVER', 'auto'),
+    'bot_driver' => env('CAPABILITIES_MESSAGING_BOT_DRIVER', 'auto'),
+
     /** Agent profile (D-008) — never dump full catalog. Required on first bot traffic. */
     'agent_profile' => env('CAPABILITIES_MESSAGING_AGENT_PROFILE', 'support'),
 

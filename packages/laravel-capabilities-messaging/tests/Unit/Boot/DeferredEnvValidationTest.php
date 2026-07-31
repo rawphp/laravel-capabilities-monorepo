@@ -37,7 +37,7 @@ it("happy: package boot with messaging enabled does not require TELEGRAM_BOT_TOK
 it("fail: first webhook without token fails loudly [D-021]", function () {
     $ctrl = new TelegramWebhookController(H::config([
         'telegram' => ['bot_token' => null, 'webhook_secret' => 'sec'],
-    ]));
+    ]), H::queue());
     $r = $ctrl->handle(['X-Telegram-Bot-Api-Secret-Token' => 'sec'], H::telegramUpdate());
     expect($r['ok'])->toBeFalse()->and($r['status'])->toBe(503);
 });

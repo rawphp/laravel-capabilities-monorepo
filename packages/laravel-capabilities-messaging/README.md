@@ -50,3 +50,27 @@ php artisan vendor:publish --tag=capabilities-messaging-config
 ```
 
 Install policy: monorepo [`docs/versioning.md`](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versioning.md). How-to: [docs/user-guide.md](docs/user-guide.md).
+
+## Production bindings (L-004)
+
+When Telegram is enabled, `MessagingServiceProvider::register` binds:
+
+| Abstract | Production concrete | Testing / `driver=fake` |
+|---|---|---|
+| `MessagingConfig` | config repository | same |
+| `UpdateQueue` | `LaravelUpdateQueue` → bus `ProcessTelegramUpdateJob` | `FakeQueue` |
+| `TelegramBotClient` | `HttpTelegramBotClient` | `FakeTelegramBotClient` |
+| `ProcessTelegramUpdate` | handler | same |
+| `TelegramWebhookController` | injects bound `UpdateQueue` (no FakeQueue default) | inject `FakeQueue` in unit tests |
+
+Drivers (`config/capabilities-messaging.php`):
+
+- `queue_driver`: `auto` \| `laravel` \| `fake` — `auto` → fake when `APP_ENV=testing`, otherwise Laravel bus
+- `bot_driver`: `auto` \| `http` \| `fake` — `auto` → fake when testing, otherwise HTTP
+
+Unit tests never call the live Telegram network; inject a transport on `HttpTelegramBotClient` or use `bot_driver=fake`.
+
+## Residual: durable identity / threads (L-006)
+
+**Not silent:** `IdentityLinker` and `ThreadStore` remain **process-local in-memory** stores. They are **not durable** across processes or deploys. Durable DB-backed identity linking and thread history are **deferred (L-006)** — plan for host-level persistence or a future package revision before multi-instance production traffic depends on them.
+
