@@ -1,7 +1,13 @@
 # REQ-071: HTTP Illuminate Request/Response bridge
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.68388
+**Claimed at:** 2026-07-31T08:45:19Z
+**Heartbeat:** 2026-07-31T08:45:19Z
+<!-- claimed-end -->
+
 **UR:** UR-012
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-31
 **Layer:** core
 **Entry point:**
