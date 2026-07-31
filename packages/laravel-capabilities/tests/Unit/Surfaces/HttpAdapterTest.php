@@ -72,7 +72,12 @@ it("happy: middleware stack from config applied [HTTP-001]", function () {
         'middleware' => $mw,
     ]);
     foreach ($routes as $route) {
-        expect($route['middleware'])->toBe($mw);
+        // Auth issuance strips auth:* (L-002); capability routes keep full stack.
+        if (RouteTable::isAuthIssuanceRoute($route['key'])) {
+            expect($route['middleware'])->toBe(RouteTable::withoutAuthMiddleware($mw));
+        } else {
+            expect($route['middleware'])->toBe($mw);
+        }
     }
 });
 

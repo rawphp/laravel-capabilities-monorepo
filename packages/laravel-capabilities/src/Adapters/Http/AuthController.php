@@ -2,15 +2,17 @@
 
 namespace Rawphp\Capabilities\Adapters\Http;
 
+use Rawphp\Capabilities\Contracts\AuthTokenIssuer;
 use Rawphp\Capabilities\Http\HttpRequestContext;
 use Rawphp\Capabilities\Http\HttpResponse;
 use Rawphp\Capabilities\Http\RouteTable;
 
 /**
- * Token + device-code auth helpers shared by CLI & API (D-009).
+ * Token + device-code auth helpers shared by CLI & API (D-009 / L-002).
  *
  * Issues/accepts credentials used by the **same** capability HTTP API —
- * not a second invoke pipeline.
+ * not a second invoke pipeline. Credential material comes only from a
+ * host-bound {@see AuthTokenIssuer}; unbound → fail closed (not_configured).
  */
 final class AuthController
 {
@@ -27,34 +29,35 @@ final class AuthController
     public function __construct(
         private readonly array $httpConfig = ['enabled' => true],
         private readonly array $cliConfig = ['enabled' => true],
+        private readonly ?AuthTokenIssuer $issuer = null,
     ) {}
 
     /**
-     * Whether token auth flow is available (registered) for CLI/API clients.
+     * Whether token auth flow is available (HTTP on + real issuer bound).
      */
     public function tokenFlowAvailable(): bool
     {
-        return $this->authFlowsEnabled();
+        return $this->issuerBound() && $this->authFlowsEnabled();
     }
 
     public function deviceCodeFlowAvailable(): bool
     {
-        return $this->authFlowsEnabled();
+        return $this->issuerBound() && $this->authFlowsEnabled();
     }
 
     public function oauthCallbackFlowAvailable(): bool
     {
-        return $this->authFlowsEnabled();
+        return $this->issuerBound() && $this->authFlowsEnabled();
     }
 
     /**
-     * Route keys this controller owns when HTTP surface is enabled.
+     * Route keys this controller owns when HTTP is enabled and issuer is bound.
      *
      * @return list<string>
      */
     public function registeredFlows(): array
     {
-        if (! $this->authFlowsEnabled()) {
+        if (! $this->tokenFlowAvailable()) {
             return [];
         }
 
@@ -67,54 +70,73 @@ final class AuthController
 
     public function token(HttpRequestContext $request): HttpResponse
     {
-        if (! $this->tokenFlowAvailable()) {
+        if (! $this->authFlowsEnabled()) {
             return HttpResponse::failure('not_found', 'Auth token flow is not available.');
         }
 
-        // Host app wires real Sanctum/Passport issuance; package returns contract shape.
-        $body = is_array($request->jsonBody) ? $request->jsonBody : [];
+        if (! $this->issuerBound()) {
+            return HttpResponse::failure(
+                'not_configured',
+                'Auth token issuer is not configured. Bind AuthTokenIssuer in the host app.',
+            );
+        }
 
-        return HttpResponse::ok([
-            'token_type' => 'Bearer',
-            'access_token' => $body['access_token'] ?? 'issued-by-host',
-            'expires_in' => $body['expires_in'] ?? 3600,
-        ], meta: ['flow' => 'token']);
+        $body = is_array($request->jsonBody) ? $request->jsonBody : [];
+        // Host issuer is sole source of credentials — never echo client access_token.
+        $data = $this->issuer->issueToken($request, $body);
+
+        return HttpResponse::ok($data, meta: ['flow' => 'token']);
     }
 
     public function device(HttpRequestContext $request): HttpResponse
     {
-        if (! $this->deviceCodeFlowAvailable()) {
+        if (! $this->authFlowsEnabled()) {
             return HttpResponse::failure('not_found', 'Device-code flow is not available.');
         }
 
-        return HttpResponse::ok([
-            'device_code' => 'device-code-placeholder',
-            'user_code' => 'USER-CODE',
-            'verification_uri' => '/capabilities/auth/device/verify',
-            'expires_in' => 600,
-            'interval' => 5,
-        ], meta: ['flow' => 'device_code']);
+        if (! $this->issuerBound()) {
+            return HttpResponse::failure(
+                'not_configured',
+                'Auth token issuer is not configured. Bind AuthTokenIssuer in the host app.',
+            );
+        }
+
+        $body = is_array($request->jsonBody) ? $request->jsonBody : [];
+        $data = $this->issuer->issueDeviceCode($request, $body);
+
+        return HttpResponse::ok($data, meta: ['flow' => 'device_code']);
     }
 
     public function oauthCallback(HttpRequestContext $request): HttpResponse
     {
-        if (! $this->oauthCallbackFlowAvailable()) {
+        if (! $this->authFlowsEnabled()) {
             return HttpResponse::failure('not_found', 'OAuth callback is not available.');
         }
 
-        return HttpResponse::ok([
-            'status' => 'received',
-            'code' => $request->query['code'] ?? null,
-        ], meta: ['flow' => 'oauth_callback']);
+        if (! $this->issuerBound()) {
+            return HttpResponse::failure(
+                'not_configured',
+                'Auth token issuer is not configured. Bind AuthTokenIssuer in the host app.',
+            );
+        }
+
+        $query = is_array($request->query) ? $request->query : [];
+        $data = $this->issuer->handleOAuthCallback($request, $query);
+
+        return HttpResponse::ok($data, meta: ['flow' => 'oauth_callback']);
+    }
+
+    private function issuerBound(): bool
+    {
+        return $this->issuer instanceof AuthTokenIssuer;
     }
 
     private function authFlowsEnabled(): bool
     {
         $httpOn = (bool) ($this->httpConfig['enabled'] ?? true);
-        $cliOn = (bool) ($this->cliConfig['enabled'] ?? true);
 
         // Auth helpers exist when HTTP is on (CLI is a client of HTTP).
         // If HTTP is disabled, nothing is registered (D-009 fail closed).
-        return $httpOn && ($httpOn || $cliOn);
+        return $httpOn;
     }
 }

@@ -19,6 +19,7 @@ final class ErrorCodeMap
         'rate_limited' => ['http' => 429, 'cli_exit' => 6, 'retryable' => true],
         'conflict' => ['http' => 409, 'cli_exit' => 5, 'retryable' => false],
         'not_found' => ['http' => 404, 'cli_exit' => 5, 'retryable' => false],
+        'not_configured' => ['http' => 501, 'cli_exit' => 5, 'retryable' => false],
         'output_invalid' => ['http' => 500, 'cli_exit' => 5, 'retryable' => false],
         'internal' => ['http' => 500, 'cli_exit' => 1, 'retryable' => true],
         'audit_failed' => ['http' => 500, 'cli_exit' => 1, 'retryable' => false],

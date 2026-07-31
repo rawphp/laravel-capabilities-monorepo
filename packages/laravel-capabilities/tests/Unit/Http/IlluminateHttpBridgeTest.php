@@ -247,7 +247,14 @@ it('thin IlluminateCapabilityController denies unauthenticated list', function (
 });
 
 it('thin IlluminateAuthController issues token shape via bridge', function () {
-    $wrapper = new IlluminateAuthController(new AuthController(['enabled' => true], ['enabled' => true]));
+    $issuer = HttpHelpers::fakeAuthTokenIssuer([
+        'token' => [
+            'token_type' => 'Bearer',
+            'access_token' => 'tok-from-host',
+            'expires_in' => 3600,
+        ],
+    ]);
+    $wrapper = new IlluminateAuthController(new AuthController(['enabled' => true], ['enabled' => true], $issuer));
     $request = Request::create(
         '/capabilities/auth/token',
         'POST',
@@ -255,7 +262,7 @@ it('thin IlluminateAuthController issues token shape via bridge', function () {
         [],
         [],
         ['CONTENT_TYPE' => 'application/json'],
-        json_encode(['access_token' => 'tok-from-host'], JSON_THROW_ON_ERROR),
+        json_encode(['grant_type' => 'client_credentials'], JSON_THROW_ON_ERROR),
     );
 
     $response = $wrapper->token($request);
