@@ -5,7 +5,8 @@ namespace Rawphp\CapabilitiesMessaging\Support;
 use RuntimeException;
 
 /**
- * In-memory queue dispatcher for unit tests and local wiring (no Laravel queue worker).
+ * In-memory queue dispatcher for unit tests (driver=fake / APP_ENV=testing only).
+ * Production uses LaravelUpdateQueue (L-004) — do not default this outside tests.
  */
 final class FakeQueue implements UpdateQueue
 {
