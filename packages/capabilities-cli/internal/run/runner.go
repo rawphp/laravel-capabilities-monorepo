@@ -24,7 +24,8 @@ type Options struct {
 	IdempotencyKey string
 	RetryLast      bool
 	NoCache        bool
-	JSON           bool
+	JSON           bool   // legacy: stdout is always machine envelope; kept for call-site compat
+	Human          bool   // human summary on stderr only; never replaces stdout envelope
 	TenantHint     string // hint only — not authoritative scope (D-003)
 	Store          *auth.Store
 	Client         *api.Client
@@ -177,7 +178,8 @@ func Run(ctx context.Context, opts Options) *Result {
 	if apiRes.Err != nil {
 		res.ExitCode = apiRes.Err.ExitCode
 		res.Stderr = apiRes.Err.Error()
-		if opts.JSON {
+		// Machine envelope on stdout for structured server errors.
+		if len(apiRes.Body) > 0 {
 			res.Stdout = string(apiRes.Body)
 		}
 		return res
@@ -193,13 +195,20 @@ func Run(ctx context.Context, opts Options) *Result {
 	}
 
 	res.ExitCode = ExitOK
-	if opts.JSON {
-		res.Stdout = string(apiRes.Body)
-	} else if apiRes.Envelope.Data != nil {
-		b, _ := json.MarshalIndent(apiRes.Envelope.Data, "", "  ")
-		res.Stdout = string(b)
-	} else {
-		res.Stdout = string(apiRes.Body)
+	// Agent-first: stdout is always the machine envelope (design CLI I/O).
+	res.Stdout = string(apiRes.Body)
+	if opts.Human {
+		// Optional human summary on stderr only — never strips/replaces stdout.
+		summary := "ok"
+		if apiRes.Envelope.Data != nil {
+			if b, err := json.Marshal(apiRes.Envelope.Data); err == nil {
+				summary = "ok data=" + string(b)
+			}
+		}
+		if res.Stderr != "" && !strings.HasSuffix(res.Stderr, "\n") {
+			res.Stderr += "\n"
+		}
+		res.Stderr += summary + "\n"
 	}
 	return res
 }
@@ -216,7 +225,8 @@ func loadInput(opts Options) ([]byte, error) {
 		return b, nil
 	}
 	if len(opts.InputJSON) == 0 {
-		return nil, fmt.Errorf("missing input: pass --input or --input-file")
+		// Empty invoke → {} so all-optional schemas can POST; required fields fail ValidateLocal (exit 2).
+		return []byte("{}"), nil
 	}
 	if !json.Valid(opts.InputJSON) {
 		return nil, fmt.Errorf("invalid JSON input")
@@ -277,5 +287,3 @@ func loadLastRun(opts Options) (*LastRun, error) {
 	}
 	return &lr, nil
 }
-
-

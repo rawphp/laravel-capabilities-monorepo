@@ -31,9 +31,9 @@ var (
 
 // Field describes one schema property for flags + help.
 type Field struct {
-	Name     string   // schema property name (e.g. customer_id)
-	FlagName string   // canonical kebab flag without leading -- (e.g. customer-id)
-	Type     string   // primary type label: string|integer|number|boolean|object|array|enum|…
+	Name     string // schema property name (e.g. customer_id)
+	FlagName string // canonical kebab flag without leading -- (e.g. customer-id)
+	Type     string // primary type label: string|integer|number|boolean|object|array|enum|…
 	Required bool
 	Pass     PassMode
 	Enum     []any // optional enum values (JSON-decoded)
@@ -393,4 +393,43 @@ func parseEnum(f *Field, raw string) (any, error) {
 		}
 	}
 	return nil, fmt.Errorf("%w: --%s value %q not in enum", ErrInvalidScalar, f.FlagName, raw)
+}
+
+// CollectFlags extracts scalar CLI flags from argv after shared flags and the
+// capability name have been stripped. Accepts --name=value, --name value, and
+// bare --name (empty value → boolean true in parseScalar). Returns remaining
+// non-flag tokens in rest (should be empty for a clean invoke).
+func CollectFlags(args []string) (flags map[string]string, rest []string, err error) {
+	flags = map[string]string{}
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			rest = append(rest, args[i+1:]...)
+			break
+		}
+		if !strings.HasPrefix(a, "--") {
+			rest = append(rest, a)
+			continue
+		}
+		body := strings.TrimPrefix(a, "--")
+		if body == "" {
+			return nil, nil, fmt.Errorf("%w: empty flag", ErrUnknownFlag)
+		}
+		name, val, hasEq := strings.Cut(body, "=")
+		if name == "" {
+			return nil, nil, fmt.Errorf("%w: empty flag", ErrUnknownFlag)
+		}
+		if hasEq {
+			flags[name] = val
+			continue
+		}
+		// --name value  OR bare --name
+		if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+			flags[name] = args[i+1]
+			i++
+			continue
+		}
+		flags[name] = ""
+	}
+	return flags, rest, nil
 }
