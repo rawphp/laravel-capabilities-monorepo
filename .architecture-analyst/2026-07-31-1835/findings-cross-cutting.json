@@ -1,0 +1,468 @@
+{
+  "auditor": "cross-cutting-auditor",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monrepo",
+  "stack_summary": {
+    "laravel": {
+      "present": true,
+      "version": "11/12/13 illuminate components",
+      "php_version": "8.2+"
+    },
+    "frontend": { "framework": "none" },
+    "testing": { "backend": "pest" },
+    "infrastructure_hints": { "ci": "github-actions" },
+    "notes": "Package monorepo + Go CLI"
+  },
+  "scanned_files_count": 52,
+  "findings": [
+    {
+      "id": "X-001",
+      "title": "Add monorepo CI that runs package unit tests",
+      "category": "ci_cd",
+      "severity": "high",
+      "effort": "small",
+      "impact": ["reliability", "dx", "maintainability"],
+      "locations": [
+        {
+          "file": ".github/workflows/split-packages.yml",
+          "line": 17,
+          "snippet": "name: Split packages"
+        },
+        {
+          "file": "composer.json",
+          "line": 45,
+          "snippet": "\"test\": [\"@test:core\", \"@test:messaging\"], \"test:cli\": \"cd packages/capabilities-cli && go test ./...\""
+        },
+        {
+          "file": "AGENTS.md",
+          "line": 75,
+          "snippet": "≥95% coverage … Same bar for Go CLI packages under test when CI lands."
+        }
+      ],
+      "current_state": "The only monorepo GitHub Actions workflow is package split/mirror. There is no workflow that runs `composer test`, `composer test:cli`, tools Python tests, PHPStan, or coverage. AGENTS.md and root README document local unit suites as the contract, but CI does not execute them.",
+      "recommended_state": "Add a `tests.yml` (or matrix job) on PR + push to main that installs PHP deps, runs Pest for core and messaging, runs Go tests for the CLI, and fails the job on non-zero exit. Optionally run `python3 -m unittest` under `tools/tests/`.",
+      "rationale": "Hundreds of unit tests exist in-package (222 core, 32 messaging, 41 Go) but nothing stops a green local machine or a bad push from becoming the source of truth. For a monorepo that auto-mirrors to public package remotes, missing test CI is a primary reliability gap.",
+      "implementation_hint": "Create `.github/workflows/tests.yml` with jobs: (1) php: setup-php 8.2 + pcov, `composer install`, `composer test:core`, `composer test:messaging`; (2) go: setup-go from go.mod, `go test ./...` in packages/capabilities-cli; gate split on `needs: [php, go]` or require branch protection requiring the tests check."
+    },
+    {
+      "id": "X-002",
+      "title": "Gate package split/publish on green tests",
+      "category": "ci_cd",
+      "severity": "high",
+      "effort": "small",
+      "impact": ["reliability", "security"],
+      "locations": [
+        {
+          "file": ".github/workflows/split-packages.yml",
+          "line": 19,
+          "snippet": "on:\n  push:\n    branches: [main]\n    tags: ['v*']"
+        },
+        {
+          "file": ".github/workflows/split-packages.yml",
+          "line": 32,
+          "snippet": "jobs:\n  split:\n    runs-on: ubuntu-latest"
+        },
+        {
+          "file": "docs/versioning.md",
+          "line": 19,
+          "snippet": "Push to monorepo `main` | split-packages.yml rsyncs each packages/<name>/ tree"
+        }
+      ],
+      "current_state": "`split-packages.yml` runs on every push to `main` and every `v*` tag and force-pushes package trees (and tags) to rawphp/laravel-capabilities, messaging, and capabilities-cli with no prior test job. Broken or untested code can land on consumer-facing remotes and Packagist-bound tags immediately.",
+      "recommended_state": "Either make split a dependent job that `needs:` a tests workflow, or use a single workflow with `test` then `split`, and require the tests status check on `main` via branch protection. Tags that fail tests must not mirror.",
+      "rationale": "Ship model is monorepo → public package remotes on push. Without a quality gate, the split is a deploy path, not just a mirror. Severity is high because consumers install from those remotes (VCS/dev-main today).",
+      "implementation_hint": "Refactor into `jobs: test: …` then `split: needs: [test]`; for tags, fail closed if tests fail so `--force` tag push never runs. Document in docs/versioning.md Packagist checklist."
+    },
+    {
+      "id": "X-003",
+      "title": "Run go test before CLI GoReleaser release",
+      "category": "ci_cd",
+      "severity": "high",
+      "effort": "trivial",
+      "impact": ["reliability"],
+      "locations": [
+        {
+          "file": "packages/capabilities-cli/.github/workflows/release.yml",
+          "line": 82,
+          "snippet": "- name: Run GoReleaser\n  uses: goreleaser/goreleaser-action@v6"
+        },
+        {
+          "file": "packages/capabilities-cli/.github/workflows/release.yml",
+          "line": 29,
+          "snippet": "jobs:\n  goreleaser:\n    runs-on: ubuntu-latest"
+        }
+      ],
+      "current_state": "After monorepo tag mirror, the package-owned release workflow checks out, sets up Go, optionally notes signing secrets, and immediately runs GoReleaser. It never runs `go test ./...`.",
+      "recommended_state": "Add a step `go test ./...` (with race optional) before GoReleaser; fail the job if tests fail so no broken multi-arch binaries are published.",
+      "rationale": "CLI GitHub Releases are the documented install path for end users. Releasing without unit tests undoes the monorepo’s strong unit-test policy at the only binary ship boundary.",
+      "implementation_hint": "In release.yml after setup-go: `working-directory` root, `run: go test ./...`. Prefer `go-version-file: go.mod` for alignment with module Go 1.22."
+    },
+    {
+      "id": "X-004",
+      "title": "Add MIT LICENSE files to monorepo and split packages",
+      "category": "legal_licensing",
+      "severity": "high",
+      "effort": "trivial",
+      "impact": ["maintainability", "dx"],
+      "locations": [
+        {
+          "file": "composer.json",
+          "line": 5,
+          "snippet": "\"license\": \"MIT\""
+        },
+        {
+          "file": "packages/laravel-capabilities/composer.json",
+          "line": 5,
+          "snippet": "\"license\": \"MIT\""
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/composer.json",
+          "line": 5,
+          "snippet": "\"license\": \"MIT\""
+        },
+        {
+          "file": "packages/capabilities-cli/go.mod",
+          "line": 1,
+          "snippet": "module github.com/rawphp/capabilities-cli"
+        }
+      ],
+      "current_state": "All PHP composer.json files declare `\"license\": \"MIT\"`, but no `LICENSE` / `LICENSE.md` file exists at monorepo root or under any package tree (`git ls-files` has none). After split, public package repos will also lack a LICENSE file. Go module has no SPDX file either.",
+      "recommended_state": "Add a standard MIT LICENSE file at monorepo root and copy/symlink the same into each of `packages/laravel-capabilities`, `packages/laravel-capabilities-messaging`, and `packages/capabilities-cli` so split remotes ship a clear license grant.",
+      "rationale": "Packagist, GitHub license detection, and many corporate OSS policies require a LICENSE file, not only a composer.json field. Missing file blocks or confuses adoption of intended public packages.",
+      "implementation_hint": "Use the same MIT text with copyright holder `rawphp` (or org legal name) in four paths; ensure split rsync includes LICENSE. Reference it from each package README footer."
+    },
+    {
+      "id": "X-005",
+      "title": "Enforce ≥95% coverage in CI (policy is unenforced)",
+      "category": "ci_cd",
+      "severity": "high",
+      "effort": "medium",
+      "impact": ["maintainability", "reliability", "dx"],
+      "locations": [
+        {
+          "file": "AGENTS.md",
+          "line": 79,
+          "snippet": "Minimum: 95% unit-test coverage on package source … Below 95% is a failed task"
+        },
+        {
+          "file": "packages/laravel-capabilities/phpunit.xml",
+          "line": 13,
+          "snippet": "<source><include><directory suffix=\".php\">src</directory></include></source>"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/phpunit.xml",
+          "line": 13,
+          "snippet": "<source><include><directory suffix=\".php\">src</directory></include></source>"
+        },
+        {
+          "file": "composer.json",
+          "line": 45,
+          "snippet": "scripts test / test:core / test:messaging / test:cli — no coverage flags"
+        }
+      ],
+      "current_state": "AGENTS.md makes ≥95% line coverage blocking. phpunit.xml includes source dirs for coverage but has no coverage report config, composer scripts do not pass `--coverage-text` / min thresholds, no pcov/xdebug is required in require-dev, and no CI job measures coverage. Coverage is only approached via ad-hoc CoverageBoost tests.",
+      "recommended_state": "CI runs Pest with PCOV and fails if coverage for each package `src/` is below 95%. Go uses `go test -coverprofile` with a minimum check. Document exact commands next to AGENTS.md policy.",
+      "rationale": "Policy without automation will drift: new code can ship under 95% while still greening `composer test`. Monorepo explicitly treats coverage floor as non-negotiable.",
+      "implementation_hint": "e.g. `pest --configuration=packages/laravel-capabilities/phpunit.xml --coverage --min=95` with php-actions/setup-php coverage: pcov; for Go: `go test ./... -coverprofile=c.out` + `go tool cover -func` threshold script."
+    },
+    {
+      "id": "X-006",
+      "title": "Stop gitignoring monorepo composer.lock",
+      "category": "dependency_hygiene",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": ["dx", "reliability"],
+      "locations": [
+        {
+          "file": ".gitignore",
+          "line": 2,
+          "snippet": "/composer.lock"
+        },
+        {
+          "file": "composer.json",
+          "line": 3,
+          "snippet": "\"type\": \"project\""
+        }
+      ],
+      "current_state": "Root `.gitignore` excludes `/composer.lock`. The lockfile exists locally (composer.lock present) but is not tracked. Package libraries correctly omit their own locks; the monorepo root is a `type: project` workspace used for shared Pest/PHPStan and path packages.",
+      "recommended_state": "Commit root `composer.lock` (remove ignore line) so contributor and CI installs resolve the same illuminate/pest/phpstan graph. Keep package trees lock-free for library publish.",
+      "rationale": "Ignoring the monorepo lock produces non-reproducible CI and 'works on my machine' drift across Illuminate 11/12 minors while developing path packages.",
+      "implementation_hint": "Delete `/composer.lock` from `.gitignore`, `composer update` once on PHP 8.2, commit lock. CI should `composer install --prefer-dist` not `update`."
+    },
+    {
+      "id": "X-007",
+      "title": "Align Illuminate version constraints across packages",
+      "category": "dependency_hygiene",
+      "severity": "medium",
+      "effort": "small",
+      "impact": ["maintainability", "dx"],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/composer.json",
+          "line": 20,
+          "snippet": "\"illuminate/support\": \"^11.0|^12.0|^13.0\""
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/composer.json",
+          "line": 21,
+          "snippet": "\"illuminate/support\": \"^11.0|^12.0\""
+        },
+        {
+          "file": "composer.json",
+          "line": 8,
+          "snippet": "\"illuminate/support\": \"^11.0|^12.0\""
+        }
+      ],
+      "current_state": "Core advertises Laravel 11–13 illuminate components; messaging and monorepo root only allow 11–12. Messaging can refuse a host that core accepts, and monorepo dev cannot exercise the core ^13 constraint.",
+      "recommended_state": "Single documented support matrix (e.g. ^11|^12 or ^11|^12|^13) applied identically to core, messaging, and monorepo root require lines.",
+      "rationale": "Sibling packages that always ship together must not claim divergent host support; consumers will hit confusing Composer solver failures on Laravel 13.",
+      "implementation_hint": "Either drop `|^13.0` from core until tested, or add `|^13.0` to messaging + root and note matrix in package READMEs / docs/versioning.md."
+    },
+    {
+      "id": "X-008",
+      "title": "Wire PHPStan (config + CI); cover messaging package",
+      "category": "ci_cd",
+      "severity": "medium",
+      "effort": "medium",
+      "impact": ["maintainability", "dx"],
+      "locations": [
+        {
+          "file": "composer.json",
+          "line": 14,
+          "snippet": "\"phpstan/phpstan\": \"^2.0\""
+        },
+        {
+          "file": "packages/laravel-capabilities/composer.json",
+          "line": 31,
+          "snippet": "\"phpstan/phpstan\": \"^2.0\""
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/composer.json",
+          "line": 27,
+          "snippet": "\"require-dev\": { \"pestphp/pest\": \"^3.0\" }"
+        },
+        {
+          "file": "AGENTS.md",
+          "line": 162,
+          "snippet": "PHPStan max on package code when CI lands."
+        }
+      ],
+      "current_state": "phpstan/phpstan is in monorepo and core require-dev, but there is no `phpstan.neon` / `phpstan.neon.dist` anywhere outside vendor, no composer script, and no CI job. Messaging has no phpstan dep. AGENTS.md defers 'PHPStan max … when CI lands' — residual still open.",
+      "recommended_state": "Add package-level (or monorepo paths) phpstan.neon at max level for both PHP packages, composer scripts `analyse` / `analyse:core` / `analyse:messaging`, and a CI job. Messaging should require-dev phpstan like core.",
+      "rationale": "Static analysis is declared as a quality bar for package code but is inert today; install cost without enforcement.",
+      "implementation_hint": "phpstan.neon with paths packages/*/src, level max; baseline file if needed; `\"analyse\": \"phpstan analyse\"` in root composer.json; add to tests workflow."
+    },
+    {
+      "id": "X-009",
+      "title": "Add Dependabot or Renovate for Composer and Go modules",
+      "category": "dependency_hygiene",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": ["security", "maintainability"],
+      "locations": [
+        {
+          "file": ".github/workflows/split-packages.yml",
+          "line": 1,
+          "snippet": ".github contains only workflows/split-packages.yml (no dependabot.yml)"
+        },
+        {
+          "file": "packages/capabilities-cli/go.mod",
+          "line": 5,
+          "snippet": "require github.com/google/uuid v1.6.0"
+        }
+      ],
+      "current_state": "No `.github/dependabot.yml` or Renovate config. PHP and Go dependency bumps are fully manual. Actions used (`actions/checkout@v4`, `setup-go@v5`, `goreleaser-action@v6`) also have no automated update path.",
+      "recommended_state": "Enable Dependabot for composer (root + packages if published separately), gomod for capabilities-cli, and github-actions ecosystem on the monorepo (and after split, on package remotes if they diverge).",
+      "rationale": "Public packages and a token-holding split workflow need timely Action and library updates; manual-only hygiene will lag.",
+      "implementation_hint": "Add `.github/dependabot.yml` with weekly composer, gomod (`/packages/capabilities-cli`), and github-actions entries; group minor/patch if noise is high."
+    },
+    {
+      "id": "X-010",
+      "title": "Add SECURITY.md for public package vulnerability reporting",
+      "category": "documentation",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": ["security", "dx"],
+      "locations": [
+        {
+          "file": "README.md",
+          "line": 15,
+          "snippet": "Public package repos: rawphp/laravel-capabilities, messaging, capabilities-cli"
+        },
+        {
+          "file": "packages/laravel-capabilities/README.md",
+          "line": 1,
+          "snippet": "Package README has no Security section / SECURITY.md link"
+        }
+      ],
+      "current_state": "No SECURITY.md (or security contact) in monorepo or any package. Packages are intended for public remotes and handle authz, approvals, Telegram secrets, CLI tokens — high-value security surface once published.",
+      "recommended_state": "Add SECURITY.md at monorepo root and in each package tree (ships via split) with private reporting channel and supported versions (0.x policy).",
+      "rationale": "GitHub advisory UI and security-conscious consumers expect a documented disclosure path before Packagist listing.",
+      "implementation_hint": "Standard GitHub SECURITY.md template; private email or GitHub Security Advisories for rawphp org; mirror into packages/* so split remotes inherit it."
+    },
+    {
+      "id": "X-011",
+      "title": "Add .gitattributes export-ignore for Composer package trees",
+      "category": "git_workflow",
+      "severity": "medium",
+      "effort": "small",
+      "impact": ["dx", "maintainability"],
+      "locations": [
+        {
+          "file": ".gitignore",
+          "line": 1,
+          "snippet": "Root has .gitignore; no .gitattributes at monorepo or package roots"
+        },
+        {
+          "file": "packages/laravel-capabilities/composer.json",
+          "line": 2,
+          "snippet": "\"type\": \"library\""
+        }
+      ],
+      "current_state": "No `.gitattributes` anywhere. When packages are installed from source/dist archives, tests, coverage boosters, phpunit.xml, and possibly .github can bloat installs unless export-ignore is set on each package remote.",
+      "recommended_state": "Per-package `.gitattributes` with `export-ignore` for `/tests`, `/phpunit.xml`, `/.github` (except when release workflow must live in repo — keep workflows, ignore test noise), `/.phpunit.cache`, etc.",
+      "rationale": "Library packaging hygiene; reduces consumer install size and accidental reliance on test-only files. Split remotes need the file inside each package path.",
+      "implementation_hint": "Place `packages/laravel-capabilities/.gitattributes` (and messaging) with lines like `/tests export-ignore`. CLI may export-ignore `*_test.go` only if desired — often Go keeps tests in module."
+    },
+    {
+      "id": "X-012",
+      "title": "Pin Go version in CLI release workflow to go.mod",
+      "category": "ci_cd",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": ["reliability"],
+      "locations": [
+        {
+          "file": "packages/capabilities-cli/.github/workflows/release.yml",
+          "line": 40,
+          "snippet": "go-version: stable"
+        },
+        {
+          "file": "packages/capabilities-cli/go.mod",
+          "line": 3,
+          "snippet": "go 1.22"
+        }
+      ],
+      "current_state": "Release builds with `go-version: stable` (floating latest stable toolchain) while the module declares `go 1.22`. Binary artifacts can silently change language/runtime behavior across releases without a go.mod bump.",
+      "recommended_state": "Use `go-version-file: go.mod` (or an explicit `1.22.x`) so releases match the module’s supported toolchain.",
+      "rationale": "Reproducible multi-arch releases and fewer 'works on CI stable, fails on older go' surprises for source builders.",
+      "implementation_hint": "In setup-go step: `go-version-file: go.mod` and drop `go-version: stable`."
+    },
+    {
+      "id": "X-013",
+      "title": "Avoid cancel-in-progress for tag split concurrency",
+      "category": "ci_cd",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": ["reliability"],
+      "locations": [
+        {
+          "file": ".github/workflows/split-packages.yml",
+          "line": 25,
+          "snippet": "concurrency:\n  group: split-packages-${{ github.ref }}\n  cancel-in-progress: true"
+        },
+        {
+          "file": ".github/workflows/split-packages.yml",
+          "line": 112,
+          "snippet": "if [[ \"$SOURCE_REF_TYPE\" == \"tag\" ]]; then\n  git -C \"$work\" tag -f \"$tag\"\n  git -C \"$work\" push origin \"refs/tags/${tag}\" --force"
+        }
+      ],
+      "current_state": "Concurrency groups by ref with `cancel-in-progress: true`. A rapid re-push of the same tag or overlapping workflow_dispatch can cancel an in-flight rsync + force-tag push mid-matrix, leaving package remotes partially updated across the three packages (fail-fast is false but cancel aborts jobs).",
+      "recommended_state": "Keep cancel-in-progress for branch `main` if desired, but set `cancel-in-progress: false` for tags (or separate concurrency groups) so release mirrors complete atomically per package matrix.",
+      "rationale": "Tag mirror is the Packagist/version boundary; partial three-way sync is worse than queued sequential runs.",
+      "implementation_hint": "`cancel-in-progress: ${{ github.ref_type != 'tag' }}` or two workflows."
+    },
+    {
+      "id": "X-014",
+      "title": "Document messaging env vars in a package .env.example",
+      "category": "secrets_config",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": ["dx", "security"],
+      "locations": [
+        {
+          "file": ".gitignore",
+          "line": 20,
+          "snippet": ".env\n.env.*\n!.env.example"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/config/capabilities-messaging.php",
+          "line": 10,
+          "snippet": "'bot_token' => env('TELEGRAM_BOT_TOKEN'),\n'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET'),"
+        }
+      ],
+      "current_state": "`.env` is correctly gitignored and `!.env.example` is allowed, but no `.env.example` exists anywhere. Telegram tokens/webhook secrets and host capability env keys are only discoverable by reading config PHP or user-guide prose.",
+      "recommended_state": "Add `packages/laravel-capabilities-messaging/.env.example` (and optionally core) listing keys with empty/placeholder values, no real secrets.",
+      "rationale": "Host integrators need a checklist of required secrets; empty examples reduce misconfiguration of webhook security. Not critical because this is a library, not a deployable app.",
+      "implementation_hint": "TELEGRAM_BOT_TOKEN=\nTELEGRAM_WEBHOOK_SECRET=\nCAPABILITIES_MESSAGING_AGENT_PROFILE=support\n# never set CAPABILITIES_SKIP_BOOT_CHECKS in production"
+    },
+    {
+      "id": "X-015",
+      "title": "Add CONTRIBUTING.md pointing at monorepo test commands",
+      "category": "documentation",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": ["dx"],
+      "locations": [
+        {
+          "file": "README.md",
+          "line": 81,
+          "snippet": "composer test / test:core / test:messaging / test:cli"
+        },
+        {
+          "file": "AGENTS.md",
+          "line": 1,
+          "snippet": "Agent-oriented policy; no human CONTRIBUTING.md"
+        }
+      ],
+      "current_state": "Strong README, docs/, and AGENTS.md exist, but there is no CONTRIBUTING.md for human contributors covering PR expectations, unit-only policy, package split implications, and required local checks.",
+      "recommended_state": "Short CONTRIBUTING.md at monorepo root (and a one-liner in package READMEs linking to monorepo CONTRIBUTING for source development).",
+      "rationale": "Open-source multi-package intent benefits from a human entrypoint that is not agent-policy prose.",
+      "implementation_hint": "Cover: fork/clone, composer install, go test, unit-only rule, no feature/DB tests, do not commit secrets, PR must keep package docs self-contained after split."
+    },
+    {
+      "id": "X-016",
+      "title": "Add Laravel Pint (or document deliberate absence)",
+      "category": "dependency_hygiene",
+      "severity": "low",
+      "effort": "small",
+      "impact": ["dx", "maintainability"],
+      "locations": [
+        {
+          "file": "composer.json",
+          "line": 12,
+          "snippet": "require-dev: pestphp/pest, phpstan/phpstan — no laravel/pint"
+        }
+      ],
+      "current_state": "No first-party Pint config or script. laravel/pint appears only transitively in the local lock via other packages, not as a project tool. No formatter CI.",
+      "recommended_state": "Require-dev `laravel/pint`, add `pint.json` if needed, composer script `format`, and optional CI `--test` mode — or explicitly document in AGENTS.md that formatting is editor-only.",
+      "rationale": "Laravel package ecosystem norm; reduces style noise in large core package (151 PHP src files). Low severity pre-Packagist.",
+      "implementation_hint": "`composer require --dev laravel/pint` at monorepo; `\"format\": \"pint\"`, `\"format:check\": \"pint --test\"` on packages/*/src."
+    },
+    {
+      "id": "X-017",
+      "title": "Fail closed early when SPLIT_GITHUB_TOKEN is missing",
+      "category": "ci_cd",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": ["dx", "reliability"],
+      "locations": [
+        {
+          "file": ".github/workflows/split-packages.yml",
+          "line": 54,
+          "snippet": "SPLIT_TOKEN: ${{ secrets.SPLIT_GITHUB_TOKEN }}"
+        },
+        {
+          "file": ".github/workflows/split-packages.yml",
+          "line": 70,
+          "snippet": "remote=\"https://x-access-token:${SPLIT_TOKEN}@github.com/${TARGET_REPO}.git\""
+        }
+      ],
+      "current_state": "Workflow documents the secret in comments but does not assert non-empty `SPLIT_TOKEN` before clone/push. Empty secret yields opaque git auth failures mid-job after rsync work.",
+      "recommended_state": "First run step: if `SPLIT_TOKEN` empty, echo clear setup instructions and `exit 1`.",
+      "rationale": "Operator DX for monorepo setup residual; reduces time-to-diagnose misconfigured forks/mirrors.",
+      "implementation_hint": "After `set -euo pipefail`: `if [[ -z \"${SPLIT_TOKEN:-}\" ]]; then echo 'Set repo secret SPLIT_GITHUB_TOKEN'; exit 1; fi`"
+    }
+  ],
+  "notes": "Scope: Laravel package monorepo + Go CLI — not a full application. Skipped or N/A for package libraries: frontend a11y, frontend bundle budgets, app APM/Sentry (host concern), Docker/Forge deploy, staging schema drift. Secrets scan found no real API keys; only test tokens (e.g. packages/capabilities-cli/internal/api/api_test.go). .env correctly gitignored. Database migrations under packages/laravel-capabilities/database/migrations look well-indexed with PKs (approvals, idempotency, audit_outbox); messaging migrations dir is empty (.gitkeep only). Docs quality is strong (docs/spec.md, versioning, per-package user guides, CHANGELOGs); relative monorepo links from packages appear avoided. No git tags yet on monorepo. Commit messages in recent history are structured (REQ-*/merge/chore), not wip/fix noise. Observability/ops findings intentionally omitted as residual for consumer apps, not the package bus itself."
+}

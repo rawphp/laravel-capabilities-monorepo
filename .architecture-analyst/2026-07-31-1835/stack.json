@@ -1,0 +1,46 @@
+{
+  "laravel": {
+    "present": true,
+    "version": "11.x|12.x|13.x (illuminate/* components, package not full app)",
+    "php_version": "8.2+",
+    "key_packages": [
+      "illuminate/support",
+      "illuminate/http",
+      "illuminate/routing",
+      "illuminate/console",
+      "illuminate/bus",
+      "illuminate/events",
+      "illuminate/database",
+      "illuminate/validation",
+      "pestphp/pest",
+      "phpstan/phpstan"
+    ]
+  },
+  "frontend": {
+    "framework": "none",
+    "framework_version": null,
+    "inertia_version": null,
+    "typescript": false,
+    "state_library": "none",
+    "ui_library": "none",
+    "build_tool": "unknown",
+    "key_packages": []
+  },
+  "testing": {
+    "backend": "pest",
+    "frontend": "none"
+  },
+  "tooling": {
+    "linter_backend": "none",
+    "linter_frontend": "none",
+    "formatter_frontend": "none",
+    "types_php": "phpstan"
+  },
+  "infrastructure_hints": {
+    "queue_driver": "unknown",
+    "cache_driver": "unknown",
+    "ci": "github-actions",
+    "deploy": "unknown"
+  },
+  "notes": "Monorepo of Laravel packages (rawphp/laravel-capabilities, messaging) + Go CLI (capabilities-cli). Not a full Laravel application — no app/, routes/ at root, or package.json. Source lives under packages/*/src. Unit-test-only policy (no feature/DB tests). CI: package split workflow."
+}

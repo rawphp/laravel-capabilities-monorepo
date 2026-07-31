@@ -1,0 +1,1012 @@
+{
+  "generated_at": "2026-07-31T08:42:28Z",
+  "stack_summary": {
+    "laravel": {
+      "present": true,
+      "version": "11.x|12.x|13.x (illuminate/* components, package not full app)",
+      "php_version": "8.2+",
+      "key_packages": [
+        "illuminate/support",
+        "illuminate/http",
+        "illuminate/routing",
+        "illuminate/console",
+        "illuminate/bus",
+        "illuminate/events",
+        "illuminate/database",
+        "illuminate/validation",
+        "pestphp/pest",
+        "phpstan/phpstan"
+      ]
+    },
+    "frontend": {
+      "framework": "none",
+      "framework_version": null,
+      "inertia_version": null,
+      "typescript": false,
+      "state_library": "none",
+      "ui_library": "none",
+      "build_tool": "unknown",
+      "key_packages": []
+    },
+    "testing": {
+      "backend": "pest",
+      "frontend": "none"
+    },
+    "tooling": {
+      "linter_backend": "none",
+      "linter_frontend": "none",
+      "formatter_frontend": "none",
+      "types_php": "phpstan"
+    },
+    "infrastructure_hints": {
+      "queue_driver": "unknown",
+      "cache_driver": "unknown",
+      "ci": "github-actions",
+      "deploy": "unknown"
+    },
+    "notes": "Monorepo of Laravel packages (rawphp/laravel-capabilities, messaging) + Go CLI (capabilities-cli). Not a full Laravel application \u2014 no app/, routes/ at root, or package.json. Source lives under packages/*/src. Unit-test-only policy (no feature/DB tests). CI: package split workflow."
+  },
+  "mode": "both",
+  "buckets": {
+    "critical": [
+      {
+        "id": "L-001",
+        "title": "HTTP controllers lack Illuminate Request/Response bridge",
+        "category": "api",
+        "severity": "critical",
+        "effort": "medium",
+        "impact": [
+          "reliability",
+          "security",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/Http/CapabilityController.php",
+            "line": 44,
+            "snippet": "public function list(HttpRequestContext $request): HttpResponse"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Http/HttpRequestContext.php",
+            "line": 8,
+            "snippet": "Controllers map real Illuminate requests into this shape at the adapter edge."
+          },
+          {
+            "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+            "line": 300,
+            "snippet": "return HttpRouteRegistrar::registerInto($config, function (array $def) use ($router): void {"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Http/HttpResponse.php",
+            "line": 11,
+            "snippet": "final class HttpResponse"
+          }
+        ],
+        "current_state": "Routes are registered as CapabilityController@list (etc.) onto the Illuminate router, but actions accept only HttpRequestContext and return package HttpResponse DTOs. There is no fromRequest/toResponse adapter, no Responsable implementation, and no factory that copies Sanctum user, headers, JSON body, or credential abilities into HttpRequestContext.",
+        "recommended_state": "Ship an edge adapter (e.g. HttpRequestContext::fromIlluminate(Request) + HttpResponse implementing Responsable or toIlluminate()) and either invokable controllers that take Request or a thin Laravel controller that maps in/out. Ensure credential/user/authKind come from middleware-resolved auth, never client claims.",
+        "rationale": "Without a bridge, container resolution builds a default unauthenticated HttpRequestContext (all constructor defaults), so catalog/invoke either always 401 or never see the real actor. Returning a non-Response DTO also breaks the HTTP kernel. This is a concrete prod-break for the single HTTP/CLI API (D-009) despite extensive unit coverage of pure controllers.",
+        "implementation_hint": "Add packages/laravel-capabilities/src/Http/IlluminateHttpBridge.php; bind controllers that accept Request, map to HttpRequestContext (user, token abilities \u2192 credential, headers, jsonBody, authKind), call existing methods, return response()->json($http->body, $http->status)->withHeaders($http->headers). Unit-test the mapper with array fixtures (still no Feature suite).",
+        "score": 60.0
+      },
+      {
+        "id": "L-004",
+        "title": "Messaging provider never binds services; webhook uses FakeQueue",
+        "category": "architecture",
+        "severity": "critical",
+        "effort": "medium",
+        "impact": [
+          "reliability",
+          "scalability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/src/MessagingServiceProvider.php",
+            "line": 20,
+            "snippet": "public function register(): void\n    {\n        $this->mergeConfigFrom(__DIR__.'/../config/capabilities-messaging.php', 'capabilities-messaging');\n    }"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/TelegramWebhookController.php",
+            "line": 26,
+            "snippet": "public function __construct(\n        private readonly MessagingConfig $config,\n        ?UpdateQueue $queue = null,\n    ) {\n        $this->queue = $queue ?? new FakeQueue;"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Boot/MessagingBindings.php",
+            "line": 46,
+            "snippet": "$bot = new FakeTelegramBotClient;\n        $queue = new FakeQueue;"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/routes/messaging.php",
+            "line": 11,
+            "snippet": "Route::post('/capabilities/messaging/telegram/webhook', function () {"
+          }
+        ],
+        "current_state": "MessagingServiceProvider only merges config and optionally loads routes. It never registers MessagingBindings singletons. TelegramWebhookController defaults queue to FakeQueue (in-memory list). MessagingBindings::build always constructs FakeTelegramBotClient + FakeQueue even as the pure 'production plan' path.",
+        "recommended_state": "register() should bind MessagingConfig from config repository, a real LaravelQueue adapter implementing UpdateQueue, real TelegramBotClient (HTTP), durable IdentityLinker/ThreadStore, and ProcessTelegramUpdate. Webhook must not default to FakeQueue outside testing.",
+        "rationale": "With telegram enabled (config default env CAPABILITIES_TELEGRAM true), routes accept webhooks, verify secrets, and 'queue' updates into a process-local FakeQueue that no worker drains. Outbound bot calls would also be fakes if bindings were used as-is. This is a production-break for the messaging surface.",
+        "implementation_hint": "Add Support/LaravelUpdateQueue using Bus::dispatch(ProcessTelegramUpdateJob); bind in MessagingServiceProvider::register from MessagingBindings::production($app); inject Fake* only when app.env is testing or via config driver=fake.",
+        "score": 60.0
+      }
+    ],
+    "high": [
+      {
+        "id": "X-003",
+        "title": "Run go test before CLI GoReleaser release",
+        "category": "ci_cd",
+        "severity": "high",
+        "effort": "trivial",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/capabilities-cli/.github/workflows/release.yml",
+            "line": 82,
+            "snippet": "- name: Run GoReleaser\n  uses: goreleaser/goreleaser-action@v6"
+          },
+          {
+            "file": "packages/capabilities-cli/.github/workflows/release.yml",
+            "line": 29,
+            "snippet": "jobs:\n  goreleaser:\n    runs-on: ubuntu-latest"
+          }
+        ],
+        "current_state": "After monorepo tag mirror, the package-owned release workflow checks out, sets up Go, optionally notes signing secrets, and immediately runs GoReleaser. It never runs `go test ./...`.",
+        "recommended_state": "Add a step `go test ./...` (with race optional) before GoReleaser; fail the job if tests fail so no broken multi-arch binaries are published.",
+        "rationale": "CLI GitHub Releases are the documented install path for end users. Releasing without unit tests undoes the monorepo\u2019s strong unit-test policy at the only binary ship boundary.",
+        "implementation_hint": "In release.yml after setup-go: `working-directory` root, `run: go test ./...`. Prefer `go-version-file: go.mod` for alignment with module Go 1.22.",
+        "score": 40.0
+      },
+      {
+        "id": "X-004",
+        "title": "Add MIT LICENSE files to monorepo and split packages",
+        "category": "legal_licensing",
+        "severity": "high",
+        "effort": "trivial",
+        "impact": [
+          "maintainability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "composer.json",
+            "line": 5,
+            "snippet": "\"license\": \"MIT\""
+          },
+          {
+            "file": "packages/laravel-capabilities/composer.json",
+            "line": 5,
+            "snippet": "\"license\": \"MIT\""
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/composer.json",
+            "line": 5,
+            "snippet": "\"license\": \"MIT\""
+          },
+          {
+            "file": "packages/capabilities-cli/go.mod",
+            "line": 1,
+            "snippet": "module github.com/rawphp/capabilities-cli"
+          }
+        ],
+        "current_state": "All PHP composer.json files declare `\"license\": \"MIT\"`, but no `LICENSE` / `LICENSE.md` file exists at monorepo root or under any package tree (`git ls-files` has none). After split, public package repos will also lack a LICENSE file. Go module has no SPDX file either.",
+        "recommended_state": "Add a standard MIT LICENSE file at monorepo root and copy/symlink the same into each of `packages/laravel-capabilities`, `packages/laravel-capabilities-messaging`, and `packages/capabilities-cli` so split remotes ship a clear license grant.",
+        "rationale": "Packagist, GitHub license detection, and many corporate OSS policies require a LICENSE file, not only a composer.json field. Missing file blocks or confuses adoption of intended public packages.",
+        "implementation_hint": "Use the same MIT text with copyright holder `rawphp` (or org legal name) in four paths; ensure split rsync includes LICENSE. Reference it from each package README footer.",
+        "score": 40.0
+      },
+      {
+        "id": "L-005",
+        "title": "DatabaseApprovalStore generates sequential process-local IDs",
+        "category": "database",
+        "severity": "high",
+        "effort": "trivial",
+        "impact": [
+          "reliability",
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Persistence/DatabaseApprovalStore.php",
+            "line": 129,
+            "snippet": "private function nextId(): string\n    {\n        $this->sequence++;\n\n        return 'approval-'.$this->sequence;\n    }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Persistence/QueryTableGateway.php",
+            "line": 336,
+            "snippet": "private function newId(): string\n    {\n        return bin2hex(random_bytes(16));\n    }"
+          }
+        ],
+        "current_state": "When put() omits id, DatabaseApprovalStore assigns approval-{n} from an in-memory sequence counter. QueryTableGateway already generates cryptographically random hex IDs when id is absent at insert time, but the store always pre-assigns sequential ids first.",
+        "recommended_state": "Use random/UUID ids for durable approvals (delegate to gateway or bin2hex(random_bytes(16)) / Str::ulid()). Keep sequential ids only in InMemoryApprovalStore for unit readability.",
+        "rationale": "Multi-worker PHP-FPM/queue processes each restart sequence at 1 \u2192 primary-key collisions or overwrites. Predictable approval IDs also weaken URL/callback unguessability if accept routes leak.",
+        "implementation_hint": "In DatabaseApprovalStore::put, omit id and let QueryTableGateway::resolveId mint random ids, or call random_bytes like IdempotencyKey. Add unit test for uniqueness across two store instances.",
+        "score": 40.0
+      },
+      {
+        "id": "X-001",
+        "title": "Add monorepo CI that runs package unit tests",
+        "category": "ci_cd",
+        "severity": "high",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "dx",
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": ".github/workflows/split-packages.yml",
+            "line": 17,
+            "snippet": "name: Split packages"
+          },
+          {
+            "file": "composer.json",
+            "line": 45,
+            "snippet": "\"test\": [\"@test:core\", \"@test:messaging\"], \"test:cli\": \"cd packages/capabilities-cli && go test ./...\""
+          },
+          {
+            "file": "AGENTS.md",
+            "line": 75,
+            "snippet": "\u226595% coverage \u2026 Same bar for Go CLI packages under test when CI lands."
+          }
+        ],
+        "current_state": "The only monorepo GitHub Actions workflow is package split/mirror. There is no workflow that runs `composer test`, `composer test:cli`, tools Python tests, PHPStan, or coverage. AGENTS.md and root README document local unit suites as the contract, but CI does not execute them.",
+        "recommended_state": "Add a `tests.yml` (or matrix job) on PR + push to main that installs PHP deps, runs Pest for core and messaging, runs Go tests for the CLI, and fails the job on non-zero exit. Optionally run `python3 -m unittest` under `tools/tests/`.",
+        "rationale": "Hundreds of unit tests exist in-package (222 core, 32 messaging, 41 Go) but nothing stops a green local machine or a bad push from becoming the source of truth. For a monorepo that auto-mirrors to public package remotes, missing test CI is a primary reliability gap.",
+        "implementation_hint": "Create `.github/workflows/tests.yml` with jobs: (1) php: setup-php 8.2 + pcov, `composer install`, `composer test:core`, `composer test:messaging`; (2) go: setup-go from go.mod, `go test ./...` in packages/capabilities-cli; gate split on `needs: [php, go]` or require branch protection requiring the tests check.",
+        "score": 34.0
+      },
+      {
+        "id": "X-002",
+        "title": "Gate package split/publish on green tests",
+        "category": "ci_cd",
+        "severity": "high",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "security"
+        ],
+        "locations": [
+          {
+            "file": ".github/workflows/split-packages.yml",
+            "line": 19,
+            "snippet": "on:\n  push:\n    branches: [main]\n    tags: ['v*']"
+          },
+          {
+            "file": ".github/workflows/split-packages.yml",
+            "line": 32,
+            "snippet": "jobs:\n  split:\n    runs-on: ubuntu-latest"
+          },
+          {
+            "file": "docs/versioning.md",
+            "line": 19,
+            "snippet": "Push to monorepo `main` | split-packages.yml rsyncs each packages/<name>/ tree"
+          }
+        ],
+        "current_state": "`split-packages.yml` runs on every push to `main` and every `v*` tag and force-pushes package trees (and tags) to rawphp/laravel-capabilities, messaging, and capabilities-cli with no prior test job. Broken or untested code can land on consumer-facing remotes and Packagist-bound tags immediately.",
+        "recommended_state": "Either make split a dependent job that `needs:` a tests workflow, or use a single workflow with `test` then `split`, and require the tests status check on `main` via branch protection. Tags that fail tests must not mirror.",
+        "rationale": "Ship model is monorepo \u2192 public package remotes on push. Without a quality gate, the split is a deploy path, not just a mirror. Severity is high because consumers install from those remotes (VCS/dev-main today).",
+        "implementation_hint": "Refactor into `jobs: test: \u2026` then `split: needs: [test]`; for tags, fail closed if tests fail so `--force` tag push never runs. Document in docs/versioning.md Packagist checklist.",
+        "score": 34.0
+      },
+      {
+        "id": "L-003",
+        "title": "Registry defaults to allow-all when capability has no authorize()",
+        "category": "authorization",
+        "severity": "high",
+        "effort": "small",
+        "impact": [
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+            "line": 245,
+            "snippet": "$this->authorizer = $authorizer ?? StubAuthorizer::allow();"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+            "line": 1534,
+            "snippet": "$allowed = true;\n        $definitionAuth = $state->definition->authorize;\n        if (is_callable($definitionAuth)) {\n            $allowed = (bool) $definitionAuth($state->input, $state->context);\n        } else {\n            $allowed = $this->authorizer->authorize("
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Boot/ContainerBindings.php",
+            "line": 235,
+            "snippet": "$registry = new CapabilityRegistry(clock: new SystemClock);"
+          }
+        ],
+        "current_state": "stageAuthorize uses the capability's authorize callable when present; otherwise it calls the injected Authorizer. Construction defaults to StubAuthorizer::allow(). makeRegistry / ServiceProvider never bind a production Authorizer or force per-capability authorize.",
+        "recommended_state": "Fail closed: default StubAuthorizer::deny() (or a DenyUnlessAuthorizeCallable authorizer) for mutating capabilities without authorize; require explicit withAuthorizer / host GateAuthorizer in ContainerBindings plan; document that authorize() is mandatory for non-readOnly definitions.",
+        "rationale": "Governance is part of every surface (AGENTS.md). A host that registers capabilities with only run() gets silent allow for any authenticated actor on HTTP/agent/MCP/job. That is fail-open relative to package security claims.",
+        "implementation_hint": "Change default to StubAuthorizer::deny(); in CapabilityDefinitionBuilder::register, reject mutating defs without authorize; add unit test that registry from makeRegistry denies when authorize missing.",
+        "score": 34.0
+      },
+      {
+        "id": "L-008",
+        "title": "Rate limiting is process-local InMemoryRateLimiter only",
+        "category": "caching",
+        "severity": "high",
+        "effort": "small",
+        "impact": [
+          "scalability",
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+            "line": 246,
+            "snippet": "$this->rateLimiter = $rateLimiter ?? new InMemoryRateLimiter;"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Support/InMemoryRateLimiter.php",
+            "line": 8,
+            "snippet": "Pure in-memory rate limiter for unit tests (no Redis / Laravel facade)."
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Boot/ContainerBindings.php",
+            "line": 256,
+            "snippet": "$rateLimits = (array) ($full['rate_limits'] ?? []);\n        if ($rateLimits !== []) {\n            $registry->withRateLimitConfig($rateLimits);\n        }"
+          }
+        ],
+        "current_state": "Config enables rate_limits (60/min defaults) but makeRegistry only applies config numbers; the limiter concrete remains InMemoryRateLimiter. Contracts/RateLimiter.php notes production may wrap Laravel's RateLimiter, but no binding exists.",
+        "recommended_state": "Bind a LaravelRateLimiter adapter (Cache/Redis) from config when rate_limits.enabled; keep InMemory only for unit tests. Document that multi-worker hosts must use shared store.",
+        "rationale": "Agent turn budgets and per-capability limits are security-relevant for runaway tool loops (D-008 related). Process-local counters give a false sense of protection under FPM/queue scale-out.",
+        "implementation_hint": "Implement Support/LaravelCacheRateLimiter using Illuminate\\Cache\\RateLimiter; bind in ServiceProvider from rate_limits.driver; unit-test via fake Cache store interface.",
+        "score": 34.0
+      },
+      {
+        "id": "X-005",
+        "title": "Enforce \u226595% coverage in CI (policy is unenforced)",
+        "category": "ci_cd",
+        "severity": "high",
+        "effort": "medium",
+        "impact": [
+          "maintainability",
+          "reliability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "AGENTS.md",
+            "line": 79,
+            "snippet": "Minimum: 95% unit-test coverage on package source \u2026 Below 95% is a failed task"
+          },
+          {
+            "file": "packages/laravel-capabilities/phpunit.xml",
+            "line": 13,
+            "snippet": "<source><include><directory suffix=\".php\">src</directory></include></source>"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/phpunit.xml",
+            "line": 13,
+            "snippet": "<source><include><directory suffix=\".php\">src</directory></include></source>"
+          },
+          {
+            "file": "composer.json",
+            "line": 45,
+            "snippet": "scripts test / test:core / test:messaging / test:cli \u2014 no coverage flags"
+          }
+        ],
+        "current_state": "AGENTS.md makes \u226595% line coverage blocking. phpunit.xml includes source dirs for coverage but has no coverage report config, composer scripts do not pass `--coverage-text` / min thresholds, no pcov/xdebug is required in require-dev, and no CI job measures coverage. Coverage is only approached via ad-hoc CoverageBoost tests.",
+        "recommended_state": "CI runs Pest with PCOV and fails if coverage for each package `src/` is below 95%. Go uses `go test -coverprofile` with a minimum check. Document exact commands next to AGENTS.md policy.",
+        "rationale": "Policy without automation will drift: new code can ship under 95% while still greening `composer test`. Monorepo explicitly treats coverage floor as non-negotiable.",
+        "implementation_hint": "e.g. `pest --configuration=packages/laravel-capabilities/phpunit.xml --coverage --min=95` with php-actions/setup-php coverage: pcov; for Go: `go test ./... -coverprofile=c.out` + `go tool cover -func` threshold script.",
+        "score": 24.0
+      },
+      {
+        "id": "L-002",
+        "title": "AuthController issues placeholder tokens from client body",
+        "category": "security",
+        "severity": "high",
+        "effort": "medium",
+        "impact": [
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/Http/AuthController.php",
+            "line": 68,
+            "snippet": "public function token(HttpRequestContext $request): HttpResponse"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/Http/AuthController.php",
+            "line": 77,
+            "snippet": "return HttpResponse::ok([\n            'token_type' => 'Bearer',\n            'access_token' => $body['access_token'] ?? 'issued-by-host',"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Http/RouteTable.php",
+            "line": 85,
+            "snippet": "[self::ROUTE_AUTH_TOKEN, 'POST', $prefix.'/auth/token', 'capabilities.auth.token', 'AuthController@token'],"
+          }
+        ],
+        "current_state": "AuthController is a contract stub: token() echoes client-supplied access_token or 'issued-by-host', device() returns fixed placeholders, oauthCallback() echoes query code. These routes are registered in RouteTable when HTTP is enabled (default middleware includes auth:sanctum).",
+        "recommended_state": "Either do not register auth routes until a real host AuthIssuer is bound, or implement host-delegated issuance behind explicit interfaces (Sanctum/Passport/OAuth device flow) and never accept client-supplied access_token. Fail closed with 501/not_configured when unbound.",
+        "rationale": "Registering stub token endpoints on the product capability API creates a footgun: if middleware is relaxed for CLI bootstrap, clients can obtain a fake bearer string that may confuse downstream gateways. Even with Sanctum, oauth/device routes are not a safe chicken-egg design for CLI login.",
+        "implementation_hint": "Introduce AuthTokenIssuer interface; AuthController returns not_found unless bound. Split middleware: auth flows without auth:sanctum, catalog/invoke with it. Mirror shape used by CLI internal/auth package expectations.",
+        "score": 24.0
+      },
+      {
+        "id": "L-006",
+        "title": "Messaging identity and threads are memory-only with empty migrations",
+        "category": "architecture",
+        "severity": "high",
+        "effort": "medium",
+        "impact": [
+          "reliability",
+          "scalability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Identity/IdentityLinker.php",
+            "line": 17,
+            "snippet": "/** @var array<string, array{user_id: string, tenant_id: string|null, telegram_user_id: string}> */\n    private array $links = [];"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Threads/ThreadStore.php",
+            "line": 8,
+            "snippet": "Conversation thread persistence (in-memory for unit tests; swap driver in production)."
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/MessagingServiceProvider.php",
+            "line": 33,
+            "snippet": "$this->publishes([\n                __DIR__.'/../database/migrations' => database_path('migrations'),\n            ], 'capabilities-messaging-migrations');"
+          }
+        ],
+        "current_state": "IdentityLinker and ThreadStore hold links/codes/history in private arrays. database/migrations is published but empty. No production store implementation is registered.",
+        "recommended_state": "Add durable drivers (DB tables for identity links, link codes, threads) behind the same interfaces; publish real migrations; bind database drivers when not testing. Keep in-memory implementations for unit tests only.",
+        "rationale": "Multi-process webhooks lose link state between requests; link codes issued on one worker are invisible to another. Conversation continuity and identity (MSG pipeline resolve_identity) cannot work under normal Laravel deploy topology.",
+        "implementation_hint": "Migrations for messaging_identity_links / messaging_link_codes / messaging_threads; DatabaseIdentityLinker implementing ConversationIdentity; unit-test against ArrayTableGateway pattern from core package.",
+        "score": 24.0
+      }
+    ],
+    "quick_wins": [
+      {
+        "id": "X-006",
+        "title": "Stop gitignoring monorepo composer.lock",
+        "category": "dependency_hygiene",
+        "severity": "medium",
+        "effort": "trivial",
+        "impact": [
+          "dx",
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": ".gitignore",
+            "line": 2,
+            "snippet": "/composer.lock"
+          },
+          {
+            "file": "composer.json",
+            "line": 3,
+            "snippet": "\"type\": \"project\""
+          }
+        ],
+        "current_state": "Root `.gitignore` excludes `/composer.lock`. The lockfile exists locally (composer.lock present) but is not tracked. Package libraries correctly omit their own locks; the monorepo root is a `type: project` workspace used for shared Pest/PHPStan and path packages.",
+        "recommended_state": "Commit root `composer.lock` (remove ignore line) so contributor and CI installs resolve the same illuminate/pest/phpstan graph. Keep package trees lock-free for library publish.",
+        "rationale": "Ignoring the monorepo lock produces non-reproducible CI and 'works on my machine' drift across Illuminate 11/12 minors while developing path packages.",
+        "implementation_hint": "Delete `/composer.lock` from `.gitignore`, `composer update` once on PHP 8.2, commit lock. CI should `composer install --prefer-dist` not `update`.",
+        "score": 15.0
+      },
+      {
+        "id": "X-009",
+        "title": "Add Dependabot or Renovate for Composer and Go modules",
+        "category": "dependency_hygiene",
+        "severity": "medium",
+        "effort": "trivial",
+        "impact": [
+          "security",
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": ".github/workflows/split-packages.yml",
+            "line": 1,
+            "snippet": ".github contains only workflows/split-packages.yml (no dependabot.yml)"
+          },
+          {
+            "file": "packages/capabilities-cli/go.mod",
+            "line": 5,
+            "snippet": "require github.com/google/uuid v1.6.0"
+          }
+        ],
+        "current_state": "No `.github/dependabot.yml` or Renovate config. PHP and Go dependency bumps are fully manual. Actions used (`actions/checkout@v4`, `setup-go@v5`, `goreleaser-action@v6`) also have no automated update path.",
+        "recommended_state": "Enable Dependabot for composer (root + packages if published separately), gomod for capabilities-cli, and github-actions ecosystem on the monorepo (and after split, on package remotes if they diverge).",
+        "rationale": "Public packages and a token-holding split workflow need timely Action and library updates; manual-only hygiene will lag.",
+        "implementation_hint": "Add `.github/dependabot.yml` with weekly composer, gomod (`/packages/capabilities-cli`), and github-actions entries; group minor/patch if noise is high.",
+        "score": 15.0
+      },
+      {
+        "id": "X-010",
+        "title": "Add SECURITY.md for public package vulnerability reporting",
+        "category": "documentation",
+        "severity": "medium",
+        "effort": "trivial",
+        "impact": [
+          "security",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "README.md",
+            "line": 15,
+            "snippet": "Public package repos: rawphp/laravel-capabilities, messaging, capabilities-cli"
+          },
+          {
+            "file": "packages/laravel-capabilities/README.md",
+            "line": 1,
+            "snippet": "Package README has no Security section / SECURITY.md link"
+          }
+        ],
+        "current_state": "No SECURITY.md (or security contact) in monorepo or any package. Packages are intended for public remotes and handle authz, approvals, Telegram secrets, CLI tokens \u2014 high-value security surface once published.",
+        "recommended_state": "Add SECURITY.md at monorepo root and in each package tree (ships via split) with private reporting channel and supported versions (0.x policy).",
+        "rationale": "GitHub advisory UI and security-conscious consumers expect a documented disclosure path before Packagist listing.",
+        "implementation_hint": "Standard GitHub SECURITY.md template; private email or GitHub Security Advisories for rawphp org; mirror into packages/* so split remotes inherit it.",
+        "score": 15.0
+      },
+      {
+        "id": "X-012",
+        "title": "Pin Go version in CLI release workflow to go.mod",
+        "category": "ci_cd",
+        "severity": "medium",
+        "effort": "trivial",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/capabilities-cli/.github/workflows/release.yml",
+            "line": 40,
+            "snippet": "go-version: stable"
+          },
+          {
+            "file": "packages/capabilities-cli/go.mod",
+            "line": 3,
+            "snippet": "go 1.22"
+          }
+        ],
+        "current_state": "Release builds with `go-version: stable` (floating latest stable toolchain) while the module declares `go 1.22`. Binary artifacts can silently change language/runtime behavior across releases without a go.mod bump.",
+        "recommended_state": "Use `go-version-file: go.mod` (or an explicit `1.22.x`) so releases match the module\u2019s supported toolchain.",
+        "rationale": "Reproducible multi-arch releases and fewer 'works on CI stable, fails on older go' surprises for source builders.",
+        "implementation_hint": "In setup-go step: `go-version-file: go.mod` and drop `go-version: stable`.",
+        "score": 15.0
+      },
+      {
+        "id": "X-013",
+        "title": "Avoid cancel-in-progress for tag split concurrency",
+        "category": "ci_cd",
+        "severity": "medium",
+        "effort": "trivial",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": ".github/workflows/split-packages.yml",
+            "line": 25,
+            "snippet": "concurrency:\n  group: split-packages-${{ github.ref }}\n  cancel-in-progress: true"
+          },
+          {
+            "file": ".github/workflows/split-packages.yml",
+            "line": 112,
+            "snippet": "if [[ \"$SOURCE_REF_TYPE\" == \"tag\" ]]; then\n  git -C \"$work\" tag -f \"$tag\"\n  git -C \"$work\" push origin \"refs/tags/${tag}\" --force"
+          }
+        ],
+        "current_state": "Concurrency groups by ref with `cancel-in-progress: true`. A rapid re-push of the same tag or overlapping workflow_dispatch can cancel an in-flight rsync + force-tag push mid-matrix, leaving package remotes partially updated across the three packages (fail-fast is false but cancel aborts jobs).",
+        "recommended_state": "Keep cancel-in-progress for branch `main` if desired, but set `cancel-in-progress: false` for tags (or separate concurrency groups) so release mirrors complete atomically per package matrix.",
+        "rationale": "Tag mirror is the Packagist/version boundary; partial three-way sync is worse than queued sequential runs.",
+        "implementation_hint": "`cancel-in-progress: ${{ github.ref_type != 'tag' }}` or two workflows.",
+        "score": 15.0
+      },
+      {
+        "id": "L-009",
+        "title": "Idempotency defaults to memory while approvals default database",
+        "category": "configuration",
+        "severity": "medium",
+        "effort": "trivial",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/config/capabilities.php",
+            "line": 110,
+            "snippet": "'approval' => [\n        'store' => 'database',"
+          },
+          {
+            "file": "packages/laravel-capabilities/config/capabilities.php",
+            "line": 135,
+            "snippet": "'idempotency' => [\n        'enabled' => true,\n        // Package default is memory; host apps may rebind a database driver.\n        'driver' => $env('CAPABILITIES_IDEMPOTENCY_DRIVER', 'memory'),"
+          }
+        ],
+        "current_state": "Published defaults: approval.store=database (needs connection + migrations) and idempotency.driver=memory. Comments acknowledge host must rebind, but mismatch means multi-worker mutating invokes re-run despite Idempotency-Key while approvals may persist.",
+        "recommended_state": "Align production defaults: both database when package is used beyond unit tests, or both memory with loud docs/health warning when memory is active under non-local env. Surface driver status in catalog health.",
+        "rationale": "D-005 requires durable outcomes for mutating invokes. Default memory store silently fails that guarantee in any multi-process deploy while approval durability suggests production orientation.",
+        "implementation_hint": "Default CAPABILITIES_IDEMPOTENCY_DRIVER to database when approval store is database; or BootGuard warning when APP_ENV=production and driver=memory.",
+        "score": 15.0
+      },
+      {
+        "id": "L-013",
+        "title": "ApprovalPolicy any_staff treats every non-system user as staff",
+        "category": "authorization",
+        "severity": "medium",
+        "effort": "trivial",
+        "impact": [
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalPolicy.php",
+            "line": 124,
+            "snippet": "private function actorIsStaff(object $actor): bool\n    {\n        if ($this->staffChecker !== null) {\n            return (bool) ($this->staffChecker)($actor);\n        }\n\n        if (isset($actor->is_staff)) {\n            return (bool) $actor->is_staff;\n        }\n\n        // Default: any non-system user principal is staff for unit-test simplicity.\n        return ! ($actor instanceof SystemActor);\n    }"
+          }
+        ],
+        "current_state": "When policy is any_staff and no staffChecker is injected, every non-SystemActor is treated as staff (tenant match still applies). custom without checker also falls through to actorIsStaff.",
+        "recommended_state": "Default deny when staffChecker missing; require host to bind staffChecker or use is_staff/roles. Keep permissive behaviour only behind explicit testing helper.",
+        "rationale": "Hosts selecting any_staff from config without wiring staffChecker get silent open approval within tenant \u2014 contrary to multi-tenant safe defaults celebrated elsewhere in the same class.",
+        "implementation_hint": "return false when no checker and no is_staff; unit test any_staff without checker denies ordinary user.",
+        "score": 15.0
+      },
+      {
+        "id": "X-007",
+        "title": "Align Illuminate version constraints across packages",
+        "category": "dependency_hygiene",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "maintainability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/composer.json",
+            "line": 20,
+            "snippet": "\"illuminate/support\": \"^11.0|^12.0|^13.0\""
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/composer.json",
+            "line": 21,
+            "snippet": "\"illuminate/support\": \"^11.0|^12.0\""
+          },
+          {
+            "file": "composer.json",
+            "line": 8,
+            "snippet": "\"illuminate/support\": \"^11.0|^12.0\""
+          }
+        ],
+        "current_state": "Core advertises Laravel 11\u201313 illuminate components; messaging and monorepo root only allow 11\u201312. Messaging can refuse a host that core accepts, and monorepo dev cannot exercise the core ^13 constraint.",
+        "recommended_state": "Single documented support matrix (e.g. ^11|^12 or ^11|^12|^13) applied identically to core, messaging, and monorepo root require lines.",
+        "rationale": "Sibling packages that always ship together must not claim divergent host support; consumers will hit confusing Composer solver failures on Laravel 13.",
+        "implementation_hint": "Either drop `|^13.0` from core until tested, or add `|^13.0` to messaging + root and note matrix in package READMEs / docs/versioning.md.",
+        "score": 12.75
+      },
+      {
+        "id": "X-011",
+        "title": "Add .gitattributes export-ignore for Composer package trees",
+        "category": "git_workflow",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "dx",
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": ".gitignore",
+            "line": 1,
+            "snippet": "Root has .gitignore; no .gitattributes at monorepo or package roots"
+          },
+          {
+            "file": "packages/laravel-capabilities/composer.json",
+            "line": 2,
+            "snippet": "\"type\": \"library\""
+          }
+        ],
+        "current_state": "No `.gitattributes` anywhere. When packages are installed from source/dist archives, tests, coverage boosters, phpunit.xml, and possibly .github can bloat installs unless export-ignore is set on each package remote.",
+        "recommended_state": "Per-package `.gitattributes` with `export-ignore` for `/tests`, `/phpunit.xml`, `/.github` (except when release workflow must live in repo \u2014 keep workflows, ignore test noise), `/.phpunit.cache`, etc.",
+        "rationale": "Library packaging hygiene; reduces consumer install size and accidental reliance on test-only files. Split remotes need the file inside each package path.",
+        "implementation_hint": "Place `packages/laravel-capabilities/.gitattributes` (and messaging) with lines like `/tests export-ignore`. CLI may export-ignore `*_test.go` only if desired \u2014 often Go keeps tests in module.",
+        "score": 12.75
+      },
+      {
+        "id": "L-007",
+        "title": "Approval claimLease is check-then-act without lease condition",
+        "category": "queues_events",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Persistence/DatabaseApprovalStore.php",
+            "line": 89,
+            "snippet": "public function claimLease(\n        string $id,\n        string $expectedStatus,\n        string $nowIso,\n        array $attributes,\n    ): ?array {\n        $row = $this->table->find($id);"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Persistence/DatabaseApprovalStore.php",
+            "line": 118,
+            "snippet": "return $this->table->updateWhere(\n            ['id' => $id, 'status' => $expectedStatus],\n            $attributes,\n        );"
+          }
+        ],
+        "current_state": "claimLease reads the row, evaluates execution_lease_until in PHP, then updateWhere only on id+status. Two concurrent accept/resume workers can both pass the lease check before either writes.",
+        "recommended_state": "Atomic claim: single UPDATE ... WHERE id=? AND status=? AND (execution_lease_until IS NULL OR execution_lease_until < ?) and require affected rows = 1. Extend TableGateway if needed for SQL-side predicates.",
+        "rationale": "D-006 requires exactly-once execution and crash recovery. compareAndUpdate helps status races, but lease claiming remains TOCTOU under concurrency \u2014 dual run() of the same approved capability is possible.",
+        "implementation_hint": "Add TableGateway::updateWhereExpr or claimLease SQL on QueryTableGateway; unit-test with two sequential claims where second must fail while lease held (ArrayTableGateway can simulate with locking flag).",
+        "score": 12.75
+      },
+      {
+        "id": "L-010",
+        "title": "CI only splits packages; no package test/coverage gate",
+        "category": "testing",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": ".github/workflows/split-packages.yml",
+            "line": 17,
+            "snippet": "name: Split packages"
+          },
+          {
+            "file": "composer.json",
+            "line": 45,
+            "snippet": "\"test\": [\n            \"@test:core\",\n            \"@test:messaging\"\n        ],"
+          },
+          {
+            "file": "packages/laravel-capabilities/phpunit.xml",
+            "line": 13,
+            "snippet": "<source>\n        <include>\n            <directory suffix=\".php\">src</directory>\n        </include>\n    </source>"
+          }
+        ],
+        "current_state": "Only split-packages.yml exists under .github/workflows. Local composer scripts run Pest unit suites; phpunit.xml has no coverage threshold despite AGENTS.md \u226595% blocking policy. phpstan is require-dev without neon or CI job.",
+        "recommended_state": "Add a unit-test workflow (composer test + go test, coverage report with fail under 95%) on PR/main, before or blocking split. Add phpstan.neon.dist and a static-analysis job. Keep unit-only (no Feature).",
+        "rationale": "Package repos are mirrored on every main push; without CI gates, broken unit contracts can ship to public package remotes. Project policy already declares coverage as blocking \u2014 tooling does not enforce it.",
+        "implementation_hint": "Workflow: setup-php with pcov, composer test:core/messaging, pest --coverage --min=95; go test -cover ./... in capabilities-cli.",
+        "score": 12.75
+      },
+      {
+        "id": "L-012",
+        "title": "Auth HTTP routes share sanctum middleware with token issuance",
+        "category": "routing",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "security",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Http/RouteTable.php",
+            "line": 77,
+            "snippet": "$middleware = array_values(array_filter(\n            (array) ($httpConfig['middleware'] ?? ['api']),"
+          },
+          {
+            "file": "packages/laravel-capabilities/config/capabilities.php",
+            "line": 64,
+            "snippet": "'middleware' => ['api', 'auth:sanctum'],"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Http/HttpAuthGate.php",
+            "line": 27,
+            "snippet": "public const PROTECTED includes ROUTE_AUTH_TOKEN and ROUTE_AUTH_DEVICE"
+          }
+        ],
+        "current_state": "All capability routes share one middleware list from surfaces.http.middleware. Auth token/device/oauth callback routes are also listed in HttpAuthGate::PROTECTED requiring authenticated presentation.",
+        "recommended_state": "Per-route middleware: public or guest middleware for token/device/oauth callback (with CSRF/state where needed); auth:sanctum for list/describe/invoke/approvals. Gate should not treat auth issuance as already-authenticated.",
+        "rationale": "CLI/device OAuth cannot bootstrap if issuance endpoints require the token they issue. Homogeneous middleware is a structural block for D-009 CLI client flows.",
+        "implementation_hint": "Extend RouteTable route defs with middleware_override; HttpRouteRegistrar merges group + per-route middleware.",
+        "score": 12.75
+      }
+    ],
+    "medium": [
+      {
+        "id": "X-008",
+        "title": "Wire PHPStan (config + CI); cover messaging package",
+        "category": "ci_cd",
+        "severity": "medium",
+        "effort": "medium",
+        "impact": [
+          "maintainability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "composer.json",
+            "line": 14,
+            "snippet": "\"phpstan/phpstan\": \"^2.0\""
+          },
+          {
+            "file": "packages/laravel-capabilities/composer.json",
+            "line": 31,
+            "snippet": "\"phpstan/phpstan\": \"^2.0\""
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/composer.json",
+            "line": 27,
+            "snippet": "\"require-dev\": { \"pestphp/pest\": \"^3.0\" }"
+          },
+          {
+            "file": "AGENTS.md",
+            "line": 162,
+            "snippet": "PHPStan max on package code when CI lands."
+          }
+        ],
+        "current_state": "phpstan/phpstan is in monorepo and core require-dev, but there is no `phpstan.neon` / `phpstan.neon.dist` anywhere outside vendor, no composer script, and no CI job. Messaging has no phpstan dep. AGENTS.md defers 'PHPStan max \u2026 when CI lands' \u2014 residual still open.",
+        "recommended_state": "Add package-level (or monorepo paths) phpstan.neon at max level for both PHP packages, composer scripts `analyse` / `analyse:core` / `analyse:messaging`, and a CI job. Messaging should require-dev phpstan like core.",
+        "rationale": "Static analysis is declared as a quality bar for package code but is inert today; install cost without enforcement.",
+        "implementation_hint": "phpstan.neon with paths packages/*/src, level max; baseline file if needed; `\"analyse\": \"phpstan analyse\"` in root composer.json; add to tests workflow.",
+        "score": 9.0
+      },
+      {
+        "id": "L-011",
+        "title": "CoverageGreen boost suites risk gaming the 95% floor",
+        "category": "testing",
+        "severity": "medium",
+        "effort": "medium",
+        "impact": [
+          "maintainability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/tests/Unit/CoverageGreen/CoverageBoostTest.php",
+            "line": 6,
+            "snippet": "REQ-016: exercise remaining uncovered unit paths so package line coverage \u226595%."
+          },
+          {
+            "file": "packages/laravel-capabilities/tests/Unit/CoverageGreen/CoverageBoost2Test.php",
+            "line": 1,
+            "snippet": "CoverageBoost2Test.php (~686 lines)"
+          }
+        ],
+        "current_state": "Four large CoverageBoost* files (~2.2k lines) exist specifically to raise line coverage. AGENTS.md forbids gaming coverage with weak asserts or shipping dead code for %.",
+        "recommended_state": "Fold high-value asserts into domain-named suites (pipeline, HTTP, approval); delete pure line-chasing cases; prefer mutation-resistant asserts. Keep coverage \u226595% via real scenarios from requirements-inventory.",
+        "rationale": "Line coverage with bulk boost files can mask untested behaviour while satisfying the numeric gate, undermining the monorepo's 'tests define the product' contract.",
+        "implementation_hint": "Run pest --coverage and inventory which boost cases only touch getters; migrate residual paths into existing Unit/* matrices with behavioural expects.",
+        "score": 9.0
+      }
+    ],
+    "enhancements": [
+      {
+        "id": "X-014",
+        "title": "Document messaging env vars in a package .env.example",
+        "category": "secrets_config",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "dx",
+          "security"
+        ],
+        "locations": [
+          {
+            "file": ".gitignore",
+            "line": 20,
+            "snippet": ".env\n.env.*\n!.env.example"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/config/capabilities-messaging.php",
+            "line": 10,
+            "snippet": "'bot_token' => env('TELEGRAM_BOT_TOKEN'),\n'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET'),"
+          }
+        ],
+        "current_state": "`.env` is correctly gitignored and `!.env.example` is allowed, but no `.env.example` exists anywhere. Telegram tokens/webhook secrets and host capability env keys are only discoverable by reading config PHP or user-guide prose.",
+        "recommended_state": "Add `packages/laravel-capabilities-messaging/.env.example` (and optionally core) listing keys with empty/placeholder values, no real secrets.",
+        "rationale": "Host integrators need a checklist of required secrets; empty examples reduce misconfiguration of webhook security. Not critical because this is a library, not a deployable app.",
+        "implementation_hint": "TELEGRAM_BOT_TOKEN=\nTELEGRAM_WEBHOOK_SECRET=\nCAPABILITIES_MESSAGING_AGENT_PROFILE=support\n# never set CAPABILITIES_SKIP_BOOT_CHECKS in production",
+        "score": 5.0
+      },
+      {
+        "id": "X-015",
+        "title": "Add CONTRIBUTING.md pointing at monorepo test commands",
+        "category": "documentation",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "README.md",
+            "line": 81,
+            "snippet": "composer test / test:core / test:messaging / test:cli"
+          },
+          {
+            "file": "AGENTS.md",
+            "line": 1,
+            "snippet": "Agent-oriented policy; no human CONTRIBUTING.md"
+          }
+        ],
+        "current_state": "Strong README, docs/, and AGENTS.md exist, but there is no CONTRIBUTING.md for human contributors covering PR expectations, unit-only policy, package split implications, and required local checks.",
+        "recommended_state": "Short CONTRIBUTING.md at monorepo root (and a one-liner in package READMEs linking to monorepo CONTRIBUTING for source development).",
+        "rationale": "Open-source multi-package intent benefits from a human entrypoint that is not agent-policy prose.",
+        "implementation_hint": "Cover: fork/clone, composer install, go test, unit-only rule, no feature/DB tests, do not commit secrets, PR must keep package docs self-contained after split.",
+        "score": 5.0
+      },
+      {
+        "id": "X-017",
+        "title": "Fail closed early when SPLIT_GITHUB_TOKEN is missing",
+        "category": "ci_cd",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "dx",
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": ".github/workflows/split-packages.yml",
+            "line": 54,
+            "snippet": "SPLIT_TOKEN: ${{ secrets.SPLIT_GITHUB_TOKEN }}"
+          },
+          {
+            "file": ".github/workflows/split-packages.yml",
+            "line": 70,
+            "snippet": "remote=\"https://x-access-token:${SPLIT_TOKEN}@github.com/${TARGET_REPO}.git\""
+          }
+        ],
+        "current_state": "Workflow documents the secret in comments but does not assert non-empty `SPLIT_TOKEN` before clone/push. Empty secret yields opaque git auth failures mid-job after rsync work.",
+        "recommended_state": "First run step: if `SPLIT_TOKEN` empty, echo clear setup instructions and `exit 1`.",
+        "rationale": "Operator DX for monorepo setup residual; reduces time-to-diagnose misconfigured forks/mirrors.",
+        "implementation_hint": "After `set -euo pipefail`: `if [[ -z \"${SPLIT_TOKEN:-}\" ]]; then echo 'Set repo secret SPLIT_GITHUB_TOKEN'; exit 1; fi`",
+        "score": 5.0
+      },
+      {
+        "id": "X-016",
+        "title": "Add Laravel Pint (or document deliberate absence)",
+        "category": "dependency_hygiene",
+        "severity": "low",
+        "effort": "small",
+        "impact": [
+          "dx",
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": "composer.json",
+            "line": 12,
+            "snippet": "require-dev: pestphp/pest, phpstan/phpstan \u2014 no laravel/pint"
+          }
+        ],
+        "current_state": "No first-party Pint config or script. laravel/pint appears only transitively in the local lock via other packages, not as a project tool. No formatter CI.",
+        "recommended_state": "Require-dev `laravel/pint`, add `pint.json` if needed, composer script `format`, and optional CI `--test` mode \u2014 or explicitly document in AGENTS.md that formatting is editor-only.",
+        "rationale": "Laravel package ecosystem norm; reduces style noise in large core package (151 PHP src files). Low severity pre-Packagist.",
+        "implementation_hint": "`composer require --dev laravel/pint` at monorepo; `\"format\": \"pint\"`, `\"format:check\": \"pint --test\"` on packages/*/src.",
+        "score": 4.25
+      }
+    ]
+  },
+  "dropped_count": 0,
+  "warnings": [],
+  "meta": {
+    "auditors": [
+      {
+        "auditor": "cross-cutting-auditor",
+        "file": "findings-cross-cutting.json",
+        "scanned_files_count": 52,
+        "notes": "Scope: Laravel package monorepo + Go CLI \u2014 not a full application. Skipped or N/A for package libraries: frontend a11y, frontend bundle budgets, app APM/Sentry (host concern), Docker/Forge deploy, staging schema drift. Secrets scan found no real API keys; only test tokens (e.g. packages/capabilities-cli/internal/api/api_test.go). .env correctly gitignored. Database migrations under packages/laravel-capabilities/database/migrations look well-indexed with PKs (approvals, idempotency, audit_outbox); messaging migrations dir is empty (.gitkeep only). Docs quality is strong (docs/spec.md, versioning, per-package user guides, CHANGELOGs); relative monorepo links from packages appear avoided. No git tags yet on monorepo. Commit messages in recent history are structured (REQ-*/merge/chore), not wip/fix noise. Observability/ops findings intentionally omitted as residual for consumer apps, not the package bus itself."
+      },
+      {
+        "auditor": "laravel-auditor",
+        "file": "findings-laravel.json",
+        "scanned_files_count": 184,
+        "notes": "Monorepo of Laravel packages + Go CLI (not a full Laravel app). Adapted scan plan to packages/laravel-capabilities and packages/laravel-capabilities-messaging (src/config/routes/database/tests sample). Respect AGENTS.md: unit tests only, no Feature/DB test recommendations; messaging must stay out of core; one registry run() path is well-enforced in architecture unit suites. Positive observations: CallerDeriver rejects header-alone upgrades; ApprovalController blocks SystemActor; Telegram webhook secret uses hash_equals; QueryTableGateway refuses silent Array fallback; core migrations have sensible indexes/unique keys; capability authorize callables are honored when present. Do not treat CoverageGreen as proof of behavioural completeness. Go CLI only flagged where PHP package HTTP auth stubs affect the client."
+      }
+    ],
+    "total_findings": 30,
+    "severity_counts": {
+      "critical": 2,
+      "high": 10,
+      "medium": 14,
+      "low": 4
+    },
+    "effort_counts": {
+      "trivial": 13,
+      "small": 10,
+      "medium": 7,
+      "large": 0
+    }
+  }
+}

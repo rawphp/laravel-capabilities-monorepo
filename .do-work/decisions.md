@@ -32,3 +32,4 @@
 2026-07-28 | UR-011 | layer "core" out of scope | user answered "No" at layer-coverage prompt
 2026-07-28 | UR-011 | layer "messaging" out of scope | user answered "No" at layer-coverage prompt
 2026-07-28 | UR-011 | package-owned GoReleaser release on mirrored v* tags; secret-gated full platform signing; replace release on retag | question + capture
+2026-07-31 | UR-012 | architecture-analyst fix capture prioritized critical/high/QW; deferred L-006 X-005 L-011 polish | focused ship
