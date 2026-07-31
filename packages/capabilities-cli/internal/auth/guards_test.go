@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"testing"
 
 	"github.com/rawphp/capabilities-cli/internal/api"
@@ -65,7 +66,7 @@ func TestStatusshowsloggedin(t *testing.T) {
 func TestLoginfailsonnetworkerror(t *testing.T) {
 	st := tempStore(t)
 	c := api.NewClient("http://127.0.0.1:1", "")
-	_, err := LoginDeviceCode(t.Context(), st, c, "default", "http://127.0.0.1:1")
+	_, err := LoginDeviceCode(context.Background(), st, c, "default", "http://127.0.0.1:1")
 	if err == nil {
 		t.Fatal("expected network error")
 	}
