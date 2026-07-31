@@ -576,6 +576,11 @@ final class CapabilityRegistry implements CapabilityBus
         return $this;
     }
 
+    public function rateLimiter(): RateLimiter
+    {
+        return $this->rateLimiter;
+    }
+
     public function withScopeResolver(ScopeResolver $resolver): self
     {
         $this->scopeResolver = $resolver;

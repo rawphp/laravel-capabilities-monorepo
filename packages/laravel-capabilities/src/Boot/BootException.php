@@ -39,8 +39,12 @@ final class BootException extends RuntimeException
 
     public static function unknownDriver(string $kind, string $requested): self
     {
+        $supported = $kind === 'rate_limits.driver'
+            ? 'memory, in_memory, array, cache'
+            : 'memory, in_memory, array, database';
+
         return new self(
-            "Unknown capabilities config driver for [{$kind}]: \"{$requested}\". Supported: memory, in_memory, array, database."
+            "Unknown capabilities config driver for [{$kind}]: \"{$requested}\". Supported: {$supported}."
         );
     }
 
@@ -57,6 +61,15 @@ final class BootException extends RuntimeException
             "Database driver for table [{$table}] requires an Illuminate database connection "
             .'(inject ConnectionInterface, bind db.connection, or set approval.connection / '
             .'idempotency.connection). Refusing silent ArrayTableGateway fallback (REQ-051).'
+        );
+    }
+
+    public static function missingRateLimitCache(): self
+    {
+        return new self(
+            'rate_limits.driver=cache requires a RateLimitCache (wrap Illuminate cache.store / '
+            .'Illuminate\\Contracts\\Cache\\Repository, or inject ArrayRateLimitCache in unit tests). '
+            .'Refusing process-local InMemoryRateLimiter fallback under cache driver (L-008 / multi-worker).'
         );
     }
 }

@@ -3,10 +3,12 @@
 namespace Rawphp\Capabilities\Contracts;
 
 /**
- * Rate-limit attempts keyed by actor + capability + surface (D-013).
+ * Rate-limit attempts keyed by actor + capability + surface (D-013 / L-008).
  *
- * Production may wrap Laravel's RateLimiter; unit tests inject
- * {@see \Rawphp\Capabilities\Support\InMemoryRateLimiter}.
+ * Production multi-worker hosts use {@see \Rawphp\Capabilities\Support\LaravelCacheRateLimiter}
+ * over a shared {@see RateLimitCache} (Illuminate Cache / Redis). Unit tests inject
+ * {@see \Rawphp\Capabilities\Support\InMemoryRateLimiter} or LaravelCacheRateLimiter
+ * with {@see \Rawphp\Capabilities\Support\ArrayRateLimitCache} — never live Redis.
  */
 interface RateLimiter
 {
