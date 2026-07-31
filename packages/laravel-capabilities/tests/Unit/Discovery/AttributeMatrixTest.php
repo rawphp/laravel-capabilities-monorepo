@@ -74,7 +74,8 @@ it('edge: definition surfaces [empty] yields no exposure [SURF-001]', function (
 });
 
 foreach (['optional', 'required', 'none', false] as $flag) {
-    $label = var_export($flag, true);
+    // Inventory/generator uses Python repr: strings as 'optional', bool as False (not PHP var_export false).
+    $label = is_bool($flag) ? ($flag ? 'True' : 'False') : var_export($flag, true);
     it("happy: idempotent flag {$label} stored on definition [D-005]", function () use ($flag, $label) {
         $registry = DiscoveryHelpers::registry();
         $def = DiscoveryHelpers::mutatingWith($registry, 'idem-'.md5((string) $label), [
