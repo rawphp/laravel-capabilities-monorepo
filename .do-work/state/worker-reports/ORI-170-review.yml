@@ -1,0 +1,21 @@
+status: passed
+reason: ""
+findings: []
+evidence_checked:
+  - AC1
+  - AC2
+  - AC3
+  - AC4
+  - verification-step-1
+changed_files:
+  - path: packages/laravel-capabilities/src/Schema/CatalogPresenter.php
+  - path: packages/laravel-capabilities/src/Registry/CapabilityRegistry.php
+  - path: packages/laravel-capabilities/src/Boot/BootGuard.php
+  - path: packages/laravel-capabilities/src/Boot/BootException.php
+  - path: packages/laravel-capabilities/tests/Unit/Catalog/CliCatalogWireTest.php
+  - path: packages/laravel-capabilities/tests/Unit/Registry/CliPairCollisionTest.php
+risk_triggers: []
+policy:
+  check: check-policy
+  status: clear
+  diagnostics: []

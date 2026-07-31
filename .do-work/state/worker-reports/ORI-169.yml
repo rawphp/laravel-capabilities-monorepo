@@ -1,0 +1,67 @@
+req: ORI-169
+status: done
+commit: 6e82466
+reason: ""
+details: |
+  Added optional CLI routing metadata (cliDomain/cliVerb) to CapabilityDefinition,
+  fluent builder ->cli(domain, verb), #[Capability] attribute params, and AttributeDiscoverer mapping.
+  Validation fail-closed: both required when either set; tokens [a-z][a-z0-9-]*; reserved meta domains rejected.
+  TDD: 13 new unit tests red then green; full Discovery suite 147 passed.
+isolation: worktree
+feature_branch: req/ORI-169
+worktree_path: /Users/tomkaczocha/EA/projects/laravel-capabilities-monrepo/.worktrees/req-ori-169
+base_branch: main
+closure_proof: "checkpoint_log:passed (1/1 test) commit:6e82466 Discovery suite 147 passed including CliRoutingMetadataTest 13/13"
+last_good_step: 1
+failed_step: 0
+checkpoint_log:
+  status: passed
+  checkpoints:
+    - step: 1
+      total: 1
+      type: test
+      command: "./vendor/bin/pest --configuration=packages/laravel-capabilities/phpunit.xml packages/laravel-capabilities/tests/Unit/Discovery/"
+      expected: "green; fail-closed cases assert InvalidArgumentException"
+      actual: "147 passed (311 assertions); CliRoutingMetadataTest 13 passed (28 assertions)"
+      status: passed
+      handoff: "definition API -> unit verification"
+deferred_checks: []
+acceptance:
+  AC1:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/laravel-capabilities/tests/Unit/Discovery/CliRoutingMetadataTest.php::happy fluent/attribute store domain+verb"
+      - type: file
+        ref: "packages/laravel-capabilities/src/Registry/CapabilityDefinitionBuilder.php::cli()"
+  AC2:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/laravel-capabilities/tests/Unit/Discovery/CliRoutingMetadataTest.php::fail incomplete only domain/only verb"
+  AC3:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/laravel-capabilities/tests/Unit/Discovery/CliRoutingMetadataTest.php::invalid tokens + reserved meta domains"
+  AC4:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/laravel-capabilities/tests/Unit/Discovery/CliRoutingMetadataTest.php (present, omitted, incomplete, invalid, reserved)"
+milestone_complete: false
+milestone: ""
+retry_count: 0
+outputs:
+  - path: packages/laravel-capabilities/src/Registry/CapabilityDefinition.php
+    description: cliDomain/cliVerb props, RESERVED_CLI_DOMAINS, assertValidCliRouting()
+  - path: packages/laravel-capabilities/src/Registry/CapabilityDefinitionBuilder.php
+    description: fluent ->cli(domain, verb) wiring into definition
+  - path: packages/laravel-capabilities/src/Attributes/Capability.php
+    description: optional cliDomain/cliVerb attribute parameters
+  - path: packages/laravel-capabilities/src/Discovery/AttributeDiscoverer.php
+    description: maps attribute cli fields onto CapabilityDefinition
+  - path: packages/laravel-capabilities/tests/Unit/Discovery/CliRoutingMetadataTest.php
+    description: unit coverage present/omitted/incomplete/invalid/reserved
+  - path: packages/laravel-capabilities/tests/Fixtures/Capabilities/AttributedCreateInvoiceWithCli.php
+    description: attribute fixture with CLI routing for discovery tests

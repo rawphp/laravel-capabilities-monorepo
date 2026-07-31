@@ -1,0 +1,66 @@
+req: ORI-172
+status: done
+commit: 0c41254
+reason: ""
+details: "Implemented packages/capabilities-cli/internal/helpfmt: DeriveFields from input_schema (scalars/enums → flags, object/array/non-scalar → json-only flag null), human INPUT table + OUTPUT + examples, machine capability_help envelope, domain verb list human/machine. Wired thin helpers on cmd/capabilities/help.go for ORI-173 dispatch. go test ./internal/helpfmt/ ./cmd/capabilities/ green."
+isolation: worktree
+closure_proof: "checkpoint_log:passed commit:0c41254 go test ./internal/helpfmt/ ./cmd/capabilities/ green"
+last_good_step: 1
+failed_step: 0
+checkpoint_log:
+  status: passed
+  checkpoints:
+    - step: 1
+      total: 1
+      type: test
+      command: "go test ./internal/helpfmt/ ./cmd/capabilities/ (packages/capabilities-cli)"
+      expected: "structured asserts on fields[] and table columns; green"
+      actual: "ok github.com/rawphp/capabilities-cli/internal/helpfmt; ok github.com/rawphp/capabilities-cli/cmd/capabilities"
+      status: passed
+      handoff: "input_schema -> helpfmt fields -> human/machine envelopes"
+deferred_checks: []
+acceptance:
+  AC1:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/capabilities-cli/internal/helpfmt/fields_test.go::TestDeriveFields_exposesNameTypeRequiredPassMode"
+  AC2:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/capabilities-cli/internal/helpfmt/format_test.go::TestFormatMachineCapability_envelopeOKNoInvoke"
+  AC3:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/capabilities-cli/internal/helpfmt/fields_test.go::TestDeriveFields_objectAndArrayAreJSONOnly"
+  AC4:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/capabilities-cli/internal/helpfmt/fields_test.go::TestDeriveFields_scalarAndEnumAreFlags"
+  AC5:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/capabilities-cli/internal/helpfmt/fields_test.go"
+milestone_complete: false
+milestone: ""
+retry_count: 0
+outputs:
+  - path: packages/capabilities-cli/internal/helpfmt/fields.go
+    description: Field derivation — flag vs json-only, FlagName kebab, constraints
+  - path: packages/capabilities-cli/internal/helpfmt/fields_test.go
+    description: Unit tests for field derivation from sample input_schema
+  - path: packages/capabilities-cli/internal/helpfmt/format.go
+    description: Human capability/domain help + machine capability_help/domain_help envelopes
+  - path: packages/capabilities-cli/internal/helpfmt/format_test.go
+    description: Human/machine envelope and domain help unit tests
+  - path: packages/capabilities-cli/cmd/capabilities/help.go
+    description: Thin CapabilityHelpHuman/JSON + DomainHelpHuman/JSON wiring (no full dispatch)
+  - path: packages/capabilities-cli/cmd/capabilities/help_test.go
+    description: Wiring tests for schema help helpers
+feature_branch: req/ORI-172
+worktree_path: /Users/tomkaczocha/EA/projects/laravel-capabilities-monrepo/.worktrees/req-ori-172
+base_branch: main

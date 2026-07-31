@@ -1,0 +1,59 @@
+req: ORI-171
+status: done
+commit: a40ffb2
+reason: ""
+details: "Implemented packages/capabilities-cli/internal/synth with domain→verb→canonical index, mapping priority (cli metadata → mechanical .// split → none), incomplete-cli fail-closed, client collision (register neither + mapping_error), reserved domains never synthesized. Catalog CLIMeta + wire fields for cli/mapped_command/mapping_error. go test ./internal/synth/... green."
+isolation: worktree
+closure_proof: "checkpoint_log:passed commit:a40ffb2 go test ./internal/synth/... green"
+last_good_step: 1
+failed_step: 0
+checkpoint_log:
+  status: passed
+  checkpoints:
+    - step: 1
+      total: 1
+      type: test
+      command: "go test ./internal/synth/... (packages/capabilities-cli)"
+      expected: "green; table-driven mapping cases pass"
+      actual: "ok github.com/rawphp/capabilities-cli/internal/synth"
+      status: passed
+      handoff: "catalog cache types -> synth index"
+deferred_checks: []
+acceptance:
+  AC1:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/capabilities-cli/internal/synth/synth_test.go::TestBuildMappingPriority"
+  AC2:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/capabilities-cli/internal/synth/synth_test.go::TestBuildMappingPriority incomplete cases + TestResolveMappingUnit/incomplete"
+  AC3:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/capabilities-cli/internal/synth/synth_test.go::TestBuildCollisionDisablesBoth"
+  AC4:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/capabilities-cli/internal/synth/synth_test.go::TestBuildReservedDomainsNeverSynthesized"
+milestone_complete: false
+milestone: ""
+retry_count: 0
+outputs:
+  - path: packages/capabilities-cli/internal/synth/synth.go
+    description: Domain/verb index builder, ResolveMapping, collision + reserved policy
+  - path: packages/capabilities-cli/internal/synth/synth_test.go
+    description: Table-driven unit tests for mapping priority, collisions, reserved domains
+  - path: packages/capabilities-cli/internal/catalog/service.go
+    description: CLIMeta + CapabilitySummary cli/mapped_command/mapping_error fields
+  - path: packages/capabilities-cli/internal/catalog/cache.go
+    description: CacheEntry CLI field for describe cache
+  - path: packages/capabilities-cli/internal/catalog/catalog_test.go
+    description: CLI metadata list/describe parse tests
+feature_branch: req/ORI-171
+worktree_path: /Users/tomkaczocha/EA/projects/laravel-capabilities-monrepo/.worktrees/req-ori-171
+base_branch: main

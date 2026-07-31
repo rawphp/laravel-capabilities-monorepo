@@ -1,0 +1,9 @@
+req: ORI-175
+status: done
+commit: 66e1185
+details: >
+  flagschema.CollectFlags + MergeJSON wired into invokeCapability shared by run and domain/verb.
+  loadInput empty → {}; stdout always envelope; --human stderr summary.
+  go test ./... green.
+isolation: worktree
+feature_branch: req/ORI-175

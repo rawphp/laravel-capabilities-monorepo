@@ -1,0 +1,32 @@
+req: ORI-173
+status: done
+commit: 293f041
+reason: ""
+details: >
+  Argv dispatch: reserved meta wins; domain help / capability command; unknown exit 5
+  not_found envelope. Catalog enrichment mapped_command/mapping_error/cli. Domain --help
+  lists verbs; capability --help uses helpfmt. go test ./... green.
+isolation: worktree
+closure_proof: "go test ./... green commit:293f041"
+last_good_step: 1
+failed_step: 0
+checkpoint_log:
+  status: passed
+  checkpoints:
+    - step: 1
+      total: 1
+      type: test
+      command: "go test ./... (packages/capabilities-cli)"
+      expected: "dispatch and catalog JSON enrichment green"
+      actual: "all packages ok"
+      status: passed
+acceptance:
+  AC1: {status: passed}
+  AC2: {status: passed}
+  AC3: {status: passed}
+  AC4: {status: passed}
+  AC5: {status: passed}
+feature_branch: req/ORI-173
+worktree_path: /Users/tomkaczocha/EA/projects/laravel-capabilities-monrepo/.worktrees/req-ori-173
+base_branch: main
+agent_id: fizz-resume-ur002
