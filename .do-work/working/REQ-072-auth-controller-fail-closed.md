@@ -1,7 +1,13 @@
 # REQ-072: AuthController fail-closed without real issuer
 
+<!-- claimed-start -->
+**Claimed by:** Toms-MacBook-Pro.local.22569
+**Claimed at:** 2026-07-31T08:52:53Z
+**Heartbeat:** 2026-07-31T08:52:53Z
+<!-- claimed-end -->
+
 **UR:** UR-012
-**Status:** backlog
+**Status:** in-progress
 **Created:** 2026-07-31
 **Layer:** core
 **Entry point:**
