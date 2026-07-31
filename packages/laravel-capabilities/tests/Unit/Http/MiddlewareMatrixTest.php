@@ -23,7 +23,12 @@ foreach ($stacks as $label => $middleware) {
         ]);
         expect($routes)->not->toBeEmpty();
         foreach ($routes as $route) {
-            expect($route['middleware'])->toBe($middleware);
+            // Auth issuance strips auth:* (L-002); other routes keep full stack.
+            if (RouteTable::isAuthIssuanceRoute($route['key'])) {
+                expect($route['middleware'])->toBe(RouteTable::withoutAuthMiddleware($middleware));
+            } else {
+                expect($route['middleware'])->toBe($middleware);
+            }
         }
     });
 }

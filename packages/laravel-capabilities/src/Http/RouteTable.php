@@ -93,17 +93,54 @@ final class RouteTable
 
         $routes = [];
         foreach ($defs as [$key, $method, $uri, $name, $action]) {
+            // Auth issuance must not sit behind auth:sanctum (chicken-egg for CLI login) (L-002).
+            $routeMiddleware = self::isAuthIssuanceRoute($key)
+                ? self::withoutAuthMiddleware($middleware)
+                : $middleware;
+
             $routes[] = [
                 'key' => $key,
                 'method' => $method,
                 'uri' => $uri,
                 'name' => $name,
                 'action' => $action,
-                'middleware' => $middleware,
+                'middleware' => $routeMiddleware,
             ];
         }
 
         return $routes;
+    }
+
+    /**
+     * Auth token/device/oauth routes (issuance endpoints, not capability invoke).
+     */
+    public static function isAuthIssuanceRoute(string $key): bool
+    {
+        return in_array($key, [
+            self::ROUTE_AUTH_TOKEN,
+            self::ROUTE_AUTH_DEVICE,
+            self::ROUTE_AUTH_OAUTH_CALLBACK,
+        ], true);
+    }
+
+    /**
+     * Strip Laravel auth middleware so token issuance is reachable before login.
+     *
+     * @param  list<string>  $middleware
+     * @return list<string>
+     */
+    public static function withoutAuthMiddleware(array $middleware): array
+    {
+        return array_values(array_filter(
+            $middleware,
+            static function ($m) {
+                if (! is_string($m) || $m === '') {
+                    return false;
+                }
+
+                return $m !== 'auth' && ! str_starts_with($m, 'auth:');
+            },
+        ));
     }
 
     /**

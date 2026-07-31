@@ -8,6 +8,7 @@ use Rawphp\Capabilities\Adapters\Http\ApprovalController;
 use Rawphp\Capabilities\Adapters\Http\AuthController;
 use Rawphp\Capabilities\Adapters\Http\CapabilityController;
 use Rawphp\Capabilities\Approval\ApprovalManager;
+use Rawphp\Capabilities\Contracts\AuthTokenIssuer;
 use Rawphp\Capabilities\Http\HttpAuthGate;
 use Rawphp\Capabilities\Http\HttpRequestContext;
 use Rawphp\Capabilities\Http\RouteTable;
@@ -70,9 +71,14 @@ final class HttpHelpers
         }
 
         $approvalController = new ApprovalController($approvals, $httpConfig);
+        /** @var AuthTokenIssuer|null $issuer */
+        $issuer = array_key_exists('issuer', $opts)
+            ? $opts['issuer']
+            : null;
         $auth = new AuthController(
             $httpConfig,
             $opts['cli'] ?? ['enabled' => true],
+            $issuer instanceof AuthTokenIssuer ? $issuer : null,
         );
 
         return [
@@ -157,5 +163,47 @@ final class HttpHelpers
         bool $domainCommitted = false,
     ): FakeCapabilityBus {
         return new FakeCapabilityBus($invokeResult, $catalog, $domainCommitted);
+    }
+
+    /**
+     * In-memory AuthTokenIssuer for unit tests (L-002). Never used as production default.
+     *
+     * @param  array<string, mixed>  $overrides  keys: token|device|oauth → response arrays
+     */
+    public static function fakeAuthTokenIssuer(array $overrides = []): AuthTokenIssuer
+    {
+        return new class($overrides) implements AuthTokenIssuer
+        {
+            /** @param array<string, mixed> $overrides */
+            public function __construct(private readonly array $overrides) {}
+
+            public function issueToken(HttpRequestContext $request, array $body): array
+            {
+                return $this->overrides['token'] ?? [
+                    'token_type' => 'Bearer',
+                    'access_token' => 'host-issued-token',
+                    'expires_in' => 3600,
+                ];
+            }
+
+            public function issueDeviceCode(HttpRequestContext $request, array $body): array
+            {
+                return $this->overrides['device'] ?? [
+                    'device_code' => 'host-device-code',
+                    'user_code' => 'HOST-USER',
+                    'verification_uri' => 'https://example.test/device',
+                    'expires_in' => 600,
+                    'interval' => 5,
+                ];
+            }
+
+            public function handleOAuthCallback(HttpRequestContext $request, array $query): array
+            {
+                return $this->overrides['oauth'] ?? [
+                    'status' => 'authorized',
+                    'code' => $query['code'] ?? null,
+                ];
+            }
+        };
     }
 }

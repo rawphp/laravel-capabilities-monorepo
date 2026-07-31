@@ -85,7 +85,7 @@ it("edge: Accept vnd.capabilities.cli+json only changes presentation envelope [D
 });
 
 it("happy: AuthController serves token and device-code for CLI and API clients [D-009]", function () {
-    $auth = new AuthController(['enabled' => true], ['enabled' => true]);
+    $auth = new AuthController(['enabled' => true], ['enabled' => true], HttpHelpers::fakeAuthTokenIssuer());
     expect($auth->tokenFlowAvailable())->toBeTrue()
         ->and($auth->deviceCodeFlowAvailable())->toBeTrue()
         ->and($auth->registeredFlows())->toContain(RouteTable::ROUTE_AUTH_TOKEN)

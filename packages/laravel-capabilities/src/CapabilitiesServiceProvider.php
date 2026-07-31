@@ -20,6 +20,7 @@ use Rawphp\Capabilities\Boot\CapabilitiesConfig;
 use Rawphp\Capabilities\Boot\ContainerBindings;
 use Rawphp\Capabilities\Boot\RegistrationPlan;
 use Rawphp\Capabilities\Boot\SurfaceNames;
+use Rawphp\Capabilities\Contracts\AuthTokenIssuer;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\Metrics;
@@ -155,7 +156,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
             $http = is_array($config['surfaces']['http'] ?? null) ? $config['surfaces']['http'] : [];
             $cli = is_array($config['surfaces']['cli'] ?? null) ? $config['surfaces']['cli'] : [];
 
-            return new AuthController($http, $cli);
+            return new AuthController($http, $cli, self::boundAuthTokenIssuerOrNull($app));
         });
 
         $this->app->singleton(ApprovalController::class, function ($app) {
@@ -178,6 +179,24 @@ class CapabilitiesServiceProvider extends ServiceProvider
         $this->app->singleton(IlluminateApprovalController::class, static fn ($app) => new IlluminateApprovalController(
             $app->make(ApprovalController::class),
         ));
+    }
+
+    /**
+     * Host-bound AuthTokenIssuer for CLI/API token issuance (L-002).
+     * Unbound → AuthController fails closed with not_configured.
+     */
+    private static function boundAuthTokenIssuerOrNull(object $app): ?AuthTokenIssuer
+    {
+        try {
+            if (method_exists($app, 'bound') && ! $app->bound(AuthTokenIssuer::class)) {
+                return null;
+            }
+            $issuer = $app->make(AuthTokenIssuer::class);
+
+            return $issuer instanceof AuthTokenIssuer ? $issuer : null;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
