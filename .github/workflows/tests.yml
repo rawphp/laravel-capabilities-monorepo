@@ -1,0 +1,55 @@
+# Monorepo unit suites (PHP core + messaging, Go CLI).
+# Unit-only: no feature/DB services, no Redis, no full app boot.
+# Reusable via workflow_call so split-packages can gate mirrors on green tests.
+
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  php:
+    name: PHP unit (core + messaging)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, xml, dom, tokenizer
+          coverage: none
+          tools: composer:v2
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Pest unit suites (composer test)
+        run: composer test
+
+  go:
+    name: Go unit (capabilities-cli)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/capabilities-cli
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/capabilities-cli/go.mod
+          cache-dependency-path: packages/capabilities-cli/go.sum
+
+      - name: go test
+        run: go test ./...
