@@ -242,9 +242,16 @@ func TestExecuteHelpSubcommands(t *testing.T) {
 }
 
 func TestExecuteUnknownCommand(t *testing.T) {
-	code, _, errb := CaptureExecute([]string{"nope"}, t.TempDir(), nil)
-	if code == 0 || !strings.Contains(errb, "unknown") {
-		t.Fatal(code, errb)
+	code, out, errb := CaptureExecute([]string{"nope"}, t.TempDir(), nil)
+	// Unknown domain/command → exit 5 not_found envelope (ORI-173).
+	if code != api.ExitDomain {
+		t.Fatalf("exit=%d want %d stderr=%s stdout=%s", code, api.ExitDomain, errb, out)
+	}
+	if !strings.Contains(errb, "unknown") && !strings.Contains(out, "unknown") {
+		t.Fatal(code, errb, out)
+	}
+	if !strings.Contains(out, "not_found") {
+		t.Fatalf("expected not_found envelope on stdout: %s", out)
 	}
 }
 
@@ -306,8 +313,8 @@ func TestExecuteRunServerErrorMapping(t *testing.T) {
 func TestExecuteSubcommandHelpFlags(t *testing.T) {
 	// Help must win before auth/network for every top-level command that used to ignore trailing --help.
 	cases := []struct {
-		args    []string
-		needle  string
+		args     []string
+		needle   string
 		emptyCfg bool
 	}{
 		{[]string{"mcp", "--help"}, "MCP stdio", true},
