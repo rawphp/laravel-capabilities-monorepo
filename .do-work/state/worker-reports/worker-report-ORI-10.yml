@@ -1,0 +1,48 @@
+req: ORI-10
+status: done
+commit: f77190e
+isolation: worktree
+closure_proof: "checkpoint_log:passed (2/2) commit:f77190e"
+last_good_step: 2
+failed_step: 0
+checkpoint_log:
+  status: passed
+  checkpoints:
+    - step: 1
+      total: 2
+      type: test
+      command: "composer test:core -- --filter=AttributeMatrix"
+      expected: "all AttributeMatrix tests pass"
+      actual: "27 passed"
+      status: passed
+    - step: 2
+      total: 2
+      type: runtime
+      command: "python3 tools/report_inventory_gaps.py"
+      expected: "0 AttributeMatrix gaps"
+      actual: "AttributeMatrixTest absent from remaining gaps"
+      status: passed
+acceptance:
+  AC1:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/laravel-capabilities/tests/Unit/Discovery/AttributeMatrixTest.php"
+  AC2:
+    status: passed
+    evidence:
+      - type: test
+        ref: "composer test:core -- --filter=AttributeMatrix"
+  AC3:
+    status: passed
+    evidence:
+      - type: test
+        ref: "composer test:core -- --filter=AttributeMatrix"
+  AC4:
+    status: passed
+    evidence:
+      - type: runtime_check
+        ref: "python3 tools/report_inventory_gaps.py"
+outputs:
+  - path: packages/laravel-capabilities/tests/Unit/Discovery/AttributeMatrixTest.php
+    description: "False title"

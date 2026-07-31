@@ -1,0 +1,48 @@
+req: ORI-11
+status: done
+commit: 4ac91d6
+isolation: worktree
+closure_proof: "checkpoint_log:passed commit:4ac91d6"
+last_good_step: 2
+failed_step: 0
+checkpoint_log:
+  status: passed
+  checkpoints:
+    - step: 1
+      total: 2
+      type: test
+      command: "./vendor/bin/pest packages/laravel-capabilities/tests/Unit/Http/AuthControllerMatrixTest.php"
+      expected: "all pass"
+      actual: "6 passed"
+      status: passed
+    - step: 2
+      total: 2
+      type: runtime
+      command: "python3 tools/report_inventory_gaps.py"
+      expected: "zero AuthControllerMatrix unmatched"
+      actual: "no AuthControllerMatrix gaps"
+      status: passed
+acceptance:
+  AC1:
+    status: passed
+    evidence:
+      - type: test
+        ref: "packages/laravel-capabilities/tests/Unit/Http/AuthControllerMatrixTest.php"
+  AC2:
+    status: passed
+    evidence:
+      - type: test
+        ref: "AuthControllerMatrixTest.php happy paths"
+  AC3:
+    status: passed
+    evidence:
+      - type: test
+        ref: "fail cases when http disabled"
+  AC4:
+    status: passed
+    evidence:
+      - type: runtime_check
+        ref: "python3 tools/report_inventory_gaps.py"
+outputs:
+  - path: packages/laravel-capabilities/tests/Unit/Http/AuthControllerMatrixTest.php
+    description: "titles aligned"

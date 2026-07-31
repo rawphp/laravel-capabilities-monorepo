@@ -1,51 +1,28 @@
-# Project context pack — laravel-capabilities
+# Context pack — laravel-capabilities monorepo
 
-## Architecture
-Product capability bus monorepo: define product operations once (capability with schema, authz, single `run()`, approval, audit) and expose via many surfaces (agent, MCP, HTTP, CLI, jobs). Core package is the choke point; messaging and Go CLI are adapters/clients. Status: unit-complete design, not Packagist-published, not stable public API.
+## Product
+Product capability bus for Laravel: one domain capability → many surfaces.
+Packages: rawphp/laravel-capabilities (core), rawphp/laravel-capabilities-messaging, rawphp/capabilities-cli (Go).
 
-## Packages
-- `packages/laravel-capabilities` — core bus (`Rawphp\Capabilities\`): registry, schema, HTTP, AI/MCP/job adapters, approval SM, audit, scope, idempotency, conversation contracts
-- `packages/laravel-capabilities-messaging` — Telegram first (`Rawphp\CapabilitiesMessaging\`): webhooks, identity, threads; implements core contracts only
-- `packages/capabilities-cli` — Go product CLI (`capabilities`): HTTP client for auth/catalog/run/MCP stdio
+## Layout
+- packages/laravel-capabilities/src + tests/Unit
+- packages/laravel-capabilities-messaging/
+- packages/capabilities-cli/
+- docs/spec.md (design oracle)
+- docs/requirements-inventory.md (spec → unit checklist)
+- tools/report_inventory_gaps.py, tools/sync_requirements_inventory.py, tools/generate_requirement_stubs.py
 
-## Directory roles
-- `docs/spec.md` — design bible (D-002–D-023, pipeline, surfaces)
-- `docs/requirements-inventory.md` — every normative scenario → unit test checklist
-- `docs/versioning.md` — release/versioning honesty
-- `docs/tutorials/first-capability.md` — consumer first capability tutorial
-- `tools/generate_requirement_stubs.py` — generator for inventory + Pest/Go stubs
-- Root `composer.json` path-requires PHP packages; CLI is Go (`go.mod`)
+## Testing policy (hard)
+- Unit tests only; zero feature/DB tests
+- Mock IO boundaries; ≥95% coverage floor
+- composer test:core | test:messaging | test:cli | test
 
-## Key modules (core) — UR-008 hotspots
-- `CapabilityRegistry` — single invoke choke point; `withApprovalStore`, `withIdempotencyStore`, `withAuditConfig`/`withAuditWriter`, `withScopeResolver`, surface helpers
-- `Boot/ContainerBindings.php` — `makeRegistry` (currently bare: SystemClock only), `makeApprovalManager`, `makeIdempotencyStore`
-- `CapabilitiesServiceProvider` — binds registry / ApprovalManager / IdempotencyStore singletons
-- `Persistence/TableGateway.php` + `ArrayTableGateway` — persistence isolation; Database*Store use gateway
-- Pipeline stages: validate → hydrate → actor → scope → idempotency → authorize → approval → rateLimit → run → output → audit
-- HTTP capability API (single tree; CLI is remote client)
+## Inventory matching
+- Gap report matches Pest titles to inventory cases (matrix-aware)
+- Python False vs PHP false can drift titles
+- happy:/fail: prefixes matter for RouteRegistration matrix
 
-## Testing (non-negotiable)
-- **Unit tests only** — zero feature tests, no DB required
-- Mock/fake all IO: stores, HTTP, laravel/ai, laravel/mcp, queues, clock, TableGateway
-- Coverage ≥95% on each PHP package `src/`
-- Run: `composer test:core` · `composer test:messaging` · `composer test:cli` · `composer test` (both PHP)
-- Layout: each package owns `tests/Unit/**` (Pest) or `*_test.go`
-- Prefer injectable connection/query fakes for QueryTableGateway — not RefreshDatabase
-
-## Naming & conventions
-- PHP: Laravel 11+/12, PHP ^8.2; namespaces above; DTOs typed (`CapabilityData`); JSON Schema from DTOs
-- Fail closed; no dual mutation paths; server-derived caller (never client-claimed)
-- Go CLI validates schema for UX only; server re-validates
-
-## Suite commands
-- `composer test` (core + messaging)
-- `composer test:core` / `test:messaging` / `test:cli`
-- Worktree link: vendor, packages/laravel-capabilities/vendor, packages/laravel-capabilities-messaging/vendor
-- Setup: `composer install --no-interaction`
-
-## Constraints
-- Do not put messaging Bot API inside core
-- Do not reimplement LLM/MCP wire protocols
-- Do not add Feature tests or require DB
-- Spec conflicts: update tests intentionally with docs/spec.md as oracle
-- Standing decisions in `.do-work/decisions.md` are constraints
+## Conventions
+- tracker.backend: linear — commits: feat(ORI-N): … Issue: ORI-N / UR: UR-001
+- Branch: req/ORI-N worktree: .worktrees/req-ori-n
+- Claim marker: <!-- laravel-capabilities-claim -->

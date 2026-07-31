@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900" role="img" aria-label="Laravel Capabilities architecture">
+  <defs>
+    <style>
+      .bg { fill: #0f1419; }
+      .panel { fill: #1a2332; stroke: #3d4f66; stroke-width: 2; rx: 12; }
+      .panel-core { fill: #152238; stroke: #4cc9f0; stroke-width: 3; rx: 14; }
+      .panel-domain { fill: #1a2e1f; stroke: #5ecf7a; stroke-width: 2; rx: 12; }
+      .panel-msg { fill: #1f1a2e; stroke: #a78bfa; stroke-width: 2; stroke-dasharray: 8 5; rx: 12; }
+      .box { fill: #243044; stroke: #5a7190; stroke-width: 1.5; rx: 8; }
+      .box-hi { fill: #1e3a4a; stroke: #4cc9f0; stroke-width: 2; rx: 8; }
+      .stage { fill: #2a3548; stroke: #6b829e; stroke-width: 1.2; rx: 6; }
+      .title { fill: #f0f4f8; font: 700 28px Inter, system-ui, sans-serif; }
+      .subtitle { fill: #9fb3c8; font: 400 15px Inter, system-ui, sans-serif; }
+      .lane { fill: #7dd3fc; font: 700 13px Inter, system-ui, sans-serif; letter-spacing: 0.08em; }
+      .label { fill: #e8eef5; font: 600 15px Inter, system-ui, sans-serif; }
+      .small { fill: #b8c7d9; font: 400 13px Inter, system-ui, sans-serif; }
+      .tiny { fill: #8fa3b8; font: 400 12px Inter, system-ui, sans-serif; }
+      .arrow { stroke: #7dd3fc; stroke-width: 2.2; fill: none; marker-end: url(#ah); }
+      .arrow-dashed { stroke: #c4b5fd; stroke-width: 2; fill: none; stroke-dasharray: 7 5; marker-end: url(#ah-p); }
+      .note { fill: #fbbf24; font: 600 12px Inter, system-ui, sans-serif; }
+      .legend-t { fill: #c5d0dc; font: 400 13px Inter, system-ui, sans-serif; }
+    </style>
+    <marker id="ah" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#7dd3fc"/>
+    </marker>
+    <marker id="ah-p" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#c4b5fd"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1400" height="900"/>
+
+  <!-- Title -->
+  <text class="title" x="48" y="48">Laravel Capabilities</text>
+  <text class="subtitle" x="48" y="74">One capability · many surfaces · one registry choke point</text>
+
+  <!-- Lane labels -->
+  <text class="lane" x="70" y="115">1 · CLIENTS</text>
+  <text class="lane" x="340" y="115">2 · ADAPTERS</text>
+  <text class="lane" x="640" y="115">3 · CAPABILITY BUS</text>
+  <text class="lane" x="1080" y="115">4 · DOMAIN</text>
+
+  <!-- ===== LANE 1: Clients ===== -->
+  <rect class="panel" x="40" y="130" width="240" height="620"/>
+  <g>
+    <rect class="box" x="60" y="160" width="200" height="52"/>
+    <text class="label" x="160" y="182" text-anchor="middle">HTTP / mobile</text>
+    <text class="tiny" x="160" y="200" text-anchor="middle">API integrations</text>
+
+    <rect class="box" x="60" y="230" width="200" height="52"/>
+    <text class="label" x="160" y="252" text-anchor="middle">Product CLI</text>
+    <text class="tiny" x="160" y="270" text-anchor="middle">Go · HTTPS client</text>
+
+    <rect class="box" x="60" y="300" width="200" height="52"/>
+    <text class="label" x="160" y="322" text-anchor="middle">MCP host</text>
+    <text class="tiny" x="160" y="340" text-anchor="middle">Cursor, Claude, …</text>
+
+    <rect class="box" x="60" y="370" width="200" height="52"/>
+    <text class="label" x="160" y="392" text-anchor="middle">In-app agent</text>
+    <text class="tiny" x="160" y="410" text-anchor="middle">laravel/ai</text>
+
+    <rect class="box" x="60" y="440" width="200" height="52"/>
+    <text class="label" x="160" y="462" text-anchor="middle">Queue / job</text>
+    <text class="tiny" x="160" y="480" text-anchor="middle">SystemActor required</text>
+
+    <rect class="panel-msg" x="60" y="530" width="200" height="90"/>
+    <text class="label" x="160" y="560" text-anchor="middle">Telegram</text>
+    <text class="tiny" x="160" y="580" text-anchor="middle">sibling package</text>
+    <text class="tiny" x="160" y="598" text-anchor="middle">conversation only</text>
+  </g>
+
+  <!-- ===== LANE 2: Adapters ===== -->
+  <rect class="panel" x="320" y="130" width="240" height="500"/>
+  <text class="small" x="440" y="155" text-anchor="middle">protocol in → registry out</text>
+  <g>
+    <rect class="box-hi" x="340" y="175" width="200" height="48"/>
+    <text class="label" x="440" y="205" text-anchor="middle">HttpApi</text>
+
+    <rect class="box-hi" x="340" y="245" width="200" height="48"/>
+    <text class="label" x="440" y="275" text-anchor="middle">McpToolAdapter</text>
+
+    <rect class="box-hi" x="340" y="315" width="200" height="48"/>
+    <text class="label" x="440" y="345" text-anchor="middle">AiToolAdapter</text>
+
+    <rect class="box-hi" x="340" y="385" width="200" height="48"/>
+    <text class="label" x="440" y="415" text-anchor="middle">JobSurface</text>
+
+    <rect class="box" x="340" y="455" width="200" height="48"/>
+    <text class="label" x="440" y="485" text-anchor="middle">Artisan (ops)</text>
+  </g>
+
+  <!-- Messaging side path -->
+  <rect class="panel-msg" x="320" y="650" width="240" height="100"/>
+  <text class="label" x="440" y="685" text-anchor="middle">Messaging gateway</text>
+  <text class="tiny" x="440" y="708" text-anchor="middle">identity · threads · notifier</text>
+  <text class="tiny" x="440" y="728" text-anchor="middle">→ agent tools only</text>
+
+  <!-- ===== LANE 3: Registry ===== -->
+  <rect class="panel-core" x="600" y="130" width="400" height="620"/>
+  <text class="label" x="800" y="165" text-anchor="middle">CapabilityRegistry</text>
+  <text class="note" x="800" y="186" text-anchor="middle">ONE run()  ·  server is law</text>
+
+  <!-- Pipeline stages - fewer, bigger -->
+  <g>
+    <rect class="stage" x="630" y="210" width="340" height="40"/>
+    <text class="label" x="800" y="236" text-anchor="middle">1  Validate schema · hydrate DTO</text>
+
+    <rect class="stage" x="630" y="265" width="340" height="40"/>
+    <text class="label" x="800" y="291" text-anchor="middle">2  Actor · scope / tenant</text>
+
+    <rect class="stage" x="630" y="320" width="340" height="40"/>
+    <text class="label" x="800" y="346" text-anchor="middle">3  Idempotency lookup</text>
+
+    <rect class="stage" x="630" y="375" width="340" height="40"/>
+    <text class="label" x="800" y="401" text-anchor="middle">4  Authorize</text>
+
+    <rect class="stage" x="630" y="430" width="340" height="40"/>
+    <text class="label" x="800" y="456" text-anchor="middle">5  Approval gate (optional)</text>
+
+    <rect class="stage" x="630" y="485" width="340" height="40"/>
+    <text class="label" x="800" y="511" text-anchor="middle">6  Rate limit</text>
+
+    <rect class="box-hi" x="630" y="540" width="340" height="48"/>
+    <text class="label" x="800" y="570" text-anchor="middle">7  run()</text>
+
+    <rect class="stage" x="630" y="605" width="340" height="40"/>
+    <text class="label" x="800" y="631" text-anchor="middle">8  Audit · events · response</text>
+  </g>
+
+  <text class="tiny" x="800" y="680" text-anchor="middle">Profiles limit agent/MCP tools · never full catalog dump</text>
+  <text class="tiny" x="800" y="700" text-anchor="middle">Caller is server-derived · never client-spoofable</text>
+  <text class="tiny" x="800" y="720" text-anchor="middle">Peers: laravel/ai · laravel/mcp (version matrix, fail closed)</text>
+
+  <!-- ===== LANE 4: Domain ===== -->
+  <rect class="panel-domain" x="1040" y="130" width="320" height="400"/>
+  <text class="label" x="1200" y="170" text-anchor="middle">Your Laravel app</text>
+  <g>
+    <rect class="box" x="1070" y="200" width="260" height="56"/>
+    <text class="label" x="1200" y="234" text-anchor="middle">Capability definitions</text>
+
+    <rect class="box" x="1070" y="280" width="260" height="56"/>
+    <text class="label" x="1200" y="314" text-anchor="middle">Domain actions</text>
+
+    <rect class="box" x="1070" y="360" width="260" height="56"/>
+    <text class="label" x="1200" y="394" text-anchor="middle">Eloquent / services</text>
+  </g>
+  <text class="tiny" x="1200" y="460" text-anchor="middle">Domain stays yours</text>
+  <text class="tiny" x="1200" y="480" text-anchor="middle">No dual mutation paths</text>
+
+  <!-- Discovery note -->
+  <rect class="panel" x="1040" y="560" width="320" height="190"/>
+  <text class="label" x="1200" y="600" text-anchor="middle">Define once</text>
+  <text class="small" x="1200" y="635" text-anchor="middle">#[Capability] attribute</text>
+  <text class="small" x="1200" y="660" text-anchor="middle">or fluent Capability::define</text>
+  <text class="tiny" x="1200" y="700" text-anchor="middle">schema · authz · run · approval</text>
+  <text class="tiny" x="1200" y="720" text-anchor="middle">→ all enabled surfaces</text>
+
+  <!-- ===== ARROWS ===== -->
+  <!-- clients to adapters -->
+  <path class="arrow" d="M260 186 H330"/>
+  <path class="arrow" d="M260 256 H330"/>
+  <path class="arrow" d="M260 326 H330"/>
+  <path class="arrow" d="M260 396 H330"/>
+  <path class="arrow" d="M260 466 H330"/>
+
+  <!-- CLI and HTTP both to HttpApi (CLI merges conceptually) -->
+  <!-- adapters to registry -->
+  <path class="arrow" d="M540 199 H600"/>
+  <path class="arrow" d="M540 269 H600"/>
+  <path class="arrow" d="M540 339 H600"/>
+  <path class="arrow" d="M540 409 H600"/>
+
+  <!-- telegram path -->
+  <path class="arrow-dashed" d="M160 620 V700 H310"/>
+  <path class="arrow-dashed" d="M440 650 V420 H540"/>
+  <text class="tiny" x="300" y="640" fill="#c4b5fd">NL → agent</text>
+
+  <!-- registry run to domain -->
+  <path class="arrow" d="M970 564 H1070"/>
+  <text class="tiny" x="1020" y="552">run()</text>
+
+  <!-- Legend -->
+  <line class="arrow" x1="48" y1="820" x2="100" y2="820"/>
+  <text class="legend-t" x="110" y="825">Structured invoke</text>
+  <line class="arrow-dashed" x1="300" y1="820" x2="352" y2="820"/>
+  <text class="legend-t" x="362" y="825">Conversation ingress (no direct run)</text>
+  <text class="legend-t" x="48" y="860">CLI uses the same HTTP API as HTTP clients · Messaging never bypasses the registry</text>
+</svg>

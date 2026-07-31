@@ -1,0 +1,43 @@
+req: ORI-12
+status: done
+commit: 452eea0
+isolation: worktree
+closure_proof: "checkpoint_log:passed commit:452eea0"
+last_good_step: 2
+failed_step: 0
+checkpoint_log:
+  status: passed
+  checkpoints:
+    - step: 1
+      total: 2
+      type: test
+      command: "pest RouteRegistrationMatrixTest"
+      expected: "16 pass"
+      actual: "16 passed"
+      status: passed
+    - step: 2
+      total: 2
+      type: runtime
+      command: "python3 tools/report_inventory_gaps.py"
+      expected: "0 RouteRegistration unmatched"
+      actual: "0 RouteRegistrationMatrix unmatched"
+      status: passed
+acceptance:
+  AC1:
+    status: passed
+    evidence:
+      - type: test
+        ref: "RouteRegistrationMatrixTest.php"
+  AC2:
+    status: passed
+    evidence:
+      - type: test
+        ref: "RouteTable asserts"
+  AC3:
+    status: passed
+    evidence:
+      - type: command
+        ref: "python3 tools/report_inventory_gaps.py"
+outputs:
+  - path: packages/laravel-capabilities/tests/Unit/Http/RouteRegistrationMatrixTest.php
+    description: "happy/fail prefixes"
