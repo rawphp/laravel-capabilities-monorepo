@@ -173,7 +173,12 @@ final class BootHelpers
         {
             public int $value = 0;
         };
-        $registry = new CapabilityRegistry(globallyEnabledSurfaces: self::globalMap($globalEnabled));
+        // Explicit allow: production default is deny (REQ-070 / L-003). Surface-disable
+        // tests need authorize to pass so domain reachability is the surface gate alone.
+        $registry = new CapabilityRegistry(
+            globallyEnabledSurfaces: self::globalMap($globalEnabled),
+            authorizer: \Rawphp\Capabilities\Support\StubAuthorizer::allow(),
+        );
         $name = 'boot-invoke-probe';
         $registry->register(new CapabilityDefinition(
             name: $name,
@@ -181,6 +186,7 @@ final class BootHelpers
             surfaces: SurfaceNames::INVOKE_DEFAULT_ON,
             input: null,
             readOnly: true,
+            authorize: static fn () => true,
             run: static function () use ($runs) {
                 $runs->value++;
 

@@ -169,7 +169,11 @@ it('makeRegistry applies globally enabled surfaces from surfaces.*.enabled', fun
 });
 
 it('makeRegistry injects approval store matching makeApprovalManager driver', function () {
-    $memory = BootHelpers::config(['approval' => ['store' => 'memory']]);
+    // Pair memory approval with memory idempotency — package default idempotency is now database (REQ-070).
+    $memory = BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+    ]);
     $database = BootHelpers::config(['approval' => ['store' => 'database']]);
     $gw = new ArrayTableGateway;
 

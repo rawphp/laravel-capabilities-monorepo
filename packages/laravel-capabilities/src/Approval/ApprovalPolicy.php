@@ -12,7 +12,7 @@ use Rawphp\Capabilities\Support\SystemActor;
  * - requester — only original requester
  * - requester_or_role — requester or role holders (default)
  * - role:{name} — only that role (no self-approve unless requester holds role)
- * - any_staff — any authenticated user in the same tenant
+ * - any_staff — staff principal in the same tenant (staffChecker or is_staff; fail closed)
  * - custom — delegated to callable / class
  *
  * SystemActor can never approve. Approver must share tenant scope with the row.
@@ -131,8 +131,9 @@ final class ApprovalPolicy
             return (bool) $actor->is_staff;
         }
 
-        // Default: any non-system user principal is staff for unit-test simplicity.
-        return ! ($actor instanceof SystemActor);
+        // Fail closed (L-013 / REQ-070): without staffChecker or is_staff, deny.
+        // Hosts must bind staffChecker or mark principals with is_staff.
+        return false;
     }
 
     /**
@@ -141,7 +142,7 @@ final class ApprovalPolicy
     private function runCustom(object $actor, array $row): bool
     {
         if ($this->customChecker === null) {
-            // Custom without checker: treat as any_staff in-tenant (explicit app should supply checker).
+            // Fail closed without customChecker (same path as any_staff without staffChecker).
             return $this->actorIsStaff($actor);
         }
 

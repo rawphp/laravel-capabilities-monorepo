@@ -242,7 +242,10 @@ final class CapabilityRegistry implements CapabilityBus
         $this->scopeResolver = $scopeResolver;
         $this->resolveTenant = new ResolveTenantFromCaller($scopeResolver);
         $this->idempotencyGuard = new IdempotencyGuard($idempotencyStore);
-        $this->authorizer = $authorizer ?? StubAuthorizer::allow();
+        // Fail closed (L-003 / REQ-070): no per-capability authorize and no host
+        // authorizer → deny. Tests and hosts must pass StubAuthorizer::allow() or
+        // withAuthorizer(...) / a capability authorize callable explicitly.
+        $this->authorizer = $authorizer ?? StubAuthorizer::deny();
         $this->rateLimiter = $rateLimiter ?? new InMemoryRateLimiter;
         $this->approvalStore = $approvalStore;
         $this->auditWriter = $auditWriter;

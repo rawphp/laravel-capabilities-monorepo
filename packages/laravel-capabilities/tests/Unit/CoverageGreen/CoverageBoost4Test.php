@@ -22,11 +22,12 @@ use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\CapabilityScope;
 use Rawphp\Capabilities\Support\MissingArtisanActorException;
 use Rawphp\Capabilities\Support\MissingJobTenantException;
+use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 
 it('covers AiToolAdapterV1 disabled, spoof, handleStructured, turn budget', function () {
-    $reg = new CapabilityRegistry;
+    $reg = (new CapabilityRegistry)->withAuthorizer(StubAuthorizer::allow());
     $reg->register(new CapabilityDefinition(
         name: 'ai.cap',
         description: 'd',
@@ -67,7 +68,7 @@ it('covers AiToolAdapterV1 disabled, spoof, handleStructured, turn budget', func
 });
 
 it('covers McpToolAdapterV1 disabled, spoof, register RuntimeException path', function () {
-    $reg = new CapabilityRegistry;
+    $reg = (new CapabilityRegistry)->withAuthorizer(StubAuthorizer::allow());
     $reg->register(new CapabilityDefinition(
         name: 'mcp.cap',
         description: 'd',
@@ -109,7 +110,7 @@ it('covers McpToolAdapterV1 disabled, spoof, register RuntimeException path', fu
 });
 
 it('covers ArtisanCapabilityInvoker actor/system/tenant branches', function () {
-    $reg = new CapabilityRegistry;
+    $reg = (new CapabilityRegistry)->withAuthorizer(StubAuthorizer::allow());
     $reg->register(new CapabilityDefinition(
         name: 'art.cap',
         description: 'd',
