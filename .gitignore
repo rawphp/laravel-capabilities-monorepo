@@ -1,5 +1,4 @@
 /vendor/
-/composer.lock
 .do-work/runs/*
 .phpunit.result.cache
 .phpunit.cache
