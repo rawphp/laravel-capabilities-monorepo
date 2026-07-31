@@ -18,6 +18,24 @@ final class CapabilityDefinition
     public const IDEMPOTENT_REQUIRED = 'required';
 
     /**
+     * Reserved meta-command domains — must never be used as CLI synthesis domains.
+     *
+     * @var list<string>
+     */
+    public const RESERVED_CLI_DOMAINS = [
+        'auth',
+        'catalog',
+        'describe',
+        'run',
+        'mcp',
+        'approvals',
+        'version',
+        'help',
+    ];
+
+    private const CLI_TOKEN_PATTERN = '/^[a-z][a-z0-9-]*$/';
+
+    /**
      * @param  list<string>  $surfaces
      * @param  list<string>  $aliases
      * @param  list<string>  $groups
@@ -58,6 +76,8 @@ final class CapabilityDefinition
         public readonly string $schemaVersion = '1',
         public readonly string $source = 'attribute',
         public readonly mixed $canDiscover = null,
+        public readonly ?string $cliDomain = null,
+        public readonly ?string $cliVerb = null,
     ) {
         if (trim($name) === '') {
             throw new InvalidArgumentException('Capability definition name must not be empty.');
@@ -69,6 +89,8 @@ final class CapabilityDefinition
                 $name,
             ));
         }
+
+        self::assertValidCliRouting($this->cliDomain, $this->cliVerb, $name);
     }
 
     public function isMutating(): bool
@@ -253,5 +275,58 @@ final class CapabilityDefinition
         }
 
         throw new InvalidArgumentException(sprintf('Invalid idempotent flag: %s', var_export($value, true)));
+    }
+
+    /**
+     * Validate optional CLI routing metadata (fail closed when incomplete or invalid).
+     *
+     * @throws InvalidArgumentException
+     */
+    public static function assertValidCliRouting(?string $domain, ?string $verb, ?string $capabilityName = null): void
+    {
+        $domainSet = $domain !== null && $domain !== '';
+        $verbSet = $verb !== null && $verb !== '';
+
+        if (! $domainSet && ! $verbSet) {
+            // Both null/empty — unmapped (omit). Empty-string only on one side still fails below.
+            if ($domain === null && $verb === null) {
+                return;
+            }
+        }
+
+        $label = $capabilityName !== null && $capabilityName !== ''
+            ? sprintf(' for capability "%s"', $capabilityName)
+            : '';
+
+        if ($domainSet !== $verbSet || ($domain === '' || $verb === '')) {
+            throw new InvalidArgumentException(sprintf(
+                'CLI routing%s requires both domain and verb when either is set.',
+                $label,
+            ));
+        }
+
+        if (! is_string($domain) || preg_match(self::CLI_TOKEN_PATTERN, $domain) !== 1) {
+            throw new InvalidArgumentException(sprintf(
+                'Invalid CLI domain%s: %s (expected [a-z][a-z0-9-]*).',
+                $label,
+                var_export($domain, true),
+            ));
+        }
+
+        if (! is_string($verb) || preg_match(self::CLI_TOKEN_PATTERN, $verb) !== 1) {
+            throw new InvalidArgumentException(sprintf(
+                'Invalid CLI verb%s: %s (expected [a-z][a-z0-9-]*).',
+                $label,
+                var_export($verb, true),
+            ));
+        }
+
+        if (in_array($domain, self::RESERVED_CLI_DOMAINS, true)) {
+            throw new InvalidArgumentException(sprintf(
+                'CLI domain%s must not use reserved meta-command name "%s".',
+                $label,
+                $domain,
+            ));
+        }
     }
 }
