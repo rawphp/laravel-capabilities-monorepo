@@ -121,7 +121,8 @@ final class ContainerBindings
 
         $idempotency = self::resolveStoreDriver(
             kind: 'idempotency.driver',
-            requested: (string) (($config['idempotency']['driver'] ?? null) ?: 'memory'),
+            // Align missing/empty driver with package defaults (database) — L-009 / REQ-070.
+            requested: (string) (($config['idempotency']['driver'] ?? null) ?: 'database'),
             memoryConcrete: InMemoryIdempotencyStore::class,
             databaseConcrete: DatabaseIdempotencyStore::class,
         );

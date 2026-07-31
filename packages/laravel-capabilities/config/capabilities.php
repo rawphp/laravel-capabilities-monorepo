@@ -128,14 +128,16 @@ return [
     |
     | driver: memory | in_memory | array | database | db | eloquent
     | connection: optional Illuminate connection name when driver=database.
-    | Package default is memory; host apps enable database for durable keys.
+    | Package default is database — aligned with approval.store so multi-worker
+    | mutating invokes honor Idempotency-Key durably (L-009 / REQ-070 / D-005).
+    | Use memory only for single-process unit tests / local throwaway installs.
     | Dual-table: database path uses capabilities_idempotency (not approvals).
     |
     */
     'idempotency' => [
         'enabled' => true,
-        // Package default is memory; host apps may rebind a database driver.
-        'driver' => $env('CAPABILITIES_IDEMPOTENCY_DRIVER', 'memory'),
+        // Aligned with approval.store=database (L-009 / REQ-070).
+        'driver' => $env('CAPABILITIES_IDEMPOTENCY_DRIVER', 'database'),
         'connection' => $env('CAPABILITIES_IDEMPOTENCY_CONNECTION', null),
         'ttl_hours' => 24,
         'header' => 'Idempotency-Key',

@@ -26,6 +26,7 @@ use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
 use Rawphp\Capabilities\Support\InMemoryRateLimiter;
 use Rawphp\Capabilities\Support\InMemoryScopedQueryFactory;
+use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use DateInterval;
@@ -33,7 +34,7 @@ use DateTimeImmutable;
 
 it('covers registry forceFail run/output, no handler, needs_approval, rate overrides, agent budget', function () {
     $clock = new FixedClock(new DateTimeImmutable('2026-05-01T00:00:00Z'));
-    $reg = new CapabilityRegistry;
+    $reg = (new CapabilityRegistry)->withAuthorizer(StubAuthorizer::allow());
     $reg->withClock($clock)
         ->withRateLimiter(new InMemoryRateLimiter)
         ->withRateLimitConfig([

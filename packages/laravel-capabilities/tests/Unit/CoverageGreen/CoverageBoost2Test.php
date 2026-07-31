@@ -28,6 +28,7 @@ use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\CapabilityScope;
 use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
+use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\HttpHelpers;
 use DateTimeImmutable;
@@ -48,7 +49,8 @@ it('covers CapabilityRegistry forceFailStages for each pre-run stage', function 
     ];
 
     foreach ($stages as $stage => $code) {
-        $reg = new CapabilityRegistry;
+        // Explicit allow: production default denies without authorize (REQ-070).
+        $reg = (new CapabilityRegistry)->withAuthorizer(StubAuthorizer::allow());
         $reg->register(new CapabilityDefinition(
             name: 'ff-'.$stage,
             description: 'force fail',
@@ -67,7 +69,7 @@ it('covers CapabilityRegistry forceFailStages for each pre-run stage', function 
 });
 
 it('covers registry assertParity empty surface, artisan caller, assert helpers, non-SchemaProvider input', function () {
-    $reg = new CapabilityRegistry;
+    $reg = (new CapabilityRegistry)->withAuthorizer(StubAuthorizer::allow());
     $reg->register(new CapabilityDefinition(
         name: 'snap',
         description: 's',
@@ -419,7 +421,7 @@ it('covers ApprovalManager request/find/accept/reject edge branches', function (
 // ── CapabilityController uncovered branches ─────────────────────────────────
 
 it('covers CapabilityController describe not_found, health deny, non-array body', function () {
-    $reg = new CapabilityRegistry;
+    $reg = (new CapabilityRegistry)->withAuthorizer(StubAuthorizer::allow());
     $reg->register(new CapabilityDefinition(
         name: 'listed',
         description: 'd',

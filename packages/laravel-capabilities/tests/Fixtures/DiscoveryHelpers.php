@@ -7,6 +7,7 @@ namespace Rawphp\Capabilities\Tests\Fixtures;
 use Rawphp\Capabilities\Capability;
 use Rawphp\Capabilities\Registry\CapabilityDefinition;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
+use Rawphp\Capabilities\Support\StubAuthorizer;
 
 /**
  * Shared builders for Discovery/Schema unit tests.
@@ -25,9 +26,11 @@ final class DiscoveryHelpers
             'messaging' => false,
         ];
 
+        // Explicit allow for discovery/invoke probes (production default is deny — REQ-070).
         return new CapabilityRegistry(
             globallyEnabledSurfaces: array_merge($defaults, $surfaces),
             validationConfig: array_merge(['validate_output' => true], $validation),
+            authorizer: StubAuthorizer::allow(),
         );
     }
 

@@ -181,7 +181,7 @@ Database-backed approval and idempotency stores use a first-party **`QueryTableG
 |---|---|---|---|
 | Approval store | `approval.store` | `database` | `DatabaseApprovalStore` + `QueryTableGateway` on `capabilities_approvals` |
 | Approval connection | `approval.connection` | `null` (app default) | Optional named connection |
-| Idempotency | `idempotency.driver` | `memory` | Set `database` → `DatabaseIdempotencyStore` + gateway on `capabilities_idempotency` |
+| Idempotency | `idempotency.driver` | `database` | Aligned with approval.store (L-009). Set `memory` only for single-process tests → `InMemoryIdempotencyStore` |
 | Idempotency connection | `idempotency.connection` | `null` | Optional named connection |
 
 ```bash
