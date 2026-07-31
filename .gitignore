@@ -1,5 +1,6 @@
 /vendor/
-.do-work/runs/*
+.do-work/runs
+.do-work/state
 .phpunit.result.cache
 .phpunit.cache
 .pest/

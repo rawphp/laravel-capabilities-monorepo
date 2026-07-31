@@ -1,8 +1,0 @@
-status: passed
-reason: ""
-findings: []
-evidence_checked: [AC1, AC2, AC3, AC4, AC5, verification-step-1]
-risk_triggers: []
-policy:
-  check: check-policy
-  status: clear
