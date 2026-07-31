@@ -22,6 +22,8 @@ type CacheEntry struct {
 	SunsetAt      string          `json:"sunset_at,omitempty"`
 	Aliases       []string        `json:"aliases,omitempty"`
 	Canonical     string          `json:"canonical,omitempty"`
+	// CLI is optional routing metadata preserved from describe when present.
+	CLI *CLIMeta `json:"cli,omitempty"`
 }
 
 // Cache is a profile-scoped on-disk schema cache.

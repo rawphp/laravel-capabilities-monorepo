@@ -17,6 +17,13 @@ type Service struct {
 	NoCache bool
 }
 
+// CLIMeta is optional CLI routing metadata on a catalog list/describe row (wire: cli).
+// Both Domain and Verb are required when CLI is present; incomplete objects are fail-closed for synthesis.
+type CLIMeta struct {
+	Domain string `json:"domain,omitempty"`
+	Verb   string `json:"verb,omitempty"`
+}
+
 // CapabilitySummary is a list-row (schemas may be omitted until describe).
 type CapabilitySummary struct {
 	Name          string   `json:"name"`
@@ -27,6 +34,12 @@ type CapabilitySummary struct {
 	SunsetAt      string   `json:"sunset_at,omitempty"`
 	SchemaVersion string   `json:"schema_version,omitempty"`
 	Surfaces      []string `json:"surfaces,omitempty"`
+	// CLI is routing metadata for domain/verb synthesis (omit when unmapped).
+	CLI *CLIMeta `json:"cli,omitempty"`
+	// MappedCommand is optional client-derived "domain verb" after synth index build.
+	MappedCommand string `json:"mapped_command,omitempty"`
+	// MappingError is set client-side when synthesis was suppressed (e.g. collision).
+	MappingError string `json:"mapping_error,omitempty"`
 }
 
 // List fetches GET /capabilities and returns summaries.
