@@ -13,12 +13,16 @@ final class HttpRouteRegistrar
     /**
      * Controller class map for action strings (CapabilityController@list → class).
      *
+     * Points at Illuminate thin wrappers so Laravel method injection receives
+     * {@see \Illuminate\Http\Request} and returns JsonResponse (L-001 / REQ-071).
+     * Pure domain controllers remain for unit tests without the kernel.
+     *
      * @var array<string, class-string>
      */
     public const CONTROLLERS = [
-        'CapabilityController' => \Rawphp\Capabilities\Adapters\Http\CapabilityController::class,
-        'AuthController' => \Rawphp\Capabilities\Adapters\Http\AuthController::class,
-        'ApprovalController' => \Rawphp\Capabilities\Adapters\Http\ApprovalController::class,
+        'CapabilityController' => \Rawphp\Capabilities\Adapters\Http\IlluminateCapabilityController::class,
+        'AuthController' => \Rawphp\Capabilities\Adapters\Http\IlluminateAuthController::class,
+        'ApprovalController' => \Rawphp\Capabilities\Adapters\Http\IlluminateApprovalController::class,
     ];
 
     /**

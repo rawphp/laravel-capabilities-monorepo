@@ -5,6 +5,12 @@ namespace Rawphp\Capabilities;
 use Illuminate\Support\ServiceProvider;
 use Rawphp\Capabilities\Adapters\Artisan\ArtisanCommandRegistrar;
 use Rawphp\Capabilities\Adapters\Artisan\ArtisanCommandTable;
+use Rawphp\Capabilities\Adapters\Http\ApprovalController;
+use Rawphp\Capabilities\Adapters\Http\AuthController;
+use Rawphp\Capabilities\Adapters\Http\CapabilityController;
+use Rawphp\Capabilities\Adapters\Http\IlluminateApprovalController;
+use Rawphp\Capabilities\Adapters\Http\IlluminateAuthController;
+use Rawphp\Capabilities\Adapters\Http\IlluminateCapabilityController;
 use Rawphp\Capabilities\Adapters\JobSurface;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 use Rawphp\Capabilities\Approval\ApprovalManager;
@@ -20,6 +26,7 @@ use Rawphp\Capabilities\Contracts\Metrics;
 use Rawphp\Capabilities\Contracts\ScopeResolver;
 use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\Capabilities\Discovery\CapabilityDiscoveryBoot;
+use Rawphp\Capabilities\Http\HttpAuthGate;
 use Rawphp\Capabilities\Http\HttpRouteRegistrar;
 use Illuminate\Database\ConnectionInterface;
 use Rawphp\Capabilities\Observability\InMemoryTracer;
@@ -127,6 +134,50 @@ class CapabilitiesServiceProvider extends ServiceProvider
         // CapabilityController type-hints CapabilityBus — same singleton, no second registry (REQ-057).
         $this->app->alias(CapabilityRegistry::class, CapabilityBus::class);
         $this->app->alias(CapabilityRegistry::class, 'CapabilityBus');
+
+        // HTTP controllers + Illuminate edge wrappers (L-001 / REQ-071).
+        // Pure controllers stay unit-testable; wrappers accept Request / return JsonResponse.
+        $this->app->singleton(CapabilityController::class, function ($app) {
+            $config = self::configFromApp($app);
+            $http = is_array($config['surfaces']['http'] ?? null) ? $config['surfaces']['http'] : [];
+            $clients = is_array($config['clients'] ?? null) ? $config['clients'] : [];
+
+            return new CapabilityController(
+                $app->make(CapabilityBus::class),
+                $clients,
+                $http,
+                new HttpAuthGate(['health_public' => (bool) ($http['health_public'] ?? false)]),
+            );
+        });
+
+        $this->app->singleton(AuthController::class, function ($app) {
+            $config = self::configFromApp($app);
+            $http = is_array($config['surfaces']['http'] ?? null) ? $config['surfaces']['http'] : [];
+            $cli = is_array($config['surfaces']['cli'] ?? null) ? $config['surfaces']['cli'] : [];
+
+            return new AuthController($http, $cli);
+        });
+
+        $this->app->singleton(ApprovalController::class, function ($app) {
+            $config = self::configFromApp($app);
+            $http = is_array($config['surfaces']['http'] ?? null) ? $config['surfaces']['http'] : [];
+
+            return new ApprovalController(
+                $app->make(ApprovalManager::class),
+                $http,
+                new HttpAuthGate(['health_public' => (bool) ($http['health_public'] ?? false)]),
+            );
+        });
+
+        $this->app->singleton(IlluminateCapabilityController::class, static fn ($app) => new IlluminateCapabilityController(
+            $app->make(CapabilityController::class),
+        ));
+        $this->app->singleton(IlluminateAuthController::class, static fn ($app) => new IlluminateAuthController(
+            $app->make(AuthController::class),
+        ));
+        $this->app->singleton(IlluminateApprovalController::class, static fn ($app) => new IlluminateApprovalController(
+            $app->make(ApprovalController::class),
+        ));
     }
 
     /**
