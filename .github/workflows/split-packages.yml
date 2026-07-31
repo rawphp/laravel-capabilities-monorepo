@@ -22,15 +22,22 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# Tag mirrors must not be cancelled mid-matrix (partial package remotes).
+# Branch / workflow_dispatch may cancel superseded runs.
 concurrency:
   group: split-packages-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 permissions:
   contents: read
 
 jobs:
+  # Gate every mirror (main, v* tags, workflow_dispatch) on monorepo unit suites.
+  tests:
+    uses: ./.github/workflows/tests.yml
+
   split:
+    needs: tests
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

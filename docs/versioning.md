@@ -22,6 +22,18 @@ Source of truth for day-to-day development is this monorepo. Publication of pack
 | Push monorepo tag `v*` | Same workflow force-updates that tag on **each** package remote (for Packagist / releases) |
 | Manual | `workflow_dispatch` on the same workflow |
 
+### Test gate (split blocked until green)
+
+Split / package-remote publish is **gated on green monorepo unit tests**. The split workflow’s `split` job `needs:` a reusable call to [`.github/workflows/tests.yml`](../.github/workflows/tests.yml) (PHP 8.2 Pest for core + messaging via `composer test`, and `go test ./...` for the CLI). If any unit suite fails, package trees and tags are **not** mirrored.
+
+| Surface | CI |
+|---|---|
+| PR + push to `main` | `tests.yml` runs unit suites standalone |
+| Split (`main`, `v*` tags, `workflow_dispatch`) | Same suites via `workflow_call` before any rsync / tag force-push |
+| Coverage floor / Packagist API | **Not** enforced here (unit exit codes only; Packagist remains human checklist) |
+
+Tag concurrency uses `cancel-in-progress: false` for tags so a release mirror is not aborted mid-matrix (partial package remotes). Branch runs may still cancel superseded work.
+
 **Implications:**
 
 - Consumer VCS installs and Packagist submissions use the **package repos**, not `laravel-capabilities-monorepo`.
