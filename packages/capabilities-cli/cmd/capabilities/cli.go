@@ -281,6 +281,7 @@ func cmdCatalog(env Env, args []string) int {
 	st := store(env)
 	profile, base, args := profileAndBase(args)
 	jsonOut, args := flagBool(args, "--json")
+	flat, args := flagBool(args, "--flat")
 	noCache, args := flagBool(args, "--no-cache")
 	refresh, args := flagBool(args, "refresh", "--refresh")
 	_ = args
@@ -311,21 +312,14 @@ func cmdCatalog(env Env, args []string) int {
 	// Client-side mapping enrichment for agents (cli, mapped_command, mapping_error).
 	list = catalog.EnrichSummaries(list)
 	if jsonOut {
+		// Agent contract: full machine map (unchanged shape).
 		fmt.Fprintln(env.Stdout, string(catalog.EnvelopeJSON(list)))
+	} else if flat {
+		// Previous flat name → domain verb listing.
+		fmt.Fprint(env.Stdout, catalog.FormatHumanFlat(list))
 	} else {
-		for _, cap := range list {
-			line := cap.Name
-			if cap.MappedCommand != "" {
-				line += " → " + cap.MappedCommand
-			}
-			if cap.Deprecated {
-				line += " (deprecated)"
-			}
-			if cap.MappingError != "" {
-				line += " [mapping_error=" + cap.MappingError + "]"
-			}
-			fmt.Fprintln(env.Stdout, line)
-		}
+		// Human default: domain index (map of the territory).
+		fmt.Fprint(env.Stdout, catalog.FormatHumanDomainIndex(list))
 	}
 	return api.ExitOK
 }

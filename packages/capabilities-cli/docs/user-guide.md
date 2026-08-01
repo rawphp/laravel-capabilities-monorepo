@@ -98,10 +98,18 @@ capabilities auth status [--profile=NAME]
 ### `catalog`
 
 ```bash
-capabilities catalog [--json] [--no-cache] [--refresh] [--profile=NAME]
+capabilities catalog [--json|--flat] [--no-cache] [--refresh] [--profile=NAME]
 ```
 
-Lists capabilities from `GET /capabilities` (via the HTTP client). With `--json`, rows may include client-side synthesis fields:
+Fetches capabilities from `GET /capabilities` (via the HTTP client).
+
+| Mode | Audience | Output |
+|---|---|---|
+| *(default)* | Humans | Domain index — domains + verb counts + next steps |
+| `--flat` | Humans | Flat `name → domain verb` lines (previous default) |
+| `--json` | Agents | Machine envelope; rows may include client-side synthesis fields: |
+
+With `--json`, rows may include:
 
 | Field | Meaning |
 |---|---|

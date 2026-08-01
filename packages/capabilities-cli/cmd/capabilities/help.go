@@ -27,10 +27,12 @@ RESERVED COMMANDS:
   help        Show help
 
 DISCOVERY:
-  capabilities catalog [--json]              list capabilities (mapped_command when known)
-  capabilities <domain> --help               list verbs under a domain
-  capabilities <domain> <verb> --help        schema-first capability help (fields + pass mode)
-  capabilities run <name>                    always works for unmapped / canonical names
+  capabilities catalog                       domain index (human default)
+  capabilities catalog --flat                 name → domain verb list
+  capabilities catalog --json                 agent machine map (full rows)
+  capabilities <domain> --help                list verbs under a domain
+  capabilities <domain> <verb> --help         schema-first capability help (fields + pass mode)
+  capabilities run <name>                     always works for unmapped / canonical names
 
 FLAGS (common):
   --profile=NAME     Auth profile (default: default)
@@ -50,7 +52,8 @@ NOTES:
 
 EXAMPLES:
   capabilities auth login --base-url=https://app.example.com
-  capabilities catalog --json
+  capabilities catalog                       # domains available on this deployment
+  capabilities catalog --json                # agents: full capability map
   capabilities <domain> --help
   capabilities <domain> <verb> --help
   capabilities describe <name>
@@ -74,10 +77,18 @@ USAGE:
 Tokens are stored in the OS config/keychain dir — never printed to stdout by default.
 `
 	case "catalog":
-		return `catalog — list capabilities from GET /capabilities
+		return `catalog — discover capabilities from GET /capabilities
 
 USAGE:
-  capabilities catalog [--json] [--no-cache] [--refresh] [--profile=NAME]
+  capabilities catalog [--json|--flat] [--no-cache] [--refresh] [--profile=NAME]
+
+MODES:
+  (default)   Human domain index — domains + verb counts + next steps
+  --flat      Name → domain verb lines (previous human default)
+  --json      Agent machine envelope (full rows + mapped_command)
+
+Unauthenticated or empty synthesis:
+  No synthesizable domains yet — use auth status, catalog --json, or run <name>.
 `
 	case "describe":
 		return `describe — fetch JSON Schema for one capability
