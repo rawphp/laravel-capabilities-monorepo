@@ -151,6 +151,36 @@ func TestReleaseWorkflowSecretGatedSigning(t *testing.T) {
 	}
 }
 
+// TestReleaseWorkflowSelectsMacosWhenAppleCertPresent asserts runner selection
+// for Apple codesign (REQ-065): select-runner job + macos-latest when cert set.
+func TestReleaseWorkflowSelectsMacosWhenAppleCertPresent(t *testing.T) {
+	root := moduleRoot(t)
+	b, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatalf("read release.yml: %v", err)
+	}
+	s := string(b)
+
+	if !strings.Contains(s, "select-runner") {
+		t.Error("release.yml must have a select-runner (or equivalent) job for runner selection")
+	}
+	if !strings.Contains(s, "macos-latest") {
+		t.Error("release.yml must be able to run on macos-latest for Apple codesign")
+	}
+	if !strings.Contains(s, "ubuntu-latest") {
+		t.Error("release.yml must retain ubuntu-latest soft path when Apple cert absent")
+	}
+	// Job runs-on must use select-runner output (not hard-code only one OS).
+	if !strings.Contains(s, "needs.select-runner.outputs.runner") &&
+		!strings.Contains(s, "needs.select-runner.outputs.") {
+		t.Error("goreleaser job must use select-runner output for runs-on")
+	}
+	// Windows tooling on both runners.
+	if !strings.Contains(s, "brew install osslsigncode") && !strings.Contains(s, "brew install") {
+		t.Error("release.yml must install osslsigncode on Darwin (brew) when Windows secrets present")
+	}
+}
+
 // TestGoreleaserSigningHooksSoftPath checks GoReleaser wires signing hooks/scripts
 // that soft-skip without secrets; checksums remain (REQ-063 AC4, AC checksums).
 func TestGoreleaserSigningHooksSoftPath(t *testing.T) {

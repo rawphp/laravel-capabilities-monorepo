@@ -72,21 +72,22 @@ Configure these under **Settings → Secrets and variables → Actions** on `raw
 
 From [`.github/workflows/release.yml`](../.github/workflows/release.yml):
 
-| Step | Gate | Effect |
+| Step / job | Gate | Effect |
 |---|---|---|
+| **select-runner** | always | Reads `APPLE_CERTIFICATE_BASE64` via `env:` (not `if: secrets.*`). Outputs `runner=macos-latest` when set, else `ubuntu-latest`. |
 | Platform signing status | always | Logs enabled vs `signing skipped` |
-| Install osslsigncode | `steps.signing.outputs.windows_present == 'true'` | Installs `osslsigncode` for Authenticode on `ubuntu-latest` (presence detected via `env:` + step outputs — **not** `if: secrets.*`, which GitHub rejects) |
-| Apple secrets notice | `steps.signing.outputs.apple_present == 'true'` | Logs that full Gatekeeper/notarization needs a **macOS** runner; secrets are still passed into GoReleaser env for hooks |
-| Run GoReleaser | always | Passes Apple/Windows secret env vars when set (empty when unset) |
+| Install osslsigncode | `steps.signing.outputs.windows_present == 'true'` | Installs `osslsigncode` via **apt** (Linux) or **brew** (Darwin) — presence via `env:` + step outputs, **not** `if: secrets.*` |
+| Apple signing readiness | `steps.signing.outputs.apple_present == 'true'` | Logs host OS and whether codesign hooks can run |
+| Run GoReleaser | always | Full multi-arch matrix; passes Apple/Windows secret env vars when set (empty when unset) |
 
-### Runner notes
+### Runner selection
 
-| Platform | Default release job (`ubuntu-latest`) | Full fidelity |
-|---|---|---|
-| **Windows Authenticode** | Supported when `WINDOWS_*` secrets present (`osslsigncode`). | Same. |
-| **macOS codesign / notary** | Hook **soft-skips** with a log that secrets are present but host is not Darwin. | Run GoReleaser (or a follow-up sign job) on `macos-latest` with the same secrets; see maintainer checklist below. |
+| `APPLE_CERTIFICATE_BASE64` | GoReleaser runs on | Apple codesign / notary | Windows Authenticode |
+|---|---|---|---|
+| **absent** | `ubuntu-latest` | Soft-skip (unsigned darwin) | `osslsigncode` via apt when `WINDOWS_*` set |
+| **present** | `macos-latest` | Codesign via hooks; notary when `APPLE_API_KEY_*` (or Apple ID path) set | `osslsigncode` via brew when `WINDOWS_*` set |
 
-The default job deliberately stays on Linux so **unsigned multi-arch release always works** without Apple hardware or Windows certs. macOS signing is scaffolded and secret-gated; operators who need Gatekeeper-clean darwin assets should add a `macos-latest` matrix/job that reuses the same secrets and `.goreleaser.yml` hooks (or signs only darwin artifacts).
+Unsigned multi-arch release still works with **no** signing secrets (Linux job, soft-skip hooks). Adding only Apple cert secrets switches the job to macOS so Gatekeeper-oriented darwin assets can be signed without a second workflow.
 
 ---
 
@@ -115,12 +116,12 @@ hooks:
    base64 -i DeveloperID.p12 | pbcopy   # macOS
    base64 -w0 codesign.pfx > win.b64    # Linux
    ```
-3. Create the secret names listed above on `rawphp/capabilities-cli`.
+3. Create the secret names listed above on `rawphp/capabilities-cli` (Apple cert → automatic `macos-latest` runner; add notary API key secrets for full Gatekeeper path).
 4. Push or re-push a `v*` tag (monorepo split mirrors the tag; package workflow replaces the release).
-5. Inspect Actions logs for `signing:` success lines vs `signing skipped:`.
+5. Inspect Actions logs: `select-runner` should print `macos-latest` when Apple cert is set; look for `signing:` success lines vs `signing skipped:`.
 6. Verify artifacts:
    - Windows: `osslsigncode verify -in capabilities.exe` (or Explorer properties → Digital Signatures).
-   - macOS (after Darwin signing): `codesign -dv --verbose=4 ./capabilities` and Gatekeeper assessment.
+   - macOS: `codesign -dv --verbose=4 ./capabilities` and Gatekeeper / notary assessment after a successful notarize.
 
 ---
 
