@@ -13,6 +13,9 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Added
 
+- Complete user documentation set: `docs/README.md` index, expanded
+  `docs/user-guide.md`, `docs/authentication.md` (multi-project **profiles**),
+  `docs/agents.md` (envelopes, exit codes, MCP). README links Install + docs.
 - User-global install: `scripts/install.sh` + README / user-guide one-liner
   (`curl … | bash`) installs the latest (or `VERSION=`) GitHub Release binary into
   `~/.local/bin` (override with `CAPABILITIES_INSTALL_DIR`); no sudo.

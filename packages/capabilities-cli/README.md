@@ -63,7 +63,31 @@ capabilities version
 2. Extract `capabilities.exe` into a folder on your **user** `PATH` (e.g. `%USERPROFILE%\bin`).
 3. Open a new terminal and run `capabilities version`.
 
-Windows binaries are currently **unsigned** (Authenticode optional). Source build remains supported — see **Build & test** below. Full usage: [`docs/user-guide.md`](docs/user-guide.md).
+Windows binaries are currently **unsigned** (Authenticode optional). Source build remains supported — see **Build & test** below.
+
+## Documentation
+
+| Doc | Description |
+|-----|-------------|
+| **[User guide](docs/user-guide.md)** | Full manual — install, auth, multi-profile, commands, invoke, exit codes |
+| **[Docs index](docs/README.md)** | Map of all package docs |
+| [Authentication & profiles](docs/authentication.md) | Multi-project login (`--profile`), storage, aliases |
+| [Agents & MCP](docs/agents.md) | Machine envelopes, exit codes, MCP stdio loop |
+| [Changelog](CHANGELOG.md) | Release notes |
+
+### Multiple projects (profiles)
+
+One binary, many deployments — use a **named profile** per product:
+
+```bash
+capabilities auth login --profile=mesoprep --base-url=https://mesoprep.example.com --token=…
+capabilities auth login --profile=yardpilot --base-url=https://yardpilot.example.com --token=…
+
+capabilities catalog --profile=mesoprep
+capabilities run <name> --profile=yardpilot --input='{}'
+```
+
+Details: [docs/authentication.md](docs/authentication.md).
 
 ### Releases
 
@@ -82,7 +106,10 @@ Cross-compile / local matrix notes: [`docs/build-matrix.md`](docs/build-matrix.m
 
 | Doc | Where |
 |---|---|
+| User docs (index) | [docs/README.md](docs/README.md) |
 | User guide | [docs/user-guide.md](docs/user-guide.md) |
+| Auth & multi-profile | [docs/authentication.md](docs/authentication.md) |
+| Agents & MCP | [docs/agents.md](docs/agents.md) |
 | Release path (tag → GitHub Release) | [docs/release-path.md](docs/release-path.md) |
 | Release signing (secret-gated) | [docs/release-signing.md](docs/release-signing.md) |
 | Changelog | [CHANGELOG.md](CHANGELOG.md) |
