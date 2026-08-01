@@ -51,9 +51,10 @@ NOTES:
 EXAMPLES:
   capabilities auth login --base-url=https://app.example.com
   capabilities catalog --json
-  capabilities invoices create --help
-  capabilities describe create-invoice
-  capabilities run create-invoice --input='{"customer_id":42,"amount_cents":2500,"currency":"USD"}' --json
+  capabilities <domain> --help
+  capabilities <domain> <verb> --help
+  capabilities describe <name>
+  capabilities run <name> --input='{...}' --json
   capabilities mcp
 `
 }

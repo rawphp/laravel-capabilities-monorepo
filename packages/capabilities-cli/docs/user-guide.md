@@ -114,12 +114,12 @@ Lists capabilities from `GET /capabilities` (via the HTTP client). With `--json`
 After auth, agents can discover and invoke without reading prose:
 
 ```bash
-capabilities catalog --json
-capabilities invoices --help                 # list verbs under domain
-capabilities invoices create --help --json   # capability_help envelope (fields[], schemas)
-capabilities invoices create --customer-id=42 --amount-cents=2500 --currency=USD
+capabilities catalog --json                  # discover names + cli.domain/cli.verb (when set)
+capabilities <domain> --help                 # list verbs under a catalog domain
+capabilities <domain> <verb> --help --json   # capability_help envelope (fields[], schemas)
+capabilities <domain> <verb> --flag=value    # scalar flags (from input schema)
 # or full JSON / hybrid:
-capabilities invoices create --input='{"customer_id":42,"amount_cents":2500,"currency":"USD"}'
+capabilities <domain> <verb> --input='{"...":"..."}'
 ```
 
 Parse **stdout** as a JSON envelope. Branch on **exit code**. Optional `--human` writes a short summary to **stderr** only — it never replaces the stdout envelope.
@@ -165,13 +165,12 @@ Flow (single path for flags, JSON, and hybrid): merge → load schema → local 
 
 Empty invoke with an all-optional schema may POST `{}`. Missing required fields → exit **2** (point at `--help`).
 
-Examples:
+Examples (names/domains come from the remote catalog — never hard-coded product domains):
 
 ```bash
-capabilities run create-invoice \
-  --input='{"customer_id":42,"amount_cents":2500,"currency":"USD"}'
+capabilities run <name> --input='{"...":"..."}'
 
-capabilities invoices create --customer-id=42 --amount-cents=2500 --currency=USD --human
+capabilities <domain> <verb> --flag=value --human
 ```
 
 ### `mcp`
