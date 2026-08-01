@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "38d075bd7b7ff48bb37c5498e9cd86c1",
+    "content-hash": "b79c0e134e5ad1b1916e478d1fd766b1",
     "packages": [
         {
             "name": "brick/math",
@@ -2743,17 +2743,17 @@
             "dist": {
                 "type": "path",
                 "url": "packages/laravel-capabilities",
-                "reference": "4f25890f7767702f1df6fa5a1f2074e57dd6a601"
+                "reference": "7ff6c7120b224078b65f2111d0d4f7c6cf20b069"
             },
             "require": {
-                "illuminate/bus": "^11.0|^12.0",
-                "illuminate/console": "^11.0|^12.0",
-                "illuminate/database": "^11.0|^12.0",
-                "illuminate/events": "^11.0|^12.0",
-                "illuminate/http": "^11.0|^12.0",
-                "illuminate/routing": "^11.0|^12.0",
-                "illuminate/support": "^11.0|^12.0",
-                "illuminate/validation": "^11.0|^12.0",
+                "illuminate/bus": "^11.0|^12.0|^13.0",
+                "illuminate/console": "^11.0|^12.0|^13.0",
+                "illuminate/database": "^11.0|^12.0|^13.0",
+                "illuminate/events": "^11.0|^12.0|^13.0",
+                "illuminate/http": "^11.0|^12.0|^13.0",
+                "illuminate/routing": "^11.0|^12.0|^13.0",
+                "illuminate/support": "^11.0|^12.0|^13.0",
+                "illuminate/validation": "^11.0|^12.0|^13.0",
                 "php": "^8.2"
             },
             "require-dev": {
@@ -2821,14 +2821,14 @@
             "dist": {
                 "type": "path",
                 "url": "packages/laravel-capabilities-messaging",
-                "reference": "a73600049fd01bea4e5f3f8a4c039ce308619f30"
+                "reference": "22cec4f0f985a06589204e0c0ff7bd02cae5c6e4"
             },
             "require": {
-                "illuminate/database": "^11.0|^12.0",
-                "illuminate/events": "^11.0|^12.0",
-                "illuminate/http": "^11.0|^12.0",
-                "illuminate/routing": "^11.0|^12.0",
-                "illuminate/support": "^11.0|^12.0",
+                "illuminate/database": "^11.0|^12.0|^13.0",
+                "illuminate/events": "^11.0|^12.0|^13.0",
+                "illuminate/http": "^11.0|^12.0|^13.0",
+                "illuminate/routing": "^11.0|^12.0|^13.0",
+                "illuminate/support": "^11.0|^12.0|^13.0",
                 "php": "^8.2",
                 "rawphp/laravel-capabilities": "*"
             },
