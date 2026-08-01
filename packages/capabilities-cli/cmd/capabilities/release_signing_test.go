@@ -121,13 +121,25 @@ func TestReleaseWorkflowSecretGatedSigning(t *testing.T) {
 		}
 	}
 
-	// Conditional steps: if: secrets... != '' pattern (or equivalent emptiness check).
-	hasIfSecrets := strings.Contains(s, "secrets.") &&
-		(strings.Contains(s, "!=") || strings.Contains(s, "!= ''") || strings.Contains(s, "!= \"\""))
+	// Conditional steps must NOT use `if: secrets.*` — GitHub Actions rejects
+	// secrets in if: ("Unrecognized named-value: 'secrets'") and fails the
+	// whole workflow with 0 jobs. Gate via step outputs after env injection.
+	if strings.Contains(s, "if:") && strings.Contains(s, "secrets.") {
+		// Only flag when secrets. appears in an if: line (not env: ${{ secrets.* }}).
+		for _, line := range strings.Split(s, "\n") {
+			trim := strings.TrimSpace(line)
+			if strings.HasPrefix(trim, "if:") && strings.Contains(trim, "secrets.") {
+				t.Errorf("release.yml must not use secrets in if: (invalid workflow): %s", trim)
+			}
+		}
+	}
+	hasOutputGate := strings.Contains(s, "steps.signing.outputs.") ||
+		strings.Contains(s, "apple_present") ||
+		strings.Contains(s, "windows_present")
 	hasSkipLog := strings.Contains(lower, "signing skipped") ||
 		(strings.Contains(lower, "skip") && strings.Contains(lower, "sign"))
-	if !hasIfSecrets && !hasSkipLog {
-		t.Error("release.yml must secret-gate signing (if: secrets != '') and/or log signing skipped")
+	if !hasOutputGate && !hasSkipLog {
+		t.Error("release.yml must secret-gate signing via step outputs and/or log signing skipped")
 	}
 	if !hasSkipLog {
 		t.Error(`release.yml must log clearly when signing is skipped (e.g. "signing skipped")`)

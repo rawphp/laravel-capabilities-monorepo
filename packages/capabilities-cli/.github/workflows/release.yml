@@ -44,6 +44,9 @@ jobs:
       - name: Run unit tests
         run: go test ./...
 
+      # Secrets may be used in env:, but NOT in step/job `if:` (GitHub rejects
+      # "Unrecognized named-value: 'secrets'" and the whole workflow fails with 0 jobs).
+      # Detect presence here and gate later steps on step outputs.
       - name: Platform signing status
         id: signing
         env:
@@ -51,22 +54,28 @@ jobs:
           WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
         run: |
           set -euo pipefail
-          if [ -n "${APPLE_CERTIFICATE_BASE64}" ] || [ -n "${WINDOWS_CERT_BASE64}" ]; then
+          apple=false
+          windows=false
+          if [ -n "${APPLE_CERTIFICATE_BASE64}" ]; then
+            apple=true
+            echo "Apple secrets present (APPLE_CERTIFICATE_BASE64)."
+          fi
+          if [ -n "${WINDOWS_CERT_BASE64}" ]; then
+            windows=true
+            echo "Windows secrets present (WINDOWS_CERT_BASE64)."
+          fi
+          echo "apple_present=${apple}" >> "${GITHUB_OUTPUT}"
+          echo "windows_present=${windows}" >> "${GITHUB_OUTPUT}"
+          if [ "${apple}" = true ] || [ "${windows}" = true ]; then
             echo "enabled=true" >> "${GITHUB_OUTPUT}"
             echo "Platform signing secrets detected; hooks will sign when tooling/runner allow (see docs/release-signing.md)."
-            if [ -n "${APPLE_CERTIFICATE_BASE64}" ]; then
-              echo "Apple secrets present (APPLE_CERTIFICATE_BASE64)."
-            fi
-            if [ -n "${WINDOWS_CERT_BASE64}" ]; then
-              echo "Windows secrets present (WINDOWS_CERT_BASE64)."
-            fi
           else
             echo "enabled=false" >> "${GITHUB_OUTPUT}"
             echo "signing skipped: no APPLE_* / WINDOWS_* secrets present; publishing unsigned multi-arch assets"
           fi
 
       - name: Install osslsigncode (Windows Authenticode, secret-gated)
-        if: ${{ secrets.WINDOWS_CERT_BASE64 != '' }}
+        if: steps.signing.outputs.windows_present == 'true'
         run: |
           set -euo pipefail
           sudo apt-get update
@@ -74,7 +83,7 @@ jobs:
           osslsigncode -v || true
 
       - name: Apple signing notice (secret-gated)
-        if: ${{ secrets.APPLE_CERTIFICATE_BASE64 != '' }}
+        if: steps.signing.outputs.apple_present == 'true'
         run: |
           set -euo pipefail
           echo "Apple signing secrets present (APPLE_CERTIFICATE_BASE64)."

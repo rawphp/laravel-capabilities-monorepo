@@ -75,8 +75,8 @@ From [`.github/workflows/release.yml`](../.github/workflows/release.yml):
 | Step | Gate | Effect |
 |---|---|---|
 | Platform signing status | always | Logs enabled vs `signing skipped` |
-| Install osslsigncode | `secrets.WINDOWS_CERT_BASE64 != ''` | Installs `osslsigncode` for Authenticode on `ubuntu-latest` |
-| Apple secrets notice | `secrets.APPLE_CERTIFICATE_BASE64 != ''` | Logs that full Gatekeeper/notarization needs a **macOS** runner; secrets are still passed into GoReleaser env for hooks |
+| Install osslsigncode | `steps.signing.outputs.windows_present == 'true'` | Installs `osslsigncode` for Authenticode on `ubuntu-latest` (presence detected via `env:` + step outputs — **not** `if: secrets.*`, which GitHub rejects) |
+| Apple secrets notice | `steps.signing.outputs.apple_present == 'true'` | Logs that full Gatekeeper/notarization needs a **macOS** runner; secrets are still passed into GoReleaser env for hooks |
 | Run GoReleaser | always | Passes Apple/Windows secret env vars when set (empty when unset) |
 
 ### Runner notes
