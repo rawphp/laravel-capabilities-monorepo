@@ -87,11 +87,17 @@ jobs:
 
           # Replace tracked tree with monorepo package contents (keep .git).
           find "$work" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          # Keep committed dist docs (dist/README.md, dist/.gitkeep) — capabilities-cli
+          # unit tests require them. Only drop GoReleaser/local build artifacts under dist/.
+          # Filter order: first match wins; include docs before excluding dist/* leftovers.
           rsync -a --delete \
             --exclude '.git' \
             --exclude 'vendor/' \
             --exclude 'node_modules/' \
-            --exclude 'dist/' \
+            --include 'dist/' \
+            --include 'dist/README.md' \
+            --include 'dist/.gitkeep' \
+            --exclude 'dist/*' \
             --exclude 'coverage/' \
             --exclude '.phpunit.result.cache' \
             "${PACKAGE_PATH}/" "$work/"
