@@ -19,7 +19,7 @@ func TestGoreleaserConfigExists(t *testing.T) {
 
 // TestGoreleaserConfigBuildsCapabilitiesMatrix checks binary name, main path,
 // GOOS×GOARCH matrix, version ldflags (-X main.Version), and checksums —
-// matching REQ-060 / dist/README.md and acceptance for REQ-061.
+// matching REQ-060 / docs/build-matrix.md and acceptance for REQ-061.
 func TestGoreleaserConfigBuildsCapabilitiesMatrix(t *testing.T) {
 	root := moduleRoot(t)
 	b, err := os.ReadFile(filepath.Join(root, ".goreleaser.yml"))
@@ -39,7 +39,7 @@ func TestGoreleaserConfigBuildsCapabilitiesMatrix(t *testing.T) {
 		}
 	}
 
-	// Multi-arch matrix from dist/README.md.
+	// Multi-arch matrix from docs/build-matrix.md.
 	for _, osName := range []string{"darwin", "linux", "windows"} {
 		if !strings.Contains(s, osName) {
 			t.Errorf(".goreleaser.yml missing goos %q", osName)
@@ -100,14 +100,14 @@ func TestGoreleaserVersionPinDocumented(t *testing.T) {
 		strings.Contains(s, "schema-pro.json") ||
 		strings.Contains(s, "goreleaser.com/static/schema")
 	if !hasPin {
-		// Fall back: dist/README may document the pin.
+		// Fall back: docs/build-matrix.md may document the pin.
 		dist, derr := os.ReadFile(filepath.Join(root, "dist", "README.md"))
 		if derr != nil {
 			t.Fatalf("neither config nor dist documents goreleaser v2 pin: %v", derr)
 		}
 		ds := strings.ToLower(string(dist))
 		if !strings.Contains(ds, "goreleaser") || (!strings.Contains(ds, "v2") && !strings.Contains(ds, "version 2")) {
-			t.Error("document goreleaser v2 schema pin in .goreleaser.yml comments or dist/README.md")
+			t.Error("document goreleaser v2 schema pin in .goreleaser.yml comments or docs/build-matrix.md")
 		}
 	}
 }

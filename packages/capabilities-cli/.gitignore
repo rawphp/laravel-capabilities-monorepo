@@ -1,0 +1,2 @@
+# GoReleaser / local build output — do not track (GoReleaser --clean deletes contents).
+dist/

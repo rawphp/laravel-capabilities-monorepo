@@ -25,7 +25,7 @@ leading `v`, injected at build via ldflags).
 
 | Step | What | Where |
 |------|------|--------|
-| 1 | Version string overridable with `-X main.Version=…` | `cmd/capabilities` + `dist/README.md` |
+| 1 | Version string overridable with `-X main.Version=…` | `cmd/capabilities` + `docs/build-matrix.md` |
 | 2 | Multi-arch build, archives, checksums | package-root [`.goreleaser.yml`](../.goreleaser.yml) |
 | 3 | Tag trigger `v*`, GoReleaser release, **replace** on retag | [`.github/workflows/release.yml`](../.github/workflows/release.yml) |
 | 4 | Platform signing when secrets exist; skip + log otherwise | [`release-signing.md`](release-signing.md), `scripts/sign-binary.sh` |
@@ -43,4 +43,4 @@ above appear at repo root on `rawphp/capabilities-cli`.
 
 - Install / download pointer: package [README](../README.md) § Releases
 - Signing secrets: [`release-signing.md`](release-signing.md)
-- Cross-compile matrix notes: [`../dist/README.md`](../dist/README.md)
+- Cross-compile matrix notes: [`build-matrix.md`](build-matrix.md)

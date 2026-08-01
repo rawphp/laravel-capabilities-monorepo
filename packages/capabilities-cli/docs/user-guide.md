@@ -37,7 +37,7 @@ go test ./...
 go build -o capabilities ./cmd/capabilities
 ```
 
-Cross-compile targets (darwin/linux/windows × amd64/arm64): see [`dist/README.md`](../dist/README.md).
+Cross-compile targets (darwin/linux/windows × amd64/arm64): see [`docs/build-matrix.md`](build-matrix.md).
 
 ```bash
 # example Apple Silicon
@@ -231,7 +231,7 @@ internal/
   run/              # validate locally → POST invoke
   mcpstdio/         # optional MCP stdio bridge
   api/              # HTTP client
-dist/               # cross-compile notes; CI release uses GoReleaser
+docs/build-matrix.md # cross-compile / ldflags; CI uses GoReleaser
 ```
 
 ## How you know it worked

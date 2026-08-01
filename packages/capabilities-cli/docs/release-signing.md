@@ -138,4 +138,4 @@ hooks:
 - Release workflow: [`.github/workflows/release.yml`](../.github/workflows/release.yml)
 - GoReleaser config: [`.goreleaser.yml`](../.goreleaser.yml)
 - Soft-gated hook: [`scripts/sign-binary.sh`](../scripts/sign-binary.sh)
-- Cross-compile matrix: [`dist/README.md`](../dist/README.md)
+- Cross-compile matrix: [`docs/build-matrix.md`](build-matrix.md)

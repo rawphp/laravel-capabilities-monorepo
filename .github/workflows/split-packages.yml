@@ -22,11 +22,13 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
-# Tag mirrors must not be cancelled mid-matrix (partial package remotes).
-# Branch / workflow_dispatch may cancel superseded runs.
+# Serialize ALL splits (main + v* tags share package remotes). Per-ref groups
+# raced: simultaneous main + tag runs both cloned the same tip, committed the
+# same tree, and the loser failed with "cannot lock ref … expected OLD".
+# Never cancel-in-progress: a cancelled matrix leaves partial package remotes.
 concurrency:
-  group: split-packages-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+  group: split-packages
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -113,13 +115,35 @@ jobs:
             msg="sync: monorepo ${SOURCE_SHA:0:7} (${PACKAGE_PATH})"
             git -C "$work" commit -m "$msg"
             # main tracking branch may not exist yet on first push
-            if git -C "$work" rev-parse --verify main >/dev/null 2>&1; then
-              git -C "$work" push origin "HEAD:main"
-            else
+            if ! git -C "$work" rev-parse --verify main >/dev/null 2>&1; then
               git -C "$work" branch -M main
-              git -C "$work" push -u origin main
             fi
-            echo "Pushed main → ${TARGET_REPO}"
+            # Push with retry: concurrent main+tag split can race on the same tree.
+            # If remote tip already has an identical tree, treat as success (CAS race).
+            attempt=1
+            max_attempts=5
+            while true; do
+              if git -C "$work" push origin "HEAD:main"; then
+                echo "Pushed main → ${TARGET_REPO}"
+                break
+              fi
+              git -C "$work" fetch origin main
+              our_tree="$(git -C "$work" rev-parse 'HEAD^{tree}')"
+              remote_tree="$(git -C "$work" rev-parse 'origin/main^{tree}')"
+              if [[ "$our_tree" == "$remote_tree" ]]; then
+                echo "Remote main already has identical tree; aligning local HEAD"
+                git -C "$work" reset --hard origin/main
+                break
+              fi
+              if (( attempt >= max_attempts )); then
+                echo "Failed to push main → ${TARGET_REPO} after ${max_attempts} attempts"
+                exit 1
+              fi
+              echo "Push rejected (attempt ${attempt}/${max_attempts}); rebasing onto origin/main"
+              git -C "$work" rebase origin/main
+              attempt=$((attempt + 1))
+              sleep $((attempt * 2))
+            done
           fi
 
           # Monorepo tags (v*) are mirrored onto each package repo for Packagist.

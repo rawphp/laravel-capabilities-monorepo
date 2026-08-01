@@ -58,7 +58,7 @@ Without `-ldflags`, the binary keeps the source default in `Version` (dev string
 
 ## GoReleaser (release path)
 
-Config: `packages/capabilities-cli/.goreleaser.yml` (self-contained after split).
+Config: package-root `.goreleaser.yml` (self-contained after split).
 
 | Item | Value |
 |------|--------|
@@ -68,7 +68,7 @@ Config: `packages/capabilities-cli/.goreleaser.yml` (self-contained after split)
 | Matrix | darwin/linux/windows × amd64/arm64 |
 | Version ldflags | `-X main.Version={{.Version}}` (tag `v1.2.3` → `1.2.3`) |
 | Checksums | `checksums.txt` (sha256) |
-| Signing | Secret-gated (macOS + Windows); **unsigned** assets still publish when secrets are missing — see [`docs/release-signing.md`](../docs/release-signing.md) |
+| Signing | Secret-gated (macOS + Windows); **unsigned** assets still publish when secrets are missing — see [`docs/release-signing.md`](release-signing.md) |
 
 ```bash
 # from packages/capabilities-cli (requires goreleaser v2.x on PATH)

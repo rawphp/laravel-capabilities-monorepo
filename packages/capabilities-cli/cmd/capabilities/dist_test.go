@@ -64,14 +64,14 @@ func TestNolocaldatabasedriver(t *testing.T) {
 
 func TestCrosscompiletargetsdocumented(t *testing.T) {
 	root := moduleRoot(t)
-	b, err := os.ReadFile(filepath.Join(root, "dist", "README.md"))
+	b, err := os.ReadFile(filepath.Join(root, "docs", "build-matrix.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := string(b)
 	for _, needle := range []string{"darwin", "linux", "windows", "amd64", "arm64"} {
 		if !strings.Contains(s, needle) {
-			t.Fatalf("dist README missing %s", needle)
+			t.Fatalf("docs/build-matrix.md missing %s", needle)
 		}
 	}
 }
@@ -80,14 +80,14 @@ func TestCrosscompiletargetsdocumented(t *testing.T) {
 // ldflags key so GoReleaser (and manual release builds) inject the same symbol.
 func TestVersionldflagsdocumented(t *testing.T) {
 	root := moduleRoot(t)
-	b, err := os.ReadFile(filepath.Join(root, "dist", "README.md"))
+	b, err := os.ReadFile(filepath.Join(root, "docs", "build-matrix.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := string(b)
 	for _, needle := range []string{"-ldflags", "main.Version", "-X"} {
 		if !strings.Contains(s, needle) {
-			t.Fatalf("dist README must document version ldflags (missing %q)", needle)
+			t.Fatalf("docs/build-matrix.md must document version ldflags (missing %q)", needle)
 		}
 	}
 }

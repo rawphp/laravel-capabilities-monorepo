@@ -19,7 +19,7 @@ Downloadable client for end users and local agents. Auth + catalog + run + optio
 | **Retag** | Re-push of the same `v*` tag **replaces** release assets |
 | **Auth for unsigned publish** | Child-repo `GITHUB_TOKEN` (`contents: write`) only — no monorepo `SPLIT_GITHUB_TOKEN` |
 
-Cross-compile / local matrix notes: [`dist/README.md`](dist/README.md).
+Cross-compile / local matrix notes: [`docs/build-matrix.md`](docs/build-matrix.md).
 
 **Platform signing** (macOS codesign/notarization, Windows Authenticode) is **secret-gated**: when secrets are absent the release still publishes **unsigned** assets with clear skip logs; when secrets are present, signing hooks run. Secret names and setup: [`docs/release-signing.md`](docs/release-signing.md). Never commit private keys or certificates.
 
@@ -42,7 +42,7 @@ internal/
   run/              # validate locally → POST invoke
   mcpstdio/         # optional MCP stdio bridge
   api/              # HTTP client
-dist/               # cross-compile notes; CI release uses GoReleaser (see Releases)
+docs/build-matrix.md # cross-compile / ldflags; CI uses GoReleaser (see Releases)
 ```
 
 ## Principles
@@ -60,4 +60,4 @@ go test ./...
 go build -o capabilities ./cmd/capabilities
 ```
 
-Cross-compile targets: darwin/linux/windows × amd64/arm64 (see `dist/README.md`).
+Cross-compile targets: darwin/linux/windows × amd64/arm64 (see `docs/build-matrix.md`).
