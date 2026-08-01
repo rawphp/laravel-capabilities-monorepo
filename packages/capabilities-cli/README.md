@@ -8,6 +8,63 @@
 
 Downloadable client for end users and local agents. Auth + catalog + run + optional MCP stdio against a remote Laravel app’s **same** HTTP capability API (D-009). **No domain `run()` on the laptop.**
 
+## Install
+
+Installs the latest release binary **for your user** into `~/.local/bin` (no sudo). macOS assets may be **Developer ID signed and notarized**.
+
+### One-liner (macOS / Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rawphp/capabilities-cli/main/scripts/install.sh | bash
+```
+
+Then ensure user bin is on your `PATH` (if `capabilities` is not found):
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+# optional: add that line to ~/.zshrc or ~/.bashrc
+```
+
+Verify:
+
+```bash
+capabilities version
+```
+
+### Pin a version or install dir
+
+```bash
+# pin release
+curl -fsSL https://raw.githubusercontent.com/rawphp/capabilities-cli/main/scripts/install.sh | VERSION=0.1.7 bash
+
+# custom user-global dir (still no sudo)
+curl -fsSL https://raw.githubusercontent.com/rawphp/capabilities-cli/main/scripts/install.sh | CAPABILITIES_INSTALL_DIR="$HOME/bin" bash
+```
+
+### Manual (macOS / Linux)
+
+```bash
+VERSION=0.1.7   # or latest from the Releases page
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')   # darwin | linux
+ARCH=$(uname -m)
+case "$ARCH" in x86_64) ARCH=amd64;; aarch64|arm64) ARCH=arm64;; esac
+
+curl -fsSL "https://github.com/rawphp/capabilities-cli/releases/download/v${VERSION}/capabilities_${VERSION}_${OS}_${ARCH}.tar.gz" \
+  | tar -xz -C /tmp capabilities
+mkdir -p ~/.local/bin
+install -m 755 /tmp/capabilities ~/.local/bin/capabilities
+export PATH="$HOME/.local/bin:$PATH"
+capabilities version
+```
+
+### Windows
+
+1. Download `capabilities_*_windows_amd64.zip` (or `arm64`) from [Releases](https://github.com/rawphp/capabilities-cli/releases).
+2. Extract `capabilities.exe` into a folder on your **user** `PATH` (e.g. `%USERPROFILE%\bin`).
+3. Open a new terminal and run `capabilities version`.
+
+Windows binaries are currently **unsigned** (Authenticode optional). Source build remains supported — see **Build & test** below. Full usage: [`docs/user-guide.md`](docs/user-guide.md).
+
 ### Releases
 
 **Flow:** monorepo git tag `v*` → split workflow mirrors the tag into this package repo → package-owned [`.github/workflows/release.yml`](.github/workflows/release.yml) runs **GoReleaser** ([`.goreleaser.yml`](.goreleaser.yml)) → **GitHub Release** with multi-arch `capabilities` archives + `checksums.txt`.

@@ -14,20 +14,43 @@ Downloadable client for end users and local agents. Authenticates to a deploymen
 
 ## Install
 
-### GitHub Release binaries (recommended when tagged)
+### User-global (recommended)
 
-After a monorepo `v*` tag is split into this package remote, CI publishes multi-arch
-`capabilities` archives to
-[GitHub Releases](https://github.com/rawphp/capabilities-cli/releases)
-(darwin / linux / windows × amd64 / arm64, plus `checksums.txt`).
+Installs into `~/.local/bin` for the current user (no sudo). Same script as the
+package [README](../README.md#install):
 
-1. Open the latest (or desired) release on that page.
-2. Download the archive for your OS/arch.
-3. Extract the `capabilities` binary, place it on your `PATH`, and run `capabilities version`.
+```bash
+curl -fsSL https://raw.githubusercontent.com/rawphp/capabilities-cli/main/scripts/install.sh | bash
+export PATH="$HOME/.local/bin:$PATH"   # if needed
+capabilities version
+```
 
-Assets may be **unsigned** unless platform-signing secrets are configured on the
-package repo (see [`release-signing.md`](release-signing.md)). Source build remains
-fully supported either way.
+Pin a version or directory:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rawphp/capabilities-cli/main/scripts/install.sh | VERSION=0.1.7 bash
+curl -fsSL https://raw.githubusercontent.com/rawphp/capabilities-cli/main/scripts/install.sh | CAPABILITIES_INSTALL_DIR="$HOME/bin" bash
+```
+
+Manual download (macOS / Linux):
+
+```bash
+VERSION=0.1.7
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m); case "$ARCH" in x86_64) ARCH=amd64;; aarch64|arm64) ARCH=arm64;; esac
+curl -fsSL "https://github.com/rawphp/capabilities-cli/releases/download/v${VERSION}/capabilities_${VERSION}_${OS}_${ARCH}.tar.gz" \
+  | tar -xz -C /tmp capabilities
+mkdir -p ~/.local/bin
+install -m 755 /tmp/capabilities ~/.local/bin/capabilities
+```
+
+**Windows:** download the `windows_*` zip from
+[GitHub Releases](https://github.com/rawphp/capabilities-cli/releases), extract
+`capabilities.exe` into a folder on your user `PATH`, then `capabilities version`.
+
+macOS release assets may be **Developer ID signed and notarized** when Apple secrets
+are configured on the package repo (see [`release-signing.md`](release-signing.md)).
+Windows Authenticode is optional. Source build remains fully supported either way.
 
 ### Build from source
 

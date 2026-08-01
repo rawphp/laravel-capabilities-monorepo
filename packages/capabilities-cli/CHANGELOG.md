@@ -13,6 +13,9 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Added
 
+- User-global install: `scripts/install.sh` + README / user-guide one-liner
+  (`curl … | bash`) installs the latest (or `VERSION=`) GitHub Release binary into
+  `~/.local/bin` (override with `CAPABILITIES_INSTALL_DIR`); no sudo.
 - Downloadable Go product CLI: auth, catalog, local JSON Schema validation (UX only),
   invoke via the server’s single HTTP capability API, optional MCP stdio bridge (D-016 / D-009).
 - No embedded domain logic; server re-validates and derives `caller: cli` from credentials.
