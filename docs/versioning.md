@@ -42,6 +42,31 @@ Tag concurrency uses `cancel-in-progress: false` for tags so a release mirror is
 
 Setup (repo secrets / empty package remotes) is documented in the workflow file header.
 
+## Local release command (maintainer)
+
+**Sole gate + tag + push path:** [`scripts/release.sh`](../scripts/release.sh) (agent UX: `.claude/commands/release.md` / `/release`).
+
+| Step | What it does |
+|---|---|
+| Preflight | `main`/`master` only, clean tree, fetch tags, `HEAD` vs `origin` rules |
+| Version | `patch` / `minor` / `major` / explicit `vX.Y.Z` (first release: patch/minor → `v0.1.0`) |
+| Optional `--squash` | Soft-reset BASE..HEAD into one clean commit (`-m` message), `git push --force-with-lease` branch. BASE = prior `v*` tag, or `origin/<branch>` when no tag yet |
+| Gates | `composer test` (core + messaging Pest) + `composer test:cli` (`go test ./...`) — same suites as CI |
+| Tag + push | Annotated monorepo `v*` tag → `git push origin refs/tags/…` → split workflow + CLI GoReleaser |
+
+```bash
+# Dry-run (gates only; no tag/push):
+./scripts/release.sh --dry-run
+
+# First public cut (example):
+./scripts/release.sh --yes --squash -m "Pre-stable monorepo: core, messaging, CLI" v0.1.0
+
+# Ship-path self-test (no full suites / no network):
+bash scripts/lib/test-release.sh
+```
+
+Do **not** hand-roll a parallel tag path. Packagist submit remains the human checklist below; the script does not publish to Packagist.
+
 ## 0.x pre-stable expectations
 
 - While major version is **0**, the public surface is **pre-stable**: breaking changes may land without a `1.0.0` major bump (SemVer allows this on 0.x).
@@ -225,9 +250,9 @@ Automated package CI stays **unit-only** and must **not** call Packagist, create
    - [ ] Fire a test push or use Packagist “Update” once to confirm the hook works.
 
 5. **First git tag**
-   - [ ] Create annotated **monorepo** tag: `git tag -a v0.Y.Z -m "Pre-stable 0.Y.Z"` (first target often `v0.1.0`).
-   - [ ] Push monorepo tag: `git push origin v0.Y.Z` — split workflow mirrors the tag to package remotes.
-   - [ ] Do **not** treat tag create as automated by monorepo unit CI.
+   - [ ] Prefer `./scripts/release.sh --yes [--squash -m "…"] v0.Y.Z` (runs gates, annotated tag, push). First target often `v0.1.0`.
+   - [ ] Manual fallback only if needed: `git tag -a v0.Y.Z -m "…"` then `git push origin v0.Y.Z` — still require green `composer test` + `composer test:cli` first.
+   - [ ] Split workflow mirrors the tag to package remotes; do **not** treat tag create as automated by monorepo unit CI alone.
 
 6. **Verify public install**
    - [ ] After Packagist indexes the tag: `composer show rawphp/laravel-capabilities` (and messaging) resolves a version.

@@ -10,6 +10,8 @@ Product capability bus for Laravel: define once, expose via agent, MCP, HTTP, pr
 
 Development happens here. On every push to `main` (and every monorepo tag `v*`), [`.github/workflows/split-packages.yml`](.github/workflows/split-packages.yml) mirrors each package tree into its **own public repo** (package root = repo root). Packagist and consumer VCS installs target those package repos — not this monorepo.
 
+**Cut a release locally:** [`scripts/release.sh`](scripts/release.sh) (quality gates → optional squash → annotated `v*` tag → push). Agent command: `/release`. Details: [docs/versioning.md](docs/versioning.md#local-release-command-maintainer).
+
 | Monorepo path | Public package repo | Artifact |
 |---|---|---|
 | `packages/laravel-capabilities` | [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities) | Composer `rawphp/laravel-capabilities` |
