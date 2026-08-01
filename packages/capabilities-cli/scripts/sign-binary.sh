@@ -161,7 +161,23 @@ sign_darwin() {
   if [[ -n "${APPLE_API_KEY_ID:-}" && -n "${APPLE_API_ISSUER:-}" && -n "${APPLE_API_KEY_P8:-}" ]]; then
     if command -v xcrun >/dev/null 2>&1; then
       local key_path="${tmp}/AuthKey_${APPLE_API_KEY_ID}.p8"
-      printf '%s\n' "${APPLE_API_KEY_P8}" >"${key_path}"
+      # GitHub secrets often store PEM with literal \n (single line). Expand those
+      # to real newlines so notarytool does not fail with invalidPEMDocument.
+      local p8_body="${APPLE_API_KEY_P8}"
+      if [[ "${p8_body}" != *$'\n'* && "${p8_body}" == *'\n'* ]]; then
+        p8_body="${p8_body//\\n/$'\n'}"
+      fi
+      # Strip accidental surrounding quotes from secret paste.
+      p8_body="${p8_body#\"}"
+      p8_body="${p8_body%\"}"
+      p8_body="${p8_body#\'}"
+      p8_body="${p8_body%\'}"
+      # Ensure trailing newline; write without adding extra blank lines mid-PEM.
+      printf '%s\n' "${p8_body}" >"${key_path}"
+      if ! grep -q "BEGIN PRIVATE KEY\|BEGIN EC PRIVATE KEY" "${key_path}"; then
+        log_skip "APPLE_API_KEY_P8 does not look like a PEM private key (missing BEGIN line); re-paste full .p8 including headers. Binary remains codesigned only"
+        return 0
+      fi
       pack_notary_zip
       echo "signing: notarytool submit (API key, zip) for ${BIN_PATH}"
       if xcrun notarytool submit "${submit_zip}" \
@@ -171,7 +187,7 @@ sign_darwin() {
         --wait; then
         echo "signing: notarization OK for ${BIN_PATH} (ticket online; bare binary not stapled)"
       else
-        log_skip "notarytool submit failed for ${BIN_PATH}; binary remains codesigned only"
+        log_skip "notarytool submit failed for ${BIN_PATH} (check APPLE_API_KEY_P8 PEM / Key ID / Issuer); binary remains codesigned only"
       fi
     else
       log_skip "notarytool/xcrun unavailable; binary codesigned without notarization"
