@@ -13,6 +13,7 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Added
 
+- **Laravel 13 / illuminate 13 support** — all `illuminate/*` requirements allow `^11.0|^12.0|^13.0`.
 - Sibling conversation package for the capabilities bus (Telegram-first): webhooks, identity links,
   threads, and chat-side approval notification — implements **core contracts only** (D-007).
 - No second mutation path: domain `run()` stays behind the core registry / agent tools.
