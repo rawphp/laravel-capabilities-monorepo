@@ -75,10 +75,11 @@ From [`.github/workflows/release.yml`](../.github/workflows/release.yml):
 | Step / job | Gate | Effect |
 |---|---|---|
 | **select-runner** | always | Reads `APPLE_CERTIFICATE_BASE64` via `env:` (not `if: secrets.*`). Outputs `runner=macos-latest` when set, else `ubuntu-latest`. |
+| **test** | always | `go test ./...` on **ubuntu-latest** (not Darwin — avoids LC_UUID/dyld abort on older Go + macos-26). |
 | Platform signing status | always | Logs enabled vs `signing skipped` |
 | Install osslsigncode | `steps.signing.outputs.windows_present == 'true'` | Installs `osslsigncode` via **apt** (Linux) or **brew** (Darwin) — presence via `env:` + step outputs, **not** `if: secrets.*` |
 | Apple signing readiness | `steps.signing.outputs.apple_present == 'true'` | Logs host OS and whether codesign hooks can run |
-| Run GoReleaser | always | Full multi-arch matrix; passes Apple/Windows secret env vars when set (empty when unset) |
+| Run GoReleaser | after `test` + `select-runner` | Full multi-arch matrix; passes Apple/Windows secret env vars when set (empty when unset). Uses Go from `go.mod` (1.24+) so Darwin binaries include `LC_UUID`. |
 
 ### Runner selection
 

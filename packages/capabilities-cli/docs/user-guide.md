@@ -6,7 +6,7 @@ Downloadable client for end users and local agents. Authenticates to a deploymen
 
 **Module:** `github.com/rawphp/capabilities-cli`  
 **Binary name:** `capabilities`  
-**Language:** Go 1.22+ (D-016)  
+**Language:** Go 1.24+ (D-016; CI/release pin — 1.22 on macos-26 lacks LC_UUID)  
 **Status:** 0.x pre-stable; prefer release binaries when available, or build from source  
 **Repo:** [github.com/rawphp/capabilities-cli](https://github.com/rawphp/capabilities-cli)
 

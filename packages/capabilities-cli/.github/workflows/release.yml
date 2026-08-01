@@ -54,8 +54,24 @@ jobs:
             echo "No Apple certificate secret → ubuntu-latest (unsigned darwin soft path)."
           fi
 
+  # Always test on Linux. macOS 26 + older Go can emit binaries without LC_UUID
+  # (dyld abort). Keep the Darwin runner for codesign/notary only.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run unit tests
+        run: go test ./...
+
   goreleaser:
-    needs: select-runner
+    needs: [select-runner, test]
     runs-on: ${{ needs.select-runner.outputs.runner }}
     steps:
       - name: Checkout
@@ -66,11 +82,9 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          # Pin to module directive in go.mod (go 1.22), not floating "stable".
+          # Pin to module directive in go.mod (go 1.24+), not floating "stable".
+          # Go 1.22.x on macos-26-arm64: missing LC_UUID → dyld abort on binaries.
           go-version-file: go.mod
-
-      - name: Run unit tests
-        run: go test ./...
 
       # Secrets may be used in env:, but NOT in step/job `if:` (GitHub rejects
       # "Unrecognized named-value: 'secrets'" and the whole workflow fails with 0 jobs).
