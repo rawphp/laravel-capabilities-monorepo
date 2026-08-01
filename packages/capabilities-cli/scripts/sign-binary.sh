@@ -139,18 +139,38 @@ sign_darwin() {
   codesign --verify --verbose=2 "${BIN_PATH}" || true
   echo "signing: codesign OK for ${BIN_PATH}"
 
-  # Notarization is optional at binary hook time; full staple often runs on archive.
-  # When notary secrets present, submit if notarytool is available (soft on failure).
+  # Notarization: notarytool rejects bare Mach-O — must submit zip/pkg/dmg.
+  # Zip the codesigned binary, submit, leave binary in place. Stapling does not
+  # apply to bare CLI binaries; Gatekeeper fetches the ticket online via CDHash.
+  local submit_zip=""
+  pack_notary_zip() {
+    submit_zip="${tmp}/capabilities-notary-${GOARCH}.zip"
+    local bin_base stage
+    bin_base="$(basename "${BIN_PATH}")"
+    stage="${tmp}/notary-stage-${GOARCH}"
+    rm -rf "${stage}"
+    mkdir -p "${stage}"
+    cp "${BIN_PATH}" "${stage}/${bin_base}"
+    if command -v ditto >/dev/null 2>&1; then
+      ditto -c -k "${stage}" "${submit_zip}"
+    else
+      (cd "${stage}" && zip -q -r "${submit_zip}" "${bin_base}")
+    fi
+  }
+
   if [[ -n "${APPLE_API_KEY_ID:-}" && -n "${APPLE_API_ISSUER:-}" && -n "${APPLE_API_KEY_P8:-}" ]]; then
     if command -v xcrun >/dev/null 2>&1; then
       local key_path="${tmp}/AuthKey_${APPLE_API_KEY_ID}.p8"
       printf '%s\n' "${APPLE_API_KEY_P8}" >"${key_path}"
-      echo "signing: notarytool submit (API key) for ${BIN_PATH}"
-      if ! xcrun notarytool submit "${BIN_PATH}" \
+      pack_notary_zip
+      echo "signing: notarytool submit (API key, zip) for ${BIN_PATH}"
+      if xcrun notarytool submit "${submit_zip}" \
         --key "${key_path}" \
         --key-id "${APPLE_API_KEY_ID}" \
         --issuer "${APPLE_API_ISSUER}" \
         --wait; then
+        echo "signing: notarization OK for ${BIN_PATH} (ticket online; bare binary not stapled)"
+      else
         log_skip "notarytool submit failed for ${BIN_PATH}; binary remains codesigned only"
       fi
     else
@@ -158,12 +178,15 @@ sign_darwin() {
     fi
   elif [[ -n "${APPLE_ID:-}" && -n "${APPLE_ID_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
     if command -v xcrun >/dev/null 2>&1; then
-      echo "signing: notarytool submit (Apple ID) for ${BIN_PATH}"
-      if ! xcrun notarytool submit "${BIN_PATH}" \
+      pack_notary_zip
+      echo "signing: notarytool submit (Apple ID, zip) for ${BIN_PATH}"
+      if xcrun notarytool submit "${submit_zip}" \
         --apple-id "${APPLE_ID}" \
         --password "${APPLE_ID_PASSWORD}" \
         --team-id "${APPLE_TEAM_ID}" \
         --wait; then
+        echo "signing: notarization OK for ${BIN_PATH} (ticket online; bare binary not stapled)"
+      else
         log_skip "notarytool submit failed for ${BIN_PATH}; binary remains codesigned only"
       fi
     else
