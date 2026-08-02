@@ -1,6 +1,6 @@
 {
     "name": "rawphp/laravel-capabilities-ai",
-    "description": "Conversation / turn / proposal runtime for the Laravel Capabilities bus — pluggable LlmClient, progress store, bus-only tools",
+    "description": "Conversation / turn / proposal runtime for the Laravel Capabilities bus \u2014 pluggable LlmClient, progress store, bus-only tools",
     "type": "library",
     "license": "MIT",
     "keywords": [
@@ -36,6 +36,11 @@
     "extra": {
         "branch-alias": {
             "dev-main": "0.x-dev"
+        },
+        "laravel": {
+            "providers": [
+                "Rawphp\\CapabilitiesAi\\CapabilitiesAiServiceProvider"
+            ]
         }
     },
     "scripts": {
