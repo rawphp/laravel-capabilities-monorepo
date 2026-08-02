@@ -68,7 +68,6 @@ packages/
   laravel-capabilities/           # → github.com/rawphp/laravel-capabilities
   laravel-capabilities-messaging/  # → github.com/rawphp/laravel-capabilities-messaging
   laravel-capabilities-ai/         # → github.com/rawphp/laravel-capabilities-ai
-  # (messaging line continued below — fix) # → github.com/rawphp/laravel-capabilities-messaging
   capabilities-cli/               # → github.com/rawphp/capabilities-cli
 docs/                             # monorepo-only: design, install, tutorials, inventory
   README.md                       # documentation index
