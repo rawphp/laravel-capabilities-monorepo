@@ -8,7 +8,7 @@
 # Setup (one-time, monorepo repo settings):
 #   1. Create a fine-grained PAT (or classic) with Contents: Read and write
 #      on rawphp/laravel-capabilities, rawphp/laravel-capabilities-messaging,
-#      and rawphp/capabilities-cli.
+#      rawphp/laravel-capabilities-ai, and rawphp/capabilities-cli.
 #   2. Add it as repo secret: SPLIT_GITHUB_TOKEN
 #   3. Ensure the three package repos exist (empty is fine) and default branch is main.
 #
@@ -49,6 +49,8 @@ jobs:
             repo: rawphp/laravel-capabilities
           - path: packages/laravel-capabilities-messaging
             repo: rawphp/laravel-capabilities-messaging
+          - path: packages/laravel-capabilities-ai
+            repo: rawphp/laravel-capabilities-ai
           - path: packages/capabilities-cli
             repo: rawphp/capabilities-cli
 

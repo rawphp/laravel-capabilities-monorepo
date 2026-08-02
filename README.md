@@ -16,6 +16,7 @@ Development happens here. On every push to `main` (and every monorepo tag `v*`),
 |---|---|---|
 | `packages/laravel-capabilities` | [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities) | Composer `rawphp/laravel-capabilities` |
 | `packages/laravel-capabilities-messaging` | [rawphp/laravel-capabilities-messaging](https://github.com/rawphp/laravel-capabilities-messaging) | Composer `rawphp/laravel-capabilities-messaging` |
+| `packages/laravel-capabilities-ai` | [rawphp/laravel-capabilities-ai](https://github.com/rawphp/laravel-capabilities-ai) | Composer `rawphp/laravel-capabilities-ai` |
 | `packages/capabilities-cli` | [rawphp/capabilities-cli](https://github.com/rawphp/capabilities-cli) | Go module + binary `capabilities` |
 
 **Docs split the same way:** monorepo-only design/install guides live under [`docs/`](docs/). Package-facing guides live under `packages/*/docs/` and ship with each split repo. Do not link package READMEs into monorepo-only paths with relative `../../docs/` URLs — those break after split.
@@ -54,6 +55,8 @@ composer require rawphp/laravel-capabilities
 composer require laravel/ai laravel/mcp
 # optional conversation surfaces
 composer require rawphp/laravel-capabilities-messaging
+# optional AI turns
+composer require rawphp/laravel-capabilities-ai
 ```
 
 Install the **CLI** on the user’s machine (not the server) — binary name: `capabilities`. Prefer [GitHub Releases](https://github.com/rawphp/capabilities-cli/releases) after a monorepo `v*` tag + split; or build from `packages/capabilities-cli` / `rawphp/capabilities-cli`.
@@ -63,7 +66,9 @@ Install the **CLI** on the user’s machine (not the server) — binary name: `c
 ```text
 packages/
   laravel-capabilities/           # → github.com/rawphp/laravel-capabilities
-  laravel-capabilities-messaging/ # → github.com/rawphp/laravel-capabilities-messaging
+  laravel-capabilities-messaging/  # → github.com/rawphp/laravel-capabilities-messaging
+  laravel-capabilities-ai/         # → github.com/rawphp/laravel-capabilities-ai
+  # (messaging line continued below — fix) # → github.com/rawphp/laravel-capabilities-messaging
   capabilities-cli/               # → github.com/rawphp/capabilities-cli
 docs/                             # monorepo-only: design, install, tutorials, inventory
   README.md                       # documentation index
@@ -85,6 +90,7 @@ python3 tools/generate_requirement_stubs.py   # after extending the catalog
 composer test              # core + messaging unit suite
 composer test:core
 composer test:messaging
+composer test:ai
 composer test:cli          # requires Go
 ```
 
