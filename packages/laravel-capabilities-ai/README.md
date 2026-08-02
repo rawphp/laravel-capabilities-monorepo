@@ -83,3 +83,17 @@ Kinds: `status` | `token` | `tool` | `error` | `terminal`.
 ## License
 
 MIT
+
+## Non-chat / MVS host jobs
+
+Hosts may resolve `LlmClient` **without** a Conversation (e.g. Macro Validation Suite jobs):
+
+```php
+/** @var \Rawphp\CapabilitiesAi\Contracts\LlmClient $llm */
+$llm = app(\Rawphp\CapabilitiesAi\Contracts\LlmClient::class);
+$result = $llm->complete([
+    ['role' => 'user', 'content' => 'Summarize this payload…'],
+]);
+```
+
+The `LlmClient` interface has **no conversation-only dependency**. Testing default is `FakeLlmClient` (no network).
