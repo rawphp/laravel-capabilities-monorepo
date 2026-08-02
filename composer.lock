@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "b79c0e134e5ad1b1916e478d1fd766b1",
+    "content-hash": "a33bf4d56e447e6f3af3ba367b3a5523",
     "packages": [
         {
             "name": "brick/math",
@@ -2809,6 +2809,64 @@
                 "capabilities",
                 "laravel",
                 "mcp"
+            ],
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
+            "name": "rawphp/laravel-capabilities-ai",
+            "version": "dev-main",
+            "dist": {
+                "type": "path",
+                "url": "packages/laravel-capabilities-ai",
+                "reference": "5695f490ba2dd0f0a0e15f1c607f8b727965592b"
+            },
+            "require": {
+                "illuminate/support": "^11.0|^12.0|^13.0",
+                "php": "^8.2",
+                "rawphp/laravel-capabilities": "*"
+            },
+            "require-dev": {
+                "pestphp/pest": "^3.0"
+            },
+            "type": "library",
+            "extra": {
+                "branch-alias": {
+                    "dev-main": "0.x-dev"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Rawphp\\CapabilitiesAi\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "Rawphp\\CapabilitiesAi\\Tests\\": "tests/"
+                }
+            },
+            "scripts": {
+                "test": [
+                    "pest --configuration=phpunit.xml --colors=always"
+                ]
+            },
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "rawphp"
+                }
+            ],
+            "description": "Conversation / turn / proposal runtime for the Laravel Capabilities bus — pluggable LlmClient, progress store, bus-only tools",
+            "keywords": [
+                "agents",
+                "ai",
+                "capabilities",
+                "laravel",
+                "llm"
             ],
             "transport-options": {
                 "symlink": true,
@@ -8090,6 +8148,7 @@
     "minimum-stability": "dev",
     "stability-flags": {
         "rawphp/laravel-capabilities": 20,
+        "rawphp/laravel-capabilities-ai": 20,
         "rawphp/laravel-capabilities-messaging": 20
     },
     "prefer-stable": true,

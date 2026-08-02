@@ -7,7 +7,8 @@
         "php": "^8.2",
         "illuminate/support": "^11.0|^12.0|^13.0",
         "rawphp/laravel-capabilities": "*@dev",
-        "rawphp/laravel-capabilities-messaging": "*@dev"
+        "rawphp/laravel-capabilities-messaging": "*@dev",
+        "rawphp/laravel-capabilities-ai": "*@dev"
     },
     "require-dev": {
         "pestphp/pest": "^3.0",
@@ -16,13 +17,15 @@
     "autoload": {
         "psr-4": {
             "Rawphp\\Capabilities\\": "packages/laravel-capabilities/src/",
-            "Rawphp\\CapabilitiesMessaging\\": "packages/laravel-capabilities-messaging/src/"
+            "Rawphp\\CapabilitiesMessaging\\": "packages/laravel-capabilities-messaging/src/",
+            "Rawphp\\CapabilitiesAi\\": "packages/laravel-capabilities-ai/src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
             "Rawphp\\Capabilities\\Tests\\": "packages/laravel-capabilities/tests/",
-            "Rawphp\\CapabilitiesMessaging\\Tests\\": "packages/laravel-capabilities-messaging/tests/"
+            "Rawphp\\CapabilitiesMessaging\\Tests\\": "packages/laravel-capabilities-messaging/tests/",
+            "Rawphp\\CapabilitiesAi\\Tests\\": "packages/laravel-capabilities-ai/tests/"
         }
     },
     "repositories": [
@@ -39,16 +42,25 @@
             "options": {
                 "symlink": true
             }
+        },
+        {
+            "type": "path",
+            "url": "packages/laravel-capabilities-ai",
+            "options": {
+                "symlink": true
+            }
         }
     ],
     "scripts": {
         "test": [
             "@test:core",
-            "@test:messaging"
+            "@test:messaging",
+            "@test:ai"
         ],
         "test:core": "pest --configuration=packages/laravel-capabilities/phpunit.xml --colors=always",
         "test:messaging": "pest --configuration=packages/laravel-capabilities-messaging/phpunit.xml --colors=always",
-        "test:cli": "cd packages/capabilities-cli && go test ./..."
+        "test:cli": "cd packages/capabilities-cli && go test ./...",
+        "test:ai": "pest --configuration=packages/laravel-capabilities-ai/phpunit.xml --colors=always"
     },
     "minimum-stability": "dev",
     "prefer-stable": true,
