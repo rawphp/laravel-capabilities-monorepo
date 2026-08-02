@@ -172,7 +172,8 @@ final class JsonSchemaValidator
             'string' => is_string($data),
             'boolean' => is_bool($data),
             'array' => is_array($data) && $this->isList($data),
-            'object' => is_array($data) && ! $this->isList($data),
+            // PHP json_decode('{}', true) yields [] — treat empty array as empty object.
+            'object' => is_array($data) && ($data === [] || ! $this->isList($data)),
             default => true,
         };
     }

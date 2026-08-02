@@ -297,3 +297,18 @@ it('fail: hand-copied second tool schema is not used by MCP adapter [D-004]', fu
         ->and($registry->toolSchemas()->export('mcp', 'create-invoice')['input_schema'])
         ->toBe(CreateInvoiceInput::jsonSchema());
 });
+
+it('happy: empty PHP array validates as empty JSON object (json_decode {} trap)', function () {
+    $validator = new JsonSchemaValidator();
+    $schema = [
+        'type' => 'object',
+        'additionalProperties' => false,
+        'properties' => [
+            'resume' => ['type' => ['boolean', 'null']],
+        ],
+    ];
+
+    expect($validator->validate($schema, []))->toBe([])
+        ->and($validator->validate($schema, ['resume' => true]))->toBe([])
+        ->and($validator->validate($schema, [0 => 'list-item']))->not->toBe([]);
+});
