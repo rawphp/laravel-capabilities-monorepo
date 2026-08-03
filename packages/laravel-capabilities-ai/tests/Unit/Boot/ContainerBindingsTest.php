@@ -30,7 +30,7 @@ it('plan selects FakeLlmClient for driver=fake', function () {
 
     expect($resolved['drivers']['llm']['resolved'])->toBe('fake')
         ->and($resolved['drivers']['llm']['concrete'])->toBe(FakeLlmClient::class)
-        ->and($resolved['bindings'][LlmClient::class])->toBe(FakeLlmClient::class);
+        ->and($resolved['drivers']['llm']['concrete'])->toBe(FakeLlmClient::class);
 });
 
 it('plan selects AnthropicLlmClient for driver=anthropic', function () {
@@ -38,7 +38,7 @@ it('plan selects AnthropicLlmClient for driver=anthropic', function () {
 
     expect($resolved['drivers']['llm']['resolved'])->toBe('anthropic')
         ->and($resolved['drivers']['llm']['concrete'])->toBe(AnthropicLlmClient::class)
-        ->and($resolved['bindings'][LlmClient::class])->toBe(AnthropicLlmClient::class);
+        ->and($resolved['drivers']['llm']['concrete'])->toBe(AnthropicLlmClient::class);
 });
 
 it('plan selects ArrayProgressStore for driver=array', function () {
@@ -46,7 +46,7 @@ it('plan selects ArrayProgressStore for driver=array', function () {
 
     expect($resolved['drivers']['progress']['resolved'])->toBe('array')
         ->and($resolved['drivers']['progress']['concrete'])->toBe(ArrayProgressStore::class)
-        ->and($resolved['bindings'][ProgressStore::class])->toBe(ArrayProgressStore::class);
+        ->and($resolved['drivers']['progress']['concrete'])->toBe(ArrayProgressStore::class);
 });
 
 it('plan selects RedisProgressStore for driver=redis', function () {
@@ -54,7 +54,7 @@ it('plan selects RedisProgressStore for driver=redis', function () {
 
     expect($resolved['drivers']['progress']['resolved'])->toBe('redis')
         ->and($resolved['drivers']['progress']['concrete'])->toBe(RedisProgressStore::class)
-        ->and($resolved['bindings'][ProgressStore::class])->toBe(RedisProgressStore::class);
+        ->and($resolved['drivers']['progress']['concrete'])->toBe(RedisProgressStore::class);
 });
 
 it('unknown llm.driver throws fail-closed', function () {
@@ -65,13 +65,13 @@ it('unknown progress.driver throws fail-closed', function () {
     ContainerBindings::resolve(aiConfig(['progress' => ['driver' => 'mysql']]));
 })->throws(InvalidArgumentException::class, 'Unknown progress.driver');
 
-it('plan includes TurnClaim TurnRunner ConversationService ProposalService', function () {
-    $plan = ContainerBindings::plan(aiConfig());
+it('resolve returns driver matrix without class-string plan map', function () {
+    $resolved = ContainerBindings::resolve(aiConfig());
 
-    expect($plan)->toHaveKey(TurnClaim::class)
-        ->and($plan)->toHaveKey(TurnRunner::class)
-        ->and($plan)->toHaveKey(ConversationService::class)
-        ->and($plan)->toHaveKey(ProposalService::class);
+    expect($resolved)->toHaveKey('drivers')
+        ->and($resolved)->not->toHaveKey('bindings')
+        ->and($resolved['drivers']['llm']['concrete'])->toBe(FakeLlmClient::class)
+        ->and($resolved['drivers']['progress']['concrete'])->toBe(ArrayProgressStore::class);
 });
 
 it('makeLlmClient returns FakeLlmClient for fake driver', function () {

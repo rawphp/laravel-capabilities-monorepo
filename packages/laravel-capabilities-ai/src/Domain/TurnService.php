@@ -12,7 +12,6 @@ use Illuminate\Support\Facades\DB;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Models\TableNames;
 use Rawphp\CapabilitiesAi\Models\Turn;
-use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use RuntimeException;
 
 /**
@@ -21,7 +20,7 @@ use RuntimeException;
 final class TurnService
 {
     public function __construct(
-        private readonly ?ProgressStore $progress = null,
+        private readonly ProgressStore $progress,
     ) {}
 
     /**
@@ -92,12 +91,11 @@ final class TurnService
             throw new RuntimeException("Turn {$turnUlid} cannot be cancelled (status={$fresh->status})");
         }
 
-        $progress = $this->progress ?? new ArrayProgressStore;
-        $progress->append($turnUlid, [
+        $this->progress->append($turnUlid, [
             'kind' => 'status',
             'data' => ['status' => Turn::STATUS_CANCELLED],
         ]);
-        $progress->append($turnUlid, [
+        $this->progress->append($turnUlid, [
             'kind' => 'terminal',
             'data' => ['status' => Turn::STATUS_CANCELLED],
         ]);
@@ -115,9 +113,7 @@ final class TurnService
             throw (new ModelNotFoundException)->setModel(Turn::class, [$turnUlid]);
         }
 
-        $progress = $this->progress ?? new ArrayProgressStore;
-
-        return $progress->since($turnUlid, $cursor);
+        return $this->progress->since($turnUlid, $cursor);
     }
 
     /**

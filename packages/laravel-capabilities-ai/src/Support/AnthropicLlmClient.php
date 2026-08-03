@@ -39,10 +39,9 @@ final class AnthropicLlmClient implements LlmClient
                 continue;
             }
             if ($role === 'tool') {
-                // Anthropic tool results need structured blocks; v1 coach is proposal-only.
-                $chat[] = ['role' => 'user', 'content' => $content];
-
-                continue;
+                throw new RuntimeException(
+                    'AnthropicLlmClient does not support role=tool messages yet; structured tool_result blocks are not implemented (fail closed)'
+                );
             }
             $chat[] = [
                 'role' => $role === 'assistant' ? 'assistant' : 'user',

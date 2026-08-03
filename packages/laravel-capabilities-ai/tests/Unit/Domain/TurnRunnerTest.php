@@ -48,7 +48,7 @@ function enqueueTurn(string $content = 'hi'): string
 {
     $service = new ConversationService(static function ($job): void {
         // discard
-    });
+    }, new ArrayProgressStore);
     $ids = $service->createUserMessage($content);
 
     return $ids['turn_ulid'];
@@ -170,6 +170,7 @@ it('missing ContextProvider/ToolCatalog fails closed', function () {
         llm: new FakeLlmClient,
         context: null,
         tools: null,
+        progress: new ArrayProgressStore
     );
     expect(fn () => $runner->run($turnUlid))
         ->toThrow(RuntimeException::class, 'ConversationContextProvider and ToolCatalog must be bound');

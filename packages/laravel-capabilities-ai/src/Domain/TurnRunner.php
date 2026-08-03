@@ -14,7 +14,6 @@ use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Message;
 use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
-use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use RuntimeException;
 
 /**
@@ -25,10 +24,10 @@ final class TurnRunner
     public function __construct(
         private readonly TurnClaim $claim,
         private readonly LlmClient $llm,
+        private readonly ProgressStore $progress,
         private readonly ?ConversationContextProvider $context = null,
         private readonly ?ToolCatalog $tools = null,
         private readonly ?CapabilityBus $bus = null,
-        private readonly ?ProgressStore $progress = null,
         private readonly int $maxToolRounds = 8,
         private readonly string $claimOwner = 'turn-runner',
     ) {}
@@ -44,8 +43,7 @@ final class TurnRunner
             throw new RuntimeException("Failed to claim turn {$turnUlid}");
         }
 
-        $progress = $this->progress ?? new ArrayProgressStore;
-        $progress->append($turnUlid, ['kind' => 'status', 'data' => ['status' => Turn::STATUS_RUNNING]]);
+        $this->progress->append($turnUlid, ['kind' => 'status', 'data' => ['status' => Turn::STATUS_RUNNING]]);
 
         try {
             $conversation = Conversation::query()->findOrFail($turn->conversation_id);
@@ -82,7 +80,7 @@ final class TurnRunner
                         $payload = [];
                     }
                     $this->bus->invoke($name, $payload);
-                    $progress->append($turnUlid, [
+                    $this->progress->append($turnUlid, [
                         'kind' => 'tool',
                         'data' => ['name' => $name, 'payload' => $payload],
                     ]);
@@ -104,7 +102,7 @@ final class TurnRunner
             $turn->save();
 
             // Terminal progress AFTER DB completed
-            $progress->append($turnUlid, [
+            $this->progress->append($turnUlid, [
                 'kind' => 'terminal',
                 'data' => ['status' => Turn::STATUS_COMPLETED],
             ]);
@@ -121,11 +119,11 @@ final class TurnRunner
             $turn->error = $e->getMessage();
             $turn->finished_at = Carbon::now();
             $turn->save();
-            $progress->append($turnUlid, [
+            $this->progress->append($turnUlid, [
                 'kind' => 'error',
                 'data' => ['message' => $e->getMessage()],
             ]);
-            $progress->append($turnUlid, [
+            $this->progress->append($turnUlid, [
                 'kind' => 'terminal',
                 'data' => ['status' => Turn::STATUS_FAILED],
             ]);

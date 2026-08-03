@@ -11,7 +11,6 @@ use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
 use RuntimeException;
-use Throwable;
 
 /**
  * Thin HTTP adapters — domain logic lives in services.
@@ -93,11 +92,6 @@ final class ChatController
             return new JsonResponse(['message' => 'Conversation not found'], 404);
         } catch (RuntimeException $e) {
             return new JsonResponse(['message' => $e->getMessage()], 409);
-        } catch (Throwable $e) {
-            if ($e instanceof ModelNotFoundException) {
-                return new JsonResponse(['message' => 'Conversation not found'], 404);
-            }
-            throw $e;
         }
     }
 }

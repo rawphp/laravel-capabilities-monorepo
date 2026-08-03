@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Schema;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Turn;
+use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 
 function bootHistorySqlite(): void
 {
@@ -32,7 +33,7 @@ function bootHistorySqlite(): void
 
 it('history returns ordered messages', function () {
     bootHistorySqlite();
-    $svc = new ConversationService(static fn ($j) => null);
+    $svc = new ConversationService(static fn ($j) => null, new ArrayProgressStore);
     $ids = $svc->createUserMessage('first');
     $svc->createUserMessage('second', $ids['conversation_ulid']);
 
@@ -46,32 +47,32 @@ it('history returns ordered messages', function () {
 
 it('history throws when conversation missing', function () {
     bootHistorySqlite();
-    (new ConversationService(static fn ($j) => null))->history('01MISSINGCONV00000000000');
+    (new ConversationService(static fn ($j) => null, new ArrayProgressStore))->history('01MISSINGCONV00000000000');
 })->throws(ModelNotFoundException::class);
 
 it('destroy closes conversation when no active turns', function () {
     bootHistorySqlite();
-    $svc = new ConversationService(static fn ($j) => null);
+    $svc = new ConversationService(static fn ($j) => null, new ArrayProgressStore);
     $ids = $svc->createUserMessage('bye');
     Turn::query()->where('ulid', $ids['turn_ulid'])->update(['status' => Turn::STATUS_COMPLETED]);
 
     $out = $svc->destroy($ids['conversation_ulid']);
 
     expect($out['status'])->toBe('closed')
-        ->and($out['deleted'])->toBeTrue()
+        ->and($out['closed'])->toBeTrue()
         ->and(Conversation::query()->where('ulid', $ids['conversation_ulid'])->value('status'))->toBe('closed');
 });
 
 it('destroy rejects when turn queued or running', function () {
     bootHistorySqlite();
-    $svc = new ConversationService(static fn ($j) => null);
+    $svc = new ConversationService(static fn ($j) => null, new ArrayProgressStore);
     $ids = $svc->createUserMessage('active');
     $svc->destroy($ids['conversation_ulid']);
 })->throws(RuntimeException::class);
 
 it('destroy is idempotent when already closed', function () {
     bootHistorySqlite();
-    $svc = new ConversationService(static fn ($j) => null);
+    $svc = new ConversationService(static fn ($j) => null, new ArrayProgressStore);
     $ids = $svc->createUserMessage('x');
     Turn::query()->where('ulid', $ids['turn_ulid'])->update(['status' => Turn::STATUS_COMPLETED]);
     $svc->destroy($ids['conversation_ulid']);
