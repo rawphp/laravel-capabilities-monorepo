@@ -17,9 +17,8 @@ final class RunTurnJob implements ShouldQueue
 
     /**
      * Queue worker kill timeout (seconds).
-     * Default mirrors config claim_ttl default (120) but is not live-bound to config —
-     * pass an explicit timeout at construction (see ConversationService / host dispatch)
-     * when claim_ttl is customized.
+     * Cheap-create path ({@see ConversationService}) passes config claim_ttl here.
+     * Hosts that dispatch RunTurnJob directly should pass the same value when claim_ttl is customized.
      */
     public int $timeout;
 

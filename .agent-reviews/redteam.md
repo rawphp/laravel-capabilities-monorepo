@@ -40,23 +40,70 @@
 ### Round 1 — Critic re-check
 
 - **Reopened:** none on high-impact after second-pass hardening (strip tool defs when `!supportsToolRounds`).
-- **New objections:** none that change merge decision.
-  - Note (not reopened): Anthropic multi-round tools remain **product-unavailable** (B/C shrink) until true `tool_result` (A). That is intentional scope shrink, not a half-wired path.
-  - Note: proposal accept concurrent races still depend on core idempotency store when two workers both see `accepting` — residual under D-005, acceptable for MVS.
+- **New objections:** none that change merge decision at that moment.
+- **High-impact open/reopened remaining:** none (later residual attack → session 2).
+
+## Decision (session 1 — superseded by session 2)
+
+- **Outcome:** proceed-with-accepts (later residual critic reopened accept/idempotency completeness)
+- **Resolved:** R1-01 … R1-11 as above
+- **Accepted:** R1-07, R1-09
+- **Deferred:** R1-10
+
+---
+
+## Session: 2026-08-04 — Round-2 residual attack on accept / fence / dispatch packaging
+- **Proposal:** Treat session-1 tip as merge-ready after residual critic findings (accept limbo, idempotency not fail-closed, nested fence, timeout wiring, packaging, host tool-round honesty)
+- **Owner:** Tom (accept decisions); agent builder this session
+- **Started:** 2026-08-04T14:00:00Z
+- **Source findings:** paste-in residual critic after session-1 fixes
+- **path:** in-session code fixes (do-work skill present; fixes applied directly with unit verification — no UR pipeline this round)
+
+### Round 1 — Critic
+
+| ID | Objection | Impact | Status | Notes |
+|----|-----------|--------|--------|-------|
+| R1-01 | Proposal accept leaves rows stuck in `accepting` with no terminal recovery. Permanent failures (authz deny, bad target, validation) leave limbo forever. | high | verified | Supercedes residual of session-1 R1-03 |
+| R1-02 | Idempotent accept conditional on core store config — not fail-closed. Crash after successful bus invoke but before `accepted` re-invokes; without store = second side effect. | high | verified | Supercedes residual of session-1 R1-03 |
+| R1-03 | `ProposalFenceExtractor` silently drops nested proposal JSON (`\{.*?\}`). | medium | verified | |
+| R1-04 | `RunTurnJob` timeout still not wired from cheap-create path. | medium | verified | Closes session-1 R1-11 footgun |
+| R1-05 | Branch packaging still wrong (`cleanup/dead-code`). | medium | accepted | Process; owner Tom |
+| R1-06 | Hosts that implement `LlmClient` and lie about `supportsToolRounds` reopen bus-then-crash. Docs gap. | low | verified | README note |
+| R1-07 | Cancel residual (outbox later). | low | accepted | Do not re-block |
+
+**Do not re-block (session-1 improvements held):** tool loop gated; Anthropic no tool defs; real CapabilityResult tool messages; pending→accepting→accepted; DatabaseConnection; fence extracted; cancel honesty.
+
+### Round 1 — Builder
+
+| ID | Response | Status | Evidence |
+|----|----------|--------|----------|
+| R1-01 | Non-retryable bus errors → `status=failed` + `last_error`; missing target same. Retryable stays `accepting` for resume. Re-accept of `failed` throws with last_error. | verified | tests: `non-retryable bus failure marks failed…`, `retryable bus failure leaves accepting…`, `missing target_capability marks failed`; `composer test:ai` 97 passed |
+| R1-02 | (1) Phase-record `accept_outcome` after successful invoke while still accepting, then mark accepted — crash resume is local without re-invoke. (2) Fail closed when `idempotencyStoreReady=false` (SP derives from `capabilities.idempotency` via `ContainerBindings::isIdempotencyStoreReady`). Still passes `idempotency_key=proposal:{ulid}` for concurrent workers. | verified | tests: `resume from accepting with recorded outcome does not re-invoke bus`, `fail closed when idempotency store is not ready`, `isIdempotencyStoreReady fails closed…`; path: in-session |
+| R1-03 | Brace-balanced scan of fence body (string-aware); nested objects decode. | verified | test: `extracts nested JSON objects inside proposal fence` |
+| R1-04 | `ConversationService` takes `jobTimeoutSeconds`; cheap create dispatches `new RunTurnJob($ulid, $timeout)`. SP passes `capabilities-ai.claim_ttl`. | verified | tests: `passes custom jobTimeoutSeconds…`, default job timeout 120 on cheap create |
+| R1-05 | Not a code fix. Residual: rename/split before merge theater. | accepted | Residual owner: Tom |
+| R1-06 | README: opt-in `supportsToolRounds()===true` only if tool results accepted on next `complete()`. | verified | `packages/laravel-capabilities-ai/README.md` Host seams section |
+| R1-07 | Accept residual: DB flip + best-effort progress + explicit throw is honest enough for MVS. | accepted | Residual: outbox/shared TX later; owner package maintainer |
+
+### Round 1 — Critic re-check
+
+- **Reopened:** none. High-impact accept limbo and double-fire window closed with unit evidence.
+- **New objections:** none material.
+  - Note: concurrent two-worker race on `accepting` still relies on core idempotency store — now **fail-closed** if store missing, rather than silent double-fire.
+  - Note: fence still returns null on invalid JSON (no structured log hook in unit package) — silent drop only when decode fails; nested valid JSON no longer false-invalid.
 - **Same issues without new evidence:** none.
 - **High-impact open/reopened remaining:** none.
 
 ## Decision
 
 - **Outcome:** proceed-with-accepts
-- **Proposal:** Ship AI runtime tip only after high-impact tool/accept correctness; remaining packaging/god-object items are conscious residual risk
-- **Resolved (verified fixes):** R1-01 (tool-round capability + no advertise tools), R1-02 (real CapabilityResult), R1-03 (accept claim + idempotency key), R1-04 (DatabaseConnection), R1-05 (cancel progress honesty), R1-06 (single driver normalize), R1-08 (ProposalFenceExtractor), R1-11 (job timeout honesty)
-- **Accepted (conscious risk):** R1-07 (redis still untyped object; host ProgressStore preferred), R1-09 (branch packaging still misnamed — owner Tom)
-- **Deferred:** R1-10 (CapabilityRegistry peel plan)
+- **Proposal:** Merge AI runtime tip only after accept terminal recovery + fail-closed idempotency + nested fence + claim_ttl wiring; packaging rename remains process residual
+- **Resolved (verified fixes):** R1-01 (failed terminal), R1-02 (accept_outcome + fail-closed store), R1-03 (brace-balanced fence), R1-04 (claim_ttl → job timeout), R1-06 (README host honesty)
+- **Accepted (conscious risk):** R1-05 (branch still `cleanup/dead-code` — owner Tom), R1-07 (cancel non-atomicity residual), session-1 R1-07 redis untyped, session-1 R1-10 registry peel deferred
 - **Stalemate / still open high-impact:** none
-- **Evidence:** this log Round 1; `composer test:ai` → 89 passed (226 assertions); files under `packages/laravel-capabilities-ai/src/{Contracts,Domain,Support,Jobs}/`
+- **Evidence:** this log session 2 Round 1; `composer test:ai` → **97 passed (256 assertions)**; key files: `ProposalService.php`, `Proposal.php`, proposals migration, `ProposalFenceExtractor.php`, `ConversationService.php`, `ContainerBindings.php`, `CapabilitiesAiServiceProvider.php`, `README.md`
 - **Next step:**
-  1. Rename branch / PR title away from `cleanup/dead-code` before merge (R1-09).
-  2. When Anthropic multi-round tools are a product requirement, implement (A) structured `tool_use`/`tool_result` end-to-end and flip `supportsToolRounds()` true.
-  3. Schedule CapabilityRegistry peel (R1-10) before more registry features.
-  4. Optional: wire `RunTurnJob` timeout from `claim_ttl` at ConversationService dispatch.
+  1. **Tom:** rename branch / PR title away from `cleanup/dead-code` (R1-05) before merge.
+  2. Commit this residual fix set on the tip when ready.
+  3. CapabilityRegistry peel (session-1 R1-10) remains deferred.
+  4. Anthropic true tool_result (session-1 option A) when product requires multi-round tools.

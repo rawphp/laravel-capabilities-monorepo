@@ -17,10 +17,12 @@ final class ConversationService
 {
     /**
      * @param  callable(object): mixed  $dispatch  Bus dispatch callable (never runs job inline in tests)
+     * @param  int  $jobTimeoutSeconds  Passed to {@see RunTurnJob} so queue kill timeout tracks claim_ttl
      */
     public function __construct(
         private readonly mixed $dispatch,
         private readonly ProgressStore $progress,
+        private readonly int $jobTimeoutSeconds = 120,
     ) {
         if (! is_callable($this->dispatch)) {
             throw new \InvalidArgumentException('dispatch must be callable');
@@ -62,7 +64,7 @@ final class ConversationService
             'request_hash' => null,
         ]);
 
-        ($this->dispatch)(new RunTurnJob($turn->ulid));
+        ($this->dispatch)(new RunTurnJob($turn->ulid, $this->jobTimeoutSeconds));
 
         $this->progress->append($turn->ulid, [
             'kind' => 'status',

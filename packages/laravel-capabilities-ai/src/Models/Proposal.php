@@ -18,6 +18,9 @@ class Proposal extends Model
 
     public const STATUS_REJECTED = 'rejected';
 
+    /** Terminal bus failure (non-retryable) after accept claim. */
+    public const STATUS_FAILED = 'failed';
+
     public const STATUS_EXPIRED = 'expired';
 
     public const STATUSES = [
@@ -25,6 +28,7 @@ class Proposal extends Model
         self::STATUS_ACCEPTING,
         self::STATUS_ACCEPTED,
         self::STATUS_REJECTED,
+        self::STATUS_FAILED,
         self::STATUS_EXPIRED,
     ];
 
@@ -41,10 +45,13 @@ class Proposal extends Model
         'target_capability',
         'status',
         'accepted_at',
+        'last_error',
+        'accept_outcome',
     ];
 
     protected $casts = [
         'payload' => 'array',
+        'accept_outcome' => 'array',
         'accepted_at' => 'datetime',
     ];
 

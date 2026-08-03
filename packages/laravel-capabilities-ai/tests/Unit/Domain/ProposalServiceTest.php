@@ -145,7 +145,92 @@ it('resume from accepting re-invokes once then marks accepted', function () {
     $out = $service->accept($proposal->ulid);
     expect($out->status)->toBe(Proposal::STATUS_ACCEPTED)
         ->and($bus->invokes)->toBe(1)
-        ->and($bus->lastOptions['idempotency_key'] ?? null)->toBe('proposal:'.$proposal->ulid);
+        ->and($bus->lastOptions['idempotency_key'] ?? null)->toBe('proposal:'.$proposal->ulid)
+        ->and($out->accept_outcome['ok'] ?? null)->toBeTrue();
+});
+
+it('non-retryable bus failure marks failed (not limbo accepting)', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $bus = new class implements CapabilityBus
+    {
+        public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
+        {
+            return CapabilityResult::failure('forbidden', 'not allowed');
+        }
+
+        public function catalog(): CatalogPresenter
+        {
+            throw new RuntimeException('unused');
+        }
+    };
+    $service = new ProposalService($bus);
+    expect(fn () => $service->accept($proposal->ulid))
+        ->toThrow(RuntimeException::class, 'forbidden');
+    $fresh = Proposal::query()->where('ulid', $proposal->ulid)->firstOrFail();
+    expect($fresh->status)->toBe(Proposal::STATUS_FAILED)
+        ->and($fresh->last_error)->toContain('forbidden');
+});
+
+it('retryable bus failure leaves accepting for resume', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $bus = new class implements CapabilityBus
+    {
+        public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
+        {
+            return CapabilityResult::failure('internal', 'transient', ['retryable' => true]);
+        }
+
+        public function catalog(): CatalogPresenter
+        {
+            throw new RuntimeException('unused');
+        }
+    };
+    $service = new ProposalService($bus);
+    expect(fn () => $service->accept($proposal->ulid))
+        ->toThrow(RuntimeException::class, 'internal');
+    $fresh = Proposal::query()->where('ulid', $proposal->ulid)->firstOrFail();
+    expect($fresh->status)->toBe(Proposal::STATUS_ACCEPTING);
+});
+
+it('resume from accepting with recorded outcome does not re-invoke bus', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $proposal->status = Proposal::STATUS_ACCEPTING;
+    $proposal->accept_outcome = CapabilityResult::ok(['n' => 1])->toArray();
+    $proposal->save();
+    $bus = proposalRecordingBus();
+    $service = new ProposalService($bus);
+    $out = $service->accept($proposal->ulid);
+    expect($out->status)->toBe(Proposal::STATUS_ACCEPTED)
+        ->and($bus->invokes)->toBe(0);
+});
+
+it('fail closed when idempotency store is not ready', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $bus = proposalRecordingBus();
+    $service = new ProposalService($bus, idempotencyStoreReady: false);
+    expect(fn () => $service->accept($proposal->ulid))
+        ->toThrow(RuntimeException::class, 'idempotency store');
+    expect($bus->invokes)->toBe(0)
+        ->and(Proposal::query()->where('ulid', $proposal->ulid)->value('status'))
+        ->toBe(Proposal::STATUS_PENDING);
+});
+
+it('missing target_capability marks failed', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $proposal->target_capability = null;
+    $proposal->save();
+    $bus = proposalRecordingBus();
+    $service = new ProposalService($bus);
+    expect(fn () => $service->accept($proposal->ulid))
+        ->toThrow(RuntimeException::class, 'target_capability');
+    $fresh = Proposal::query()->where('ulid', $proposal->ulid)->firstOrFail();
+    expect($fresh->status)->toBe(Proposal::STATUS_FAILED)
+        ->and($bus->invokes)->toBe(0);
 });
 
 it('reject sets rejected without bus invoke', function () {

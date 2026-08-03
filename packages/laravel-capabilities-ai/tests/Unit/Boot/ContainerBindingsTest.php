@@ -147,3 +147,11 @@ it('makeConversationService injects callable dispatch', function () {
 
     expect($service)->toBeInstanceOf(ConversationService::class);
 });
+
+it('isIdempotencyStoreReady fails closed for disabled/missing driver', function () {
+    expect(ContainerBindings::isIdempotencyStoreReady(['idempotency' => ['enabled' => false, 'driver' => 'database']]))->toBeFalse()
+        ->and(ContainerBindings::isIdempotencyStoreReady(['idempotency' => ['enabled' => true, 'driver' => 'none']]))->toBeFalse()
+        ->and(ContainerBindings::isIdempotencyStoreReady(['idempotency' => ['enabled' => true, 'driver' => 'database']]))->toBeTrue()
+        ->and(ContainerBindings::isIdempotencyStoreReady(['idempotency' => ['driver' => 'memory']]))->toBeTrue()
+        ->and(ContainerBindings::isIdempotencyStoreReady([]))->toBeFalse();
+});

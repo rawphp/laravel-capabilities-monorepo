@@ -92,9 +92,21 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(ConversationService::class, function (Container $app) {
+            $claimTtl = 120;
+            if ($app->bound('config')) {
+                $config = $app->make('config');
+                if (is_object($config) && method_exists($config, 'get')) {
+                    $claimTtl = (int) $config->get('capabilities-ai.claim_ttl', 120);
+                }
+            }
+            if ($claimTtl < 1) {
+                $claimTtl = 120;
+            }
+
             return ContainerBindings::makeConversationService(
                 self::makeDispatchCallable($app),
                 $app->make(ProgressStore::class),
+                $claimTtl,
             );
         });
 
@@ -105,7 +117,19 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
                 );
             }
 
-            return ContainerBindings::makeProposalService($app->make(CapabilityBus::class));
+            $idemReady = true;
+            if ($app->bound('config')) {
+                $config = $app->make('config');
+                if (is_object($config) && method_exists($config, 'get')) {
+                    $caps = (array) $config->get('capabilities', []);
+                    $idemReady = ContainerBindings::isIdempotencyStoreReady($caps);
+                }
+            }
+
+            return ContainerBindings::makeProposalService(
+                $app->make(CapabilityBus::class),
+                $idemReady,
+            );
         });
     }
 

@@ -191,14 +191,38 @@ final class ContainerBindings
     /**
      * @param  callable(object): mixed  $dispatch
      */
-    public static function makeConversationService(callable $dispatch, ProgressStore $progress): ConversationService
-    {
-        return new ConversationService($dispatch, $progress);
+    public static function makeConversationService(
+        callable $dispatch,
+        ProgressStore $progress,
+        int $jobTimeoutSeconds = 120,
+    ): ConversationService {
+        return new ConversationService($dispatch, $progress, $jobTimeoutSeconds);
     }
 
-    public static function makeProposalService(CapabilityBus $bus): ProposalService
+    public static function makeProposalService(
+        CapabilityBus $bus,
+        bool $idempotencyStoreReady = true,
+    ): ProposalService {
+        return new ProposalService($bus, $idempotencyStoreReady);
+    }
+
+    /**
+     * Fail closed for proposal accept when core idempotency store is off/misconfigured.
+     *
+     * @param  array<string, mixed>  $capabilitiesConfig  Slice of config('capabilities')
+     */
+    public static function isIdempotencyStoreReady(array $capabilitiesConfig): bool
     {
-        return new ProposalService($bus);
+        $idem = (array) ($capabilitiesConfig['idempotency'] ?? []);
+        if (array_key_exists('enabled', $idem) && $idem['enabled'] === false) {
+            return false;
+        }
+        $driver = $idem['driver'] ?? null;
+        if ($driver === null || $driver === '' || $driver === 'none' || $driver === 'null') {
+            return false;
+        }
+
+        return true;
     }
 
     public static function makeTurnService(ProgressStore $progress): TurnService

@@ -74,6 +74,24 @@ it('persists message and queued turn and dispatches job', function () {
         ->and(Turn::query()->where('ulid', $ids['turn_ulid'])->value('status'))->toBe(Turn::STATUS_QUEUED)
         ->and($bag->jobs)->toHaveCount(1)
         ->and($bag->jobs[0])->toBeInstanceOf(RunTurnJob::class)
+        ->and($bag->jobs[0]->turnUlid)->toBe($ids['turn_ulid'])
+        ->and($bag->jobs[0]->timeout)->toBe(120);
+});
+
+it('passes custom jobTimeoutSeconds to RunTurnJob', function () {
+    bootCheapCreateSqlite();
+    $bag = new class
+    {
+        /** @var list<object> */
+        public array $jobs = [];
+    };
+    $dispatch = static function (object $job) use ($bag): void {
+        $bag->jobs[] = $job;
+    };
+    $service = new ConversationService($dispatch, new ArrayProgressStore, 45);
+    $ids = $service->createUserMessage('ttl');
+    expect($bag->jobs[0])->toBeInstanceOf(RunTurnJob::class)
+        ->and($bag->jobs[0]->timeout)->toBe(45)
         ->and($bag->jobs[0]->turnUlid)->toBe($ids['turn_ulid']);
 });
 

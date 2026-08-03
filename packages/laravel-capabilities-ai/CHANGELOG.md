@@ -11,6 +11,13 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Fixed
+
+- Proposal accept: non-retryable bus errors → terminal `failed` + `last_error` (no accepting limbo).
+- Proposal accept: record `accept_outcome` before `accepted` so crash resume is local; fail closed when core idempotency store is not configured.
+- `ProposalFenceExtractor`: brace-balanced nested JSON (no silent drop on nested objects).
+- Cheap create passes `claim_ttl` into `RunTurnJob` timeout.
+
 ### Added
 
 - Package runtime for capability-bus AI turns: conversations, messages, turns, proposals.

@@ -78,6 +78,8 @@ $app->bind(LlmClient::class, fn () => new AnthropicLlmClient(
 ));
 ```
 
+**Custom `LlmClient`:** return `supportsToolRounds() === true` **only** if the client accepts tool-result messages on the next `complete()` (OpenAI-style `role=tool` or Anthropic `tool_result` blocks). Lying opens a bus-then-crash path. Package defaults: `FakeLlmClient` true, `AnthropicLlmClient` false until true tool-result support ships.
+
 Env: `ANTHROPIC_API_KEY` (never required in CI — tests use `Http::fake` / `FakeLlmClient`).
 
 ## Flow
