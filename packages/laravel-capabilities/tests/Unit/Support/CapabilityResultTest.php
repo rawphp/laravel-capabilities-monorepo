@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\CapabilityResultAssertionException;
+use Rawphp\Capabilities\Support\ErrorCodeMap;
 
 it('happy: ok result carries data [RES-001]', function () {
     $result = CapabilityResult::ok(['invoice_id' => 42], [
@@ -120,10 +121,10 @@ it('happy: isHardRefuse follows ErrorCodeMap for refuse codes [RES-001]', functi
 
     foreach (['forbidden', 'capability_not_in_profile', 'not_runnable', 'unauthenticated'] as $code) {
         expect(CapabilityResult::failure($code, 'x')->isHardRefuse())->toBeTrue("code={$code}");
-        expect(\Rawphp\Capabilities\Support\ErrorCodeMap::isHardRefuse($code))->toBeTrue();
-        expect(\Rawphp\Capabilities\Support\ErrorCodeMap::retryableDefault($code))->toBeFalse();
+        expect(ErrorCodeMap::isHardRefuse($code))->toBeTrue();
+        expect(ErrorCodeMap::retryableDefault($code))->toBeFalse();
     }
 
     expect(CapabilityResult::failure('domain_error', 'nope')->isHardRefuse())->toBeFalse();
-    expect(\Rawphp\Capabilities\Support\ErrorCodeMap::isHardRefuse('unknown_xyz'))->toBeFalse();
+    expect(ErrorCodeMap::isHardRefuse('unknown_xyz'))->toBeFalse();
 });
