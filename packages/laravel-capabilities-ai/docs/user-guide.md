@@ -26,16 +26,31 @@ Path package in monorepo. Host: require `rawphp/laravel-capabilities-ai`, publis
 
 Set `CAPABILITIES_AI_ROUTES_ENABLED=true`. Prefix default `capabilities-ai/chat`.
 
-## Proposal accept recovery
+## Proposal accept / reject (one model)
 
-`ProposalService::accept` claims a proposal into `accepting` before invoking the bus.
+Fail-closed state machine + typed `AcceptOutcome` for HTTP. Atomic CAS claims; D-005 resume key on every accept invoke.
 
-| Outcome | Proposal status | Host action |
-|---------|-----------------|-------------|
-| `accepted` | `accepted` | Done |
-| `approval_required` | stays `accepting` | Wait for approval; re-drive accept / resume when ready (D-005) |
-| `retryable` | stays `accepting` | Re-drive accept when ready |
-| `failed` / `refuse` | `failed` | Terminal — do not re-drive as success path |
+### Accept
 
-The package does **not** TTL-expire or reclaim stuck `accepting` rows. Recovery is **host re-drive only** (no package sweeper job).
+1. Live `IdempotencyReadiness` — not ready → `failed` (503), no bus invoke.
+2. Atomic CAS `pending → accepting` (lost race re-enters accept).
+3. Bus `invoke(..., ['idempotency_key' => 'proposal:{ulid}'])`.
+4. Map result:
+
+| AcceptOutcome | Proposal status | Host action |
+|---------------|-----------------|-------------|
+| `accepted` | `accepted` (`last_error` cleared) | Done |
+| `approval_required` | stays `accepting` | Wait for approval; re-drive accept (D-005) |
+| `retryable` | stays `accepting` | Re-drive when ready |
+| `failed` / `refuse` | `failed` + `last_error` | Terminal — do not re-drive as success |
+
+Stuck `accepting` is intentional limbo. Package does **not** TTL-expire or reclaim — **host re-drive only**.
+
+### Reject
+
+| Case | Result |
+|------|--------|
+| `pending` | Atomic CAS → `rejected` |
+| already `rejected` | Idempotent success |
+| `accepting` / `accepted` / `failed` / `expired` | Refuse (RuntimeException → HTTP 409) |
 

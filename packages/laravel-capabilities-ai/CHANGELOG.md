@@ -13,14 +13,13 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
-- Proposal accept: idempotency readiness is a **live** `Closure` probe (`bound(IdempotencyStore)` at accept time), not a frozen constructor bool.
-- Proposal accept: `approval_required` keeps `accepting` (resumeable); hard non-retryable only → terminal `failed`.
-- Proposal accept: branch on typed `CapabilityResult` (`isApprovalRequired`, `isRetryable`) — no wire-array archaeology.
+- **Proposal accept/reject split-brain:** one fail-closed SM that returns typed `AcceptOutcome` (no half-alive throw-only path, no weak open-reject). Atomic CAS claim/reject, D-005 `idempotency_key=proposal:{ulid}`, `isApprovalRequired` then `isRetryable`, `last_error` on terminal failed, clear on accepted.
+- Proposal accept: live `IdempotencyReadiness` probe (not a frozen constructor stamp / Closure ceremony).
+- Proposal accept: `approval_required` / retryable keep `accepting` (resumeable); hard non-retryable only → terminal `failed` + `last_error`.
+- Proposal accept: branch on typed `CapabilityResult` (`isApprovalRequired`, `isRetryable`) — no primary wire-array archaeology.
 - Proposal accept: explicit match arms for rejected/expired (not “is not pending” default copy).
-- Proposal accept: non-retryable bus errors → terminal `failed` + `last_error` (no accepting limbo).
-- Proposal accept: single safety system — claim `pending→accepting`, resume re-invokes under `proposal:{ulid}` (D-005); removed `accept_outcome` two-phase cache.
-- Proposal accept: fail closed by default (null/false probe); SP readiness = live `bound(IdempotencyStore::class)`.
-- Proposal reject: atomic `pending→rejected` only; refuse accepting/accepted/failed (idempotent rejected).
+- Proposal accept: single safety system — claim `pending→accepting`, resume re-invokes under `proposal:{ulid}` (D-005); no local `accept_outcome` cache.
+- Proposal reject: atomic `pending→rejected` only; refuse accepting/accepted/failed/expired (idempotent rejected).
 - `LlmClientDefaults` trait (`supportsToolRounds() => false`) for host implementors; multi-round tools opt-in only.
 - SP config: claim_ttl via `configFromApp` (one typed config path).
 - `ProposalFenceExtractor`: brace-balanced nested JSON (no silent drop on nested objects).
