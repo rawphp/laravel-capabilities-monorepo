@@ -23,8 +23,10 @@ use RuntimeException;
  * - Bus invoke always passes idempotency_key=proposal:{ulid} (D-005)
  * - Live IdempotencyReadiness probe (fail closed) — not a constructor stamp
  *
- * Reject (weak path until atomic reject REQ): open status write.
- * Prefer atomic pending→rejected only in a follow-up REQ.
+ * Reject state machine:
+ * - pending → rejected (atomic CAS only)
+ * - rejected re-entry is idempotent
+ * - accepting / accepted / failed / expired refuse (RuntimeException for HTTP 409)
  */
 final class ProposalService
 {
@@ -73,10 +75,32 @@ final class ProposalService
             return $proposal;
         }
 
-        $proposal->status = Proposal::STATUS_REJECTED;
-        $proposal->save();
+        if ($proposal->status !== Proposal::STATUS_PENDING) {
+            throw new RuntimeException(
+                "Proposal {$proposalUlid} cannot be rejected (status={$proposal->status})"
+            );
+        }
 
-        return $proposal->refresh();
+        $claimed = DatabaseConnection::resolve()->table($proposal->getTable())
+            ->where('ulid', $proposalUlid)
+            ->where('status', Proposal::STATUS_PENDING)
+            ->update([
+                'status' => Proposal::STATUS_REJECTED,
+                'updated_at' => Carbon::now()->toDateTimeString(),
+            ]);
+
+        if ($claimed !== 1) {
+            $fresh = Proposal::query()->where('ulid', $proposalUlid)->firstOrFail();
+            if ($fresh->status === Proposal::STATUS_REJECTED) {
+                return $fresh;
+            }
+
+            throw new RuntimeException(
+                "Proposal {$proposalUlid} cannot be rejected (status={$fresh->status})"
+            );
+        }
+
+        return Proposal::query()->where('ulid', $proposalUlid)->firstOrFail();
     }
 
     private function claimPendingThenAccept(string $proposalUlid, Proposal $proposal): AcceptOutcome

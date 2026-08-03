@@ -110,9 +110,15 @@ final class ChatController
 
     public function rejectProposal(string $proposalUlid, ProposalService $proposals): JsonResponse
     {
-        $proposal = $proposals->reject($proposalUlid);
+        try {
+            $proposal = $proposals->reject($proposalUlid);
 
-        return new JsonResponse(['ulid' => $proposal->ulid, 'status' => $proposal->status]);
+            return new JsonResponse(['ulid' => $proposal->ulid, 'status' => $proposal->status]);
+        } catch (ModelNotFoundException) {
+            return new JsonResponse(['message' => 'Proposal not found'], 404);
+        } catch (RuntimeException $e) {
+            return new JsonResponse(['message' => $e->getMessage()], 409);
+        }
     }
 
     public function destroyConversation(string $conversationUlid, ConversationService $conversations): JsonResponse
