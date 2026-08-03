@@ -91,6 +91,8 @@ Env: `ANTHROPIC_API_KEY` (never required in CI — tests use `Http::fake` / `Fak
 1. **Cheap create** — `ConversationService::createUserMessage` inserts message + queued turn, dispatches `RunTurnJob` (**no LLM**).
 2. **Claim + run** — `TurnClaim` atomic update; `TurnRunner` loops LLM → tools via `CapabilityBus::invoke` only.
 3. **Proposals** — `ProposalService::accept` / `reject` (accept is bus-only side effect).
+   - Accept claims `pending` → `accepting`, maps the bus result to a typed `AcceptOutcome` (`accepted` | `approval_required` | `retryable` | `failed` | `refuse`).
+   - **`accepting` recovery:** stuck/limbo rows (approval pending, retryable bus failure, crash mid-accept) are **not** auto-expired by the package. Host must **re-drive** `accept` (or the host approval resume path). D-005-style `approval_required` intentionally stays `accepting` until the host resumes.
 
 ## ProgressStore
 

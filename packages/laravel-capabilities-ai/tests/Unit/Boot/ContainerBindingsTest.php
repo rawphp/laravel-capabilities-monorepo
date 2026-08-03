@@ -14,6 +14,8 @@ use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
+use Rawphp\CapabilitiesAi\Package;
+use Rawphp\CapabilitiesAi\Support\AlwaysReadyIdempotency;
 use Rawphp\CapabilitiesAi\Support\AnthropicLlmClient;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\ContainerBindings;
@@ -152,7 +154,17 @@ it('makeConversationService injects callable dispatch', function () {
     expect($service)->toBeInstanceOf(ConversationService::class);
 });
 
-it('makeProposalService defaults fail closed for unproven idempotency readiness', function () {
+it('LLM_DRIVERS map is the single source for resolve and make', function () {
+    expect(ContainerBindings::LLM_DRIVERS)->toHaveKey('fake')
+        ->and(ContainerBindings::LLM_DRIVERS)->toHaveKey('anthropic')
+        ->and(ContainerBindings::PROGRESS_DRIVERS)->toHaveKey('array')
+        ->and(ContainerBindings::PROGRESS_DRIVERS)->toHaveKey('redis');
+
+    $resolved = ContainerBindings::resolve(aiConfig(['llm' => ['driver' => 'fake']]));
+    expect($resolved['drivers']['llm']['concrete'])->toBe(ContainerBindings::LLM_DRIVERS['fake']);
+});
+
+it('makeProposalService wires bus + IdempotencyReadiness', function () {
     $bus = new class implements CapabilityBus
     {
         public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
@@ -165,10 +177,12 @@ it('makeProposalService defaults fail closed for unproven idempotency readiness'
             throw new RuntimeException('unused');
         }
     };
-    $service = ContainerBindings::makeProposalService($bus);
+    $service = ContainerBindings::makeProposalService($bus, new AlwaysReadyIdempotency);
     expect($service)->toBeInstanceOf(ProposalService::class);
-    $ref = new ReflectionClass($service);
-    $prop = $ref->getProperty('idempotencyStoreReady');
-    $prop->setAccessible(true);
-    expect($prop->getValue($service))->toBeNull();
+});
+
+it('claimTtlFromConfig uses Package default and clamps non-positive', function () {
+    expect(ContainerBindings::claimTtlFromConfig([]))->toBe(Package::DEFAULT_CLAIM_TTL)
+        ->and(ContainerBindings::claimTtlFromConfig(['claim_ttl' => 30]))->toBe(30)
+        ->and(ContainerBindings::claimTtlFromConfig(['claim_ttl' => 0]))->toBe(Package::DEFAULT_CLAIM_TTL);
 });

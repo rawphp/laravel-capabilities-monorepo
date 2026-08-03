@@ -11,6 +11,7 @@ use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Jobs\RunTurnJob;
 use Rawphp\CapabilitiesAi\Models\Message;
 use Rawphp\CapabilitiesAi\Models\Turn;
+use Rawphp\CapabilitiesAi\Package;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 
@@ -78,23 +79,6 @@ it('persists message and queued turn and dispatches job', function () {
         ->and($bag->jobs[0]->timeout)->toBe(120);
 });
 
-it('passes custom jobTimeoutSeconds to RunTurnJob', function () {
-    bootCheapCreateSqlite();
-    $bag = new class
-    {
-        /** @var list<object> */
-        public array $jobs = [];
-    };
-    $dispatch = static function (object $job) use ($bag): void {
-        $bag->jobs[] = $job;
-    };
-    $service = new ConversationService($dispatch, new ArrayProgressStore, 45);
-    $ids = $service->createUserMessage('ttl');
-    expect($bag->jobs[0])->toBeInstanceOf(RunTurnJob::class)
-        ->and($bag->jobs[0]->timeout)->toBe(45)
-        ->and($bag->jobs[0]->turnUlid)->toBe($ids['turn_ulid']);
-});
-
 it('does not call LlmClient during cheap create', function () {
     bootCheapCreateSqlite();
     [$service, , $llm] = cheapCreateService();
@@ -111,4 +95,27 @@ it('dispatches job without executing it in create', function () {
     $service->createUserMessage('dispatch only');
     expect($bag->jobs)->toHaveCount(1)
         ->and(method_exists($bag->jobs[0], 'handle'))->toBeTrue();
+});
+
+it('passes claim_ttl into job timeout on cheap create', function () {
+    bootCheapCreateSqlite();
+    $bag = new class
+    {
+        /** @var list<object> */
+        public array $jobs = [];
+    };
+    $dispatch = static function (object $job) use ($bag): void {
+        $bag->jobs[] = $job;
+    };
+    $service = new ConversationService($dispatch, new ArrayProgressStore, claimTtl: 45);
+    $service->createUserMessage('ttl');
+    expect($bag->jobs)->toHaveCount(1)
+        ->and($bag->jobs[0]->timeout)->toBe(45);
+});
+
+it('defaults job timeout to Package DEFAULT_CLAIM_TTL', function () {
+    bootCheapCreateSqlite();
+    [$service, $bag] = cheapCreateService();
+    $service->createUserMessage('default ttl');
+    expect($bag->jobs[0]->timeout)->toBe(Package::DEFAULT_CLAIM_TTL);
 });

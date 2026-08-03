@@ -4,13 +4,12 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi;
 
-use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
-use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
+use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
@@ -19,6 +18,7 @@ use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
+use Rawphp\CapabilitiesAi\Support\AlwaysReadyIdempotency;
 use Rawphp\CapabilitiesAi\Support\ContainerBindings;
 use RuntimeException;
 
@@ -92,17 +92,18 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
             );
         });
 
+        if (! $this->app->bound(IdempotencyReadiness::class)) {
+            // Default proven-ready; host rebinds a live probe that is evaluated at accept time.
+            $this->app->singleton(IdempotencyReadiness::class, static fn () => new AlwaysReadyIdempotency);
+        }
+
         $this->app->singleton(ConversationService::class, function (Container $app) {
             $config = self::configFromApp($app);
-            $claimTtl = (int) ($config['claim_ttl'] ?? 120);
-            if ($claimTtl < 1) {
-                $claimTtl = 120;
-            }
 
             return ContainerBindings::makeConversationService(
                 self::makeDispatchCallable($app),
                 $app->make(ProgressStore::class),
-                $claimTtl,
+                ContainerBindings::claimTtlFromConfig($config),
             );
         });
 
@@ -113,11 +114,9 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
                 );
             }
 
-            // Live probe at accept time (not a frozen constructor bool): host may bind
-            // IdempotencyStore after first ProposalService resolve.
             return ContainerBindings::makeProposalService(
                 $app->make(CapabilityBus::class),
-                static fn (): bool => $app->bound(IdempotencyStore::class),
+                $app->make(IdempotencyReadiness::class),
             );
         });
     }
@@ -149,9 +148,6 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
     }
 
     /**
-     * Host redis binding is still untyped (Illuminate Redis Manager has no shared package contract).
-     * Prefer host-binding ProgressStore when redis typing is needed; this only resolves a client object.
-     *
      * @param  array<string, mixed>  $config
      */
     private static function resolveRedisClientOrNull(Container $app, array $config): ?object
@@ -168,18 +164,14 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
         }
 
         $manager = $app->make('redis');
-        if (! is_object($manager)) {
-            return null;
+        if (is_object($manager) && method_exists($manager, 'connection')) {
+            return $manager->connection($connection);
+        }
+        if (is_object($manager)) {
+            return $manager;
         }
 
-        // Illuminate\Redis\RedisManager::connection — no package-level interface.
-        if (is_callable([$manager, 'connection'])) {
-            $client = $manager->connection($connection);
-
-            return is_object($client) ? $client : null;
-        }
-
-        return $manager;
+        return null;
     }
 
     /**
@@ -204,7 +196,7 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
     {
         if ($app->bound('config')) {
             $config = $app->make('config');
-            if ($config instanceof ConfigRepository) {
+            if (is_object($config) && method_exists($config, 'get')) {
                 $slice = $config->get('capabilities-ai', []);
 
                 return is_array($slice) ? $slice : [];

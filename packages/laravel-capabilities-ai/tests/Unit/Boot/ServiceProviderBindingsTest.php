@@ -9,13 +9,11 @@ declare(strict_types=1);
 
 use Illuminate\Container\Container;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
-use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Support\CapabilityResult;
-use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
-use Rawphp\Capabilities\Support\SystemClock;
 use Rawphp\CapabilitiesAi\CapabilitiesAiServiceProvider;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
+use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
@@ -23,6 +21,7 @@ use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
+use Rawphp\CapabilitiesAi\Support\AlwaysReadyIdempotency;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 
@@ -129,36 +128,39 @@ it('resolves ProposalService with CapabilityBus', function () {
     expect($service)->toBeInstanceOf(ProposalService::class);
 });
 
-it('ProposalService fails closed when IdempotencyStore is not bound', function () {
+it('defaults IdempotencyReadiness to AlwaysReadyIdempotency', function () {
     $app = bootAiProviderContainer();
-    expect($app->bound(IdempotencyStore::class))->toBeFalse();
 
-    $service = $app->make(ProposalService::class);
-    $ref = new ReflectionClass($service);
-    $prop = $ref->getProperty('idempotencyStoreReady');
-    $prop->setAccessible(true);
-    $probe = $prop->getValue($service);
-    expect($probe)->toBeInstanceOf(Closure::class)
-        ->and($probe())->toBeFalse();
+    expect($app->make(IdempotencyReadiness::class))->toBeInstanceOf(AlwaysReadyIdempotency::class)
+        ->and($app->make(IdempotencyReadiness::class)->isReady())->toBeTrue();
 });
 
-it('ProposalService readiness probe is live after IdempotencyStore binds', function () {
-    $app = bootAiProviderContainer();
-    // Resolve singleton first while store is unbound (old sticky-bool bug surface).
-    $service = $app->make(ProposalService::class);
-    $ref = new ReflectionClass($service);
-    $prop = $ref->getProperty('idempotencyStoreReady');
-    $prop->setAccessible(true);
-    $probe = $prop->getValue($service);
-    expect($probe)->toBeInstanceOf(Closure::class)
-        ->and($probe())->toBeFalse();
+it('does not overwrite host-prebound IdempotencyReadiness', function () {
+    $app = new class extends Container
+    {
+        public function runningInConsole(): bool
+        {
+            return true;
+        }
+    };
 
-    $app->instance(IdempotencyStore::class, new InMemoryIdempotencyStore(new SystemClock));
+    $host = new class implements IdempotencyReadiness
+    {
+        public function isReady(): bool
+        {
+            return false;
+        }
+    };
+    $app->instance(IdempotencyReadiness::class, $host);
 
-    // Same singleton instance must see live readiness without forgetInstance/re-singleton.
-    expect($probe())->toBeTrue();
-    $same = $app->make(ProposalService::class);
-    expect($same)->toBe($service);
+    $base = require dirname(__DIR__, 3).'/config/capabilities-ai.php';
+    $app->instance('config', aiConfigRepo(['capabilities-ai' => $base]));
+    $app->instance(CapabilityBus::class, aiFakeBus());
+
+    (new CapabilitiesAiServiceProvider($app))->register();
+
+    expect($app->make(IdempotencyReadiness::class))->toBe($host)
+        ->and($app->make(IdempotencyReadiness::class)->isReady())->toBeFalse();
 });
 
 it('does not overwrite host-prebound LlmClient', function () {

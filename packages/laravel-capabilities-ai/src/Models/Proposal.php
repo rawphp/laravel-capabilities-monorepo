@@ -11,14 +11,13 @@ class Proposal extends Model
 {
     public const STATUS_PENDING = 'pending';
 
-    /** Claim held while bus invoke runs — crash resume path for accept. */
+    /** Claimed for accept; may stay here for approval_required / retryable (host re-drive). */
     public const STATUS_ACCEPTING = 'accepting';
 
     public const STATUS_ACCEPTED = 'accepted';
 
     public const STATUS_REJECTED = 'rejected';
 
-    /** Terminal bus failure (non-retryable) after accept claim. */
     public const STATUS_FAILED = 'failed';
 
     public const STATUS_EXPIRED = 'expired';
@@ -45,7 +44,6 @@ class Proposal extends Model
         'target_capability',
         'status',
         'accepted_at',
-        'last_error',
     ];
 
     protected $casts = [

@@ -6,28 +6,22 @@ namespace Rawphp\CapabilitiesAi\Jobs;
 
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
+use Rawphp\CapabilitiesAi\Package;
 
 /**
  * Async turn execution — thin adapter over TurnRunner (claim lives in the runner only).
  */
 final class RunTurnJob implements ShouldQueue
 {
-    /** Finite attempts; worker claim TTL is separate (config claim_ttl). */
+    /** Finite attempts; claim_ttl is the worker heartbeat window. */
     public int $tries = 1;
 
-    /**
-     * Queue worker kill timeout (seconds).
-     * Cheap-create path ({@see ConversationService}) passes config claim_ttl here.
-     * Hosts that dispatch RunTurnJob directly should pass the same value when claim_ttl is customized.
-     */
-    public int $timeout;
+    /** Seconds; default from Package::DEFAULT_CLAIM_TTL; cheap-create may override from config. */
+    public int $timeout = Package::DEFAULT_CLAIM_TTL;
 
     public function __construct(
         public readonly string $turnUlid,
-        ?int $timeout = null,
-    ) {
-        $this->timeout = $timeout ?? 120;
-    }
+    ) {}
 
     public function handle(TurnRunner $runner): void
     {

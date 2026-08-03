@@ -7,6 +7,7 @@ namespace Rawphp\CapabilitiesAi\Http;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Rawphp\CapabilitiesAi\Domain\AcceptOutcome;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
@@ -72,9 +73,39 @@ final class ChatController
 
     public function acceptProposal(string $proposalUlid, ProposalService $proposals): JsonResponse
     {
-        $proposal = $proposals->accept($proposalUlid);
+        $outcome = $proposals->accept($proposalUlid);
 
-        return new JsonResponse(['ulid' => $proposal->ulid, 'status' => $proposal->status]);
+        return $this->jsonFromAcceptOutcome($outcome);
+    }
+
+    private function jsonFromAcceptOutcome(AcceptOutcome $outcome): JsonResponse
+    {
+        $proposal = $outcome->proposal;
+        $body = [
+            'ulid' => $proposal->ulid,
+            'status' => $proposal->status,
+            'outcome' => $outcome->kind,
+        ];
+
+        if ($outcome->message !== null) {
+            $body['message'] = $outcome->message;
+        }
+        if ($outcome->approvalId !== null) {
+            $body['approval_id'] = $outcome->approvalId;
+        }
+        if ($outcome->error !== null) {
+            $body['error'] = $outcome->error;
+        }
+
+        $status = $outcome->httpStatus ?? match ($outcome->kind) {
+            AcceptOutcome::KIND_ACCEPTED => 200,
+            AcceptOutcome::KIND_APPROVAL_REQUIRED => 202,
+            AcceptOutcome::KIND_RETRYABLE => 409,
+            AcceptOutcome::KIND_REFUSE => 403,
+            default => 422,
+        };
+
+        return new JsonResponse($body, $status);
     }
 
     public function rejectProposal(string $proposalUlid, ProposalService $proposals): JsonResponse

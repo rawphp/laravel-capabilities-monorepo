@@ -4,66 +4,145 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Domain;
 
-use Closure;
 use Illuminate\Support\Carbon;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Models\Proposal;
-use Rawphp\CapabilitiesAi\Support\DatabaseConnection;
 use RuntimeException;
 
 /**
  * Accept/reject proposals — side effects only via capability bus.
  *
- * Accept state machine (claim + core D-005 idempotency; no local outcome cache):
- * - pending → accepting (atomic claim) before bus invoke
- * - accepting → accepted on success / idempotent replay
- * - accepting → failed on hard non-retryable bus error (or missing target)
- * - accepting stays accepting on retryable bus error (resume under same key)
- * - accepting stays accepting on approval_required (governance pending; resume after approve)
- *
- * Crash after successful bus invoke but before accepted: re-invoke with
- * idempotency_key=proposal:{ulid}. Accept **requires** a live core IdempotencyStore
- * readiness probe (fail closed). Resume is not a second safety system — it is D-005.
- *
- * Reject state machine:
- * - pending → rejected (atomic claim only)
- * - rejected re-entry is idempotent
- * - accepting / accepted / failed / expired refuse
+ * Accept claim: pending|accepting → accepting, then map bus result to AcceptOutcome.
+ * Stuck `accepting` is intentional limbo (approval_required / retryable / crash mid-accept);
+ * the package does not auto-expire or reclaim — host must re-drive accept (or resume).
  */
 final class ProposalService
 {
-    /**
-     * @param  ?Closure(): bool  $idempotencyStoreReady  Live probe at accept time.
-     *                                                   null / false = fail closed. Not a constructor stamp.
-     */
     public function __construct(
         private readonly CapabilityBus $bus,
-        private readonly ?Closure $idempotencyStoreReady = null,
+        private readonly IdempotencyReadiness $idempotency,
     ) {}
 
-    public function accept(string $proposalUlid): Proposal
+    public function accept(string $proposalUlid): AcceptOutcome
     {
         $proposal = Proposal::query()->where('ulid', $proposalUlid)->firstOrFail();
 
-        return match ($proposal->status) {
-            Proposal::STATUS_ACCEPTED => $proposal,
-            Proposal::STATUS_FAILED => throw new RuntimeException(
-                "Proposal {$proposalUlid} accept already failed".
-                ($proposal->last_error ? " ({$proposal->last_error})" : '')
-            ),
-            Proposal::STATUS_ACCEPTING => $this->executeAccept($proposal),
-            Proposal::STATUS_PENDING => $this->claimPendingThenAccept($proposalUlid, $proposal),
-            Proposal::STATUS_REJECTED => throw new RuntimeException(
-                "Proposal {$proposalUlid} is rejected"
-            ),
-            Proposal::STATUS_EXPIRED => throw new RuntimeException(
-                "Proposal {$proposalUlid} is expired"
-            ),
-            default => throw new RuntimeException(
-                "Proposal {$proposalUlid} has unknown status ({$proposal->status})"
-            ),
-        };
+        if ($proposal->status === Proposal::STATUS_ACCEPTED) {
+            return AcceptOutcome::accepted($proposal);
+        }
+
+        if (! in_array($proposal->status, [Proposal::STATUS_PENDING, Proposal::STATUS_ACCEPTING], true)) {
+            throw new RuntimeException(
+                "Proposal {$proposalUlid} is not pending/accepting (status={$proposal->status})"
+            );
+        }
+
+        // Live accept-time readiness (not frozen at construct)
+        if (! $this->idempotency->isReady()) {
+            return AcceptOutcome::failed(
+                $proposal,
+                message: 'Idempotency store not ready',
+                httpStatus: 503,
+                error: [
+                    'code' => 'not_configured',
+                    'message' => 'Idempotency store not ready',
+                    'retryable' => true,
+                ],
+            );
+        }
+
+        // Claim: pending → accepting (accepting re-drive keeps status)
+        if ($proposal->status === Proposal::STATUS_PENDING) {
+            $proposal->status = Proposal::STATUS_ACCEPTING;
+            $proposal->save();
+            $proposal = $proposal->refresh();
+        }
+
+        $target = (string) ($proposal->target_capability ?? '');
+        if ($target === '') {
+            $proposal->status = Proposal::STATUS_FAILED;
+            $proposal->save();
+
+            return AcceptOutcome::refuse(
+                $proposal->refresh(),
+                message: "Proposal {$proposalUlid} missing target_capability",
+                httpStatus: 422,
+                error: [
+                    'code' => 'validation_failed',
+                    'message' => "Proposal {$proposalUlid} missing target_capability",
+                    'retryable' => false,
+                ],
+            );
+        }
+
+        $payload = is_array($proposal->payload) ? $proposal->payload : [];
+        $result = $this->bus->invoke($target, $payload);
+
+        return $this->mapBusResult($proposal, $result);
+    }
+
+    private function mapBusResult(Proposal $proposal, CapabilityResult $result): AcceptOutcome
+    {
+        if ($result->isOk()) {
+            $proposal->status = Proposal::STATUS_ACCEPTED;
+            $proposal->accepted_at = Carbon::now();
+            $proposal->save();
+
+            return AcceptOutcome::accepted($proposal->refresh());
+        }
+
+        if ($result->isApprovalRequired()) {
+            // Stay accepting — host re-drive / approval resume (D-005)
+            return AcceptOutcome::approvalRequired(
+                $proposal->refresh(),
+                approvalId: $result->approvalId(),
+                message: is_string($result->error['message'] ?? null)
+                    ? (string) $result->error['message']
+                    : null,
+                error: $result->error,
+            );
+        }
+
+        $error = $result->error ?? ['code' => 'domain_error', 'message' => 'Accept failed'];
+        $code = (string) ($error['code'] ?? 'domain_error');
+        $message = is_string($error['message'] ?? null) ? (string) $error['message'] : 'Accept failed';
+        $retryable = (bool) ($error['retryable'] ?? false);
+        $http = isset($error['http_status']) ? (int) $error['http_status'] : null;
+
+        // Hard refuse: forbidden / capability not in profile / not runnable
+        if (in_array($code, ['forbidden', 'capability_not_in_profile', 'not_runnable', 'unauthenticated'], true)) {
+            $proposal->status = Proposal::STATUS_FAILED;
+            $proposal->save();
+
+            return AcceptOutcome::refuse(
+                $proposal->refresh(),
+                message: $message,
+                httpStatus: $http ?? 403,
+                error: $error,
+            );
+        }
+
+        if ($retryable) {
+            // Stay accepting for host re-drive
+            return AcceptOutcome::retryable(
+                $proposal->refresh(),
+                message: $message,
+                httpStatus: $http ?? 409,
+                error: $error,
+            );
+        }
+
+        $proposal->status = Proposal::STATUS_FAILED;
+        $proposal->save();
+
+        return AcceptOutcome::failed(
+            $proposal->refresh(),
+            message: $message,
+            httpStatus: $http ?? 422,
+            error: $error,
+        );
     }
 
     public function reject(string $proposalUlid): Proposal
@@ -74,154 +153,9 @@ final class ProposalService
             return $proposal;
         }
 
-        if ($proposal->status !== Proposal::STATUS_PENDING) {
-            throw new RuntimeException(
-                "Proposal {$proposalUlid} cannot be rejected (status={$proposal->status})"
-            );
-        }
+        $proposal->status = Proposal::STATUS_REJECTED;
+        $proposal->save();
 
-        $claimed = DatabaseConnection::resolve()->table($proposal->getTable())
-            ->where('ulid', $proposalUlid)
-            ->where('status', Proposal::STATUS_PENDING)
-            ->update([
-                'status' => Proposal::STATUS_REJECTED,
-                'updated_at' => Carbon::now()->toDateTimeString(),
-            ]);
-
-        if ($claimed !== 1) {
-            $fresh = Proposal::query()->where('ulid', $proposalUlid)->firstOrFail();
-            if ($fresh->status === Proposal::STATUS_REJECTED) {
-                return $fresh;
-            }
-
-            throw new RuntimeException(
-                "Proposal {$proposalUlid} cannot be rejected (status={$fresh->status})"
-            );
-        }
-
-        return Proposal::query()->where('ulid', $proposalUlid)->firstOrFail();
-    }
-
-    private function claimPendingThenAccept(string $proposalUlid, Proposal $proposal): Proposal
-    {
-        $this->requireIdempotencyStoreReady();
-
-        $claimed = DatabaseConnection::resolve()->table($proposal->getTable())
-            ->where('ulid', $proposalUlid)
-            ->where('status', Proposal::STATUS_PENDING)
-            ->update([
-                'status' => Proposal::STATUS_ACCEPTING,
-                'updated_at' => Carbon::now()->toDateTimeString(),
-            ]);
-
-        if ($claimed !== 1) {
-            // Lost race: re-enter single status path (no duplicated policy).
-            return $this->accept($proposalUlid);
-        }
-
-        $claimedProposal = Proposal::query()->where('ulid', $proposalUlid)->firstOrFail();
-
-        return $this->executeAccept($claimedProposal);
-    }
-
-    private function executeAccept(Proposal $proposal): Proposal
-    {
-        $this->requireIdempotencyStoreReady();
-
-        $target = (string) ($proposal->target_capability ?? '');
-        if ($target === '') {
-            $this->markFailed($proposal, 'not_configured', 'missing target_capability');
-            throw new RuntimeException("Proposal {$proposal->ulid} missing target_capability");
-        }
-
-        $payload = is_array($proposal->payload) ? $proposal->payload : [];
-
-        $result = $this->bus->invoke($target, $payload, [
-            'idempotency_key' => 'proposal:'.$proposal->ulid,
-        ]);
-
-        if ($result->ok) {
-            return $this->markAccepted($proposal);
-        }
-
-        return $this->handleNonOkAcceptResult($proposal, $result);
-    }
-
-    private function handleNonOkAcceptResult(Proposal $proposal, CapabilityResult $result): never
-    {
-        $code = $result->errorCode() ?? 'failed';
-        $message = is_array($result->error) ? (string) ($result->error['message'] ?? $code) : $code;
-
-        // Core governance: approval_required is not a hard deny. Keep accepting so
-        // hosts can approve then re-accept under the same D-005 key.
-        if ($result->isApprovalRequired()) {
-            $approvalId = $result->approvalId();
-            $suffix = $approvalId !== null ? " approval_id={$approvalId}" : '';
-            throw new RuntimeException(
-                "Proposal {$proposal->ulid} bus invoke requires approval (code={$code}): {$message}{$suffix}"
-            );
-        }
-
-        // Transient / retryable: leave accepting for resume under the same key.
-        if ($result->isRetryable()) {
-            throw new RuntimeException(
-                "Proposal {$proposal->ulid} bus invoke failed (code={$code}): {$message}"
-            );
-        }
-
-        // Hard failure (forbidden, validation, domain_error, …): terminal failed.
-        $this->markFailed($proposal, $code, $message);
-
-        throw new RuntimeException(
-            "Proposal {$proposal->ulid} bus invoke failed (code={$code}): {$message}"
-        );
-    }
-
-    private function requireIdempotencyStoreReady(): void
-    {
-        $ready = $this->idempotencyStoreReady !== null && (bool) ($this->idempotencyStoreReady)();
-        if (! $ready) {
-            throw new RuntimeException(
-                'Proposal accept requires a bound core IdempotencyStore (fail closed; D-005)'
-            );
-        }
-    }
-
-    private function markAccepted(Proposal $proposal): Proposal
-    {
-        $updated = DatabaseConnection::resolve()->table($proposal->getTable())
-            ->where('ulid', $proposal->ulid)
-            ->where('status', Proposal::STATUS_ACCEPTING)
-            ->update([
-                'status' => Proposal::STATUS_ACCEPTED,
-                'accepted_at' => Carbon::now()->toDateTimeString(),
-                'last_error' => null,
-                'updated_at' => Carbon::now()->toDateTimeString(),
-            ]);
-
-        if ($updated !== 1) {
-            $fresh = Proposal::query()->where('ulid', $proposal->ulid)->firstOrFail();
-            if ($fresh->status === Proposal::STATUS_ACCEPTED) {
-                return $fresh;
-            }
-
-            throw new RuntimeException(
-                "Proposal {$proposal->ulid} lost accept claim (status={$fresh->status})"
-            );
-        }
-
-        return Proposal::query()->where('ulid', $proposal->ulid)->firstOrFail();
-    }
-
-    private function markFailed(Proposal $proposal, string $code, string $message): void
-    {
-        DatabaseConnection::resolve()->table($proposal->getTable())
-            ->where('ulid', $proposal->ulid)
-            ->where('status', Proposal::STATUS_ACCEPTING)
-            ->update([
-                'status' => Proposal::STATUS_FAILED,
-                'last_error' => "{$code}: {$message}",
-                'updated_at' => Carbon::now()->toDateTimeString(),
-            ]);
+        return $proposal->refresh();
     }
 }
