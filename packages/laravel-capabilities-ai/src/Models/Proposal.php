@@ -11,16 +11,23 @@ class Proposal extends Model
 {
     public const STATUS_PENDING = 'pending';
 
+    /** Claimed for accept; may stay here for approval_required / retryable (host re-drive). */
+    public const STATUS_ACCEPTING = 'accepting';
+
     public const STATUS_ACCEPTED = 'accepted';
 
     public const STATUS_REJECTED = 'rejected';
+
+    public const STATUS_FAILED = 'failed';
 
     public const STATUS_EXPIRED = 'expired';
 
     public const STATUSES = [
         self::STATUS_PENDING,
+        self::STATUS_ACCEPTING,
         self::STATUS_ACCEPTED,
         self::STATUS_REJECTED,
+        self::STATUS_FAILED,
         self::STATUS_EXPIRED,
     ];
 

@@ -25,3 +25,17 @@ Path package in monorepo. Host: require `rawphp/laravel-capabilities-ai`, publis
 ## Optional routes
 
 Set `CAPABILITIES_AI_ROUTES_ENABLED=true`. Prefix default `capabilities-ai/chat`.
+
+## Proposal accept recovery
+
+`ProposalService::accept` claims a proposal into `accepting` before invoking the bus.
+
+| Outcome | Proposal status | Host action |
+|---------|-----------------|-------------|
+| `accepted` | `accepted` | Done |
+| `approval_required` | stays `accepting` | Wait for approval; re-drive accept / resume when ready (D-005) |
+| `retryable` | stays `accepting` | Re-drive accept when ready |
+| `failed` / `refuse` | `failed` | Terminal — do not re-drive as success path |
+
+The package does **not** TTL-expire or reclaim stuck `accepting` rows. Recovery is **host re-drive only** (no package sweeper job).
+

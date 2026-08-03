@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
+use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
@@ -17,6 +18,7 @@ use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
+use Rawphp\CapabilitiesAi\Support\AlwaysReadyIdempotency;
 use Rawphp\CapabilitiesAi\Support\ContainerBindings;
 use RuntimeException;
 
@@ -90,10 +92,18 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
             );
         });
 
+        if (! $this->app->bound(IdempotencyReadiness::class)) {
+            // Default proven-ready; host rebinds a live probe that is evaluated at accept time.
+            $this->app->singleton(IdempotencyReadiness::class, static fn () => new AlwaysReadyIdempotency);
+        }
+
         $this->app->singleton(ConversationService::class, function (Container $app) {
+            $config = self::configFromApp($app);
+
             return ContainerBindings::makeConversationService(
                 self::makeDispatchCallable($app),
                 $app->make(ProgressStore::class),
+                ContainerBindings::claimTtlFromConfig($config),
             );
         });
 
@@ -104,7 +114,10 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
                 );
             }
 
-            return ContainerBindings::makeProposalService($app->make(CapabilityBus::class));
+            return ContainerBindings::makeProposalService(
+                $app->make(CapabilityBus::class),
+                $app->make(IdempotencyReadiness::class),
+            );
         });
     }
 
