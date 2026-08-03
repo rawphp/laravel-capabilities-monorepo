@@ -170,5 +170,5 @@ it('makeProposalService defaults fail closed for unproven idempotency readiness'
     $ref = new ReflectionClass($service);
     $prop = $ref->getProperty('idempotencyStoreReady');
     $prop->setAccessible(true);
-    expect($prop->getValue($service))->toBeFalse();
+    expect($prop->getValue($service))->toBeNull();
 });

@@ -3,19 +3,25 @@
 declare(strict_types=1);
 
 /**
- * Worktree-safe bootstrap: prefer this package's src over shared vendor classmaps.
+ * Worktree-safe bootstrap: prefer monorepo package src over shared vendor classmaps.
+ *
+ * Parallel worktrees share monorepo vendor; path package symlinks may point at sibling
+ * worktrees. Prefer local monorepo packages/* so core APIs (e.g. CapabilityResult) match
+ * this tip’s sources when AI tests run.
  */
 $packageRoot = dirname(__DIR__);
 $packageSrc = $packageRoot.'/src';
 $packageTests = $packageRoot.'/tests';
 $monorepoRoot = dirname($packageRoot, 2);
+$coreSrc = $monorepoRoot.'/packages/laravel-capabilities/src';
 
 require $monorepoRoot.'/vendor/autoload.php';
 
-spl_autoload_register(static function (string $class) use ($packageSrc, $packageTests): void {
+spl_autoload_register(static function (string $class) use ($packageSrc, $packageTests, $coreSrc): void {
     $map = [
         'Rawphp\\CapabilitiesAi\\Tests\\' => $packageTests.'/',
         'Rawphp\\CapabilitiesAi\\' => $packageSrc.'/',
+        'Rawphp\\Capabilities\\' => $coreSrc.'/',
     ];
 
     foreach ($map as $prefix => $base) {

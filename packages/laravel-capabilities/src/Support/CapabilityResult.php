@@ -150,6 +150,25 @@ final class CapabilityResult
     }
 
     /**
+     * Whether a non-ok result should be retried (wire retryable flag, else ErrorCodeMap default).
+     * Success is never retryable. Callers should branch approval_required separately.
+     */
+    public function isRetryable(): bool
+    {
+        if ($this->ok) {
+            return false;
+        }
+
+        if (is_array($this->error) && array_key_exists('retryable', $this->error)) {
+            return (bool) $this->error['retryable'];
+        }
+
+        $code = $this->errorCode();
+
+        return $code !== null && ErrorCodeMap::retryableDefault($code);
+    }
+
+    /**
      * @return array{ok: bool, data?: mixed, error?: array<string, mixed>, meta: array<string, mixed>}
      */
     public function toArray(): array

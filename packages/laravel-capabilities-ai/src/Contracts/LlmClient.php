@@ -20,8 +20,8 @@ interface LlmClient
      * Whether this client can continue a conversation after tool results are appended.
      *
      * Fail closed: package MVS expects false unless the client opts into multi-round tools.
-     * PHP interfaces cannot supply a method body — host implementors may use
-     * {@see LlmClientDefaults} for `return false`.
+     * PHP interfaces still cannot supply method bodies on supported PHP — host implementors
+     * may use {@see LlmClientDefaults} for `return false`.
      */
     public function supportsToolRounds(): bool;
 

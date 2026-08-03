@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Domain;
 
+use Closure;
 use Illuminate\Support\Carbon;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
+use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Support\DatabaseConnection;
 use RuntimeException;
@@ -15,13 +17,14 @@ use RuntimeException;
  *
  * Accept state machine (claim + core D-005 idempotency; no local outcome cache):
  * - pending → accepting (atomic claim) before bus invoke
- * - accepting → accepted on success (single terminal write)
- * - accepting → failed on non-retryable bus error (or missing target)
+ * - accepting → accepted on success / idempotent replay
+ * - accepting → failed on hard non-retryable bus error (or missing target)
  * - accepting stays accepting on retryable bus error (resume under same key)
+ * - accepting stays accepting on approval_required (governance pending; resume after approve)
  *
  * Crash after successful bus invoke but before accepted: re-invoke with
- * idempotency_key=proposal:{ulid}. Accept **requires** a real core IdempotencyStore
- * (fail closed). Resume is not a second safety system — it is D-005.
+ * idempotency_key=proposal:{ulid}. Accept **requires** a live core IdempotencyStore
+ * readiness probe (fail closed). Resume is not a second safety system — it is D-005.
  *
  * Reject state machine:
  * - pending → rejected (atomic claim only)
@@ -31,11 +34,12 @@ use RuntimeException;
 final class ProposalService
 {
     /**
-     * @param  bool  $idempotencyStoreReady  Must be proven true (container-bound core store). Default false = fail closed.
+     * @param  ?Closure(): bool  $idempotencyStoreReady  Live probe at accept time.
+     *                                                   null / false = fail closed. Not a constructor stamp.
      */
     public function __construct(
         private readonly CapabilityBus $bus,
-        private readonly bool $idempotencyStoreReady = false,
+        private readonly ?Closure $idempotencyStoreReady = null,
     ) {}
 
     public function accept(string $proposalUlid): Proposal
@@ -50,8 +54,14 @@ final class ProposalService
             ),
             Proposal::STATUS_ACCEPTING => $this->executeAccept($proposal),
             Proposal::STATUS_PENDING => $this->claimPendingThenAccept($proposalUlid, $proposal),
+            Proposal::STATUS_REJECTED => throw new RuntimeException(
+                "Proposal {$proposalUlid} is rejected"
+            ),
+            Proposal::STATUS_EXPIRED => throw new RuntimeException(
+                "Proposal {$proposalUlid} is expired"
+            ),
             default => throw new RuntimeException(
-                "Proposal {$proposalUlid} is not pending (status={$proposal->status})"
+                "Proposal {$proposalUlid} has unknown status ({$proposal->status})"
             ),
         };
     }
@@ -134,16 +144,33 @@ final class ProposalService
             return $this->markAccepted($proposal);
         }
 
+        return $this->handleNonOkAcceptResult($proposal, $result);
+    }
+
+    private function handleNonOkAcceptResult(Proposal $proposal, CapabilityResult $result): never
+    {
         $code = $result->errorCode() ?? 'failed';
         $message = is_array($result->error) ? (string) ($result->error['message'] ?? $code) : $code;
-        $retryable = is_array($result->error) && array_key_exists('retryable', $result->error)
-            ? (bool) $result->error['retryable']
-            : false;
 
-        if (! $retryable) {
-            $this->markFailed($proposal, $code, $message);
+        // Core governance: approval_required is not a hard deny. Keep accepting so
+        // hosts can approve then re-accept under the same D-005 key.
+        if ($result->isApprovalRequired()) {
+            $approvalId = $result->approvalId();
+            $suffix = $approvalId !== null ? " approval_id={$approvalId}" : '';
+            throw new RuntimeException(
+                "Proposal {$proposal->ulid} bus invoke requires approval (code={$code}): {$message}{$suffix}"
+            );
         }
-        // Retryable: leave status=accepting for resume under the same idempotency key.
+
+        // Transient / retryable: leave accepting for resume under the same key.
+        if ($result->isRetryable()) {
+            throw new RuntimeException(
+                "Proposal {$proposal->ulid} bus invoke failed (code={$code}): {$message}"
+            );
+        }
+
+        // Hard failure (forbidden, validation, domain_error, …): terminal failed.
+        $this->markFailed($proposal, $code, $message);
 
         throw new RuntimeException(
             "Proposal {$proposal->ulid} bus invoke failed (code={$code}): {$message}"
@@ -152,7 +179,8 @@ final class ProposalService
 
     private function requireIdempotencyStoreReady(): void
     {
-        if (! $this->idempotencyStoreReady) {
+        $ready = $this->idempotencyStoreReady !== null && (bool) ($this->idempotencyStoreReady)();
+        if (! $ready) {
             throw new RuntimeException(
                 'Proposal accept requires a bound core IdempotencyStore (fail closed; D-005)'
             );

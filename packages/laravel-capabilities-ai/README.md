@@ -78,11 +78,11 @@ $app->bind(LlmClient::class, fn () => new AnthropicLlmClient(
 ));
 ```
 
-**Custom `LlmClient`:** implement `supportsToolRounds()`. Prefer `use LlmClientDefaults` (returns false) and override to `true` **only** if the client accepts tool-result messages on the next `complete()` (OpenAI-style `role=tool` or Anthropic `tool_result` blocks). Lying opens a bus-then-crash path. (PHP interfaces cannot ship method bodies; the trait is the fail-closed default for hosts.)
+**Custom `LlmClient`:** implement `supportsToolRounds()`. Prefer `use LlmClientDefaults` (returns false) and override to `true` **only** if the client accepts tool-result messages on the next `complete()` (OpenAI-style `role=tool` or Anthropic `tool_result` blocks). Lying opens a bus-then-crash path. (PHP interfaces still cannot ship method bodies on supported PHP; the trait is the fail-closed default for hosts.)
 
 **MVS product default:** multi-round tools are **off** until a client opts in. `AnthropicLlmClient` stays false until real `tool_result` support ships; `FakeLlmClient` opts in for unit tests. Empty tool defs + refuse-before-bus is defense-in-depth for that default, not a second product surface.
 
-**Proposal accept:** requires a container-bound core `IdempotencyStore` (D-005). Crash resume re-invokes with `idempotency_key=proposal:{ulid}` — no local `accept_outcome` cache. Reject is atomic `pending → rejected` only.
+**Proposal accept:** readiness is a **live** container probe (`bound(IdempotencyStore::class)` at accept time), not a stamp when the singleton first resolves. That proves a store is bound for D-005 keys — it does **not** prove the host’s bus wiring actually uses that store on every invoke; hosts must bind core’s normal `IdempotencyStore` path so the registry dedupes. Crash resume re-invokes with `idempotency_key=proposal:{ulid}` — no local `accept_outcome` cache. `approval_required` keeps status `accepting` (resume after capability approval); hard non-retryable failures go terminal `failed`. Reject is atomic `pending → rejected` only.
 
 Env: `ANTHROPIC_API_KEY` (never required in CI — tests use `Http::fake` / `FakeLlmClient`).
 

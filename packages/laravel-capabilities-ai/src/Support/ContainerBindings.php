@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Support;
 
+use Closure;
 use InvalidArgumentException;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
@@ -199,11 +200,18 @@ final class ContainerBindings
         return new ConversationService($dispatch, $progress, $jobTimeoutSeconds);
     }
 
+    /**
+     * @param  ?callable(): bool  $idempotencyStoreReady  Live probe at accept time; null = fail closed
+     */
     public static function makeProposalService(
         CapabilityBus $bus,
-        bool $idempotencyStoreReady = false,
+        ?callable $idempotencyStoreReady = null,
     ): ProposalService {
-        return new ProposalService($bus, $idempotencyStoreReady);
+        $probe = $idempotencyStoreReady === null
+            ? null
+            : Closure::fromCallable($idempotencyStoreReady);
+
+        return new ProposalService($bus, $probe);
     }
 
     public static function makeTurnService(ProgressStore $progress): TurnService

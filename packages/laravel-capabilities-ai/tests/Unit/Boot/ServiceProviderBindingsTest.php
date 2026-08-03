@@ -24,7 +24,6 @@ use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
-use Rawphp\CapabilitiesAi\Support\ContainerBindings;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 
 function aiFakeBus(): CapabilityBus
@@ -138,28 +137,28 @@ it('ProposalService fails closed when IdempotencyStore is not bound', function (
     $ref = new ReflectionClass($service);
     $prop = $ref->getProperty('idempotencyStoreReady');
     $prop->setAccessible(true);
-    expect($prop->getValue($service))->toBeFalse();
+    $probe = $prop->getValue($service);
+    expect($probe)->toBeInstanceOf(Closure::class)
+        ->and($probe())->toBeFalse();
 });
 
-it('ProposalService is ready when IdempotencyStore is bound', function () {
+it('ProposalService readiness probe is live after IdempotencyStore binds', function () {
     $app = bootAiProviderContainer();
-    $app->instance(IdempotencyStore::class, new InMemoryIdempotencyStore(new SystemClock));
-
-    // Re-bind factory after store is present (singleton already registered at register time).
-    $app->forgetInstance(ProposalService::class);
-    // Force re-resolve of singleton factory by rebinding.
-    $app->singleton(ProposalService::class, function (Container $c) {
-        return ContainerBindings::makeProposalService(
-            $c->make(CapabilityBus::class),
-            $c->bound(IdempotencyStore::class),
-        );
-    });
-
+    // Resolve singleton first while store is unbound (old sticky-bool bug surface).
     $service = $app->make(ProposalService::class);
     $ref = new ReflectionClass($service);
     $prop = $ref->getProperty('idempotencyStoreReady');
     $prop->setAccessible(true);
-    expect($prop->getValue($service))->toBeTrue();
+    $probe = $prop->getValue($service);
+    expect($probe)->toBeInstanceOf(Closure::class)
+        ->and($probe())->toBeFalse();
+
+    $app->instance(IdempotencyStore::class, new InMemoryIdempotencyStore(new SystemClock));
+
+    // Same singleton instance must see live readiness without forgetInstance/re-singleton.
+    expect($probe())->toBeTrue();
+    $same = $app->make(ProposalService::class);
+    expect($same)->toBe($service);
 });
 
 it('does not overwrite host-prebound LlmClient', function () {

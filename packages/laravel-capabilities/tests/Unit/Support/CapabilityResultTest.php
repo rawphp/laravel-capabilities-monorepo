@@ -96,3 +96,21 @@ it('edge: assertConflict assertExpired helpers for tests [RES-001]', function ()
     expect(fn () => $ok->assertConflict())->toThrow(CapabilityResultAssertionException::class);
     expect(fn () => $ok->assertExpired())->toThrow(CapabilityResultAssertionException::class);
 });
+
+it('happy: isRetryable follows wire flag and ErrorCodeMap defaults [RES-001]', function () {
+    expect(CapabilityResult::ok()->isRetryable())->toBeFalse();
+
+    $rateLimited = CapabilityResult::failure('rate_limited', 'slow down');
+    expect($rateLimited->isRetryable())->toBeTrue();
+
+    $forbidden = CapabilityResult::failure('forbidden', 'no');
+    expect($forbidden->isRetryable())->toBeFalse();
+
+    $override = CapabilityResult::failure('internal', 'x', ['retryable' => false]);
+    expect($override->isRetryable())->toBeFalse();
+
+    // approval_required maps retryable=false on the wire; callers branch isApprovalRequired first.
+    $approval = CapabilityResult::approvalRequired('apr-1');
+    expect($approval->isRetryable())->toBeFalse()
+        ->and($approval->isApprovalRequired())->toBeTrue();
+});

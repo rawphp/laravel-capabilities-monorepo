@@ -113,12 +113,11 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
                 );
             }
 
-            // Proven readiness only: core IdempotencyStore bound in the container (not config sniff).
-            $idemReady = $app->bound(IdempotencyStore::class);
-
+            // Live probe at accept time (not a frozen constructor bool): host may bind
+            // IdempotencyStore after first ProposalService resolve.
             return ContainerBindings::makeProposalService(
                 $app->make(CapabilityBus::class),
-                $idemReady,
+                static fn (): bool => $app->bound(IdempotencyStore::class),
             );
         });
     }
