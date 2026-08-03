@@ -12,6 +12,9 @@ use Rawphp\Capabilities\Adapters\Http\IlluminateApprovalController;
 use Rawphp\Capabilities\Adapters\Http\IlluminateAuthController;
 use Rawphp\Capabilities\Adapters\Http\IlluminateCapabilityController;
 use Rawphp\Capabilities\Adapters\JobSurface;
+use Rawphp\Capabilities\Adapters\Mcp\McpAuthProfileResolver;
+use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapter;
+use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapterV1;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Audit\AuditLogger;
@@ -197,6 +200,34 @@ class CapabilitiesServiceProvider extends ServiceProvider
         $this->app->singleton(IlluminateApprovalController::class, static fn ($app) => new IlluminateApprovalController(
             $app->make(ApprovalController::class),
         ));
+
+        // MCP adapter bindings (ContainerBindings plan BOOT-001) — real Laravel singletons.
+        // Without these, host MCP servers resolve McpToolAdapter interface and 500 before tools exist.
+        $this->app->singleton(McpAuthProfileResolver::class, function ($app) {
+            $config = self::configFromApp($app);
+            $auth = is_array($config['surfaces']['mcp']['auth'] ?? null)
+                ? $config['surfaces']['mcp']['auth']
+                : [];
+
+            return new McpAuthProfileResolver($auth);
+        });
+
+        $this->app->singleton(McpToolAdapter::class, function ($app) {
+            $config = self::configFromApp($app);
+            $mcp = is_array($config['surfaces']['mcp'] ?? null) ? $config['surfaces']['mcp'] : [];
+            $enabled = (bool) ($mcp['enabled'] ?? false);
+            // on_incompatible=disable soft-fails peer; fail (default) requires compatible peer when surface is on.
+            $requirePeer = (string) ($mcp['on_incompatible'] ?? 'fail') !== 'disable';
+
+            return new McpToolAdapterV1(
+                registry: $app->make(CapabilityRegistry::class),
+                probe: $app->make(PeerVersionProbe::class),
+                authResolver: $app->make(McpAuthProfileResolver::class),
+                surfaceEnabled: $enabled,
+                requireCompatiblePeer: $requirePeer,
+            );
+        });
+        $this->app->alias(McpToolAdapter::class, 'McpToolAdapter');
     }
 
     /**
