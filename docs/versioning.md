@@ -8,7 +8,7 @@ How Laravel Capabilities packages are versioned and how consumers install them *
 |---|---|---|---|---|
 | Core bus | `packages/laravel-capabilities` | [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities) | Composer `rawphp/laravel-capabilities` | [CHANGELOG](../packages/laravel-capabilities/CHANGELOG.md) |
 | Messaging | `packages/laravel-capabilities-messaging` | [rawphp/laravel-capabilities-messaging](https://github.com/rawphp/laravel-capabilities-messaging) | Composer `rawphp/laravel-capabilities-messaging` | [CHANGELOG](../packages/laravel-capabilities-messaging/CHANGELOG.md) |
-| AI turns | `packages/laravel-capabilities-ai` | [rawphp/laravel-capabilities-ai](https://github.com/rawphp/laravel-capabilities-ai) | Composer `rawphp/laravel-capabilities-ai` | — (0.x; add CHANGELOG when first tagged) |
+| AI turns | `packages/laravel-capabilities-ai` | [rawphp/laravel-capabilities-ai](https://github.com/rawphp/laravel-capabilities-ai) | Composer `rawphp/laravel-capabilities-ai` | [CHANGELOG](../packages/laravel-capabilities-ai/CHANGELOG.md) |
 | Product CLI | `packages/capabilities-cli` | [rawphp/capabilities-cli](https://github.com/rawphp/capabilities-cli) | Go module + binary `capabilities` | [CHANGELOG](../packages/capabilities-cli/CHANGELOG.md) |
 
 Release notes live **per package**, Keep a Changelog style, with an `[Unreleased]` section and a pre-stable `0.x` note until the first tagged release.
@@ -309,3 +309,7 @@ This does **not** mean packages are on Packagist — install remains path or pac
 - No monorepo unit test that hits `packagist.org` or requires `composer show` against the public registry.
 
 When a maintainer completes the **Packagist + git tag publish checklist** above, cut monorepo tags using the pattern in **Git tag naming**, fill dated CHANGELOG sections, and only then claim public install via Packagist / binary distribution.
+
+## AI package residuals (honesty)
+
+`rawphp/laravel-capabilities-ai` is a library: host must bind context/tool seams; Packagist submit remains a **human** checklist after first monorepo `v*` tag mirrors the package remote. See UR-018/021 for HTTP/queue surface work and package CHANGELOG for Unreleased notes.
