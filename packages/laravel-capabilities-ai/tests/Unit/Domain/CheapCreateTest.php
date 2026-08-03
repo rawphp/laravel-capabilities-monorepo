@@ -94,3 +94,26 @@ it('dispatches job without executing it in create', function () {
     expect($bag->jobs)->toHaveCount(1)
         ->and(method_exists($bag->jobs[0], 'handle'))->toBeTrue();
 });
+
+
+it('passes claim_ttl into job timeout on cheap create', function () {
+    bootCheapCreateSqlite();
+    $bag = new class {
+        /** @var list<object> */
+        public array $jobs = [];
+    };
+    $dispatch = static function (object $job) use ($bag): void {
+        $bag->jobs[] = $job;
+    };
+    $service = new ConversationService($dispatch, new ArrayProgressStore, claimTtl: 45);
+    $service->createUserMessage('ttl');
+    expect($bag->jobs)->toHaveCount(1)
+        ->and($bag->jobs[0]->timeout)->toBe(45);
+});
+
+it('defaults job timeout to Package DEFAULT_CLAIM_TTL', function () {
+    bootCheapCreateSqlite();
+    [$service, $bag] = cheapCreateService();
+    $service->createUserMessage('default ttl');
+    expect($bag->jobs[0]->timeout)->toBe(\Rawphp\CapabilitiesAi\Package::DEFAULT_CLAIM_TTL);
+});

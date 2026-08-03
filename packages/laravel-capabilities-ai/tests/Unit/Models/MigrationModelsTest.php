@@ -92,7 +92,7 @@ it('defines locked turn and proposal status constants', function () {
         'queued', 'running', 'completed', 'failed', 'cancelled',
     ]);
     expect(Proposal::STATUSES)->toBe([
-        'pending', 'accepted', 'rejected', 'expired',
+        'pending', 'accepting', 'accepted', 'rejected', 'failed', 'expired',
     ]);
 });
 

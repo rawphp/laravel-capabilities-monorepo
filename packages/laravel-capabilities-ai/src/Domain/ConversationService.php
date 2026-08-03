@@ -21,9 +21,13 @@ final class ConversationService
     public function __construct(
         private readonly mixed $dispatch,
         private readonly ProgressStore $progress,
+        private readonly int $claimTtl = \Rawphp\CapabilitiesAi\Package::DEFAULT_CLAIM_TTL,
     ) {
         if (! is_callable($this->dispatch)) {
             throw new \InvalidArgumentException('dispatch must be callable');
+        }
+        if ($this->claimTtl <= 0) {
+            throw new \InvalidArgumentException('claimTtl must be positive');
         }
     }
 
@@ -62,7 +66,9 @@ final class ConversationService
             'request_hash' => null,
         ]);
 
-        ($this->dispatch)(new RunTurnJob($turn->ulid));
+        $job = new RunTurnJob($turn->ulid);
+        $job->timeout = $this->claimTtl;
+        ($this->dispatch)($job);
 
         $this->progress->append($turn->ulid, [
             'kind' => 'status',

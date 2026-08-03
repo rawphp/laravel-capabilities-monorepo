@@ -70,7 +70,7 @@ it('handle invokes TurnRunner and completes turn once', function () {
     );
 
     $job = new RunTurnJob($ids['turn_ulid']);
-    expect($job->tries)->toBe(1)->and($job->timeout)->toBe(120);
+    expect($job->tries)->toBe(1)->and($job->timeout)->toBe(\Rawphp\CapabilitiesAi\Package::DEFAULT_CLAIM_TTL);
     $job->handle($runner);
 
     expect(Turn::query()->where('ulid', $ids['turn_ulid'])->value('status'))

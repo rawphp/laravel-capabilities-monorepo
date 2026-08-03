@@ -149,3 +149,36 @@ it('makeConversationService injects callable dispatch', function () {
 
     expect($service)->toBeInstanceOf(ConversationService::class);
 });
+
+
+it('LLM_DRIVERS map is the single source for resolve and make', function () {
+    expect(ContainerBindings::LLM_DRIVERS)->toHaveKey('fake')
+        ->and(ContainerBindings::LLM_DRIVERS)->toHaveKey('anthropic')
+        ->and(ContainerBindings::PROGRESS_DRIVERS)->toHaveKey('array')
+        ->and(ContainerBindings::PROGRESS_DRIVERS)->toHaveKey('redis');
+
+    $resolved = ContainerBindings::resolve(aiConfig(['llm' => ['driver' => 'fake']]));
+    expect($resolved['drivers']['llm']['concrete'])->toBe(ContainerBindings::LLM_DRIVERS['fake']);
+});
+
+it('makeProposalService wires bus + IdempotencyReadiness', function () {
+    $bus = new class implements \Rawphp\Capabilities\Contracts\CapabilityBus {
+        public function invoke(string $nameOrAlias, array $input = [], array $options = []): \Rawphp\Capabilities\Support\CapabilityResult
+        {
+            return \Rawphp\Capabilities\Support\CapabilityResult::ok();
+        }
+
+        public function catalog(): \Rawphp\Capabilities\Schema\CatalogPresenter
+        {
+            throw new RuntimeException('unused');
+        }
+    };
+    $service = ContainerBindings::makeProposalService($bus, new \Rawphp\CapabilitiesAi\Support\AlwaysReadyIdempotency);
+    expect($service)->toBeInstanceOf(ProposalService::class);
+});
+
+it('claimTtlFromConfig uses Package default and clamps non-positive', function () {
+    expect(ContainerBindings::claimTtlFromConfig([]))->toBe(\Rawphp\CapabilitiesAi\Package::DEFAULT_CLAIM_TTL)
+        ->and(ContainerBindings::claimTtlFromConfig(['claim_ttl' => 30]))->toBe(30)
+        ->and(ContainerBindings::claimTtlFromConfig(['claim_ttl' => 0]))->toBe(\Rawphp\CapabilitiesAi\Package::DEFAULT_CLAIM_TTL);
+});
