@@ -92,6 +92,12 @@ final class TurnRunner
                 }
             }
 
+            // Cooperative cancel: do not overwrite cancelled mid-run
+            $fresh = Turn::query()->where('ulid', $turnUlid)->first();
+            if ($fresh !== null && $fresh->status === Turn::STATUS_CANCELLED) {
+                return $fresh;
+            }
+
             $turn->status = Turn::STATUS_COMPLETED;
             $turn->finished_at = \Illuminate\Support\Carbon::now();
             $turn->save();
@@ -104,6 +110,12 @@ final class TurnRunner
 
             return $turn->refresh();
         } catch (\Throwable $e) {
+            $fresh = Turn::query()->where('ulid', $turnUlid)->first();
+            if ($fresh !== null && $fresh->status === Turn::STATUS_CANCELLED) {
+                // Cancelled mid-run — do not overwrite with failed / terminal failed
+                throw $e;
+            }
+
             $turn->status = Turn::STATUS_FAILED;
             $turn->error = $e->getMessage();
             $turn->finished_at = \Illuminate\Support\Carbon::now();

@@ -78,6 +78,66 @@ final class ConversationService
         ];
     }
 
+
+    /**
+     * Ordered messages for a conversation (HTTP history).
+     *
+     * @return array{conversation_ulid: string, messages: list<array{ulid: string, role: string, content: ?string, created_at: ?string}>}
+     */
+    public function history(string $conversationUlid): array
+    {
+        $conversation = Conversation::query()->where('ulid', $conversationUlid)->firstOrFail();
+
+        $messages = Message::query()
+            ->where('conversation_id', $conversation->id)
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get()
+            ->map(static fn (Message $m): array => [
+                'ulid' => $m->ulid,
+                'role' => (string) $m->role,
+                'content' => $m->content,
+                'created_at' => $m->created_at?->toIso8601String(),
+            ])
+            ->all();
+
+        return [
+            'conversation_ulid' => $conversation->ulid,
+            'messages' => $messages,
+        ];
+    }
+
+    /**
+     * Close conversation (status=closed). Fail closed if any turn is queued or running.
+     * Idempotent when already closed and no active turns.
+     *
+     * @return array{conversation_ulid: string, status: string, deleted: bool}
+     */
+    public function destroy(string $conversationUlid): array
+    {
+        $conversation = Conversation::query()->where('ulid', $conversationUlid)->firstOrFail();
+
+        $active = Turn::query()
+            ->where('conversation_id', $conversation->id)
+            ->whereIn('status', [Turn::STATUS_QUEUED, Turn::STATUS_RUNNING])
+            ->exists();
+
+        if ($active) {
+            throw new \RuntimeException("Conversation {$conversationUlid} has queued or running turns");
+        }
+
+        if ($conversation->status !== 'closed') {
+            $conversation->status = 'closed';
+            $conversation->save();
+        }
+
+        return [
+            'conversation_ulid' => $conversation->ulid,
+            'status' => 'closed',
+            'deleted' => true,
+        ];
+    }
+
     private function ulid(): string
     {
         return strtoupper(bin2hex(random_bytes(13)));

@@ -14,6 +14,7 @@ use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
+use Rawphp\CapabilitiesAi\Domain\TurnService;
 use RuntimeException;
 
 /**
@@ -55,6 +56,7 @@ final class ContainerBindings
                 ProgressStore::class => $progress['concrete'],
                 TurnClaim::class => TurnClaim::class,
                 TurnRunner::class => TurnRunner::class,
+                TurnService::class => TurnService::class,
                 ConversationService::class => ConversationService::class,
                 ProposalService::class => ProposalService::class,
             ],
@@ -214,5 +216,10 @@ final class ContainerBindings
     public static function makeProposalService(CapabilityBus $bus): ProposalService
     {
         return new ProposalService($bus);
+    }
+
+    public static function makeTurnService(ProgressStore $progress): TurnService
+    {
+        return new TurnService($progress);
     }
 }

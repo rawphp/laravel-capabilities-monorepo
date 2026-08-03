@@ -172,3 +172,51 @@ it('missing ContextProvider/ToolCatalog fails closed', function () {
     expect(fn () => $runner->run($turnUlid))
         ->toThrow(RuntimeException::class, 'ConversationContextProvider and ToolCatalog must be bound');
 });
+
+it('does not overwrite cancelled status with completed (cooperative cancel)', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurn();
+    $progress = new ArrayProgressStore;
+    $llm = new class implements \Rawphp\CapabilitiesAi\Contracts\LlmClient
+    {
+        public function complete(array $messages, array $tools = []): array
+        {
+            Turn::query()->where('ulid', $GLOBALS['coop_turn_ulid'])->update([
+                'status' => Turn::STATUS_CANCELLED,
+                'finished_at' => \Illuminate\Support\Carbon::now()->toDateTimeString(),
+            ]);
+
+            return ['content' => 'too late', 'tool_calls' => []];
+        }
+    };
+    $GLOBALS['coop_turn_ulid'] = $turnUlid;
+    $context = new class implements \Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider
+    {
+        public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['role' => 'user', 'content' => 'hi']];
+        }
+    };
+    $tools = new class implements \Rawphp\CapabilitiesAi\Contracts\ToolCatalog
+    {
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [];
+        }
+    };
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        progress: $progress,
+    );
+    $turn = $runner->run($turnUlid);
+    expect($turn->status)->toBe(Turn::STATUS_CANCELLED);
+    $terminals = array_values(array_filter(
+        $progress->since($turnUlid, 0),
+        static fn (array $e): bool => ($e['kind'] ?? '') === 'terminal'
+            && (($e['data']['status'] ?? '') === Turn::STATUS_COMPLETED)
+    ));
+    expect($terminals)->toBeEmpty();
+});
