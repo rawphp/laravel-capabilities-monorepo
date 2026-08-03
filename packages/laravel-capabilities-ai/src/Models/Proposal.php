@@ -44,6 +44,7 @@ class Proposal extends Model
         'target_capability',
         'status',
         'accepted_at',
+        'last_error',
     ];
 
     protected $casts = [
