@@ -8,6 +8,15 @@
 
 Downloadable client for end users and local agents. Auth + catalog + run + optional MCP stdio against a remote Laravel app’s **same** HTTP capability API (D-009). **No domain `run()` on the laptop.**
 
+## Scope (this package)
+
+| | |
+|---|---|
+| **Is** | Go binary `capabilities`: multi-profile auth, catalog, run, client-side schema checks, auto idempotency keys, optional MCP stdio **bridge** to the remote HTTP capability API |
+| **Is not** | A second backend or domain runtime; Artisan / in-server ops CLI; PHP Composer package; the MCP server of record (bridge only); chat bots or AI turn engine |
+
+Server-side install is [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities) (and optional siblings). This repo is the **laptop client** only.
+
 ## Install
 
 Installs the latest release binary **for your user** into `~/.local/bin` (no sudo). macOS assets may be **Developer ID signed and notarized**.

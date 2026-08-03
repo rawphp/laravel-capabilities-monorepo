@@ -1,10 +1,12 @@
 # Getting started
 
-Install core into a Laravel app, define one capability, invoke it through the registry (and HTTP), then optionally add messaging and the product CLI.
+Install core into a Laravel app, define one capability, invoke it through the registry (and HTTP), then optionally add messaging, AI turns, and the product CLI.
 
 **Audience:** app integrators.  
-**Time:** install + first capability is the primary path; messaging and CLI are optional follow-ons.  
+**Time:** install + first capability is the primary path; messaging, AI, and CLI are optional follow-ons.  
 **Status:** 0.x pre-stable — not Packagist-published. Prefer path or pinned VCS over floating `*@dev` in production apps.
+
+**Boundary:** install **split packages**, not this monorepo as a Composer root. What each package is / is not: [README — Scope](../README.md#scope-product-boundary) · [Concepts — package boundaries](concepts.md#package-boundaries).
 
 ## Before you start
 
@@ -39,7 +41,7 @@ Related: [Concepts](concepts.md) · [versioning.md](versioning.md) · [First cap
 composer update rawphp/laravel-capabilities
 ```
 
-Those package remotes are updated when the monorepo is pushed (see [versioning.md](versioning.md#monorepo--three-package-remotes-on-push)).
+Those package remotes are updated when the monorepo is pushed (see [versioning.md](versioning.md#monorepo--four-package-remotes-on-push)).
 
 ### Option B — monorepo path (contributors)
 
@@ -131,7 +133,21 @@ Messaging implements conversation ingress and approval notify contracts. Chat do
 
 → [Messaging package guide](../packages/laravel-capabilities-messaging/docs/user-guide.md)
 
-## 5. Optional: product CLI on the user machine
+## 5. Optional: AI turns (conversation / proposals)
+
+Optional sibling for model turns that call tools **only** through the capability bus — not a second write path and not a chat channel bot.
+
+**Path (monorepo):** require `rawphp/laravel-capabilities-ai` (already path-wired at monorepo root) and publish config/migrations.
+
+```bash
+composer update rawphp/laravel-capabilities-ai
+php artisan vendor:publish --tag=capabilities-ai-config
+php artisan vendor:publish --tag=capabilities-ai-migrations
+```
+
+Bind host seams (`ConversationContextProvider`, `ToolCatalog`, `LlmClient`) before running turns. See [AI package README](../packages/laravel-capabilities-ai/README.md#scope-this-package).
+
+## 6. Optional: product CLI on the user machine
 
 The product CLI is a **downloadable Go HTTP client** (`capabilities`), not Artisan. It talks to the app’s same capability HTTP API.
 

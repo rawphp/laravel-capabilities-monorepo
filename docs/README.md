@@ -4,6 +4,8 @@
 
 Task-based **user guides** live here alongside design docs and tutorials. Start with [Getting started](getting-started.md) if you are wiring the bus into an app.
 
+**Product boundary:** this monorepo is a **dev umbrella** only. Consumers install **split packages**, not the monorepo. What each package is / is not (and family non-goals): root [README — Scope](../README.md#scope-product-boundary) and [Concepts](concepts.md#package-boundaries).
+
 ## Doc ownership (monorepo vs split packages)
 
 | Layer | Lives | Ships with split repos? |
@@ -24,6 +26,7 @@ On push to monorepo `main` / tags `v*`, each `packages/*` tree is mirrored to it
 | [Concepts](concepts.md) | Mental model: bus, surfaces, `run()`, profiles, approval, idempotency, messaging, CLI |
 | [Core package](../packages/laravel-capabilities/docs/user-guide.md) | Define, invoke, surfaces, config, peers, D-020 helpers |
 | [Messaging package](../packages/laravel-capabilities-messaging/docs/user-guide.md) | Telegram sibling: webhooks, identity, agent profile |
+| [AI package](../packages/laravel-capabilities-ai/README.md) | Optional turn / proposal runtime (bus-only tools) |
 | [Product CLI](../packages/capabilities-cli/docs/user-guide.md) | Build `capabilities`, auth, catalog, run, MCP stdio |
 | [Troubleshooting](troubleshooting.md) | Boot, peers, auth, CLI, messaging failures |
 
@@ -43,13 +46,14 @@ On push to monorepo `main` / tags `v*`, each `packages/*` tree is mirrored to it
 
 ## Packages (code + package-shipped docs)
 
-| Path | Public repo | Artifact |
-|---|---|---|
-| [`packages/laravel-capabilities`](../packages/laravel-capabilities/) | [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities) | Composer `rawphp/laravel-capabilities` |
-| [`packages/laravel-capabilities-messaging`](../packages/laravel-capabilities-messaging/) | [rawphp/laravel-capabilities-messaging](https://github.com/rawphp/laravel-capabilities-messaging) | Composer `rawphp/laravel-capabilities-messaging` |
-| [`packages/capabilities-cli`](../packages/capabilities-cli/) | [rawphp/capabilities-cli](https://github.com/rawphp/capabilities-cli) | Go module + binary `capabilities` |
+| Path | Public repo | Artifact | Boundary |
+|---|---|---|---|
+| [`packages/laravel-capabilities`](../packages/laravel-capabilities/) | [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities) | Composer `rawphp/laravel-capabilities` | [Core README — Scope](../packages/laravel-capabilities/README.md#scope-this-package) |
+| [`packages/laravel-capabilities-messaging`](../packages/laravel-capabilities-messaging/) | [rawphp/laravel-capabilities-messaging](https://github.com/rawphp/laravel-capabilities-messaging) | Composer `rawphp/laravel-capabilities-messaging` | [Messaging README — Scope](../packages/laravel-capabilities-messaging/README.md#scope-this-package) |
+| [`packages/laravel-capabilities-ai`](../packages/laravel-capabilities-ai/) | [rawphp/laravel-capabilities-ai](https://github.com/rawphp/laravel-capabilities-ai) | Composer `rawphp/laravel-capabilities-ai` | [AI README — Scope](../packages/laravel-capabilities-ai/README.md#scope-this-package) |
+| [`packages/capabilities-cli`](../packages/capabilities-cli/) | [rawphp/capabilities-cli](https://github.com/rawphp/capabilities-cli) | Go module + binary `capabilities` | [CLI README — Scope](../packages/capabilities-cli/README.md#scope-this-package) |
 
-Monorepo map and readiness residuals: [root README](../README.md).
+Monorepo map, umbrella vs packages, readiness residuals: [root README](../README.md).
 
 ## How to read this set
 

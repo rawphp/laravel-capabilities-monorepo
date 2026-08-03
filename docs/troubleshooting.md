@@ -26,7 +26,7 @@ Common boot, peer, auth, CLI, and messaging failures for Laravel Capabilities co
 ### VCS require against the monorepo URL fails / wrong package root
 
 **Cause:** Composer expects `composer.json` at the repository root. The monorepo nests packages under `packages/`.  
-**Fix:** VCS-require the **split package remotes** (`rawphp/laravel-capabilities`, `…-messaging`, `capabilities-cli`) updated on monorepo push — [versioning.md](versioning.md#monorepo--three-package-remotes-on-push).
+**Fix:** VCS-require the **split package remotes** (`rawphp/laravel-capabilities`, `…-messaging`, `…-ai`, `capabilities-cli`) updated on monorepo push — [versioning.md](versioning.md#monorepo--four-package-remotes-on-push).
 
 ### Messaging cannot resolve core
 

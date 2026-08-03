@@ -61,6 +61,21 @@ Resource IDs from the client are untrusted until re-resolved under server scope/
 
 Telegram (then other chat products) lives in `rawphp/laravel-capabilities-messaging`. It implements conversation **ingress** and **approval notifier** contracts from core. Chat identity is linked (code link or allowlist); the bot feeds the agent; **tools are registry capabilities**. No domain `run()` inside the messaging package.
 
+### AI sibling (turns / proposals)
+
+Optional package `rawphp/laravel-capabilities-ai` runs **conversation turns** (LLM loop + tool rounds) and **proposals**. Tool side effects go **only** through the capability bus (`CapabilityBus::invoke`). It is not the registry, not a chat channel bot, and not a general app-wide LLM SDK — a thin turn runtime beside the bus.
+
+### Package boundaries
+
+| Package | Job in one line | Does not own |
+|---|---|---|
+| **Core** `laravel-capabilities` | Define capabilities; registry; governance; surface adapters; HTTP API | Bots, turn engine, downloadable CLI binary, domain services |
+| **Messaging** `laravel-capabilities-messaging` | Chat ingress → agent; approval notify | Domain `run()`, bus governance |
+| **AI** `laravel-capabilities-ai` | Turns / proposals; tools via bus only | Channel bots, second write path, full LLM platform |
+| **CLI** `capabilities-cli` | Laptop client → remote HTTP API | Server domain, Artisan, second backend |
+
+The **monorepo** is only where these packages are developed together. After split, each public package repo is the install target. Full is/is-not tables: monorepo [README — Scope](../README.md#scope-product-boundary) and each package README.
+
 ### Product CLI vs Artisan
 
 | | Product CLI | Artisan |
@@ -80,7 +95,7 @@ Core **composes** these packages as adapters when agent/MCP surfaces are enabled
 
 1. [Getting started](getting-started.md) — install (path or package VCS)  
 2. [First capability tutorial](tutorials/first-capability.md) — define and invoke  
-3. Package guides (ship with each package): [core](../packages/laravel-capabilities/docs/user-guide.md) · [messaging](../packages/laravel-capabilities-messaging/docs/user-guide.md) · [CLI](../packages/capabilities-cli/docs/user-guide.md)  
+3. Package guides (ship with each package): [core](../packages/laravel-capabilities/docs/user-guide.md) · [messaging](../packages/laravel-capabilities-messaging/docs/user-guide.md) · [AI](../packages/laravel-capabilities-ai/README.md) · [CLI](../packages/capabilities-cli/docs/user-guide.md)  
 4. Design depth: [spec.md](spec.md)
 
 ## Related

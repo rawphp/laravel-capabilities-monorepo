@@ -4,7 +4,74 @@
 > **User docs:** [docs/README.md](docs/README.md) · **Spec:** [docs/spec.md](docs/spec.md) · **Versioning & install:** [docs/versioning.md](docs/versioning.md)  
 > Unit-green ≠ shipped product: treat path/VCS install + package CHANGELOGs as pre-release readiness, not Packagist release.
 
-Product capability bus for Laravel: define once, expose via agent, MCP, HTTP, product CLI, and jobs — same rules, one `run()`.
+Product capability bus for Laravel: define once, expose via agent, MCP, HTTP, product CLI, jobs, chat, and optional AI turns — same rules, one `run()`.
+
+## Scope (product boundary)
+
+### Umbrella vs packages
+
+| Layer | What it is | What consumers install |
+|---|---|---|
+| **This monorepo** (`laravel-capabilities-monorepo`) | **Development umbrella only** — four packages, shared design docs, inventory tools, split/release automation | **Nothing.** Not a Composer package for apps. Not on Packagist. |
+| **Split package repos** | The **products** — each `packages/*` tree mirrored to its own public repo | Path/VCS (today) or Packagist (residual) against **package** remotes |
+
+**Rule:** if work does not fit one of the four package jobs below, it is out of scope for this family (or needs an explicit new package + split remote — not a silent dump into core).
+
+Internal design notes and roadmaps may sketch later ideas ([docs/spec.md](docs/spec.md)). **Sketches are not the product boundary.** Until a surface is listed under a package **Is** section and shipped in that package tree, it is out of scope.
+
+### Family job (all packages)
+
+> Define what the product can *do* once; every channel invokes it under the same law.
+
+Hard invariants shared across packages:
+
+- **One `run()`** — domain mutation lives in the capability (or app code it calls); surfaces must not open a second write path.
+- **Registry is the choke point** — adapters stay thin.
+- **Compose official peers** — wrap `laravel/ai` / `laravel/mcp`; do not reimplement them in core.
+- **CLI is a client** — no domain logic on the laptop.
+- **Messaging and AI are siblings** — optional packages; core stays a thin capability bus (D-007).
+
+### Per package: is / is not
+
+#### 1. `rawphp/laravel-capabilities` (core)
+
+| | |
+|---|---|
+| **Is** | Capability registry; typed DTO → schema; authorize / approval / audit / scope / idempotency / rate limits; thin adapters for agent, MCP, HTTP, jobs, Artisan ops surface; HTTP capability API the CLI uses; conversation **contracts** for siblings; unit-path D-020 parity helpers |
+| **Is not** | LLM client or model loop product; MCP protocol server implementation; Telegram/Slack/WhatsApp bot runtime; downloadable product CLI binary; conversation turn/proposal store; chat UI / Livewire kit / SaaS template gallery; A2A multi-app mesh; replacement for controllers, Form Requests, or domain services; Artisan-as-the-product-CLI |
+
+#### 2. `rawphp/laravel-capabilities-messaging`
+
+| | |
+|---|---|
+| **Is** | Conversation **ingress** (Telegram first): webhooks, identity link/allowlist, threads (process-local today), approval notifiers; feeds the agent; tools are registry capabilities |
+| **Is not** | Domain `run()` or second write path; full multi-tenant identity product (durable identity/threads still residual L-006); core bus governance; product CLI; general notification platform for non-capability flows |
+
+#### 3. `rawphp/laravel-capabilities-ai`
+
+| | |
+|---|---|
+| **Is** | Optional **conversation / turn / proposal runtime** that drives the model and may call tools **only** via `CapabilityBus::invoke`; host-bound context/tool catalog; progress events (array/Redis); thin `LlmClient` seam (fake + Anthropic) for turns and host jobs that need completions without embedding domain rules |
+| **Is not** | The capability bus itself; a general-purpose LLM SDK to replace `laravel/ai` app-wide; chat channel bots (that is messaging); product CLI; a place for domain `run()`; generative UI / agent-native OS |
+
+#### 4. `rawphp/capabilities-cli` (binary `capabilities`)
+
+| | |
+|---|---|
+| **Is** | Downloadable Go HTTP client for humans and local agents: auth profiles, catalog, run, schema validate-before-send, auto idempotency, optional MCP stdio **bridge** against the same remote HTTP capability API |
+| **Is not** | A second backend or domain runtime; Artisan; in-server ops CLI; Packagist PHP package; MCP protocol server of record (bridge only) |
+
+### Family is not (umbrella non-goals)
+
+Do **not** grow these into any package without an explicit product decision (and usually a new package remote):
+
+- Agent-native / multi-app workspace runtime (A2A mesh)
+- Cloneable SaaS / template gallery / Livewire chat product
+- Result caches, change-based test selection, or CI platforms (wrong product line)
+- Shipping chat bots or turn engines **inside core** to avoid a second Composer require
+- Treating this monorepo as the install target for applications
+
+Package READMEs restated these boundaries for post-split consumers (package root = repo root). Design depth: [docs/spec.md](docs/spec.md) · mental model: [docs/concepts.md](docs/concepts.md).
 
 ## How this monorepo ships
 
@@ -40,7 +107,7 @@ Honest picture of what the monorepo has vs what a production consumer still lack
 | **First-capability tutorial** | done | [docs/tutorials/first-capability.md](docs/tutorials/first-capability.md) — path/VCS install, fluent define + attribute alternate, durable stores (`QueryTableGateway` / host `TableGateway` override), registry invoke, HTTP, D-020 helpers |
 | **D-020 helpers** (`assertSchemaSnapshot`, `assertParity`) | done | Full unit-path DX: durable input+output schema snapshots; multi-surface success/deny class parity via registry/adapters with mocks/fakes — **not** a live multi-surface HTTP/feature suite |
 | **Live peer CI** (`laravel/ai`, `laravel/mcp`) | residual | Default package CI is unit-only (matrix + contract fixtures). Live peer minors remain an optional **consumer-app** path (D-011) |
-| **Split remotes** | done (workflow) | Push to monorepo `main` / tags mirrors package trees; consumer-facing repos are the three package remotes above |
+| **Split remotes** | done (workflow) | Push to monorepo `main` / tags mirrors package trees; consumer-facing repos are the **four** package remotes above |
 
 ### Install today
 

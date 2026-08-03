@@ -8,11 +8,14 @@ How Laravel Capabilities packages are versioned and how consumers install them *
 |---|---|---|---|---|
 | Core bus | `packages/laravel-capabilities` | [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities) | Composer `rawphp/laravel-capabilities` | [CHANGELOG](../packages/laravel-capabilities/CHANGELOG.md) |
 | Messaging | `packages/laravel-capabilities-messaging` | [rawphp/laravel-capabilities-messaging](https://github.com/rawphp/laravel-capabilities-messaging) | Composer `rawphp/laravel-capabilities-messaging` | [CHANGELOG](../packages/laravel-capabilities-messaging/CHANGELOG.md) |
+| AI turns | `packages/laravel-capabilities-ai` | [rawphp/laravel-capabilities-ai](https://github.com/rawphp/laravel-capabilities-ai) | Composer `rawphp/laravel-capabilities-ai` | — (0.x; add CHANGELOG when first tagged) |
 | Product CLI | `packages/capabilities-cli` | [rawphp/capabilities-cli](https://github.com/rawphp/capabilities-cli) | Go module + binary `capabilities` | [CHANGELOG](../packages/capabilities-cli/CHANGELOG.md) |
 
 Release notes live **per package**, Keep a Changelog style, with an `[Unreleased]` section and a pre-stable `0.x` note until the first tagged release.
 
-## Monorepo → three package remotes (on push)
+**Umbrella:** this monorepo is not an install target. Product boundaries per package: root [README — Scope](../README.md#scope-product-boundary).
+
+## Monorepo → four package remotes (on push)
 
 Source of truth for day-to-day development is this monorepo. Publication of package trees is automated:
 
@@ -24,7 +27,7 @@ Source of truth for day-to-day development is this monorepo. Publication of pack
 
 ### Test gate (split blocked until green)
 
-Split / package-remote publish is **gated on green monorepo unit tests**. The split workflow’s `split` job `needs:` a reusable call to [`.github/workflows/tests.yml`](../.github/workflows/tests.yml) (PHP 8.2 Pest for core + messaging via `composer test`, and `go test ./...` for the CLI). If any unit suite fails, package trees and tags are **not** mirrored.
+Split / package-remote publish is **gated on green monorepo unit tests**. The split workflow’s `split` job `needs:` a reusable call to [`.github/workflows/tests.yml`](../.github/workflows/tests.yml) (PHP 8.2 Pest via root `composer test` = core + messaging + AI, and `go test ./...` for the CLI). If any unit suite fails, package trees and tags are **not** mirrored.
 
 | Surface | CI |
 |---|---|

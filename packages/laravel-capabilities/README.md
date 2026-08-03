@@ -8,11 +8,22 @@ Core product capability bus for Laravel.
 
 Define a capability once (schema, authorization, `run`, approval, audit) and expose it via agent, MCP, HTTP, product CLI, and jobs — same rules, one `run()`.
 
+## Scope (this package)
+
+| | |
+|---|---|
+| **Is** | Capability registry; typed DTO → schema; authorize / approval / audit / scope / idempotency / rate limits; thin adapters for agent, MCP, HTTP, jobs, optional Artisan ops; HTTP capability API used by the product CLI; conversation **contracts** for sibling packages; unit-path D-020 parity helpers |
+| **Is not** | LLM client or turn/proposal engine; MCP protocol implementation; Telegram/Slack/WhatsApp bots; downloadable `capabilities` binary; chat UI / Livewire kit / template gallery; A2A multi-app mesh; domain services or Form Request replacement; Artisan-as-the-product-CLI |
+
+**Siblings (optional):** [messaging](https://github.com/rawphp/laravel-capabilities-messaging) · [AI turns](https://github.com/rawphp/laravel-capabilities-ai) · [product CLI](https://github.com/rawphp/capabilities-cli).  
+**Umbrella:** developed in [laravel-capabilities-monorepo](https://github.com/rawphp/laravel-capabilities-monorepo) — apps install **this repo / Composer package**, not the monorepo.
+
 | Doc | Where |
 |---|---|
 | User guide (this package) | [docs/user-guide.md](docs/user-guide.md) |
 | Changelog | [CHANGELOG.md](CHANGELOG.md) |
 | Sibling messaging | [rawphp/laravel-capabilities-messaging](https://github.com/rawphp/laravel-capabilities-messaging) |
+| Sibling AI | [rawphp/laravel-capabilities-ai](https://github.com/rawphp/laravel-capabilities-ai) |
 | Product CLI | [rawphp/capabilities-cli](https://github.com/rawphp/capabilities-cli) |
 | Monorepo design / tutorials | [laravel-capabilities-monorepo](https://github.com/rawphp/laravel-capabilities-monorepo) (`docs/`) |
 

@@ -6,11 +6,21 @@ Implements core `ConversationIngress` / `ApprovalNotifier` contracts. **Never** 
 
 **Status:** 0.x pre-stable — **not Packagist-published**. Install via package VCS or monorepo path.
 
+## Scope (this package)
+
+| | |
+|---|---|
+| **Is** | Chat **ingress** (Telegram first): webhooks, identity link/allowlist, threads, approval notifiers; routes messages into the agent with a configured tool profile |
+| **Is not** | Domain `run()` or any second write path; the capability registry / governance stack; product CLI; AI turn/proposal engine; durable multi-instance identity product (process-local stores residual — L-006); general-purpose notification platform |
+
+Requires [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities). Developed in the monorepo; consumers install **this package repo**.
+
 | Doc | Where |
 |---|---|
 | User guide | [docs/user-guide.md](docs/user-guide.md) |
 | Changelog | [CHANGELOG.md](CHANGELOG.md) |
 | Core package | [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities) |
+| Sibling AI | [rawphp/laravel-capabilities-ai](https://github.com/rawphp/laravel-capabilities-ai) |
 | Monorepo design | [laravel-capabilities-monorepo](https://github.com/rawphp/laravel-capabilities-monorepo) |
 
 ## Install

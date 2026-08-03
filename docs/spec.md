@@ -149,25 +149,43 @@ Without that layer, apps grow dual paths: UI controllers mutate one way, agent t
 
 ## What this package is / is not
 
-### Is
+The **family** is four split packages developed in one monorepo. Consumers never install the monorepo as a product. Canonical tables: monorepo root README **Scope** and each package README **Scope (this package)**.
+
+### Family / monorepo
+
+| | |
+|---|---|
+| **Monorepo is** | Dev umbrella: packages, design docs, inventory, split/release automation |
+| **Monorepo is not** | A Composer install target for apps; not Packagist; not “the product” |
+
+### Core (`rawphp/laravel-capabilities`) — Is
 
 - A **capability registry** with typed input schemas (server)
 - Automatic **invoke adapters** for AI, MCP, HTTP, jobs, and the remote CLI protocol
 - **Approval + audit + scope + idempotency** as bus governance
 - **Contracts** for conversation ingress (so messaging packages can plug in cleanly)
-- A **downloadable CLI** end users (and their local agents) install on their computers
 - A **catalog** agents, CLIs, and UIs can discover
+- HTTP capability API consumed by the downloadable CLI
 
-### Is not
+### Core — Is not
 
-- An LLM client (use `laravel/ai` on the server; local agents stay whatever the user already runs)
+- An LLM client or turn/proposal product (optional sibling `rawphp/laravel-capabilities-ai`)
 - An MCP protocol implementation (use `laravel/mcp` for HTTP/SSE MCP; the CLI may *bridge* to it)
 - **Artisan** as the product CLI (Artisan remains optional *in-server* ops; see below)
 - A chat UI, Livewire kit, or cloneable SaaS template gallery
 - **Telegram/Slack/WhatsApp bot runtime in core** — that is `rawphp/laravel-capabilities-messaging` (D-007)
+- The downloadable CLI binary — that is `rawphp/capabilities-cli`
 - A2A mesh / multi-app workspace runtime
 - A replacement for controllers, Form Requests, or your domain services
 - Agent-native-with-PHP (full messaging OS); we are a **capability bus**
+
+### Siblings (not core)
+
+| Package | Is | Is not |
+|---|---|---|
+| **messaging** | Chat ingress + approval notify; tools via registry | Domain `run()`, bus core |
+| **ai** | Turn / proposal runtime; tools via `CapabilityBus` only | Channel bots, general LLM SDK, domain `run()` |
+| **capabilities-cli** | Laptop HTTP client + optional MCP stdio bridge | Second backend, Artisan, domain on device |
 
 ### CLI vs Artisan (important)
 
