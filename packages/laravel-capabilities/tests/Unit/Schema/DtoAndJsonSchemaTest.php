@@ -312,3 +312,16 @@ it('happy: empty PHP array validates as empty JSON object (json_decode {} trap)'
         ->and($validator->validate($schema, ['resume' => true]))->toBe([])
         ->and($validator->validate($schema, [0 => 'list-item']))->not->toBe([]);
 });
+
+it('fail: empty PHP array still enforces required object properties', function () {
+    $validator = new JsonSchemaValidator();
+    $schema = [
+        'type' => 'object',
+        'required' => ['invoice_id'],
+        'properties' => [
+            'invoice_id' => ['type' => 'integer'],
+        ],
+    ];
+
+    expect($validator->validate($schema, []))->not->toBeEmpty();
+});

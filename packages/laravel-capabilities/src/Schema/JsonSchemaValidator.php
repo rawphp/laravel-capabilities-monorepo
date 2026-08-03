@@ -95,7 +95,13 @@ final class JsonSchemaValidator
             }
         }
 
-        if (is_array($data) && ! $this->isList($data) && (($schema['type'] ?? null) === 'object' || isset($schema['properties']))) {
+        // Empty [] is both a PHP list and json_decode('{}') — when the schema is an
+        // object (or has properties), still enforce required / additionalProperties.
+        $asObject = is_array($data)
+            && ($data === [] || ! $this->isList($data))
+            && (($schema['type'] ?? null) === 'object' || isset($schema['properties']));
+
+        if ($asObject) {
             $properties = $schema['properties'] ?? [];
             $required = $schema['required'] ?? [];
             $additional = $schema['additionalProperties'] ?? true;

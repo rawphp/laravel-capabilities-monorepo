@@ -50,7 +50,7 @@ return [
         'driver' => $env('CAPABILITIES_AI_LLM_DRIVER', 'fake'),
         'anthropic' => [
             'api_key' => $env('ANTHROPIC_API_KEY'),
-            'model' => $env('CAPABILITIES_AI_ANTHROPIC_MODEL', 'claude-sonnet-4-20250514'),
+            'model' => $env('CAPABILITIES_AI_ANTHROPIC_MODEL', 'claude-sonnet-4-6'),
             'base_url' => $env('CAPABILITIES_AI_ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
         ],
     ],
