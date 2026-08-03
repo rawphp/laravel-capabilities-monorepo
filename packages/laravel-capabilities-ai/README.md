@@ -78,7 +78,11 @@ $app->bind(LlmClient::class, fn () => new AnthropicLlmClient(
 ));
 ```
 
-**Custom `LlmClient`:** return `supportsToolRounds() === true` **only** if the client accepts tool-result messages on the next `complete()` (OpenAI-style `role=tool` or Anthropic `tool_result` blocks). Lying opens a bus-then-crash path. Package defaults: `FakeLlmClient` true, `AnthropicLlmClient` false until true tool-result support ships.
+**Custom `LlmClient`:** implement `supportsToolRounds()`. Prefer `use LlmClientDefaults` (returns false) and override to `true` **only** if the client accepts tool-result messages on the next `complete()` (OpenAI-style `role=tool` or Anthropic `tool_result` blocks). Lying opens a bus-then-crash path. (PHP interfaces cannot ship method bodies; the trait is the fail-closed default for hosts.)
+
+**MVS product default:** multi-round tools are **off** until a client opts in. `AnthropicLlmClient` stays false until real `tool_result` support ships; `FakeLlmClient` opts in for unit tests. Empty tool defs + refuse-before-bus is defense-in-depth for that default, not a second product surface.
+
+**Proposal accept:** requires a container-bound core `IdempotencyStore` (D-005). Crash resume re-invokes with `idempotency_key=proposal:{ulid}` — no local `accept_outcome` cache. Reject is atomic `pending → rejected` only.
 
 Env: `ANTHROPIC_API_KEY` (never required in CI — tests use `Http::fake` / `FakeLlmClient`).
 

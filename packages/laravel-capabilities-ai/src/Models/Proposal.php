@@ -46,12 +46,10 @@ class Proposal extends Model
         'status',
         'accepted_at',
         'last_error',
-        'accept_outcome',
     ];
 
     protected $casts = [
         'payload' => 'array',
-        'accept_outcome' => 'array',
         'accepted_at' => 'datetime',
     ];
 

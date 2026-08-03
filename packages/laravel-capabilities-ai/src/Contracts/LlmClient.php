@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Contracts;
 
+use Rawphp\CapabilitiesAi\Support\LlmClientDefaults;
+
 /**
  * Pluggable LLM client. Hosts may resolve without a Conversation (MVS jobs).
  *
@@ -16,7 +18,10 @@ interface LlmClient
 {
     /**
      * Whether this client can continue a conversation after tool results are appended.
-     * Fail closed: default expectation for unknown host clients is false unless they opt in.
+     *
+     * Fail closed: package MVS expects false unless the client opts into multi-round tools.
+     * PHP interfaces cannot supply a method body — host implementors may use
+     * {@see LlmClientDefaults} for `return false`.
      */
     public function supportsToolRounds(): bool;
 

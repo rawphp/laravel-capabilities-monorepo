@@ -107,3 +107,66 @@
   2. Commit this residual fix set on the tip when ready.
   3. CapabilityRegistry peel (session-1 R1-10) remains deferred.
   4. Anthropic true tool_result (session-1 option A) when product requires multi-round tools.
+
+---
+
+## Session: 2026-08-04 — Round-3 residual attack on accept_outcome / reject SM / fail-closed defaults
+- **Proposal:** Treat session-2 tip (accept_outcome + config-sniff readiness + free reject) as merge-ready after paste-in residual findings
+- **Owner:** Tom (accept decisions); agent builder this session
+- **Started:** 2026-08-04T15:00:00Z
+- **Source findings:** user paste residual critic (10 items) after session-2 Decision
+- **path:** in-session code fixes (do-work skill present; tracker.backend=linear; residual redteam round closed with unit verification — same pattern as session 2)
+
+### Round 1 — Critic
+
+| ID | Objection | Impact | Status | Notes |
+|----|-----------|--------|--------|-------|
+| R1-01 | `accept_outcome` is incidental complexity once store is mandatory: three recovery mechanisms (claim, accept_outcome phase-1, core idempotency). Local resume vs fail-closed store cannot both be load-bearing. Delete accept_outcome; resume = re-invoke + terminal write. | high | verified | Supercedes session-2 R1-02 design |
+| R1-02 | Accept is a SM; reject is free write — can overwrite accepting mid-invoke or flip terminal rows. Need atomic pending→rejected only. | high | verified | |
+| R1-03 | Fail-closed defaults open: ProposalService / makeProposalService default `$idempotencyStoreReady=true`; SP starts true when config unbound. Safe default is false. | high | verified | |
+| R1-04 | Idempotency readiness is AI-local config sniff, not container truth. Prefer `bound(IdempotencyStore::class)`. | high | verified | |
+| R1-05 | accept() status handling copy-pasted before claim and after lost race. Collapse to single match path. | medium | verified | |
+| R1-06 | Non-atomic terminal accept (outcome then accepted) leaves multi-write story. Subsumed by R1-01 if accept_outcome deleted; else one terminal UPDATE. | high | verified | Subsumed by R1-01 (no intermediate durable outcome) |
+| R1-07 | `supportsToolRounds()` hard BC; interface default-false would fail closed. (Critic claimed PHP 8.2 interface bodies — **false** on PHP 8.x.) | medium | accepted | Trait `LlmClientDefaults` instead; residual host must implement or use trait |
+| R1-08 | SP config two dialects: configFromApp vs method_exists get for claim_ttl/idempotency. | medium | verified | claim_ttl via configFromApp; idem via bound() |
+| R1-09 | Tool-loop dual-gated hides thinner product: MVS = tools-off until tool_result. Docs must own that as package default. | low | verified | README MVS product default |
+| R1-10 | Branch still `cleanup/dead-code` while tip is accept SM + tools + DI. Process residual. | medium | accepted | Owner Tom; supersedes session-2 R1-05 residual |
+
+### Round 1 — Builder
+
+| ID | Response | Status | Evidence |
+|----|----------|--------|----------|
+| R1-01 | Removed `accept_outcome` (migration, model cast, hasSuccessfulOutcome, two-phase save). Resume always re-invokes with `proposal:{ulid}`; single terminal `accepting→accepted` UPDATE. Docblock: store is the only D-005 system. | verified | `ProposalService.php`; tests no longer assert accept_outcome; migration column gone; path: in-session |
+| R1-02 | Reject: load → rejected idempotent → refuse non-pending → atomic UPDATE pending→rejected; race re-check. Tests: refuse accepting/accepted/failed; idempotent rejected. | verified | `reject refuses accepting/accepted/failed`; `reject is idempotent…` |
+| R1-03 | Defaults `idempotencyStoreReady=false` on ctor + `makeProposalService`. Happy-path unit tests use `readyProposalService()` (prove true). New test: bare `new ProposalService($bus)` fails closed. | verified | `defaults fail closed when idempotency readiness is unproven`; `makeProposalService defaults fail closed…` |
+| R1-04 | Deleted `isIdempotencyStoreReady` config sniffer. SP: `$app->bound(IdempotencyStore::class)`. | verified | SP tests: not bound → false; bound InMemory → true |
+| R1-05 | Single `match ($status)` in accept; lost claim re-enters `accept()` (no duplicated policy arm). | verified | code structure + suite |
+| R1-06 | No intermediate outcome write; `markAccepted` is one UPDATE WHERE status=accepting. | verified | subsumes with R1-01 |
+| R1-07 | PHP interfaces **cannot** have method bodies (verified PHP 8.5.8). Shipped `LlmClientDefaults` trait (`return false`); Anthropic uses it. Residual: host that implements interface without trait still fatals until they add the method — acceptable pre-stable; not silent tools-on. | accepted | Residual owner: package maintainer; hosts use trait |
+| R1-08 | ConversationService claim_ttl from `configFromApp`; ProposalService readiness not config. Redis residual still accepted (session-1). | verified | `CapabilitiesAiServiceProvider.php` |
+| R1-09 | README: MVS product default = multi-round tools off; dual-gate is defense-in-depth. | verified | README Host seams |
+| R1-10 | Not a code fix. | accepted | Residual owner: Tom rename/split before merge |
+
+### Round 1 — Critic re-check
+
+- **Reopened:** none on high-impact. R1-01/02/03/04/06 have unit evidence and remove the contradictory dual-safety story.
+- **New objections:** none material.
+  - Note: R1-07 critic premise (interface default methods) is factually wrong on PHP; trait is the closest fail-closed default without lying about language support.
+  - Note: concurrent accept still relies on core store + claim; now only one recovery path.
+  - Note: reject of `expired` also refuses (same non-pending law) — correct.
+- **Same issues without new evidence:** none.
+- **High-impact open/reopened remaining:** none.
+
+## Decision
+
+- **Outcome:** proceed-with-accepts
+- **Proposal:** Ship AI tip only after accept_outcome deletion + reject SM + fail-closed defaults + container-bound readiness; process packaging + LlmClient interface-body residual remain accepts
+- **Resolved (verified fixes):** R1-01, R1-02, R1-03, R1-04, R1-05, R1-06, R1-08, R1-09
+- **Accepted (conscious risk):** R1-07 (trait not interface body — language limit; residual host implementor), R1-10 (branch name), session-1 redis untyped, session-1 registry peel deferred
+- **Stalemate / still open high-impact:** none
+- **Evidence:** this log session 3; `pest` AI package → **100 passed (267 assertions)**; key files: `ProposalService.php`, `Proposal.php`, proposals migration, `CapabilitiesAiServiceProvider.php`, `ContainerBindings.php`, `LlmClientDefaults.php`, `AnthropicLlmClient.php`, `README.md`, `CHANGELOG.md`, `ProposalServiceTest.php`, `ServiceProviderBindingsTest.php`
+- **Next step:**
+  1. **Tom:** rename branch / PR title away from `cleanup/dead-code` (R1-10).
+  2. Commit session-3 tip when ready.
+  3. Hosts: `use LlmClientDefaults` or implement `supportsToolRounds()`.
+  4. Anthropic true tool_result remains future product work.

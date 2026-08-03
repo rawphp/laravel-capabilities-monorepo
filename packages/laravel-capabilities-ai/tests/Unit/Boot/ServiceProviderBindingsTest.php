@@ -9,8 +9,11 @@ declare(strict_types=1);
 
 use Illuminate\Container\Container;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
+use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
+use Rawphp\Capabilities\Support\SystemClock;
 use Rawphp\CapabilitiesAi\CapabilitiesAiServiceProvider;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
@@ -21,6 +24,7 @@ use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
+use Rawphp\CapabilitiesAi\Support\ContainerBindings;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 
 function aiFakeBus(): CapabilityBus
@@ -124,6 +128,38 @@ it('resolves ProposalService with CapabilityBus', function () {
     $service = $app->make(ProposalService::class);
 
     expect($service)->toBeInstanceOf(ProposalService::class);
+});
+
+it('ProposalService fails closed when IdempotencyStore is not bound', function () {
+    $app = bootAiProviderContainer();
+    expect($app->bound(IdempotencyStore::class))->toBeFalse();
+
+    $service = $app->make(ProposalService::class);
+    $ref = new ReflectionClass($service);
+    $prop = $ref->getProperty('idempotencyStoreReady');
+    $prop->setAccessible(true);
+    expect($prop->getValue($service))->toBeFalse();
+});
+
+it('ProposalService is ready when IdempotencyStore is bound', function () {
+    $app = bootAiProviderContainer();
+    $app->instance(IdempotencyStore::class, new InMemoryIdempotencyStore(new SystemClock));
+
+    // Re-bind factory after store is present (singleton already registered at register time).
+    $app->forgetInstance(ProposalService::class);
+    // Force re-resolve of singleton factory by rebinding.
+    $app->singleton(ProposalService::class, function (Container $c) {
+        return ContainerBindings::makeProposalService(
+            $c->make(CapabilityBus::class),
+            $c->bound(IdempotencyStore::class),
+        );
+    });
+
+    $service = $app->make(ProposalService::class);
+    $ref = new ReflectionClass($service);
+    $prop = $ref->getProperty('idempotencyStoreReady');
+    $prop->setAccessible(true);
+    expect($prop->getValue($service))->toBeTrue();
 });
 
 it('does not overwrite host-prebound LlmClient', function () {

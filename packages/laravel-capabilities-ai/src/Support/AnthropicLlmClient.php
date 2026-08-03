@@ -11,23 +11,18 @@ use RuntimeException;
 /**
  * Anthropic Messages API client behind LlmClient.
  * Unit tests use Http::fake — no real network in CI.
+ *
+ * Multi-round tools stay off via LlmClientDefaults until true tool_result blocks ship.
  */
 final class AnthropicLlmClient implements LlmClient
 {
+    use LlmClientDefaults;
+
     public function __construct(
         private readonly string $apiKey,
         private readonly string $model = 'claude-sonnet-4-6',
         private readonly string $baseUrl = 'https://api.anthropic.com',
     ) {}
-
-    /**
-     * Anthropic tool_result content blocks are not implemented end-to-end.
-     * TurnRunner must refuse tool invokes when this is false (no bus mutation then crash).
-     */
-    public function supportsToolRounds(): bool
-    {
-        return false;
-    }
 
     public function complete(array $messages, array $tools = []): array
     {

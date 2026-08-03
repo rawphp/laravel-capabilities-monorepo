@@ -14,7 +14,11 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 ### Fixed
 
 - Proposal accept: non-retryable bus errors → terminal `failed` + `last_error` (no accepting limbo).
-- Proposal accept: record `accept_outcome` before `accepted` so crash resume is local; fail closed when core idempotency store is not configured.
+- Proposal accept: single safety system — claim `pending→accepting`, resume re-invokes under `proposal:{ulid}` (D-005); removed `accept_outcome` two-phase cache.
+- Proposal accept: fail closed by default (`idempotencyStoreReady=false`); SP readiness = `bound(IdempotencyStore::class)` (no AI-local config dialect).
+- Proposal reject: atomic `pending→rejected` only; refuse accepting/accepted/failed (idempotent rejected).
+- `LlmClientDefaults` trait (`supportsToolRounds() => false`) for host implementors; multi-round tools opt-in only.
+- SP config: claim_ttl via `configFromApp` (one typed config path).
 - `ProposalFenceExtractor`: brace-balanced nested JSON (no silent drop on nested objects).
 - Cheap create passes `claim_ttl` into `RunTurnJob` timeout.
 

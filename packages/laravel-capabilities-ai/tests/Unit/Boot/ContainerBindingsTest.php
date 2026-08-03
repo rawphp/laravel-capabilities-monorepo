@@ -6,8 +6,12 @@ declare(strict_types=1);
  * UR-017 / ORI-645: pure ContainerBindings plan (no Laravel app, no DB).
  */
 
+use Rawphp\Capabilities\Contracts\CapabilityBus;
+use Rawphp\Capabilities\Schema\CatalogPresenter;
+use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
+use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
 use Rawphp\CapabilitiesAi\Support\AnthropicLlmClient;
@@ -148,10 +152,23 @@ it('makeConversationService injects callable dispatch', function () {
     expect($service)->toBeInstanceOf(ConversationService::class);
 });
 
-it('isIdempotencyStoreReady fails closed for disabled/missing driver', function () {
-    expect(ContainerBindings::isIdempotencyStoreReady(['idempotency' => ['enabled' => false, 'driver' => 'database']]))->toBeFalse()
-        ->and(ContainerBindings::isIdempotencyStoreReady(['idempotency' => ['enabled' => true, 'driver' => 'none']]))->toBeFalse()
-        ->and(ContainerBindings::isIdempotencyStoreReady(['idempotency' => ['enabled' => true, 'driver' => 'database']]))->toBeTrue()
-        ->and(ContainerBindings::isIdempotencyStoreReady(['idempotency' => ['driver' => 'memory']]))->toBeTrue()
-        ->and(ContainerBindings::isIdempotencyStoreReady([]))->toBeFalse();
+it('makeProposalService defaults fail closed for unproven idempotency readiness', function () {
+    $bus = new class implements CapabilityBus
+    {
+        public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
+        {
+            return CapabilityResult::ok();
+        }
+
+        public function catalog(): CatalogPresenter
+        {
+            throw new RuntimeException('unused');
+        }
+    };
+    $service = ContainerBindings::makeProposalService($bus);
+    expect($service)->toBeInstanceOf(ProposalService::class);
+    $ref = new ReflectionClass($service);
+    $prop = $ref->getProperty('idempotencyStoreReady');
+    $prop->setAccessible(true);
+    expect($prop->getValue($service))->toBeFalse();
 });

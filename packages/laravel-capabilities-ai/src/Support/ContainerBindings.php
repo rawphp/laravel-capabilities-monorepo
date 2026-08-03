@@ -201,28 +201,9 @@ final class ContainerBindings
 
     public static function makeProposalService(
         CapabilityBus $bus,
-        bool $idempotencyStoreReady = true,
+        bool $idempotencyStoreReady = false,
     ): ProposalService {
         return new ProposalService($bus, $idempotencyStoreReady);
-    }
-
-    /**
-     * Fail closed for proposal accept when core idempotency store is off/misconfigured.
-     *
-     * @param  array<string, mixed>  $capabilitiesConfig  Slice of config('capabilities')
-     */
-    public static function isIdempotencyStoreReady(array $capabilitiesConfig): bool
-    {
-        $idem = (array) ($capabilitiesConfig['idempotency'] ?? []);
-        if (array_key_exists('enabled', $idem) && $idem['enabled'] === false) {
-            return false;
-        }
-        $driver = $idem['driver'] ?? null;
-        if ($driver === null || $driver === '' || $driver === 'none' || $driver === 'null') {
-            return false;
-        }
-
-        return true;
     }
 
     public static function makeTurnService(ProgressStore $progress): TurnService

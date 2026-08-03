@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Http;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Support\AnthropicLlmClient;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
+use Rawphp\CapabilitiesAi\Support\LlmClientDefaults;
 
 it('AnthropicLlmClient implements LlmClient', function () {
     expect(new AnthropicLlmClient('test-key'))->toBeInstanceOf(LlmClient::class);
@@ -52,7 +53,10 @@ it('fails closed when messages include role=tool', function () {
 });
 
 it('does not advertise multi-round tool support', function () {
-    expect((new AnthropicLlmClient('k'))->supportsToolRounds())->toBeFalse();
+    expect((new AnthropicLlmClient('k'))->supportsToolRounds())->toBeFalse()
+        ->and(class_uses_recursive(AnthropicLlmClient::class))->toContain(
+            LlmClientDefaults::class
+        );
 });
 
 it('FakeLlmClient advertises multi-round tool support', function () {

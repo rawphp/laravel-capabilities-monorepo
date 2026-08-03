@@ -9,6 +9,7 @@ use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
+use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
@@ -92,13 +93,8 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(ConversationService::class, function (Container $app) {
-            $claimTtl = 120;
-            if ($app->bound('config')) {
-                $config = $app->make('config');
-                if (is_object($config) && method_exists($config, 'get')) {
-                    $claimTtl = (int) $config->get('capabilities-ai.claim_ttl', 120);
-                }
-            }
+            $config = self::configFromApp($app);
+            $claimTtl = (int) ($config['claim_ttl'] ?? 120);
             if ($claimTtl < 1) {
                 $claimTtl = 120;
             }
@@ -117,14 +113,8 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
                 );
             }
 
-            $idemReady = true;
-            if ($app->bound('config')) {
-                $config = $app->make('config');
-                if (is_object($config) && method_exists($config, 'get')) {
-                    $caps = (array) $config->get('capabilities', []);
-                    $idemReady = ContainerBindings::isIdempotencyStoreReady($caps);
-                }
-            }
+            // Proven readiness only: core IdempotencyStore bound in the container (not config sniff).
+            $idemReady = $app->bound(IdempotencyStore::class);
 
             return ContainerBindings::makeProposalService(
                 $app->make(CapabilityBus::class),

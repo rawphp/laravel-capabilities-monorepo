@@ -25,7 +25,6 @@ return new class extends Migration
             $blueprint->string('status', 32)->default('pending')->index();
             $blueprint->timestamp('accepted_at')->nullable();
             $blueprint->text('last_error')->nullable();
-            $blueprint->json('accept_outcome')->nullable();
             $blueprint->timestamps();
 
             $blueprint->foreign('turn_id')

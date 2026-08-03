@@ -81,23 +81,42 @@ function proposalRecordingBus(): object
     };
 }
 
-it('accept invokes bus with target_capability and payload and sets accepted', function () {
+/** Happy-path service: unit tests must prove store ready (constructor defaults false). */
+function readyProposalService(CapabilityBus $bus): ProposalService
+{
+    return new ProposalService($bus, idempotencyStoreReady: true);
+}
+
+it('defaults fail closed when idempotency readiness is unproven', function () {
     bootProposalSqlite();
     $proposal = seedPendingProposal();
     $bus = proposalRecordingBus();
     $service = new ProposalService($bus);
+    expect(fn () => $service->accept($proposal->ulid))
+        ->toThrow(RuntimeException::class, 'IdempotencyStore');
+    expect($bus->invokes)->toBe(0)
+        ->and(Proposal::query()->where('ulid', $proposal->ulid)->value('status'))
+        ->toBe(Proposal::STATUS_PENDING);
+});
+
+it('accept invokes bus with target_capability and payload and sets accepted', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $bus = proposalRecordingBus();
+    $service = readyProposalService($bus);
     $out = $service->accept($proposal->ulid);
     expect($out->status)->toBe(Proposal::STATUS_ACCEPTED)
         ->and($bus->invokes)->toBe(1)
         ->and($bus->lastName)->toBe('demo.cap')
-        ->and($bus->lastInput)->toBe(['a' => 1]);
+        ->and($bus->lastInput)->toBe(['a' => 1])
+        ->and($bus->lastOptions['idempotency_key'] ?? null)->toBe('proposal:'.$proposal->ulid);
 });
 
 it('re-accept is idempotent without second bus invoke', function () {
     bootProposalSqlite();
     $proposal = seedPendingProposal();
     $bus = proposalRecordingBus();
-    $service = new ProposalService($bus);
+    $service = readyProposalService($bus);
     $service->accept($proposal->ulid);
     $service->accept($proposal->ulid);
     expect($bus->invokes)->toBe(1);
@@ -128,25 +147,24 @@ it('accept claims pending→accepting before bus invoke', function () {
             throw new RuntimeException('unused');
         }
     };
-    $service = new ProposalService($bus);
+    $service = readyProposalService($bus);
     $out = $service->accept($proposal->ulid);
     expect($out->status)->toBe(Proposal::STATUS_ACCEPTED)
         ->and($bus->invokes)->toBe(1)
         ->and($statuses)->toBe([Proposal::STATUS_ACCEPTING]);
 });
 
-it('resume from accepting re-invokes once then marks accepted', function () {
+it('resume from accepting re-invokes under proposal idempotency key then marks accepted', function () {
     bootProposalSqlite();
     $proposal = seedPendingProposal();
     $proposal->status = Proposal::STATUS_ACCEPTING;
     $proposal->save();
     $bus = proposalRecordingBus();
-    $service = new ProposalService($bus);
+    $service = readyProposalService($bus);
     $out = $service->accept($proposal->ulid);
     expect($out->status)->toBe(Proposal::STATUS_ACCEPTED)
         ->and($bus->invokes)->toBe(1)
-        ->and($bus->lastOptions['idempotency_key'] ?? null)->toBe('proposal:'.$proposal->ulid)
-        ->and($out->accept_outcome['ok'] ?? null)->toBeTrue();
+        ->and($bus->lastOptions['idempotency_key'] ?? null)->toBe('proposal:'.$proposal->ulid);
 });
 
 it('non-retryable bus failure marks failed (not limbo accepting)', function () {
@@ -164,7 +182,7 @@ it('non-retryable bus failure marks failed (not limbo accepting)', function () {
             throw new RuntimeException('unused');
         }
     };
-    $service = new ProposalService($bus);
+    $service = readyProposalService($bus);
     expect(fn () => $service->accept($proposal->ulid))
         ->toThrow(RuntimeException::class, 'forbidden');
     $fresh = Proposal::query()->where('ulid', $proposal->ulid)->firstOrFail();
@@ -187,24 +205,11 @@ it('retryable bus failure leaves accepting for resume', function () {
             throw new RuntimeException('unused');
         }
     };
-    $service = new ProposalService($bus);
+    $service = readyProposalService($bus);
     expect(fn () => $service->accept($proposal->ulid))
         ->toThrow(RuntimeException::class, 'internal');
     $fresh = Proposal::query()->where('ulid', $proposal->ulid)->firstOrFail();
     expect($fresh->status)->toBe(Proposal::STATUS_ACCEPTING);
-});
-
-it('resume from accepting with recorded outcome does not re-invoke bus', function () {
-    bootProposalSqlite();
-    $proposal = seedPendingProposal();
-    $proposal->status = Proposal::STATUS_ACCEPTING;
-    $proposal->accept_outcome = CapabilityResult::ok(['n' => 1])->toArray();
-    $proposal->save();
-    $bus = proposalRecordingBus();
-    $service = new ProposalService($bus);
-    $out = $service->accept($proposal->ulid);
-    expect($out->status)->toBe(Proposal::STATUS_ACCEPTED)
-        ->and($bus->invokes)->toBe(0);
 });
 
 it('fail closed when idempotency store is not ready', function () {
@@ -213,7 +218,7 @@ it('fail closed when idempotency store is not ready', function () {
     $bus = proposalRecordingBus();
     $service = new ProposalService($bus, idempotencyStoreReady: false);
     expect(fn () => $service->accept($proposal->ulid))
-        ->toThrow(RuntimeException::class, 'idempotency store');
+        ->toThrow(RuntimeException::class, 'IdempotencyStore');
     expect($bus->invokes)->toBe(0)
         ->and(Proposal::query()->where('ulid', $proposal->ulid)->value('status'))
         ->toBe(Proposal::STATUS_PENDING);
@@ -225,7 +230,7 @@ it('missing target_capability marks failed', function () {
     $proposal->target_capability = null;
     $proposal->save();
     $bus = proposalRecordingBus();
-    $service = new ProposalService($bus);
+    $service = readyProposalService($bus);
     expect(fn () => $service->accept($proposal->ulid))
         ->toThrow(RuntimeException::class, 'target_capability');
     $fresh = Proposal::query()->where('ulid', $proposal->ulid)->firstOrFail();
@@ -237,8 +242,49 @@ it('reject sets rejected without bus invoke', function () {
     bootProposalSqlite();
     $proposal = seedPendingProposal();
     $bus = proposalRecordingBus();
-    $service = new ProposalService($bus);
+    $service = readyProposalService($bus);
     $out = $service->reject($proposal->ulid);
     expect($out->status)->toBe(Proposal::STATUS_REJECTED)
         ->and($bus->invokes)->toBe(0);
+});
+
+it('reject is idempotent for already-rejected proposals', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $service = readyProposalService(proposalRecordingBus());
+    $service->reject($proposal->ulid);
+    $out = $service->reject($proposal->ulid);
+    expect($out->status)->toBe(Proposal::STATUS_REJECTED);
+});
+
+it('reject refuses accepting proposals', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $proposal->status = Proposal::STATUS_ACCEPTING;
+    $proposal->save();
+    $service = readyProposalService(proposalRecordingBus());
+    expect(fn () => $service->reject($proposal->ulid))
+        ->toThrow(RuntimeException::class, 'cannot be rejected');
+    expect(Proposal::query()->where('ulid', $proposal->ulid)->value('status'))
+        ->toBe(Proposal::STATUS_ACCEPTING);
+});
+
+it('reject refuses accepted proposals', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $service = readyProposalService(proposalRecordingBus());
+    $service->accept($proposal->ulid);
+    expect(fn () => $service->reject($proposal->ulid))
+        ->toThrow(RuntimeException::class, 'cannot be rejected');
+});
+
+it('reject refuses failed proposals', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $proposal->status = Proposal::STATUS_FAILED;
+    $proposal->last_error = 'x';
+    $proposal->save();
+    $service = readyProposalService(proposalRecordingBus());
+    expect(fn () => $service->reject($proposal->ulid))
+        ->toThrow(RuntimeException::class, 'cannot be rejected');
 });
