@@ -67,6 +67,9 @@ function proposalBus(?callable $handler = null): object
 
         public array $lastInput = [];
 
+        /** @var array<string, mixed> */
+        public array $lastOptions = [];
+
         public function __construct(private mixed $handler) {}
 
         public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
@@ -74,9 +77,10 @@ function proposalBus(?callable $handler = null): object
             $this->invokes++;
             $this->lastName = $nameOrAlias;
             $this->lastInput = $input;
+            $this->lastOptions = $options;
 
             if (is_callable($this->handler)) {
-                return ($this->handler)($nameOrAlias, $input);
+                return ($this->handler)($nameOrAlias, $input, $options);
             }
 
             return CapabilityResult::ok();
@@ -227,4 +231,64 @@ it('reject sets rejected without bus invoke', function () {
     $out = $service->reject($proposal->ulid);
     expect($out->status)->toBe(Proposal::STATUS_REJECTED)
         ->and($bus->invokes)->toBe(0);
+});
+
+it('accept passes D-005 idempotency_key proposal:{ulid}', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $bus = proposalBus();
+    $service = new ProposalService($bus, new AlwaysReadyIdempotency);
+    $service->accept($proposal->ulid);
+    expect($bus->lastOptions)->toHaveKey('idempotency_key')
+        ->and($bus->lastOptions['idempotency_key'])->toBe('proposal:'.$proposal->ulid);
+});
+
+it('terminal failed sets last_error', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $bus = proposalBus(static fn () => CapabilityResult::failure('domain_error', 'nope'));
+    $service = new ProposalService($bus, new AlwaysReadyIdempotency);
+    $out = $service->accept($proposal->ulid);
+    expect($out->kind)->toBe(AcceptOutcome::KIND_FAILED)
+        ->and($out->proposal->status)->toBe(Proposal::STATUS_FAILED)
+        ->and($out->proposal->last_error)->toContain('domain_error')
+        ->and($out->proposal->last_error)->toContain('nope');
+});
+
+it('isRetryable without explicit error retryable flag stays accepting', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    // rate_limited defaults retryable via ErrorCodeMap / isRetryable(); do not pass retryable key
+    $bus = proposalBus(static fn () => CapabilityResult::failure('rate_limited', 'slow'));
+    $service = new ProposalService($bus, new AlwaysReadyIdempotency);
+    $out = $service->accept($proposal->ulid);
+    expect($out->kind)->toBe(AcceptOutcome::KIND_RETRYABLE)
+        ->and($out->proposal->status)->toBe(Proposal::STATUS_ACCEPTING)
+        ->and($out->proposal->last_error)->toBeNull();
+});
+
+it('success clears last_error on accepted', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $proposal->status = Proposal::STATUS_ACCEPTING;
+    $proposal->last_error = 'stale: leftover';
+    $proposal->save();
+
+    $bus = proposalBus();
+    $service = new ProposalService($bus, new AlwaysReadyIdempotency);
+    $out = $service->accept($proposal->ulid);
+    expect($out->kind)->toBe(AcceptOutcome::KIND_ACCEPTED)
+        ->and($out->proposal->status)->toBe(Proposal::STATUS_ACCEPTED)
+        ->and($out->proposal->last_error)->toBeNull();
+});
+
+it('CAS claim: concurrent second accept after peer accepted is idempotent (no double invoke)', function () {
+    bootProposalSqlite();
+    $p2 = seedPendingProposal();
+    $bus2 = proposalBus();
+    $svc = new ProposalService($bus2, new AlwaysReadyIdempotency);
+    $first = $svc->accept($p2->ulid);
+    expect($first->kind)->toBe(AcceptOutcome::KIND_ACCEPTED)->and($bus2->invokes)->toBe(1);
+    $second = $svc->accept($p2->ulid);
+    expect($second->kind)->toBe(AcceptOutcome::KIND_ACCEPTED)->and($bus2->invokes)->toBe(1);
 });
