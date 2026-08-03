@@ -233,6 +233,30 @@ it('reject sets rejected without bus invoke', function () {
         ->and($bus->invokes)->toBe(0);
 });
 
+it('reject is idempotent when already rejected', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $service = new ProposalService(proposalBus(), new AlwaysReadyIdempotency);
+    $service->reject($proposal->ulid);
+    $again = $service->reject($proposal->ulid);
+    expect($again->status)->toBe(Proposal::STATUS_REJECTED);
+});
+
+it('reject refuses accepting accepted failed expired', function (string $status) {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $proposal->status = $status;
+    $proposal->save();
+    $service = new ProposalService(proposalBus(), new AlwaysReadyIdempotency);
+    expect(fn () => $service->reject($proposal->ulid))
+        ->toThrow(RuntimeException::class, "cannot be rejected (status={$status})");
+})->with([
+    Proposal::STATUS_ACCEPTING,
+    Proposal::STATUS_ACCEPTED,
+    Proposal::STATUS_FAILED,
+    Proposal::STATUS_EXPIRED,
+]);
+
 it('accept passes D-005 idempotency_key proposal:{ulid}', function () {
     bootProposalSqlite();
     $proposal = seedPendingProposal();
