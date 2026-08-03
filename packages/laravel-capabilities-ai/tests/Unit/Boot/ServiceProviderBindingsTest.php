@@ -197,12 +197,11 @@ it('ServiceProvider source still mergeConfig and publish tags', function () {
         ->and($src)->not->toContain('handle(TurnRunner'); // no RunTurnJob body work
 });
 
-it('does not implement RunTurnJob handle body (empty stub remains)', function () {
+it('RunTurnJob handle type-hints TurnRunner (UR-021 wiring allowed)', function () {
     $path = dirname(__DIR__, 3).'/src/Jobs/RunTurnJob.php';
     $src = file_get_contents($path) ?: '';
 
-    expect($src)->toContain('public function handle(): void')
-        // handle body is empty / comment-only — no type-hint on handle yet (UR-021)
-        ->and($src)->not->toContain('handle(TurnRunner')
-        ->and($src)->not->toMatch('/function handle\([^)]*TurnRunner/');
+    // UR-017 only required that DI not own the job body; UR-021 wires handle(TurnRunner).
+    expect($src)->toContain('handle(TurnRunner $runner)')
+        ->and($src)->toContain('$runner->run($this->turnUlid)');
 });

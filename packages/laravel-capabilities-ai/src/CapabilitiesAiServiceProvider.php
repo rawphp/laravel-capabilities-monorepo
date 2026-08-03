@@ -15,6 +15,7 @@ use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
+use Rawphp\CapabilitiesAi\Domain\TurnService;
 use Rawphp\CapabilitiesAi\Support\ContainerBindings;
 use RuntimeException;
 
@@ -70,6 +71,11 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
         }
 
         $this->app->singleton(TurnClaim::class, static fn () => new TurnClaim);
+
+        $this->app->singleton(TurnService::class, function ($app) {
+            return ContainerBindings::makeTurnService($app->make(ProgressStore::class));
+        });
+
 
         $this->app->singleton(TurnRunner::class, function ($app) {
             $config = self::configFromApp($app);

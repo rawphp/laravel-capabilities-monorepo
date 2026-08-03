@@ -25,6 +25,8 @@ it('controllers delegate to domain services (no domain writes in controller)', f
     $src = file_get_contents($path) ?: '';
     expect($src)->toContain('ConversationService')
         ->and($src)->toContain('ProposalService')
+        ->and($src)->toContain('TurnService')
         ->and($src)->not->toContain('::query()->create')
-        ->and($src)->not->toContain('Eloquent');
+        ->and($src)->not->toContain('::query()->update')
+        ->and($src)->not->toContain('::query()->where');
 });

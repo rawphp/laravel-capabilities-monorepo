@@ -4,19 +4,27 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Http;
 
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
+use Rawphp\CapabilitiesAi\Domain\TurnService;
+use RuntimeException;
+use Throwable;
 
 /**
  * Thin HTTP adapters — domain logic lives in services.
  */
 final class ChatController
 {
-    public function history(string $conversationUlid): JsonResponse
+    public function history(string $conversationUlid, ConversationService $conversations): JsonResponse
     {
-        return response()->json(['conversation_ulid' => $conversationUlid, 'messages' => []]);
+        try {
+            return new JsonResponse($conversations->history($conversationUlid));
+        } catch (ModelNotFoundException) {
+            return new JsonResponse(['message' => 'Conversation not found'], 404);
+        }
     }
 
     public function storeMessage(Request $request, ConversationService $conversations): JsonResponse
@@ -28,40 +36,68 @@ final class ChatController
             appId: $request->input('app_id'),
         );
 
-        return response()->json($ids, 201);
+        return new JsonResponse($ids, 201);
     }
 
-    public function showTurn(string $turnUlid): JsonResponse
+    public function showTurn(string $turnUlid, TurnService $turns): JsonResponse
     {
-        return response()->json(['turn_ulid' => $turnUlid]);
+        try {
+            return new JsonResponse($turns->show($turnUlid));
+        } catch (ModelNotFoundException) {
+            return new JsonResponse(['message' => 'Turn not found'], 404);
+        }
     }
 
-    public function cancelTurn(string $turnUlid): JsonResponse
+    public function cancelTurn(string $turnUlid, TurnService $turns): JsonResponse
     {
-        return response()->json(['turn_ulid' => $turnUlid, 'status' => 'cancelled']);
+        try {
+            return new JsonResponse($turns->cancel($turnUlid));
+        } catch (ModelNotFoundException) {
+            return new JsonResponse(['message' => 'Turn not found'], 404);
+        } catch (RuntimeException $e) {
+            return new JsonResponse(['message' => $e->getMessage()], 409);
+        }
     }
 
-    public function turnEvents(string $turnUlid): JsonResponse
+    public function turnEvents(Request $request, string $turnUlid, TurnService $turns): JsonResponse
     {
-        return response()->json(['turn_ulid' => $turnUlid, 'events' => []]);
+        try {
+            $cursor = (int) $request->query('cursor', 0);
+            $events = $turns->events($turnUlid, $cursor);
+
+            return new JsonResponse(['turn_ulid' => $turnUlid, 'events' => $events]);
+        } catch (ModelNotFoundException) {
+            return new JsonResponse(['message' => 'Turn not found'], 404);
+        }
     }
 
     public function acceptProposal(string $proposalUlid, ProposalService $proposals): JsonResponse
     {
         $proposal = $proposals->accept($proposalUlid);
 
-        return response()->json(['ulid' => $proposal->ulid, 'status' => $proposal->status]);
+        return new JsonResponse(['ulid' => $proposal->ulid, 'status' => $proposal->status]);
     }
 
     public function rejectProposal(string $proposalUlid, ProposalService $proposals): JsonResponse
     {
         $proposal = $proposals->reject($proposalUlid);
 
-        return response()->json(['ulid' => $proposal->ulid, 'status' => $proposal->status]);
+        return new JsonResponse(['ulid' => $proposal->ulid, 'status' => $proposal->status]);
     }
 
-    public function destroyConversation(string $conversationUlid): JsonResponse
+    public function destroyConversation(string $conversationUlid, ConversationService $conversations): JsonResponse
     {
-        return response()->json(['conversation_ulid' => $conversationUlid, 'deleted' => true]);
+        try {
+            return new JsonResponse($conversations->destroy($conversationUlid));
+        } catch (ModelNotFoundException) {
+            return new JsonResponse(['message' => 'Conversation not found'], 404);
+        } catch (RuntimeException $e) {
+            return new JsonResponse(['message' => $e->getMessage()], 409);
+        } catch (Throwable $e) {
+            if ($e instanceof ModelNotFoundException) {
+                return new JsonResponse(['message' => 'Conversation not found'], 404);
+            }
+            throw $e;
+        }
     }
 }
