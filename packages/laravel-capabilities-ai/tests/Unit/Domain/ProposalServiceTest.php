@@ -14,6 +14,7 @@ use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
+use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 
 function bootProposalSqlite(): void
 {
@@ -35,7 +36,7 @@ function bootProposalSqlite(): void
 
 function seedPendingProposal(): Proposal
 {
-    $svc = new ConversationService(static fn ($j) => null);
+    $svc = new ConversationService(static fn ($j) => null, new ArrayProgressStore);
     $ids = $svc->createUserMessage('seed');
     $turn = Turn::query()->where('ulid', $ids['turn_ulid'])->firstOrFail();
 

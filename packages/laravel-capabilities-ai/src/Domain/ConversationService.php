@@ -9,7 +9,6 @@ use Rawphp\CapabilitiesAi\Jobs\RunTurnJob;
 use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Message;
 use Rawphp\CapabilitiesAi\Models\Turn;
-use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 
 /**
  * Cheap message create — never calls LlmClient.
@@ -21,7 +20,7 @@ final class ConversationService
      */
     public function __construct(
         private readonly mixed $dispatch,
-        private readonly ?ProgressStore $progress = null,
+        private readonly ProgressStore $progress,
     ) {
         if (! is_callable($this->dispatch)) {
             throw new \InvalidArgumentException('dispatch must be callable');
@@ -65,8 +64,7 @@ final class ConversationService
 
         ($this->dispatch)(new RunTurnJob($turn->ulid));
 
-        $progress = $this->progress ?? new ArrayProgressStore;
-        $progress->append($turn->ulid, [
+        $this->progress->append($turn->ulid, [
             'kind' => 'status',
             'data' => ['status' => Turn::STATUS_QUEUED],
         ]);
@@ -110,7 +108,7 @@ final class ConversationService
      * Close conversation (status=closed). Fail closed if any turn is queued or running.
      * Idempotent when already closed and no active turns.
      *
-     * @return array{conversation_ulid: string, status: string, deleted: bool}
+     * @return array{conversation_ulid: string, status: string, closed: bool}
      */
     public function destroy(string $conversationUlid): array
     {
@@ -133,7 +131,7 @@ final class ConversationService
         return [
             'conversation_ulid' => $conversation->ulid,
             'status' => 'closed',
-            'deleted' => true,
+            'closed' => true,
         ];
     }
 

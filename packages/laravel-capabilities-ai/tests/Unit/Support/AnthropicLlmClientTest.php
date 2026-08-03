@@ -42,3 +42,11 @@ it('testing default FakeLlmClient does not hit network', function () {
     expect($fake->complete([['role' => 'user', 'content' => 'x']]))->toBe(['content' => 'local'])
         ->and($fake->callCount)->toBe(1);
 });
+
+it('fails closed when messages include role=tool', function () {
+    $client = new AnthropicLlmClient(apiKey: 'test-key');
+    expect(fn () => $client->complete([
+        ['role' => 'user', 'content' => 'hi'],
+        ['role' => 'tool', 'content' => 'result'],
+    ]))->toThrow(RuntimeException::class, 'role=tool');
+});

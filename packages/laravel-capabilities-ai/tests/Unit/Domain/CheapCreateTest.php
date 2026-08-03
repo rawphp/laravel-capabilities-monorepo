@@ -12,6 +12,7 @@ use Rawphp\CapabilitiesAi\Jobs\RunTurnJob;
 use Rawphp\CapabilitiesAi\Models\Message;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
+use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 
 function bootCheapCreateSqlite(): void
 {
@@ -55,7 +56,7 @@ function cheapCreateService(): array
     };
 
     $llm = new FakeLlmClient;
-    $service = new ConversationService($dispatch);
+    $service = new ConversationService($dispatch, new ArrayProgressStore);
 
     return [$service, $bag, $llm];
 }

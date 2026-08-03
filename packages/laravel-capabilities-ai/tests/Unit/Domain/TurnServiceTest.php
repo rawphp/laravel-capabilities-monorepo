@@ -35,7 +35,7 @@ function bootTurnServiceSqlite(): ArrayProgressStore
 
 function seedQueuedTurn(): array
 {
-    $svc = new ConversationService(static fn ($j) => null);
+    $svc = new ConversationService(static fn ($j) => null, new ArrayProgressStore);
     $ids = $svc->createUserMessage('seed turn');
     $turn = Turn::query()->where('ulid', $ids['turn_ulid'])->firstOrFail();
 

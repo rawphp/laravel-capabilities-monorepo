@@ -20,7 +20,7 @@ use RuntimeException;
 /**
  * Declarative container binding plan for the AI package (UR-017 / ORI-645).
  *
- * Pure function of capabilities-ai config — unit tests assert without a full Laravel app.
+ * Driver selection + make* factories — unit tests assert without a full Laravel app.
  * Unknown drivers fail closed (throw). Host-bound LlmClient / ProgressStore must not be overwritten
  * by the service provider (bound() guard lives there).
  */
@@ -31,9 +31,10 @@ final class ContainerBindings
     public const PROGRESS_DRIVERS = ['array', 'redis'];
 
     /**
+     * Driver resolution only (production uses make* factories; no class-string plan map).
+     *
      * @param  array<string, mixed>|null  $config  capabilities-ai config slice
      * @return array{
-     *     bindings: array<string, class-string>,
      *     drivers: array{
      *         llm: array{requested: string, resolved: string, concrete: class-string},
      *         progress: array{requested: string, resolved: string, concrete: class-string}
@@ -51,29 +52,11 @@ final class ContainerBindings
         $progress = self::resolveProgressDriver($progressRequested);
 
         return [
-            'bindings' => [
-                LlmClient::class => $llm['concrete'],
-                ProgressStore::class => $progress['concrete'],
-                TurnClaim::class => TurnClaim::class,
-                TurnRunner::class => TurnRunner::class,
-                TurnService::class => TurnService::class,
-                ConversationService::class => ConversationService::class,
-                ProposalService::class => ProposalService::class,
-            ],
             'drivers' => [
                 'llm' => $llm,
                 'progress' => $progress,
             ],
         ];
-    }
-
-    /**
-     * @param  array<string, mixed>|null  $config
-     * @return array<string, class-string>
-     */
-    public static function plan(?array $config = null): array
-    {
-        return self::resolve($config)['bindings'];
     }
 
     /**

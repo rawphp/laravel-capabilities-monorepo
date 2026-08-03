@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi;
 
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
@@ -54,15 +55,14 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
 
     private function registerPackageBindings(): void
     {
-        // Prefer host overrides for LLM + progress; package supplies defaults otherwise.
         if (! $this->app->bound(LlmClient::class)) {
-            $this->app->singleton(LlmClient::class, function ($app) {
+            $this->app->singleton(LlmClient::class, function (Container $app) {
                 return ContainerBindings::makeLlmClient(self::configFromApp($app));
             });
         }
 
         if (! $this->app->bound(ProgressStore::class)) {
-            $this->app->singleton(ProgressStore::class, function ($app) {
+            $this->app->singleton(ProgressStore::class, function (Container $app) {
                 $config = self::configFromApp($app);
                 $redis = self::resolveRedisClientOrNull($app, $config);
 
@@ -72,11 +72,11 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
 
         $this->app->singleton(TurnClaim::class, static fn () => new TurnClaim);
 
-        $this->app->singleton(TurnService::class, function ($app) {
+        $this->app->singleton(TurnService::class, function (Container $app) {
             return ContainerBindings::makeTurnService($app->make(ProgressStore::class));
         });
 
-        $this->app->singleton(TurnRunner::class, function ($app) {
+        $this->app->singleton(TurnRunner::class, function (Container $app) {
             $config = self::configFromApp($app);
 
             return ContainerBindings::makeTurnRunner(
@@ -90,16 +90,14 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
             );
         });
 
-        $this->app->singleton(ConversationService::class, function ($app) {
-            $dispatch = self::makeDispatchCallable($app);
-
+        $this->app->singleton(ConversationService::class, function (Container $app) {
             return ContainerBindings::makeConversationService(
-                $dispatch,
+                self::makeDispatchCallable($app),
                 $app->make(ProgressStore::class),
             );
         });
 
-        $this->app->singleton(ProposalService::class, function ($app) {
+        $this->app->singleton(ProposalService::class, function (Container $app) {
             if (! $app->bound(CapabilityBus::class)) {
                 throw new RuntimeException(
                     'CapabilityBus must be bound (core package) before resolving ProposalService'
@@ -113,10 +111,9 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
     /**
      * @return callable(object): mixed
      */
-    private static function makeDispatchCallable(mixed $app): callable
+    private static function makeDispatchCallable(Container $app): callable
     {
-        // Prefer Illuminate bus when present; fall back to container-bound dispatcher or function dispatch().
-        if (is_object($app) && method_exists($app, 'bound') && $app->bound('Illuminate\Contracts\Bus\Dispatcher')) {
+        if ($app->bound('Illuminate\Contracts\Bus\Dispatcher')) {
             $bus = $app->make('Illuminate\Contracts\Bus\Dispatcher');
 
             return static function (object $job) use ($bus): mixed {
@@ -130,8 +127,6 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
             };
         }
 
-        // Last resort: no-op callable that still satisfies ConversationService type check.
-        // Hosts without a bus should rebind ConversationService; unit tests inject dispatch.
         return static function (object $job): void {
             throw new RuntimeException(
                 'No bus dispatcher available; bind Illuminate\\Contracts\\Bus\\Dispatcher or rebind ConversationService'
@@ -142,7 +137,7 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
     /**
      * @param  array<string, mixed>  $config
      */
-    private static function resolveRedisClientOrNull(mixed $app, array $config): ?object
+    private static function resolveRedisClientOrNull(Container $app, array $config): ?object
     {
         $driver = strtolower((string) (($config['progress']['driver'] ?? null) ?: 'array'));
         if ($driver !== 'redis') {
@@ -151,17 +146,18 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
 
         $connection = (string) ($config['progress']['redis_connection'] ?? 'default');
 
-        if (is_object($app) && method_exists($app, 'bound') && $app->bound('redis')) {
-            $manager = $app->make('redis');
-            if (is_object($manager) && method_exists($manager, 'connection')) {
-                return $manager->connection($connection);
-            }
-            if (is_object($manager)) {
-                return $manager;
-            }
+        if (! $app->bound('redis')) {
+            return null;
         }
 
-        // Fail closed inside makeProgressStore when redis client is null.
+        $manager = $app->make('redis');
+        if (is_object($manager) && method_exists($manager, 'connection')) {
+            return $manager->connection($connection);
+        }
+        if (is_object($manager)) {
+            return $manager;
+        }
+
         return null;
     }
 
@@ -171,9 +167,9 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
      * @param  class-string<T>  $abstract
      * @return T|null
      */
-    private static function optional(mixed $app, string $abstract): mixed
+    private static function optional(Container $app, string $abstract): mixed
     {
-        if (! is_object($app) || ! method_exists($app, 'bound') || ! $app->bound($abstract)) {
+        if (! $app->bound($abstract)) {
             return null;
         }
 
@@ -183,9 +179,9 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
     /**
      * @return array<string, mixed>
      */
-    private static function configFromApp(mixed $app): array
+    private static function configFromApp(Container $app): array
     {
-        if (is_object($app) && method_exists($app, 'make') && method_exists($app, 'bound') && $app->bound('config')) {
+        if ($app->bound('config')) {
             $config = $app->make('config');
             if (is_object($config) && method_exists($config, 'get')) {
                 $slice = $config->get('capabilities-ai', []);

@@ -46,7 +46,7 @@ it('history returns 200 with messages', function () {
 
 it('history returns 404 when missing', function () {
     bootHttpSqlite();
-    $conversations = new ConversationService(static fn ($j) => null);
+    $conversations = new ConversationService(static fn ($j) => null, new ArrayProgressStore);
     $response = (new ChatController)->history('01MISSINGCONV00000000000', $conversations);
     expect($response->getStatusCode())->toBe(404);
 });
@@ -98,7 +98,8 @@ it('destroyConversation 409 when active turns and 200 when closed', function () 
     Turn::query()->where('ulid', $ids['turn_ulid'])->update(['status' => Turn::STATUS_COMPLETED]);
     $ok = $controller->destroyConversation($ids['conversation_ulid'], $conversations);
     expect($ok->getStatusCode())->toBe(200)
-        ->and($ok->getData(true)['status'])->toBe('closed');
+        ->and($ok->getData(true)['status'])->toBe('closed')
+        ->and($ok->getData(true)['closed'] ?? null)->toBeTrue();
 });
 
 it('controller source delegates without Eloquent creates', function () {

@@ -59,7 +59,7 @@ function jobHostTools(): ToolCatalog
 
 it('handle invokes TurnRunner and completes turn once', function () {
     bootJobSqlite();
-    $svc = new ConversationService(static fn ($j) => null);
+    $svc = new ConversationService(static fn ($j) => null, new ArrayProgressStore);
     $ids = $svc->createUserMessage('queue me');
     $runner = new TurnRunner(
         claim: new TurnClaim,
@@ -90,7 +90,7 @@ it('handle invokes TurnRunner and completes turn once', function () {
 
 it('handle rethrows when claim fails', function () {
     bootJobSqlite();
-    $svc = new ConversationService(static fn ($j) => null);
+    $svc = new ConversationService(static fn ($j) => null, new ArrayProgressStore);
     $ids = $svc->createUserMessage('already claimed path');
     Turn::query()->where('ulid', $ids['turn_ulid'])->update(['status' => Turn::STATUS_RUNNING]);
 
@@ -99,6 +99,7 @@ it('handle rethrows when claim fails', function () {
         llm: new FakeLlmClient,
         context: jobHostContext(),
         tools: jobHostTools(),
+        progress: new ArrayProgressStore,
     );
     $job = new RunTurnJob($ids['turn_ulid']);
     expect(fn () => $job->handle($runner))->toThrow(RuntimeException::class);
