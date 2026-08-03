@@ -50,3 +50,11 @@ it('fails closed when messages include role=tool', function () {
         ['role' => 'tool', 'content' => 'result'],
     ]))->toThrow(RuntimeException::class, 'role=tool');
 });
+
+it('does not advertise multi-round tool support', function () {
+    expect((new AnthropicLlmClient('k'))->supportsToolRounds())->toBeFalse();
+});
+
+it('FakeLlmClient advertises multi-round tool support', function () {
+    expect((new FakeLlmClient)->supportsToolRounds())->toBeTrue();
+});

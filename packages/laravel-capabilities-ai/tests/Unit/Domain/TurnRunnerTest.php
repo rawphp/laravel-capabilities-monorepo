@@ -162,6 +162,170 @@ it('tool call path invokes CapabilityBus exactly once with expected name/payload
         ->and($bus->lastInput)->toBe(['x' => 1]);
 });
 
+it('does not pass tool definitions when LlmClient cannot continue tool rounds', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurn('hi');
+    $seenTools = null;
+    $llm = new class($seenTools) implements LlmClient
+    {
+        public function __construct(private mixed &$seenTools) {}
+
+        public function supportsToolRounds(): bool
+        {
+            return false;
+        }
+
+        public function complete(array $messages, array $tools = []): array
+        {
+            $this->seenTools = $tools;
+
+            return ['content' => 'text only'];
+        }
+    };
+    $context = new class implements ConversationContextProvider
+    {
+        public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['role' => 'user', 'content' => 'hi']];
+        }
+    };
+    $tools = new class implements ToolCatalog
+    {
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['name' => 'demo.tool']];
+        }
+    };
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        progress: new ArrayProgressStore,
+    );
+    $turn = $runner->run($turnUlid);
+    expect($turn->status)->toBe(Turn::STATUS_COMPLETED)
+        ->and($seenTools)->toBe([]);
+});
+
+it('refuses tool invokes when LlmClient does not support tool rounds (no bus mutation)', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurn('use tool');
+    $bus = recordingBus();
+    $llm = new class implements LlmClient
+    {
+        public function supportsToolRounds(): bool
+        {
+            return false;
+        }
+
+        public function complete(array $messages, array $tools = []): array
+        {
+            return ['tool_calls' => [['name' => 'demo.tool', 'arguments' => ['x' => 1]]]];
+        }
+    };
+    $context = new class implements ConversationContextProvider
+    {
+        public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['role' => 'user', 'content' => 'use tool']];
+        }
+    };
+    $tools = new class implements ToolCatalog
+    {
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['name' => 'demo.tool']];
+        }
+    };
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        bus: $bus,
+        progress: new ArrayProgressStore,
+    );
+    expect(fn () => $runner->run($turnUlid))
+        ->toThrow(RuntimeException::class, 'does not support multi-round tool results');
+    expect($bus->invokes)->toBe(0);
+    $turn = Turn::query()->where('ulid', $turnUlid)->firstOrFail();
+    expect($turn->status)->toBe(Turn::STATUS_FAILED);
+});
+
+it('feeds real CapabilityResult into tool messages (not invented ok:true)', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurn('use tool');
+    $captured = [];
+    $bus = new class implements CapabilityBus
+    {
+        public int $invokes = 0;
+
+        public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
+        {
+            $this->invokes++;
+
+            return CapabilityResult::failure('forbidden', 'nope');
+        }
+
+        public function catalog(): CatalogPresenter
+        {
+            throw new RuntimeException('unused');
+        }
+    };
+    $llm = new class($captured) implements LlmClient
+    {
+        /** @param list<array<string, mixed>> $captured */
+        public function __construct(private array &$captured) {}
+
+        public function supportsToolRounds(): bool
+        {
+            return true;
+        }
+
+        public function complete(array $messages, array $tools = []): array
+        {
+            $this->captured[] = $messages;
+            if (count($this->captured) === 1) {
+                return ['tool_calls' => [['name' => 'demo.tool', 'arguments' => []]]];
+            }
+
+            return ['content' => 'after failure'];
+        }
+    };
+    $context = new class implements ConversationContextProvider
+    {
+        public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['role' => 'user', 'content' => 'use tool']];
+        }
+    };
+    $tools = new class implements ToolCatalog
+    {
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['name' => 'demo.tool']];
+        }
+    };
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        bus: $bus,
+        progress: new ArrayProgressStore,
+    );
+    $runner->run($turnUlid);
+    expect($bus->invokes)->toBe(1)
+        ->and(count($captured))->toBe(2);
+    $toolMsg = end($captured[1]);
+    expect($toolMsg['role'] ?? null)->toBe('tool');
+    $decoded = json_decode((string) $toolMsg['content'], true, 512, JSON_THROW_ON_ERROR);
+    expect($decoded['ok'] ?? true)->toBeFalse()
+        ->and($decoded['error']['code'] ?? null)->toBe('forbidden')
+        ->and($decoded['name'] ?? null)->toBe('demo.tool');
+});
+
 it('missing ContextProvider/ToolCatalog fails closed', function () {
     bootTurnSqlite();
     $turnUlid = enqueueTurn();
@@ -182,6 +346,11 @@ it('does not overwrite cancelled status with completed (cooperative cancel)', fu
     $progress = new ArrayProgressStore;
     $llm = new class implements LlmClient
     {
+        public function supportsToolRounds(): bool
+        {
+            return true;
+        }
+
         public function complete(array $messages, array $tools = []): array
         {
             Turn::query()->where('ulid', $GLOBALS['coop_turn_ulid'])->update([

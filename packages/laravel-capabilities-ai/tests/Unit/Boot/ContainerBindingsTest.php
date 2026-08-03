@@ -7,9 +7,7 @@ declare(strict_types=1);
  */
 
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
-use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
-use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
 use Rawphp\CapabilitiesAi\Support\AnthropicLlmClient;

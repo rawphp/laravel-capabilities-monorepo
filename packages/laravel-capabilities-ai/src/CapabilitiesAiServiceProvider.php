@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi;
 
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -135,6 +136,9 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
     }
 
     /**
+     * Host redis binding is still untyped (Illuminate Redis Manager has no shared package contract).
+     * Prefer host-binding ProgressStore when redis typing is needed; this only resolves a client object.
+     *
      * @param  array<string, mixed>  $config
      */
     private static function resolveRedisClientOrNull(Container $app, array $config): ?object
@@ -151,14 +155,18 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
         }
 
         $manager = $app->make('redis');
-        if (is_object($manager) && method_exists($manager, 'connection')) {
-            return $manager->connection($connection);
-        }
-        if (is_object($manager)) {
-            return $manager;
+        if (! is_object($manager)) {
+            return null;
         }
 
-        return null;
+        // Illuminate\Redis\RedisManager::connection — no package-level interface.
+        if (is_callable([$manager, 'connection'])) {
+            $client = $manager->connection($connection);
+
+            return is_object($client) ? $client : null;
+        }
+
+        return $manager;
     }
 
     /**
@@ -183,7 +191,7 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
     {
         if ($app->bound('config')) {
             $config = $app->make('config');
-            if (is_object($config) && method_exists($config, 'get')) {
+            if ($config instanceof ConfigRepository) {
                 $slice = $config->get('capabilities-ai', []);
 
                 return is_array($slice) ? $slice : [];

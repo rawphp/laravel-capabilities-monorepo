@@ -4,14 +4,12 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Domain;
 
-use Illuminate\Database\Capsule\Manager;
-use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Models\TableNames;
 use Rawphp\CapabilitiesAi\Models\Turn;
+use Rawphp\CapabilitiesAi\Support\DatabaseConnection;
 use RuntimeException;
 
 /**
@@ -53,7 +51,11 @@ final class TurnService
     }
 
     /**
-     * Atomic cancel for queued|running. Idempotent if already cancelled.
+     * Cancel for queued|running. Idempotent if already cancelled.
+     *
+     * DB status flip is atomic; progress append is best-effort after. If progress
+     * fails, the turn remains cancelled and this method throws so callers/subscribers
+     * do not assume events were published.
      *
      * @return array{turn_ulid: string, status: string}
      */
@@ -73,7 +75,7 @@ final class TurnService
         }
 
         $now = Carbon::now()->toDateTimeString();
-        $rows = $this->connection()->table(TableNames::turns())
+        $rows = DatabaseConnection::resolve()->table(TableNames::turns())
             ->where('ulid', $turnUlid)
             ->whereIn('status', [Turn::STATUS_QUEUED, Turn::STATUS_RUNNING])
             ->update([
@@ -91,14 +93,22 @@ final class TurnService
             throw new RuntimeException("Turn {$turnUlid} cannot be cancelled (status={$fresh->status})");
         }
 
-        $this->progress->append($turnUlid, [
-            'kind' => 'status',
-            'data' => ['status' => Turn::STATUS_CANCELLED],
-        ]);
-        $this->progress->append($turnUlid, [
-            'kind' => 'terminal',
-            'data' => ['status' => Turn::STATUS_CANCELLED],
-        ]);
+        try {
+            $this->progress->append($turnUlid, [
+                'kind' => 'status',
+                'data' => ['status' => Turn::STATUS_CANCELLED],
+            ]);
+            $this->progress->append($turnUlid, [
+                'kind' => 'terminal',
+                'data' => ['status' => Turn::STATUS_CANCELLED],
+            ]);
+        } catch (\Throwable $e) {
+            throw new RuntimeException(
+                "Turn {$turnUlid} cancelled in DB but progress append failed: ".$e->getMessage(),
+                0,
+                $e
+            );
+        }
 
         return ['turn_ulid' => $turnUlid, 'status' => Turn::STATUS_CANCELLED];
     }
@@ -114,26 +124,5 @@ final class TurnService
         }
 
         return $this->progress->since($turnUlid, $cursor);
-    }
-
-    /**
-     * @return Connection
-     */
-    private function connection()
-    {
-        if (
-            function_exists('app')
-            && class_exists(DB::class)
-        ) {
-            try {
-                if (app()->bound('db')) {
-                    return DB::connection();
-                }
-            } catch (\Throwable) {
-                // fall through
-            }
-        }
-
-        return Manager::connection();
     }
 }

@@ -6,6 +6,7 @@ namespace Rawphp\CapabilitiesAi\Domain;
 
 use Illuminate\Support\Carbon;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
+use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
@@ -14,6 +15,7 @@ use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Message;
 use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
+use Rawphp\CapabilitiesAi\Support\ProposalFenceExtractor;
 use RuntimeException;
 
 /**
@@ -30,6 +32,7 @@ final class TurnRunner
         private readonly ?CapabilityBus $bus = null,
         private readonly int $maxToolRounds = 8,
         private readonly string $claimOwner = 'turn-runner',
+        private readonly ProposalFenceExtractor $proposalExtractor = new ProposalFenceExtractor,
     ) {}
 
     public function run(string $turnUlid): Turn
@@ -48,7 +51,10 @@ final class TurnRunner
         try {
             $conversation = Conversation::query()->findOrFail($turn->conversation_id);
             $messages = $this->context->messagesForTurn($conversation->ulid, $turnUlid);
-            $toolDefs = $this->tools->toolsForTurn($conversation->ulid, $turnUlid);
+            // Do not advertise tools to clients that cannot continue after tool results (e.g. Anthropic today).
+            $toolDefs = $this->llm->supportsToolRounds()
+                ? $this->tools->toolsForTurn($conversation->ulid, $turnUlid)
+                : [];
 
             $rounds = 0;
             while ($rounds < $this->maxToolRounds) {
@@ -73,20 +79,33 @@ final class TurnRunner
                     throw new RuntimeException('CapabilityBus required for tool calls');
                 }
 
+                // Fail closed before any bus mutation when the client cannot continue after tool results.
+                if (! $this->llm->supportsToolRounds()) {
+                    throw new RuntimeException(
+                        'Bound LlmClient does not support multi-round tool results; refusing tool invokes (fail closed)'
+                    );
+                }
+
                 foreach ($toolCalls as $call) {
                     $name = (string) ($call['name'] ?? '');
                     $payload = $call['arguments'] ?? $call['input'] ?? [];
                     if (! is_array($payload)) {
                         $payload = [];
                     }
-                    $this->bus->invoke($name, $payload);
+                    $result = $this->bus->invoke($name, $payload);
+                    $toolContent = $this->encodeToolResult($name, $result);
                     $this->progress->append($turnUlid, [
                         'kind' => 'tool',
-                        'data' => ['name' => $name, 'payload' => $payload],
+                        'data' => [
+                            'name' => $name,
+                            'payload' => $payload,
+                            'ok' => $result->ok,
+                            'error_code' => $result->errorCode(),
+                        ],
                     ]);
                     $messages[] = [
                         'role' => 'tool',
-                        'content' => json_encode(['ok' => true, 'name' => $name], JSON_THROW_ON_ERROR),
+                        'content' => $toolContent,
                     ];
                 }
             }
@@ -131,15 +150,18 @@ final class TurnRunner
         }
     }
 
+    private function encodeToolResult(string $name, CapabilityResult $result): string
+    {
+        $wire = $result->toArray();
+        $wire['name'] = $name;
+
+        return json_encode($wire, JSON_THROW_ON_ERROR);
+    }
+
     private function maybeCreateProposalsFromFence(int $conversationId, int $turnId, string $content): void
     {
-        if (! preg_match('/```proposal\s*(\{.*?\})\s*```/s', $content, $m)) {
-            return;
-        }
-        try {
-            /** @var array<string, mixed> $data */
-            $data = json_decode($m[1], true, 512, JSON_THROW_ON_ERROR);
-        } catch (\JsonException) {
+        $data = $this->proposalExtractor->extract($content);
+        if ($data === null) {
             return;
         }
 

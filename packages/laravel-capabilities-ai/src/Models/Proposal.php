@@ -11,6 +11,9 @@ class Proposal extends Model
 {
     public const STATUS_PENDING = 'pending';
 
+    /** Claim held while bus invoke runs — crash resume path for accept. */
+    public const STATUS_ACCEPTING = 'accepting';
+
     public const STATUS_ACCEPTED = 'accepted';
 
     public const STATUS_REJECTED = 'rejected';
@@ -19,6 +22,7 @@ class Proposal extends Model
 
     public const STATUSES = [
         self::STATUS_PENDING,
+        self::STATUS_ACCEPTING,
         self::STATUS_ACCEPTED,
         self::STATUS_REJECTED,
         self::STATUS_EXPIRED,

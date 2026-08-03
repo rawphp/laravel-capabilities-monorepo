@@ -61,11 +61,15 @@ function proposalRecordingBus(): object
 
         public array $lastInput = [];
 
+        /** @var array<string, mixed> */
+        public array $lastOptions = [];
+
         public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
         {
             $this->invokes++;
             $this->lastName = $nameOrAlias;
             $this->lastInput = $input;
+            $this->lastOptions = $options;
 
             return CapabilityResult::ok();
         }
@@ -97,6 +101,51 @@ it('re-accept is idempotent without second bus invoke', function () {
     $service->accept($proposal->ulid);
     $service->accept($proposal->ulid);
     expect($bus->invokes)->toBe(1);
+});
+
+it('accept claims pending→accepting before bus invoke', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $statuses = [];
+    $bus = new class($statuses) implements CapabilityBus
+    {
+        public int $invokes = 0;
+
+        /** @param list<string> $statuses */
+        public function __construct(private array &$statuses) {}
+
+        public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
+        {
+            $this->invokes++;
+            $row = Proposal::query()->where('target_capability', $nameOrAlias)->first();
+            $this->statuses[] = (string) ($row?->status ?? '');
+
+            return CapabilityResult::ok();
+        }
+
+        public function catalog(): CatalogPresenter
+        {
+            throw new RuntimeException('unused');
+        }
+    };
+    $service = new ProposalService($bus);
+    $out = $service->accept($proposal->ulid);
+    expect($out->status)->toBe(Proposal::STATUS_ACCEPTED)
+        ->and($bus->invokes)->toBe(1)
+        ->and($statuses)->toBe([Proposal::STATUS_ACCEPTING]);
+});
+
+it('resume from accepting re-invokes once then marks accepted', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $proposal->status = Proposal::STATUS_ACCEPTING;
+    $proposal->save();
+    $bus = proposalRecordingBus();
+    $service = new ProposalService($bus);
+    $out = $service->accept($proposal->ulid);
+    expect($out->status)->toBe(Proposal::STATUS_ACCEPTED)
+        ->and($bus->invokes)->toBe(1)
+        ->and($bus->lastOptions['idempotency_key'] ?? null)->toBe('proposal:'.$proposal->ulid);
 });
 
 it('reject sets rejected without bus invoke', function () {

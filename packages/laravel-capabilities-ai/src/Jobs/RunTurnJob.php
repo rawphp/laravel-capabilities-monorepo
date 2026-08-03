@@ -12,15 +12,23 @@ use Rawphp\CapabilitiesAi\Domain\TurnRunner;
  */
 final class RunTurnJob implements ShouldQueue
 {
-    /** Finite attempts; claim_ttl is the worker heartbeat window (config default 120). */
+    /** Finite attempts; worker claim TTL is separate (config claim_ttl). */
     public int $tries = 1;
 
-    /** Seconds; aligned with capabilities-ai.claim_ttl default (120). */
-    public int $timeout = 120;
+    /**
+     * Queue worker kill timeout (seconds).
+     * Default mirrors config claim_ttl default (120) but is not live-bound to config —
+     * pass an explicit timeout at construction (see ConversationService / host dispatch)
+     * when claim_ttl is customized.
+     */
+    public int $timeout;
 
     public function __construct(
         public readonly string $turnUlid,
-    ) {}
+        ?int $timeout = null,
+    ) {
+        $this->timeout = $timeout ?? 120;
+    }
 
     public function handle(TurnRunner $runner): void
     {

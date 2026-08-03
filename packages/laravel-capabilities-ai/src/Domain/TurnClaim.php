@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Domain;
 
-use Illuminate\Database\Capsule\Manager;
-use Illuminate\Database\Connection;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Rawphp\CapabilitiesAi\Models\TableNames;
 use Rawphp\CapabilitiesAi\Models\Turn;
+use Rawphp\CapabilitiesAi\Support\DatabaseConnection;
 
 /**
  * Atomic claim: UPDATE … WHERE status=queued; rows===1 required.
@@ -32,7 +30,7 @@ final class TurnClaim
             'updated_at' => $now,
         ];
 
-        $rows = $this->connection()->table($table)
+        $rows = DatabaseConnection::resolve()->table($table)
             ->where('ulid', $turnUlid)
             ->where('status', Turn::STATUS_QUEUED)
             ->update($payload);
@@ -42,26 +40,5 @@ final class TurnClaim
         }
 
         return Turn::query()->where('ulid', $turnUlid)->first();
-    }
-
-    /**
-     * @return Connection
-     */
-    private function connection()
-    {
-        if (
-            function_exists('app')
-            && class_exists(DB::class)
-        ) {
-            try {
-                if (app()->bound('db')) {
-                    return DB::connection();
-                }
-            } catch (\Throwable) {
-                // fall through to Capsule
-            }
-        }
-
-        return Manager::connection();
     }
 }

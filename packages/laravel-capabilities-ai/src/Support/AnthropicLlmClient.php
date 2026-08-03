@@ -20,6 +20,15 @@ final class AnthropicLlmClient implements LlmClient
         private readonly string $baseUrl = 'https://api.anthropic.com',
     ) {}
 
+    /**
+     * Anthropic tool_result content blocks are not implemented end-to-end.
+     * TurnRunner must refuse tool invokes when this is false (no bus mutation then crash).
+     */
+    public function supportsToolRounds(): bool
+    {
+        return false;
+    }
+
     public function complete(array $messages, array $tools = []): array
     {
         if ($this->apiKey === '') {

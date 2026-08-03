@@ -20,9 +20,8 @@ use RuntimeException;
 /**
  * Declarative container binding plan for the AI package (UR-017 / ORI-645).
  *
- * Driver selection + make* factories — unit tests assert without a full Laravel app.
- * Unknown drivers fail closed (throw). Host-bound LlmClient / ProgressStore must not be overwritten
- * by the service provider (bound() guard lives there).
+ * Single match site per driver family (driver → factory). resolve() reports the
+ * same resolution for tests; make* calls the factories.
  */
 final class ContainerBindings
 {
@@ -31,8 +30,6 @@ final class ContainerBindings
     public const PROGRESS_DRIVERS = ['array', 'redis'];
 
     /**
-     * Driver resolution only (production uses make* factories; no class-string plan map).
-     *
      * @param  array<string, mixed>|null  $config  capabilities-ai config slice
      * @return array{
      *     drivers: array{
@@ -46,15 +43,12 @@ final class ContainerBindings
         $config = $config ?? [];
 
         $llmRequested = (string) (($config['llm']['driver'] ?? null) ?: 'fake');
-        $llm = self::resolveLlmDriver($llmRequested);
-
         $progressRequested = (string) (($config['progress']['driver'] ?? null) ?: 'array');
-        $progress = self::resolveProgressDriver($progressRequested);
 
         return [
             'drivers' => [
-                'llm' => $llm,
-                'progress' => $progress,
+                'llm' => self::describeLlmDriver($llmRequested),
+                'progress' => self::describeProgressDriver($progressRequested),
             ],
         ];
     }
@@ -65,9 +59,9 @@ final class ContainerBindings
     public static function makeLlmClient(array $config): LlmClient
     {
         $driver = (string) (($config['llm']['driver'] ?? null) ?: 'fake');
-        $resolved = self::resolveLlmDriver($driver);
+        $resolved = self::normalizeDriver($driver, self::LLM_DRIVERS, 'llm.driver');
 
-        return match ($resolved['resolved']) {
+        return match ($resolved) {
             'fake' => new FakeLlmClient,
             'anthropic' => new AnthropicLlmClient(
                 apiKey: (string) ($config['llm']['anthropic']['api_key'] ?? ''),
@@ -85,9 +79,9 @@ final class ContainerBindings
     public static function makeProgressStore(array $config, ?object $redis = null): ProgressStore
     {
         $driver = (string) (($config['progress']['driver'] ?? null) ?: 'array');
-        $resolved = self::resolveProgressDriver($driver);
+        $resolved = self::normalizeDriver($driver, self::PROGRESS_DRIVERS, 'progress.driver');
 
-        return match ($resolved['resolved']) {
+        return match ($resolved) {
             'array' => new ArrayProgressStore,
             'redis' => self::makeRedisProgressStore($config, $redis),
             default => throw new InvalidArgumentException("Unknown progress.driver [{$driver}]"),
@@ -113,51 +107,58 @@ final class ContainerBindings
     /**
      * @return array{requested: string, resolved: string, concrete: class-string}
      */
-    private static function resolveLlmDriver(string $requested): array
+    private static function describeLlmDriver(string $requested): array
     {
-        $resolved = strtolower(trim($requested));
-        if ($resolved === '') {
-            $resolved = 'fake';
-        }
-
-        $concrete = match ($resolved) {
-            'fake' => FakeLlmClient::class,
-            'anthropic' => AnthropicLlmClient::class,
-            default => throw new InvalidArgumentException(
-                "Unknown llm.driver [{$requested}]; expected one of: ".implode(', ', self::LLM_DRIVERS)
-            ),
-        };
+        $resolved = self::normalizeDriver($requested, self::LLM_DRIVERS, 'llm.driver');
 
         return [
             'requested' => $requested,
             'resolved' => $resolved,
-            'concrete' => $concrete,
+            'concrete' => match ($resolved) {
+                'fake' => FakeLlmClient::class,
+                'anthropic' => AnthropicLlmClient::class,
+                default => throw new InvalidArgumentException("Unknown llm.driver [{$requested}]"),
+            },
         ];
     }
 
     /**
      * @return array{requested: string, resolved: string, concrete: class-string}
      */
-    private static function resolveProgressDriver(string $requested): array
+    private static function describeProgressDriver(string $requested): array
     {
-        $resolved = strtolower(trim($requested));
-        if ($resolved === '') {
-            $resolved = 'array';
-        }
-
-        $concrete = match ($resolved) {
-            'array' => ArrayProgressStore::class,
-            'redis' => RedisProgressStore::class,
-            default => throw new InvalidArgumentException(
-                "Unknown progress.driver [{$requested}]; expected one of: ".implode(', ', self::PROGRESS_DRIVERS)
-            ),
-        };
+        $resolved = self::normalizeDriver($requested, self::PROGRESS_DRIVERS, 'progress.driver');
 
         return [
             'requested' => $requested,
             'resolved' => $resolved,
-            'concrete' => $concrete,
+            'concrete' => match ($resolved) {
+                'array' => ArrayProgressStore::class,
+                'redis' => RedisProgressStore::class,
+                default => throw new InvalidArgumentException("Unknown progress.driver [{$requested}]"),
+            },
         ];
+    }
+
+    /**
+     * Single normalization + allowlist site for driver strings.
+     *
+     * @param  list<string>  $allowed
+     */
+    private static function normalizeDriver(string $requested, array $allowed, string $label): string
+    {
+        $resolved = strtolower(trim($requested));
+        if ($resolved === '') {
+            $resolved = $allowed[0];
+        }
+
+        if (! in_array($resolved, $allowed, true)) {
+            throw new InvalidArgumentException(
+                "Unknown {$label} [{$requested}]; expected one of: ".implode(', ', $allowed)
+            );
+        }
+
+        return $resolved;
     }
 
     /**
