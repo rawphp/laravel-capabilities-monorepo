@@ -316,3 +316,27 @@ it('CAS claim: concurrent second accept after peer accepted is idempotent (no do
     $second = $svc->accept($p2->ulid);
     expect($second->kind)->toBe(AcceptOutcome::KIND_ACCEPTED)->and($bus2->invokes)->toBe(1);
 });
+
+it('accept rejected returns refuse outcome without throw', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $proposal->status = Proposal::STATUS_REJECTED;
+    $proposal->save();
+    $bus = proposalBus();
+    $out = (new ProposalService($bus, new AlwaysReadyIdempotency))->accept($proposal->ulid);
+    expect($out->kind)->toBe(AcceptOutcome::KIND_REFUSE)
+        ->and($out->httpStatus)->toBe(409)
+        ->and($bus->invokes)->toBe(0);
+});
+
+it('accept expired returns refuse outcome without throw', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $proposal->status = Proposal::STATUS_EXPIRED;
+    $proposal->save();
+    $bus = proposalBus();
+    $out = (new ProposalService($bus, new AlwaysReadyIdempotency))->accept($proposal->ulid);
+    expect($out->kind)->toBe(AcceptOutcome::KIND_REFUSE)
+        ->and($out->httpStatus)->toBe(410)
+        ->and($bus->invokes)->toBe(0);
+});

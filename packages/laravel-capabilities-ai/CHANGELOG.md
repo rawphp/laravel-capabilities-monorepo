@@ -13,7 +13,7 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
-- **Proposal accept/reject split-brain:** one fail-closed SM that returns typed `AcceptOutcome` (no half-alive throw-only path, no weak open-reject). Atomic CAS claim/reject, D-005 `idempotency_key=proposal:{ulid}`, `isApprovalRequired` then `isRetryable`, `last_error` on terminal failed, clear on accepted.
+- **Proposal accept/reject split-brain:** one fail-closed SM that returns typed `AcceptOutcome` for all known accept statuses (rejected/expired → refuse outcomes; no throw-as-API on accept). Atomic CAS claim/reject helpers, D-005 `idempotency_key=proposal:{ulid}`, `isApprovalRequired` then `isHardRefuse` then `isRetryable`, `last_error` on terminal failed, clear on accepted. Reject remains RuntimeException → 409 for non-pending.
 - Proposal accept: live `IdempotencyReadiness` probe (not a frozen constructor stamp / Closure ceremony).
 - Proposal accept: `approval_required` / retryable keep `accepting` (resumeable); hard non-retryable only → terminal `failed` + `last_error`.
 - Proposal accept: branch on typed `CapabilityResult` (`isApprovalRequired`, `isRetryable`) — no primary wire-array archaeology.

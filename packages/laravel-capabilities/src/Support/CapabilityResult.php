@@ -169,6 +169,21 @@ final class CapabilityResult
     }
 
     /**
+     * Whether a non-ok result is a hard refuse (auth/profile/runnability).
+     * Success is never hard refuse. Callers map these to terminal refuse outcomes.
+     */
+    public function isHardRefuse(): bool
+    {
+        if ($this->ok) {
+            return false;
+        }
+
+        $code = $this->errorCode();
+
+        return $code !== null && ErrorCodeMap::isHardRefuse($code);
+    }
+
+    /**
      * @return array{ok: bool, data?: mixed, error?: array<string, mixed>, meta: array<string, mixed>}
      */
     public function toArray(): array

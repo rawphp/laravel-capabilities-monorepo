@@ -232,4 +232,21 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse without un
     );
     expect($refuse->getStatusCode())->toBe(403)
         ->and($refuse->getData(true)['outcome'])->toBe('refuse');
+
+    $rejected = $makeProposal('rjd');
+    $rejected->status = Proposal::STATUS_REJECTED;
+    $rejected->save();
+    $rej = $controller->acceptProposal(
+        $rejected->ulid,
+        new ProposalService($busOk, new AlwaysReadyIdempotency),
+    );
+    expect($rej->getStatusCode())->toBe(409)
+        ->and($rej->getData(true)['outcome'])->toBe('refuse');
+
+    $missing = $controller->acceptProposal(
+        'PROPDOESNOTEXIST0001',
+        new ProposalService($busOk, new AlwaysReadyIdempotency),
+    );
+    expect($missing->getStatusCode())->toBe(404)
+        ->and($missing->getData(true)['message'])->toBe('Proposal not found');
 });

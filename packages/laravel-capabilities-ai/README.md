@@ -82,9 +82,9 @@ $app->bind(LlmClient::class, fn () => new AnthropicLlmClient(
 
 **MVS product default:** multi-round tools are **off** until a client opts in. `AnthropicLlmClient` stays false until real `tool_result` support ships; `FakeLlmClient` opts in for unit tests. Empty tool defs + refuse-before-bus is defense-in-depth for that default, not a second product surface.
 
-**Proposals (single accept/reject model):** `ProposalService` uses one fail-closed state machine; HTTP maps `AcceptOutcome` — there is no second throw-as-API path and no open reject.
+**Proposals (single accept/reject model):** Accept returns typed `AcceptOutcome` for every known status (rejected/expired → `refuse`); HTTP maps outcomes + 404 when missing. Reject uses CAS + RuntimeException → 409 for non-pending (documented).
 
-- **Accept:** atomic CAS `pending → accepting`, then bus invoke with `idempotency_key=proposal:{ulid}` (D-005). Live `IdempotencyReadiness` probe (fail closed) — not a constructor stamp. Branch `isApprovalRequired()` then `isRetryable()`; both leave status `accepting` for host re-drive. Hard non-retryable → `failed` + `last_error`. Success → atomic `accepting → accepted`, clear `last_error`. Returns typed `AcceptOutcome` (`accepted` | `approval_required` | `retryable` | `failed` | `refuse`).
+- **Accept:** atomic CAS `pending → accepting`, then bus invoke with `idempotency_key=proposal:{ulid}` (D-005). Live `IdempotencyReadiness` probe (fail closed) — not a constructor stamp. Branch `isApprovalRequired()` then `isHardRefuse()` then `isRetryable()`; approval/retry leave status `accepting` for host re-drive. Hard non-retryable → `failed` + `last_error`. Success → atomic `accepting → accepted`, clear `last_error`. Returns typed `AcceptOutcome` (`accepted` | `approval_required` | `retryable` | `failed` | `refuse`).
 - **Reject:** atomic CAS `pending → rejected` only; already-rejected is idempotent; accepting/accepted/failed/expired refuse (HTTP 409).
 - **Recovery:** stuck `accepting` is intentional (approval / retry / crash mid-accept). Package does **not** TTL-expire or reclaim; host re-drives accept under the same D-005 key. Hosts must still wire core `IdempotencyStore` so the bus actually dedupes.
 

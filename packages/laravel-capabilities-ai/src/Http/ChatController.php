@@ -73,9 +73,13 @@ final class ChatController
 
     public function acceptProposal(string $proposalUlid, ProposalService $proposals): JsonResponse
     {
-        $outcome = $proposals->accept($proposalUlid);
+        try {
+            $outcome = $proposals->accept($proposalUlid);
 
-        return $this->jsonFromAcceptOutcome($outcome);
+            return $this->jsonFromAcceptOutcome($outcome);
+        } catch (ModelNotFoundException) {
+            return new JsonResponse(['message' => 'Proposal not found'], 404);
+        }
     }
 
     private function jsonFromAcceptOutcome(AcceptOutcome $outcome): JsonResponse

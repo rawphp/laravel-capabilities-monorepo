@@ -114,3 +114,16 @@ it('happy: isRetryable follows wire flag and ErrorCodeMap defaults [RES-001]', f
     expect($approval->isRetryable())->toBeFalse()
         ->and($approval->isApprovalRequired())->toBeTrue();
 });
+
+it('happy: isHardRefuse follows ErrorCodeMap for refuse codes [RES-001]', function () {
+    expect(CapabilityResult::ok()->isHardRefuse())->toBeFalse();
+
+    foreach (['forbidden', 'capability_not_in_profile', 'not_runnable', 'unauthenticated'] as $code) {
+        expect(CapabilityResult::failure($code, 'x')->isHardRefuse())->toBeTrue("code={$code}");
+        expect(\Rawphp\Capabilities\Support\ErrorCodeMap::isHardRefuse($code))->toBeTrue();
+        expect(\Rawphp\Capabilities\Support\ErrorCodeMap::retryableDefault($code))->toBeFalse();
+    }
+
+    expect(CapabilityResult::failure('domain_error', 'nope')->isHardRefuse())->toBeFalse();
+    expect(\Rawphp\Capabilities\Support\ErrorCodeMap::isHardRefuse('unknown_xyz'))->toBeFalse();
+});

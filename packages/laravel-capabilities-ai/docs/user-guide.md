@@ -42,7 +42,11 @@ Fail-closed state machine + typed `AcceptOutcome` for HTTP. Atomic CAS claims; D
 | `accepted` | `accepted` (`last_error` cleared) | Done |
 | `approval_required` | stays `accepting` | Wait for approval; re-drive accept (D-005) |
 | `retryable` | stays `accepting` | Re-drive when ready |
-| `failed` / `refuse` | `failed` + `last_error` | Terminal — do not re-drive as success |
+| `failed` / `refuse` (bus hard fail) | `failed` + `last_error` | Terminal — do not re-drive as success |
+| `refuse` (already rejected) | stays `rejected` | HTTP 409 — do not re-drive |
+| `refuse` (expired) | stays `expired` | HTTP 410 — do not re-drive |
+
+Missing proposal on accept → HTTP 404. Accept never throws for known statuses.
 
 Stuck `accepting` is intentional limbo. Package does **not** TTL-expire or reclaim — **host re-drive only**.
 
@@ -53,4 +57,5 @@ Stuck `accepting` is intentional limbo. Package does **not** TTL-expire or recla
 | `pending` | Atomic CAS → `rejected` |
 | already `rejected` | Idempotent success |
 | `accepting` / `accepted` / `failed` / `expired` | Refuse (RuntimeException → HTTP 409) |
+| missing | HTTP 404 |
 

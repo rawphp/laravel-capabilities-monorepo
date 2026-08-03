@@ -22,6 +22,7 @@ use RuntimeException;
  * - accepting stays accepting on isRetryable() / isApprovalRequired() (D-005 resume)
  * - Bus invoke always passes idempotency_key=proposal:{ulid} (D-005)
  * - Live IdempotencyReadiness probe (fail closed) — not a constructor stamp
+ * - Rejected / expired / unknown status → AcceptOutcome::refuse (no throw-as-API)
  *
  * Reject state machine:
  * - pending → rejected (atomic CAS only)
@@ -55,14 +56,35 @@ final class ProposalService
             ),
             Proposal::STATUS_ACCEPTING => $this->executeAccept($proposal),
             Proposal::STATUS_PENDING => $this->claimPendingThenAccept($proposalUlid, $proposal),
-            Proposal::STATUS_REJECTED => throw new RuntimeException(
-                "Proposal {$proposalUlid} is rejected"
+            Proposal::STATUS_REJECTED => AcceptOutcome::refuse(
+                $proposal,
+                message: "Proposal {$proposalUlid} is rejected",
+                httpStatus: 409,
+                error: [
+                    'code' => 'conflict',
+                    'message' => "Proposal {$proposalUlid} is rejected",
+                    'retryable' => false,
+                ],
             ),
-            Proposal::STATUS_EXPIRED => throw new RuntimeException(
-                "Proposal {$proposalUlid} is expired"
+            Proposal::STATUS_EXPIRED => AcceptOutcome::refuse(
+                $proposal,
+                message: "Proposal {$proposalUlid} is expired",
+                httpStatus: 410,
+                error: [
+                    'code' => 'expired',
+                    'message' => "Proposal {$proposalUlid} is expired",
+                    'retryable' => false,
+                ],
             ),
-            default => throw new RuntimeException(
-                "Proposal {$proposalUlid} has unknown status ({$proposal->status})"
+            default => AcceptOutcome::refuse(
+                $proposal,
+                message: "Proposal {$proposalUlid} has unknown status ({$proposal->status})",
+                httpStatus: 409,
+                error: [
+                    'code' => 'conflict',
+                    'message' => "Proposal {$proposalUlid} has unknown status ({$proposal->status})",
+                    'retryable' => false,
+                ],
             ),
         };
     }
@@ -81,13 +103,9 @@ final class ProposalService
             );
         }
 
-        $claimed = DatabaseConnection::resolve()->table($proposal->getTable())
-            ->where('ulid', $proposalUlid)
-            ->where('status', Proposal::STATUS_PENDING)
-            ->update([
-                'status' => Proposal::STATUS_REJECTED,
-                'updated_at' => Carbon::now()->toDateTimeString(),
-            ]);
+        $claimed = $this->casStatus($proposalUlid, Proposal::STATUS_PENDING, [
+            'status' => Proposal::STATUS_REJECTED,
+        ]);
 
         if ($claimed !== 1) {
             $fresh = Proposal::query()->where('ulid', $proposalUlid)->firstOrFail();
@@ -106,25 +124,12 @@ final class ProposalService
     private function claimPendingThenAccept(string $proposalUlid, Proposal $proposal): AcceptOutcome
     {
         if (! $this->idempotency->isReady()) {
-            return AcceptOutcome::failed(
-                $proposal,
-                message: 'Idempotency store not ready',
-                httpStatus: 503,
-                error: [
-                    'code' => 'not_configured',
-                    'message' => 'Idempotency store not ready',
-                    'retryable' => true,
-                ],
-            );
+            return $this->idempotencyNotReady($proposal);
         }
 
-        $claimed = DatabaseConnection::resolve()->table($proposal->getTable())
-            ->where('ulid', $proposalUlid)
-            ->where('status', Proposal::STATUS_PENDING)
-            ->update([
-                'status' => Proposal::STATUS_ACCEPTING,
-                'updated_at' => Carbon::now()->toDateTimeString(),
-            ]);
+        $claimed = $this->casStatus($proposalUlid, Proposal::STATUS_PENDING, [
+            'status' => Proposal::STATUS_ACCEPTING,
+        ]);
 
         if ($claimed !== 1) {
             // Lost race: re-enter single status path (no duplicated policy / double-invoke).
@@ -139,16 +144,7 @@ final class ProposalService
     private function executeAccept(Proposal $proposal): AcceptOutcome
     {
         if (! $this->idempotency->isReady()) {
-            return AcceptOutcome::failed(
-                $proposal,
-                message: 'Idempotency store not ready',
-                httpStatus: 503,
-                error: [
-                    'code' => 'not_configured',
-                    'message' => 'Idempotency store not ready',
-                    'retryable' => true,
-                ],
-            );
+            return $this->idempotencyNotReady($proposal);
         }
 
         $target = (string) ($proposal->target_capability ?? '');
@@ -200,8 +196,8 @@ final class ProposalService
         $error = $result->error ?? ['code' => $code, 'message' => $message];
         $http = isset($error['http_status']) ? (int) $error['http_status'] : null;
 
-        // Hard refuse codes (profile / auth) → terminal failed + refuse wire shape
-        if (in_array($code, ['forbidden', 'capability_not_in_profile', 'not_runnable', 'unauthenticated'], true)) {
+        // Hard refuse (auth/profile) → terminal failed + refuse wire shape
+        if ($result->isHardRefuse()) {
             $this->markFailed($proposal, $code, $message);
 
             return AcceptOutcome::refuse(
@@ -234,15 +230,11 @@ final class ProposalService
 
     private function markAccepted(Proposal $proposal): Proposal
     {
-        $updated = DatabaseConnection::resolve()->table($proposal->getTable())
-            ->where('ulid', $proposal->ulid)
-            ->where('status', Proposal::STATUS_ACCEPTING)
-            ->update([
-                'status' => Proposal::STATUS_ACCEPTED,
-                'accepted_at' => Carbon::now()->toDateTimeString(),
-                'last_error' => null,
-                'updated_at' => Carbon::now()->toDateTimeString(),
-            ]);
+        $updated = $this->casStatus($proposal->ulid, Proposal::STATUS_ACCEPTING, [
+            'status' => Proposal::STATUS_ACCEPTED,
+            'accepted_at' => Carbon::now()->toDateTimeString(),
+            'last_error' => null,
+        ]);
 
         if ($updated !== 1) {
             $fresh = Proposal::query()->where('ulid', $proposal->ulid)->firstOrFail();
@@ -260,13 +252,50 @@ final class ProposalService
 
     private function markFailed(Proposal $proposal, string $code, string $message): void
     {
-        DatabaseConnection::resolve()->table($proposal->getTable())
-            ->where('ulid', $proposal->ulid)
-            ->where('status', Proposal::STATUS_ACCEPTING)
-            ->update([
-                'status' => Proposal::STATUS_FAILED,
-                'last_error' => "{$code}: {$message}",
-                'updated_at' => Carbon::now()->toDateTimeString(),
-            ]);
+        $updated = $this->casStatus($proposal->ulid, Proposal::STATUS_ACCEPTING, [
+            'status' => Proposal::STATUS_FAILED,
+            'last_error' => "{$code}: {$message}",
+        ]);
+
+        if ($updated !== 1) {
+            $fresh = Proposal::query()->where('ulid', $proposal->ulid)->firstOrFail();
+            if ($fresh->status === Proposal::STATUS_FAILED) {
+                return;
+            }
+
+            throw new RuntimeException(
+                "Proposal {$proposal->ulid} lost fail claim (status={$fresh->status})"
+            );
+        }
+    }
+
+    private function idempotencyNotReady(Proposal $proposal): AcceptOutcome
+    {
+        return AcceptOutcome::failed(
+            $proposal,
+            message: 'Idempotency store not ready',
+            httpStatus: 503,
+            error: [
+                'code' => 'not_configured',
+                'message' => 'Idempotency store not ready',
+                'retryable' => true,
+            ],
+        );
+    }
+
+    /**
+     * Atomic status transition: UPDATE … WHERE ulid + status = $fromStatus.
+     *
+     * @param  array<string, mixed>  $attrs  Columns to set (status usually included)
+     */
+    private function casStatus(string $ulid, string $fromStatus, array $attrs): int
+    {
+        $payload = $attrs;
+        $payload['updated_at'] = Carbon::now()->toDateTimeString();
+
+        return (int) DatabaseConnection::resolve()->table((new Proposal)->getTable())
+            ->where('ulid', $ulid)
+            ->where('status', $fromStatus)
+            ->update($payload);
     }
 }
