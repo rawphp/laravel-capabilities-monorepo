@@ -8,7 +8,6 @@ declare(strict_types=1);
  * Package stays host-agnostic: no App\, Gerber, PrimaryAim in src.
  * Core must not reverse-depend on the AI package.
  */
-
 function aiPackageSrc(): string
 {
     return dirname(__DIR__, 3).'/src';
@@ -53,7 +52,7 @@ it('ServiceProvider registers mergeConfig and publish tags', function () {
     expect($src)->toContain('mergeConfigFrom')
         ->and($src)->toContain('capabilities-ai-config')
         ->and($src)->toContain('capabilities-ai-migrations')
-        ->and($src)->toContain("config/capabilities-ai.php");
+        ->and($src)->toContain('config/capabilities-ai.php');
 });
 
 it('package composer requires rawphp/laravel-capabilities core', function () {

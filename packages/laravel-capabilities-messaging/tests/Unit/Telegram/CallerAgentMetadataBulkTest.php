@@ -3,18 +3,9 @@
 declare(strict_types=1);
 
 use Rawphp\Capabilities\Support\CapabilityContext;
-use Rawphp\Capabilities\Support\CapabilityResult;
-use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
-use Rawphp\CapabilitiesMessaging\MessagingConfig;
-use Rawphp\CapabilitiesMessaging\Tests\Fixtures\FakeCapabilityBus;
-use Rawphp\CapabilitiesMessaging\Support\FakeTelegramBotClient;
-use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdate;
-use Rawphp\CapabilitiesMessaging\Telegram\TelegramAdapter;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers as H;
 
-
-
-it("edge: messaging metadata field channel optional on agent context [D-007]", function () {
+it('edge: messaging metadata field channel optional on agent context [D-007]', function () {
     $user = H::linkedUser();
     $ctx = new CapabilityContext(
         caller: 'agent',
@@ -24,7 +15,7 @@ it("edge: messaging metadata field channel optional on agent context [D-007]", f
     expect($ctx->messaging())->toHaveKey('channel');
 });
 
-it("fail: messaging metadata field channel not used as authorize authority alone [MSG-002]", function () {
+it('fail: messaging metadata field channel not used as authorize authority alone [MSG-002]', function () {
     // Metadata alone does not grant tool access — identity link required
     $identity = H::identity();
     $user = $identity->resolve([
@@ -35,8 +26,7 @@ it("fail: messaging metadata field channel not used as authorize authority alone
     expect($identity->canUseTools($user))->toBeFalse();
 });
 
-
-it("edge: messaging metadata field chat_id optional on agent context [D-007]", function () {
+it('edge: messaging metadata field chat_id optional on agent context [D-007]', function () {
     $user = H::linkedUser();
     $ctx = new CapabilityContext(
         caller: 'agent',
@@ -46,7 +36,7 @@ it("edge: messaging metadata field chat_id optional on agent context [D-007]", f
     expect($ctx->messaging())->toHaveKey('chat_id');
 });
 
-it("fail: messaging metadata field chat_id not used as authorize authority alone [MSG-002]", function () {
+it('fail: messaging metadata field chat_id not used as authorize authority alone [MSG-002]', function () {
     // Metadata alone does not grant tool access — identity link required
     $identity = H::identity();
     $user = $identity->resolve([
@@ -57,8 +47,7 @@ it("fail: messaging metadata field chat_id not used as authorize authority alone
     expect($identity->canUseTools($user))->toBeFalse();
 });
 
-
-it("edge: messaging metadata field message_id optional on agent context [D-007]", function () {
+it('edge: messaging metadata field message_id optional on agent context [D-007]', function () {
     $user = H::linkedUser();
     $ctx = new CapabilityContext(
         caller: 'agent',
@@ -68,7 +57,7 @@ it("edge: messaging metadata field message_id optional on agent context [D-007]"
     expect($ctx->messaging())->toHaveKey('message_id');
 });
 
-it("fail: messaging metadata field message_id not used as authorize authority alone [MSG-002]", function () {
+it('fail: messaging metadata field message_id not used as authorize authority alone [MSG-002]', function () {
     // Metadata alone does not grant tool access — identity link required
     $identity = H::identity();
     $user = $identity->resolve([
@@ -79,8 +68,7 @@ it("fail: messaging metadata field message_id not used as authorize authority al
     expect($identity->canUseTools($user))->toBeFalse();
 });
 
-
-it("edge: messaging metadata field topic_id optional on agent context [D-007]", function () {
+it('edge: messaging metadata field topic_id optional on agent context [D-007]', function () {
     $user = H::linkedUser();
     $ctx = new CapabilityContext(
         caller: 'agent',
@@ -90,7 +78,7 @@ it("edge: messaging metadata field topic_id optional on agent context [D-007]", 
     expect($ctx->messaging())->toHaveKey('topic_id');
 });
 
-it("fail: messaging metadata field topic_id not used as authorize authority alone [MSG-002]", function () {
+it('fail: messaging metadata field topic_id not used as authorize authority alone [MSG-002]', function () {
     // Metadata alone does not grant tool access — identity link required
     $identity = H::identity();
     $user = $identity->resolve([
@@ -101,8 +89,7 @@ it("fail: messaging metadata field topic_id not used as authorize authority alon
     expect($identity->canUseTools($user))->toBeFalse();
 });
 
-
-it("edge: messaging metadata field user_link_id optional on agent context [D-007]", function () {
+it('edge: messaging metadata field user_link_id optional on agent context [D-007]', function () {
     $user = H::linkedUser();
     $ctx = new CapabilityContext(
         caller: 'agent',
@@ -112,7 +99,7 @@ it("edge: messaging metadata field user_link_id optional on agent context [D-007
     expect($ctx->messaging())->toHaveKey('user_link_id');
 });
 
-it("fail: messaging metadata field user_link_id not used as authorize authority alone [MSG-002]", function () {
+it('fail: messaging metadata field user_link_id not used as authorize authority alone [MSG-002]', function () {
     // Metadata alone does not grant tool access — identity link required
     $identity = H::identity();
     $user = $identity->resolve([

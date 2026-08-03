@@ -5,12 +5,14 @@ declare(strict_types=1);
 use Illuminate\Container\Container;
 use Illuminate\Database\Capsule\Manager as Capsule;
 use Illuminate\Events\Dispatcher as EventDispatcher;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Schema;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
+use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
@@ -177,27 +179,27 @@ it('does not overwrite cancelled status with completed (cooperative cancel)', fu
     bootTurnSqlite();
     $turnUlid = enqueueTurn();
     $progress = new ArrayProgressStore;
-    $llm = new class implements \Rawphp\CapabilitiesAi\Contracts\LlmClient
+    $llm = new class implements LlmClient
     {
         public function complete(array $messages, array $tools = []): array
         {
             Turn::query()->where('ulid', $GLOBALS['coop_turn_ulid'])->update([
                 'status' => Turn::STATUS_CANCELLED,
-                'finished_at' => \Illuminate\Support\Carbon::now()->toDateTimeString(),
+                'finished_at' => Carbon::now()->toDateTimeString(),
             ]);
 
             return ['content' => 'too late', 'tool_calls' => []];
         }
     };
     $GLOBALS['coop_turn_ulid'] = $turnUlid;
-    $context = new class implements \Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider
+    $context = new class implements ConversationContextProvider
     {
         public function messagesForTurn(string $conversationUlid, string $turnUlid): array
         {
             return [['role' => 'user', 'content' => 'hi']];
         }
     };
-    $tools = new class implements \Rawphp\CapabilitiesAi\Contracts\ToolCatalog
+    $tools = new class implements ToolCatalog
     {
         public function toolsForTurn(string $conversationUlid, string $turnUlid): array
         {

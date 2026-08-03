@@ -4,19 +4,14 @@ declare(strict_types=1);
 
 namespace Rawphp\Capabilities\Tests\Fixtures;
 
-use Rawphp\Capabilities\Adapters\RunCapabilityJob;
 use Rawphp\Capabilities\Capability;
 use Rawphp\Capabilities\Http\CallerDeriver;
-use Rawphp\Capabilities\Pipeline\PipelineStages;
 use Rawphp\Capabilities\Pipeline\ResolveActor;
-use Rawphp\Capabilities\Pipeline\ResolveTenantFromCaller;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\CapabilityContext;
-use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\CapabilityScope;
 use Rawphp\Capabilities\Support\DefaultScopeResolver;
 use Rawphp\Capabilities\Support\InMemoryScopedQueryFactory;
-use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Support\SharedFakes;
 use stdClass;
@@ -89,7 +84,7 @@ final class ScopeCallerJobHelpers
 
     /**
      * @param  array<string, mixed>  $opts
-     * @return array{registry: CapabilityRegistry, fakes: SharedFakes, runCount: \stdClass, queryFactory: InMemoryScopedQueryFactory, name: string}
+     * @return array{registry: CapabilityRegistry, fakes: SharedFakes, runCount: stdClass, queryFactory: InMemoryScopedQueryFactory, name: string}
      */
     public static function scopeHarness(array $opts = []): array
     {

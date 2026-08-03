@@ -12,7 +12,6 @@ final class JsonSchemaValidator
 {
     /**
      * @param  array<string, mixed>  $schema
-     * @param  mixed  $data
      * @return list<array{field: string, message: string}>
      */
     public function validate(array $schema, mixed $data, string $path = ''): array
@@ -199,6 +198,7 @@ final class JsonSchemaValidator
             return false;
         }
         $parts = explode('-', $value);
+
         return checkdate((int) $parts[1], (int) $parts[2], (int) $parts[0]);
     }
 }

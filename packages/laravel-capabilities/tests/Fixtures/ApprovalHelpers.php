@@ -10,7 +10,6 @@ use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Approval\ApprovalPolicy;
 use Rawphp\Capabilities\Approval\ApprovalStateMachine;
 use Rawphp\Capabilities\Approval\ResumeApprovedApprovals;
-use Rawphp\Capabilities\Pipeline\ResolveActor;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Support\InMemoryApprovalStore;

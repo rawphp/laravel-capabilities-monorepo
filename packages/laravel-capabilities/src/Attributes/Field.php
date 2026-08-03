@@ -3,12 +3,13 @@
 namespace Rawphp\Capabilities\Attributes;
 
 use Attribute;
+use Rawphp\Capabilities\Support\CapabilityData;
 
 /**
  * Field metadata for DTO → JSON Schema (D-015).
  *
- * Portable constraints (min/max/enum/format/…) appear in {@see \Rawphp\Capabilities\Support\CapabilityData::jsonSchema()}.
- * Server-only rules stay on {@see \Rawphp\Capabilities\Support\CapabilityData::rules()}.
+ * Portable constraints (min/max/enum/format/…) appear in {@see CapabilityData::jsonSchema()}.
+ * Server-only rules stay on {@see CapabilityData::rules()}.
  */
 #[Attribute(Attribute::TARGET_PROPERTY | Attribute::TARGET_PARAMETER)]
 final class Field

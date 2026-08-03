@@ -6,7 +6,6 @@ declare(strict_types=1);
  * Guard README D-011 release-gate documentation (REQ-038).
  * String presence only — unit-only, no live peers.
  */
-
 function peerReleaseGateReadme(): string
 {
     $path = dirname(__DIR__, 3).'/README.md';

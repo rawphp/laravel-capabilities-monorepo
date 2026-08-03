@@ -4,27 +4,44 @@ declare(strict_types=1);
 
 namespace Rawphp\Capabilities\Tests\Fixtures;
 
+use Rawphp\Capabilities\Adapters\Ai\AiToolAdapter;
+use Rawphp\Capabilities\Adapters\Artisan\ArtisanCapabilityInvoker;
 use Rawphp\Capabilities\Adapters\Http\CapabilityController;
 use Rawphp\Capabilities\Adapters\Mcp\McpAuthProfileResolver;
 use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapter;
+use Rawphp\Capabilities\Adapters\PeerIncompatibleException;
 use Rawphp\Capabilities\Adapters\PeerSurfaceBootstrap;
 use Rawphp\Capabilities\Adapters\RunCapabilityJob;
 use Rawphp\Capabilities\Adapters\ToolSelection;
+use Rawphp\Capabilities\Approval\ApprovalCallbackVerifier;
 use Rawphp\Capabilities\Approval\ApprovalManager;
+use Rawphp\Capabilities\Approval\ApprovalStateMachine;
+use Rawphp\Capabilities\Boot\BootException;
+use Rawphp\Capabilities\Boot\BootGuard;
 use Rawphp\Capabilities\Boot\CapabilitiesConfig;
+use Rawphp\Capabilities\Capability;
 use Rawphp\Capabilities\Contracts\ApprovalNotifier;
+use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\ConversationIdentity;
 use Rawphp\Capabilities\Contracts\ConversationIngress;
 use Rawphp\Capabilities\Contracts\ConversationReply;
+use Rawphp\Capabilities\Contracts\ScopedQueryFactory;
+use Rawphp\Capabilities\Contracts\ScopeResolver;
+use Rawphp\Capabilities\Discovery\AttributeDiscoverer;
 use Rawphp\Capabilities\Http\CallerDeriver;
 use Rawphp\Capabilities\Http\RouteTable;
 use Rawphp\Capabilities\Pipeline\PipelineStages;
-use Rawphp\Capabilities\Pipeline\ResolveActor;
+use Rawphp\Capabilities\Pipeline\ResolveTenantFromCaller;
 use Rawphp\Capabilities\Profiles\ProfileSelector;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
+use Rawphp\Capabilities\Schema\JsonSchemaValidator;
 use Rawphp\Capabilities\Schema\ToolSchemaExporter;
+use Rawphp\Capabilities\Support\DefaultScopeResolver;
 use Rawphp\Capabilities\Support\ErrorCodeMap;
+use Rawphp\Capabilities\Support\FailingAuditWriter;
+use Rawphp\Capabilities\Support\InMemoryScopedQueryFactory;
+use Rawphp\Capabilities\Support\MissingJobActorException;
 use Rawphp\Capabilities\Support\SystemActor;
 use ReflectionClass;
 use ReflectionMethod;
@@ -261,10 +278,10 @@ final class ArchitectureHelpers
             expect(stripos($blob, 'function '.$name))->toBeFalse("Found forbidden API {$name}");
         }
         // Public bus surface is CapabilityBus::invoke / registry invoke only.
-        expect(interface_exists(\Rawphp\Capabilities\Contracts\CapabilityBus::class))->toBeTrue();
+        expect(interface_exists(CapabilityBus::class))->toBeTrue();
         $methods = array_map(
             fn (ReflectionMethod $m) => $m->getName(),
-            (new ReflectionClass(\Rawphp\Capabilities\Contracts\CapabilityBus::class))->getMethods()
+            (new ReflectionClass(CapabilityBus::class))->getMethods()
         );
         expect($methods)->toContain('invoke')
             ->and($methods)->not->toContain('runDomain');
@@ -335,7 +352,7 @@ final class ArchitectureHelpers
 
     private static function refuseNullUserOnJobs(): void
     {
-        expect(class_exists(\Rawphp\Capabilities\Support\MissingJobActorException::class))->toBeTrue();
+        expect(class_exists(MissingJobActorException::class))->toBeTrue();
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
         $r = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), [
             'caller' => 'job',
@@ -362,7 +379,7 @@ final class ArchitectureHelpers
         // SystemActor tenant must not be taken from free-form input magic keys alone.
         expect(class_exists(SystemActor::class))->toBeTrue();
         // Registry / ResolveTenantFromCaller must exist as first-class tenant path.
-        expect(class_exists(\Rawphp\Capabilities\Pipeline\ResolveTenantFromCaller::class))->toBeTrue();
+        expect(class_exists(ResolveTenantFromCaller::class))->toBeTrue();
         // Magic keys appear only in tests (ScopeCallerJobHelpers), not as trusted server source.
         expect(stripos($blob, 'function tenantFromMagicKey'))->toBeFalse();
     }
@@ -421,7 +438,7 @@ final class ArchitectureHelpers
     {
         // Portable JSON Schema exporter is the wire source of truth.
         expect(class_exists(ToolSchemaExporter::class))->toBeTrue()
-            ->and(class_exists(\Rawphp\Capabilities\Schema\JsonSchemaValidator::class))->toBeTrue();
+            ->and(class_exists(JsonSchemaValidator::class))->toBeTrue();
         $blob = self::coreSourceBlob();
         // Must not be rules()-only without schema export.
         expect(method_exists(ToolSchemaExporter::class, 'export') || method_exists(ToolSchemaExporter::class, 'forCapability') || true)->toBeTrue();
@@ -454,7 +471,7 @@ final class ArchitectureHelpers
 
     private static function refuseUnsignedTelegramApprove(): void
     {
-        expect(class_exists(\Rawphp\Capabilities\Approval\ApprovalCallbackVerifier::class))->toBeTrue();
+        expect(class_exists(ApprovalCallbackVerifier::class))->toBeTrue();
     }
 
     private static function refuseApprovedLimbo(): void
@@ -479,13 +496,13 @@ final class ArchitectureHelpers
         $mode = $cfg['audit']['mode'] ?? $cfg['audit_mode'] ?? 'best_effort';
         expect(in_array($mode, ['best_effort', 'strict'], true))->toBeTrue();
         // FailingAuditWriter exists for strict mode tests.
-        expect(class_exists(\Rawphp\Capabilities\Support\FailingAuditWriter::class))->toBeTrue();
+        expect(class_exists(FailingAuditWriter::class))->toBeTrue();
     }
 
     private static function refusePeerHalfRegister(): void
     {
-        expect(class_exists(PeerSurfaceBootstrap::class) || class_exists(\Rawphp\Capabilities\Boot\BootGuard::class))->toBeTrue()
-            ->and(class_exists(\Rawphp\Capabilities\Adapters\PeerIncompatibleException::class) || class_exists(\Rawphp\Capabilities\Boot\BootException::class))->toBeTrue();
+        expect(class_exists(PeerSurfaceBootstrap::class) || class_exists(BootGuard::class))->toBeTrue()
+            ->and(class_exists(PeerIncompatibleException::class) || class_exists(BootException::class))->toBeTrue();
     }
 
     private static function refuseArtisanAsProductCli(): void
@@ -537,7 +554,7 @@ final class ArchitectureHelpers
             || class_exists(SystemActor::class)
         )->toBeTrue();
         // Explicit: Approver is not SystemActor type-enforced path — whoMayApprove matrix covers this.
-        expect(class_exists(\Rawphp\Capabilities\Approval\ApprovalStateMachine::class) || true)->toBeTrue();
+        expect(class_exists(ApprovalStateMachine::class) || true)->toBeTrue();
     }
 
     private static function refuseIdempotencyOneSurface(): void
@@ -568,8 +585,8 @@ final class ArchitectureHelpers
     private static function refuseThirdDiscoveryPath(): void
     {
         // Only attribute + fluent define — no third registerFromArray public path required.
-        expect(class_exists(\Rawphp\Capabilities\Discovery\AttributeDiscoverer::class))->toBeTrue()
-            ->and(method_exists(\Rawphp\Capabilities\Capability::class, 'define'))->toBeTrue();
+        expect(class_exists(AttributeDiscoverer::class))->toBeTrue()
+            ->and(method_exists(Capability::class, 'define'))->toBeTrue();
         expect(class_exists('Rawphp\\Capabilities\\Discovery\\YamlCapabilityLoader'))->toBeFalse()
             ->and(class_exists('Rawphp\\Capabilities\\Discovery\\JsonCapabilityLoader'))->toBeFalse();
     }
@@ -613,9 +630,9 @@ final class ArchitectureHelpers
     private static function refuseTrustExistsAlone(): void
     {
         // Scoped query / re-resolve under tenant is required.
-        expect(interface_exists(\Rawphp\Capabilities\Contracts\ScopeResolver::class))->toBeTrue()
-            ->and(interface_exists(\Rawphp\Capabilities\Contracts\ScopedQueryFactory::class))->toBeTrue()
-            ->and(class_exists(\Rawphp\Capabilities\Support\DefaultScopeResolver::class) || class_exists(\Rawphp\Capabilities\Support\InMemoryScopedQueryFactory::class))->toBeTrue();
+        expect(interface_exists(ScopeResolver::class))->toBeTrue()
+            ->and(interface_exists(ScopedQueryFactory::class))->toBeTrue()
+            ->and(class_exists(DefaultScopeResolver::class) || class_exists(InMemoryScopedQueryFactory::class))->toBeTrue();
     }
 
     public static function assertDesignRule(string $rule): void
@@ -649,12 +666,12 @@ final class ArchitectureHelpers
             'adapters_dumb' => self::adaptersAreDumb(),
             'domain_yours' => self::noAlternateDomainMutationApi(),
             'surface_switches' => expect(CapabilitiesConfig::defaults())->toHaveKey('surfaces'),
-            'fail_closed' => expect(class_exists(\Rawphp\Capabilities\Boot\BootGuard::class) || class_exists(\Rawphp\Capabilities\Boot\BootException::class))->toBeTrue(),
+            'fail_closed' => expect(class_exists(BootGuard::class) || class_exists(BootException::class))->toBeTrue(),
             'conversation_not_invoke' => self::conversationContractsExist(),
-            'jobs_declare_actor', 'no_silent_actors' => expect(class_exists(\Rawphp\Capabilities\Support\MissingJobActorException::class))->toBeTrue(),
+            'jobs_declare_actor', 'no_silent_actors' => expect(class_exists(MissingJobActorException::class))->toBeTrue(),
             'scope_reresolve', 'no_ambient_tenancy' => self::refuseTrustExistsAlone(),
             'idempotent', 'idempotent_retries' => expect(PipelineStages::ordered())->toContain(PipelineStages::IDEMPOTENCY_LOOKUP),
-            'approvals_sm', 'approvals_state_machine' => expect(class_exists(\Rawphp\Capabilities\Approval\ApprovalStateMachine::class))->toBeTrue(),
+            'approvals_sm', 'approvals_state_machine' => expect(class_exists(ApprovalStateMachine::class))->toBeTrue(),
             'messaging_sibling' => self::messagingComposerSuggestOptional(),
             'profiles', 'profiles_not_dump' => self::refuseFullCatalogDump(),
             'one_http', 'one_http_api' => self::refuseSecondHttpTree(),
@@ -680,13 +697,13 @@ final class ArchitectureHelpers
         self::noAlternateDomainMutationApi();
         $map = [
             'http_controller_domain_create' => CapabilityController::class,
-            'ai_tool_domain_create' => \Rawphp\Capabilities\Adapters\Ai\AiToolAdapter::class,
+            'ai_tool_domain_create' => AiToolAdapter::class,
             'mcp_tool_domain_create' => McpToolAdapter::class,
             'cli_local_domain_create' => null, // Go client — no domain in core
             'job_handle_domain_create' => RunCapabilityJob::class,
             'telegram_adapter_domain_create' => null, // not in core
             'approval_notifier_domain_create' => ApprovalNotifier::class,
-            'artisan_command_domain_create' => \Rawphp\Capabilities\Adapters\Artisan\ArtisanCapabilityInvoker::class,
+            'artisan_command_domain_create' => ArtisanCapabilityInvoker::class,
         ];
         $class = $map[$path] ?? null;
         if ($class === null) {
@@ -785,11 +802,11 @@ final class ArchitectureHelpers
             str_contains($b, 'surfaces optional') || str_contains($b, 'defaults generous') => expect(CapabilitiesConfig::defaults()['surfaces']['http']['enabled'] ?? false)->toBeTrue(),
             str_contains($b, 'cli is a client') => self::refuseArtisanAsProductCli(),
             str_contains($b, 'thin framework') => self::noAlternateDomainMutationApi(),
-            str_contains($b, 'fail closed') => expect(class_exists(\Rawphp\Capabilities\Boot\BootException::class) || class_exists(\Rawphp\Capabilities\Boot\BootGuard::class))->toBeTrue(),
-            str_contains($b, 'silent actors') => expect(class_exists(\Rawphp\Capabilities\Support\MissingJobActorException::class))->toBeTrue(),
+            str_contains($b, 'fail closed') => expect(class_exists(BootException::class) || class_exists(BootGuard::class))->toBeTrue(),
+            str_contains($b, 'silent actors') => expect(class_exists(MissingJobActorException::class))->toBeTrue(),
             str_contains($b, 'ambient tenancy') => self::refuseTrustExistsAlone(),
             str_contains($b, 'retries') || str_contains($b, 'double apply') => expect(PipelineStages::ordered())->toContain(PipelineStages::IDEMPOTENCY_LOOKUP),
-            str_contains($b, 'approvals') => expect(class_exists(\Rawphp\Capabilities\Approval\ApprovalStateMachine::class))->toBeTrue(),
+            str_contains($b, 'approvals') => expect(class_exists(ApprovalStateMachine::class))->toBeTrue(),
             str_contains($b, 'least privilege') || str_contains($b, 'tool lists') => self::refuseFullCatalogDump(),
             str_contains($b, 'dual path') => self::noAlternateDomainMutationApi(),
             str_contains($b, 'audit failure') || str_contains($b, 'hostage') => self::refuseSilentAuditDrop(),

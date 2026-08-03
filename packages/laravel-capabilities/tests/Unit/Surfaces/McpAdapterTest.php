@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use Rawphp\Capabilities\Adapters\Mcp\McpCredential;
-use Rawphp\Capabilities\Profiles\ProfileRequiredException;
 use Rawphp\Capabilities\Tests\Fixtures\AdapterHelpers;
 
 it('happy: McpToolAdapterV1 registers tools from profile [D-011]', function () {

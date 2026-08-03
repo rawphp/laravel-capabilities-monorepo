@@ -5,10 +5,9 @@ namespace Rawphp\Capabilities\Discovery;
 use Rawphp\Capabilities\Attributes\Capability as CapabilityAttribute;
 use Rawphp\Capabilities\Contracts\DefinesCapability;
 use Rawphp\Capabilities\Registry\CapabilityDefinition;
-use ReflectionClass;
-
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
+use ReflectionClass;
 use RegexIterator;
 
 /**

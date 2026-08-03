@@ -21,7 +21,7 @@ final class TelegramAdapter implements ConversationIngress, ConversationReply
     /** @var list<array<string, mixed>> */
     private array $replies = [];
 
-    /** @var callable|null  (message) => array result with optional tool_calls */
+    /** @var callable|null (message) => array result with optional tool_calls */
     private $ingressHandler;
 
     private bool $failIngress = false;

@@ -4,9 +4,10 @@
 
 declare(strict_types=1);
 
+use Illuminate\Console\Command;
+use Rawphp\Capabilities\Adapters\Artisan\ArtisanCapabilityInvoker;
 use Rawphp\Capabilities\Adapters\Artisan\ArtisanCommandRegistrar;
 use Rawphp\Capabilities\Adapters\Artisan\ArtisanCommandTable;
-use Rawphp\Capabilities\Adapters\Artisan\ArtisanCapabilityInvoker;
 use Rawphp\Capabilities\Adapters\Artisan\RunCapabilityCommand;
 use Rawphp\Capabilities\CapabilitiesServiceProvider;
 
@@ -35,7 +36,7 @@ it('ops role is never product cli', function () {
 });
 
 it('command class is a real console command for provider registration', function () {
-    expect(is_subclass_of(RunCapabilityCommand::class, \Illuminate\Console\Command::class))->toBeTrue();
+    expect(is_subclass_of(RunCapabilityCommand::class, Command::class))->toBeTrue();
 });
 
 it('provider artisanCommands helper matches registrar signatures', function () {

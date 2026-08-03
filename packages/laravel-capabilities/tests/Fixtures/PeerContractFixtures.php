@@ -231,7 +231,7 @@ final class PeerContractFixtures
      */
     public static function assertsCurrentAdapterApi(): bool
     {
-        return AdapterApi::CURRENT === self::adapterApiVersion()
+        return self::adapterApiVersion() === AdapterApi::CURRENT
             && AdapterApi::supported() === self::supportedAdapterApis();
     }
 }

@@ -7,6 +7,7 @@ use Rawphp\Capabilities\Adapters\PeerSurfaceBootstrap;
 use Rawphp\Capabilities\Adapters\PeerSurfaceStatus;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 use Rawphp\Capabilities\Registry\CapabilityDefinition;
+use Rawphp\Capabilities\Registry\CapabilityRegistry;
 
 /**
  * Service-provider boot rules (SURF-004 / D-007 / D-011 / D-021).
@@ -19,7 +20,7 @@ final class BootGuard
      * Server-authoritative: two definitions claiming the same CLI (domain, verb) fail boot (CLI-002).
      *
      * Unmapped definitions (null domain/verb) are ignored. Pair uniqueness is also enforced at
-     * {@see \Rawphp\Capabilities\Registry\CapabilityRegistry::register()}; this is the boot-time
+     * {@see CapabilityRegistry::register()}; this is the boot-time
      * sweep for assembled definition lists.
      *
      * @param  iterable<CapabilityDefinition>  $definitions

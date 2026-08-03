@@ -7,7 +7,6 @@ use Rawphp\Capabilities\Discovery\AttributeDiscoverer;
 use Rawphp\Capabilities\Tests\Fixtures\Capabilities\AttributedCreateInvoice;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
-use Rawphp\Capabilities\Tests\Fixtures\DiscoveryHelpers;
 
 function attributedCreateInvoiceDefinition()
 {
@@ -64,4 +63,3 @@ foreach ($fields as $field => $getter) {
             ->and($getter($attr))->toBe($getter($fluent));
     });
 }
-

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Domain;
 
+use Illuminate\Support\Carbon;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
@@ -99,7 +100,7 @@ final class TurnRunner
             }
 
             $turn->status = Turn::STATUS_COMPLETED;
-            $turn->finished_at = \Illuminate\Support\Carbon::now();
+            $turn->finished_at = Carbon::now();
             $turn->save();
 
             // Terminal progress AFTER DB completed
@@ -118,7 +119,7 @@ final class TurnRunner
 
             $turn->status = Turn::STATUS_FAILED;
             $turn->error = $e->getMessage();
-            $turn->finished_at = \Illuminate\Support\Carbon::now();
+            $turn->finished_at = Carbon::now();
             $turn->save();
             $progress->append($turnUlid, [
                 'kind' => 'error',

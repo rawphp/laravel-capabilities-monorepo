@@ -39,6 +39,6 @@ it('InMemoryApprovalStore implements ApprovalStore and records a pending approva
 });
 
 it('InMemoryApprovalStore requires a Clock and fails loudly without it', function () {
-    expect(fn () => new InMemoryApprovalStore())
+    expect(fn () => new InMemoryApprovalStore)
         ->toThrow(ArgumentCountError::class);
 });

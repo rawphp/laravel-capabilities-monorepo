@@ -5,7 +5,6 @@ declare(strict_types=1);
 use Rawphp\Capabilities\Capability;
 use Rawphp\Capabilities\Events\CapabilityFailed;
 use Rawphp\Capabilities\Schema\OutputValidator;
-use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
 use Rawphp\Capabilities\Tests\Fixtures\DiscoveryHelpers;

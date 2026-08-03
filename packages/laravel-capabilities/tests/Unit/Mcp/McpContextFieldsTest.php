@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Adapters\Mcp\McpAuthException;
 use Rawphp\Capabilities\Adapters\Mcp\McpAuthProfileResolver;
 use Rawphp\Capabilities\Adapters\Mcp\McpCredential;
 use Rawphp\Capabilities\Support\CapabilityContext;
@@ -82,7 +83,7 @@ it('edge: profile integration with allow_integration_credentials=False [D-023]',
         'integration_actors' => ['svc' => 'bot'],
     ]);
     expect(fn () => $resolver->resolve(McpCredential::integration('svc')))
-        ->toThrow(\Rawphp\Capabilities\Adapters\Mcp\McpAuthException::class);
+        ->toThrow(McpAuthException::class);
 });
 
 it('edge: profile user_delegated with allow_integration_credentials=True [D-023]', function () {

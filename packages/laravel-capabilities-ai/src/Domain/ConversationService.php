@@ -78,7 +78,6 @@ final class ConversationService
         ];
     }
 
-
     /**
      * Ordered messages for a conversation (HTTP history).
      *

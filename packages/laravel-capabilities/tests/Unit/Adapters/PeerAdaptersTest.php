@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use Rawphp\Capabilities\Adapters\AdapterApi;
 use Rawphp\Capabilities\Adapters\Ai\AiToolAdapterV1;
-use Rawphp\Capabilities\Adapters\Mcp\McpCredential;
 use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapterV1;
 use Rawphp\Capabilities\Adapters\PeerIncompatibleException;
 use Rawphp\Capabilities\Adapters\PeerSurfaceBootstrap;

@@ -4,13 +4,13 @@
 
 declare(strict_types=1);
 
+use Illuminate\Http\Request;
 use Rawphp\Capabilities\Adapters\Http\AuthController;
 use Rawphp\Capabilities\Adapters\Http\IlluminateAuthController;
 use Rawphp\Capabilities\Http\HttpRequestContext;
 use Rawphp\Capabilities\Http\RouteTable;
 use Rawphp\Capabilities\Support\ErrorCodeMap;
 use Rawphp\Capabilities\Tests\Fixtures\HttpHelpers;
-use Illuminate\Http\Request;
 
 it('fail-closed: token without issuer returns not_configured and no fake bearer [L-002]', function () {
     $auth = new AuthController(['enabled' => true], ['enabled' => true], null);

@@ -14,7 +14,7 @@ final class InMemoryScopedQueryFactory implements ScopedQueryFactory
 {
     /**
      * @param  array<string, array<string|int, array{tenant_id: string, data?: array<string, mixed>}>>  $resources
-     *         model class => [ id => ['tenant_id' => ..., 'data' => ...] ]
+     *                                                                                                              model class => [ id => ['tenant_id' => ..., 'data' => ...] ]
      */
     public function __construct(
         private array $resources = [],

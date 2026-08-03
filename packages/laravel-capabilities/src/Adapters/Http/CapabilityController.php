@@ -3,6 +3,7 @@
 namespace Rawphp\Capabilities\Adapters\Http;
 
 use Rawphp\Capabilities\Contracts\CapabilityBus;
+use Rawphp\Capabilities\Http\CallerDeriver;
 use Rawphp\Capabilities\Http\DetectsCaller;
 use Rawphp\Capabilities\Http\HttpAuthGate;
 use Rawphp\Capabilities\Http\HttpRequestContext;
@@ -173,7 +174,7 @@ final class CapabilityController
         return [
             'token_abilities' => $this->clientsConfig['token_abilities'] ?? ['capabilities:cli' => 'cli'],
             'oauth' => $this->clientsConfig['oauth'] ?? [],
-            'privilege_order' => $this->clientsConfig['privilege_order'] ?? \Rawphp\Capabilities\Http\CallerDeriver::DEFAULT_PRIVILEGE_ORDER,
+            'privilege_order' => $this->clientsConfig['privilege_order'] ?? CallerDeriver::DEFAULT_PRIVILEGE_ORDER,
             'reject_upgrade_attempts' => (bool) ($this->clientsConfig['reject_upgrade_attempts'] ?? false),
         ];
     }

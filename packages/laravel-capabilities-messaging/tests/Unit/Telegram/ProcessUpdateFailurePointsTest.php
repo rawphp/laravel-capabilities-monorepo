@@ -2,22 +2,13 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Support\CapabilityContext;
-use Rawphp\Capabilities\Support\CapabilityResult;
-use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
-use Rawphp\CapabilitiesMessaging\MessagingConfig;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\FakeCapabilityBus;
-use Rawphp\CapabilitiesMessaging\Support\FakeTelegramBotClient;
-use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdate;
-use Rawphp\CapabilitiesMessaging\Telegram\TelegramAdapter;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers as H;
 
-
-
-it("fail: process update handles failure at invalid_update_shape without domain bypass [MSG-003]", function () {
+it('fail: process update handles failure at invalid_update_shape without domain bypass [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
-    $registry = new FakeCapabilityBus();
+    $registry = new FakeCapabilityBus;
     $p = H::processor(['identity' => $identity, 'registry' => $registry]);
     $update = H::telegramUpdate(userId: 42);
     if ('invalid_update_shape' === 'invalid_update_shape') {
@@ -32,7 +23,7 @@ it("fail: process update handles failure at invalid_update_shape without domain 
     expect($registry->invokeCount())->toBe(0);
 });
 
-it("edge: process update failure at invalid_update_shape is observable in logs or failed jobs [D-019]", function () {
+it('edge: process update failure at invalid_update_shape is observable in logs or failed jobs [D-019]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -47,11 +38,10 @@ it("edge: process update failure at invalid_update_shape is observable in logs o
     expect(($r['observable'] ?? false) || $p->logs() !== [] || isset($r['tags']) || isset($r['error']))->toBeTrue();
 });
 
-
-it("fail: process update handles failure at unknown_chat without domain bypass [MSG-003]", function () {
+it('fail: process update handles failure at unknown_chat without domain bypass [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
-    $registry = new FakeCapabilityBus();
+    $registry = new FakeCapabilityBus;
     $p = H::processor(['identity' => $identity, 'registry' => $registry]);
     $update = H::telegramUpdate(userId: 42);
     if ('unknown_chat' === 'invalid_update_shape') {
@@ -66,7 +56,7 @@ it("fail: process update handles failure at unknown_chat without domain bypass [
     expect($registry->invokeCount())->toBe(0);
 });
 
-it("edge: process update failure at unknown_chat is observable in logs or failed jobs [D-019]", function () {
+it('edge: process update failure at unknown_chat is observable in logs or failed jobs [D-019]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -81,11 +71,10 @@ it("edge: process update failure at unknown_chat is observable in logs or failed
     expect(($r['observable'] ?? false) || $p->logs() !== [] || isset($r['tags']) || isset($r['error']))->toBeTrue();
 });
 
-
-it("fail: process update handles failure at identity_unresolved without domain bypass [MSG-003]", function () {
+it('fail: process update handles failure at identity_unresolved without domain bypass [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
-    $registry = new FakeCapabilityBus();
+    $registry = new FakeCapabilityBus;
     $p = H::processor(['identity' => $identity, 'registry' => $registry]);
     $update = H::telegramUpdate(userId: 42);
     if ('identity_unresolved' === 'invalid_update_shape') {
@@ -100,7 +89,7 @@ it("fail: process update handles failure at identity_unresolved without domain b
     expect($registry->invokeCount())->toBe(0);
 });
 
-it("edge: process update failure at identity_unresolved is observable in logs or failed jobs [D-019]", function () {
+it('edge: process update failure at identity_unresolved is observable in logs or failed jobs [D-019]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -115,11 +104,10 @@ it("edge: process update failure at identity_unresolved is observable in logs or
     expect(($r['observable'] ?? false) || $p->logs() !== [] || isset($r['tags']) || isset($r['error']))->toBeTrue();
 });
 
-
-it("fail: process update handles failure at thread_store_failure without domain bypass [MSG-003]", function () {
+it('fail: process update handles failure at thread_store_failure without domain bypass [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
-    $registry = new FakeCapabilityBus();
+    $registry = new FakeCapabilityBus;
     $p = H::processor(['identity' => $identity, 'registry' => $registry]);
     $update = H::telegramUpdate(userId: 42);
     if ('thread_store_failure' === 'invalid_update_shape') {
@@ -134,7 +122,7 @@ it("fail: process update handles failure at thread_store_failure without domain 
     expect($registry->invokeCount())->toBe(0);
 });
 
-it("edge: process update failure at thread_store_failure is observable in logs or failed jobs [D-019]", function () {
+it('edge: process update failure at thread_store_failure is observable in logs or failed jobs [D-019]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -149,11 +137,10 @@ it("edge: process update failure at thread_store_failure is observable in logs o
     expect(($r['observable'] ?? false) || $p->logs() !== [] || isset($r['tags']) || isset($r['error']))->toBeTrue();
 });
 
-
-it("fail: process update handles failure at ingress_failure without domain bypass [MSG-003]", function () {
+it('fail: process update handles failure at ingress_failure without domain bypass [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
-    $registry = new FakeCapabilityBus();
+    $registry = new FakeCapabilityBus;
     $p = H::processor(['identity' => $identity, 'registry' => $registry]);
     $update = H::telegramUpdate(userId: 42);
     if ('ingress_failure' === 'invalid_update_shape') {
@@ -168,7 +155,7 @@ it("fail: process update handles failure at ingress_failure without domain bypas
     expect($registry->invokeCount())->toBe(0);
 });
 
-it("edge: process update failure at ingress_failure is observable in logs or failed jobs [D-019]", function () {
+it('edge: process update failure at ingress_failure is observable in logs or failed jobs [D-019]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -183,11 +170,10 @@ it("edge: process update failure at ingress_failure is observable in logs or fai
     expect(($r['observable'] ?? false) || $p->logs() !== [] || isset($r['tags']) || isset($r['error']))->toBeTrue();
 });
 
-
-it("fail: process update handles failure at agent_failure without domain bypass [MSG-003]", function () {
+it('fail: process update handles failure at agent_failure without domain bypass [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
-    $registry = new FakeCapabilityBus();
+    $registry = new FakeCapabilityBus;
     $p = H::processor(['identity' => $identity, 'registry' => $registry]);
     $update = H::telegramUpdate(userId: 42);
     if ('agent_failure' === 'invalid_update_shape') {
@@ -202,7 +188,7 @@ it("fail: process update handles failure at agent_failure without domain bypass 
     expect($registry->invokeCount())->toBe(0);
 });
 
-it("edge: process update failure at agent_failure is observable in logs or failed jobs [D-019]", function () {
+it('edge: process update failure at agent_failure is observable in logs or failed jobs [D-019]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -217,11 +203,10 @@ it("edge: process update failure at agent_failure is observable in logs or faile
     expect(($r['observable'] ?? false) || $p->logs() !== [] || isset($r['tags']) || isset($r['error']))->toBeTrue();
 });
 
-
-it("fail: process update handles failure at tool_registry_failure without domain bypass [MSG-003]", function () {
+it('fail: process update handles failure at tool_registry_failure without domain bypass [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
-    $registry = new FakeCapabilityBus();
+    $registry = new FakeCapabilityBus;
     $p = H::processor(['identity' => $identity, 'registry' => $registry]);
     $update = H::telegramUpdate(userId: 42);
     if ('tool_registry_failure' === 'invalid_update_shape') {
@@ -236,7 +221,7 @@ it("fail: process update handles failure at tool_registry_failure without domain
     expect($registry->invokeCount())->toBe(0);
 });
 
-it("edge: process update failure at tool_registry_failure is observable in logs or failed jobs [D-019]", function () {
+it('edge: process update failure at tool_registry_failure is observable in logs or failed jobs [D-019]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -251,11 +236,10 @@ it("edge: process update failure at tool_registry_failure is observable in logs 
     expect(($r['observable'] ?? false) || $p->logs() !== [] || isset($r['tags']) || isset($r['error']))->toBeTrue();
 });
 
-
-it("fail: process update handles failure at reply_failure without domain bypass [MSG-003]", function () {
+it('fail: process update handles failure at reply_failure without domain bypass [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
-    $registry = new FakeCapabilityBus();
+    $registry = new FakeCapabilityBus;
     $p = H::processor(['identity' => $identity, 'registry' => $registry]);
     $update = H::telegramUpdate(userId: 42);
     if ('reply_failure' === 'invalid_update_shape') {
@@ -270,7 +254,7 @@ it("fail: process update handles failure at reply_failure without domain bypass 
     expect($registry->invokeCount())->toBe(0);
 });
 
-it("edge: process update failure at reply_failure is observable in logs or failed jobs [D-019]", function () {
+it('edge: process update failure at reply_failure is observable in logs or failed jobs [D-019]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);

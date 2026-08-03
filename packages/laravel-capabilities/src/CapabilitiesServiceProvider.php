@@ -2,6 +2,8 @@
 
 namespace Rawphp\Capabilities;
 
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
+use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\ServiceProvider;
 use Rawphp\Capabilities\Adapters\Artisan\ArtisanCommandRegistrar;
 use Rawphp\Capabilities\Adapters\Artisan\ArtisanCommandTable;
@@ -23,7 +25,6 @@ use Rawphp\Capabilities\Boot\CapabilitiesConfig;
 use Rawphp\Capabilities\Boot\ContainerBindings;
 use Rawphp\Capabilities\Boot\RegistrationPlan;
 use Rawphp\Capabilities\Boot\SurfaceNames;
-use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Rawphp\Capabilities\Contracts\AuthTokenIssuer;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
@@ -35,7 +36,7 @@ use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\Capabilities\Discovery\CapabilityDiscoveryBoot;
 use Rawphp\Capabilities\Http\HttpAuthGate;
 use Rawphp\Capabilities\Http\HttpRouteRegistrar;
-use Illuminate\Database\ConnectionInterface;
+use Rawphp\Capabilities\Http\RouteTable;
 use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\Capabilities\Observability\LogFallbackMetrics;
 use Rawphp\Capabilities\Persistence\TableGateway;
@@ -383,8 +384,6 @@ class CapabilitiesServiceProvider extends ServiceProvider
         }
     }
 
-
-
     /**
      * Register in-server Artisan ops commands from ArtisanCommandTable (REQ-024).
      *
@@ -432,7 +431,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
     }
 
     /**
-     * Map {@see \Rawphp\Capabilities\Http\RouteTable} onto the app router when http is enabled (REQ-021 / D-009).
+     * Map {@see RouteTable} onto the app router when http is enabled (REQ-021 / D-009).
      *
      * @return list<string> registered route keys (empty when disabled or no router)
      */
@@ -561,7 +560,6 @@ class CapabilitiesServiceProvider extends ServiceProvider
     }
 
     /**
-     * @param  object  $app
      * @return array<string, mixed>
      */
     private static function configFromApp(object $app): array

@@ -151,9 +151,6 @@ final class CapabilityDefinitionBuilder
         return $this;
     }
 
-    /**
-     * @param  bool|callable|null  $canDiscover
-     */
     public function canDiscover(bool|callable|null $canDiscover): self
     {
         $this->canDiscover = $canDiscover;

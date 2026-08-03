@@ -113,7 +113,6 @@ final class ContainerBindings
 
     /**
      * @param  array<string, mixed>  $config
-     * @param  object|null  $redis
      */
     private static function makeRedisProgressStore(array $config, ?object $redis): RedisProgressStore
     {

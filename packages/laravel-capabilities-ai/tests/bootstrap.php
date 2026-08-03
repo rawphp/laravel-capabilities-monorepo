@@ -5,7 +5,6 @@ declare(strict_types=1);
 /**
  * Worktree-safe bootstrap: prefer this package's src over shared vendor classmaps.
  */
-
 $packageRoot = dirname(__DIR__);
 $packageSrc = $packageRoot.'/src';
 $packageTests = $packageRoot.'/tests';

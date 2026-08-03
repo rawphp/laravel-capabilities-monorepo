@@ -6,6 +6,8 @@ namespace Rawphp\Capabilities\Tests\Fixtures;
 
 use Rawphp\Capabilities\Http\CallerDeriver;
 use Rawphp\Capabilities\Pipeline\PipelineStages;
+use Rawphp\Capabilities\Registry\CapabilityRegistry;
+use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\ErrorCodeMap;
 use Rawphp\Capabilities\Tests\Fixtures\ScopeCallerJobHelpers as ScopeH;
 
@@ -31,7 +33,7 @@ final class ParityHelpers
     /**
      * Force a pre-run stage failure for a caller and return harness + result.
      *
-     * @return array{registry: \Rawphp\Capabilities\Registry\CapabilityRegistry, fakes: mixed, runCount: object, name: string, result: \Rawphp\Capabilities\Support\CapabilityResult}
+     * @return array{registry: CapabilityRegistry, fakes: mixed, runCount: object, name: string, result: CapabilityResult}
      */
     public static function failStage(string $caller, string $stage): array
     {

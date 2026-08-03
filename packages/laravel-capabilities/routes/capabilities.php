@@ -5,8 +5,8 @@
  *
  * Product CLI is a remote HTTP client of these routes, not a second controller tree.
  * Registered only when surfaces.http.enabled is true via
- * {@see \Rawphp\Capabilities\CapabilitiesServiceProvider::bootHttpRoutes()}
- * which maps pure {@see \Rawphp\Capabilities\Http\RouteTable} definitions.
+ * {@see CapabilitiesServiceProvider::bootHttpRoutes()}
+ * which maps pure {@see RouteTable} definitions.
  *
  * This file is the documentation / import surface for the table — the service
  * provider is the lifecycle owner (not a hand-duplicated Route:: list).
@@ -24,6 +24,7 @@
  * | POST   | /{prefix}/{name} | CapabilityController@invoke |
  */
 
+use Rawphp\Capabilities\CapabilitiesServiceProvider;
 use Rawphp\Capabilities\Http\HttpRouteRegistrar;
 use Rawphp\Capabilities\Http\RouteTable;
 

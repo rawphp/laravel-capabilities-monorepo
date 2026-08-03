@@ -12,7 +12,6 @@ use Rawphp\Capabilities\Tests\Fixtures\AdapterHelpers;
 /**
  * D-011 contract table — each cell asserted with mock peers only.
  */
-
 function contract_harness(string $peer, bool $compatible = true): array
 {
     $peers = [

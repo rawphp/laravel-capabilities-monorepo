@@ -2,19 +2,11 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Support\CapabilityContext;
-use Rawphp\Capabilities\Support\CapabilityResult;
-use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
-use Rawphp\CapabilitiesMessaging\MessagingConfig;
-use Rawphp\CapabilitiesMessaging\Tests\Fixtures\FakeCapabilityBus;
-use Rawphp\CapabilitiesMessaging\Support\FakeTelegramBotClient;
-use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdate;
 use Rawphp\CapabilitiesMessaging\Telegram\TelegramAdapter;
+use Rawphp\CapabilitiesMessaging\Tests\Fixtures\FakeCapabilityBus;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers as H;
 
-
-
-it("happy: tool may run via registry when linked=True profile_ok=True tool_in_profile=True [MSG-003]", function () {
+it('happy: tool may run via registry when linked=True profile_ok=True tool_in_profile=True [MSG-003]', function () {
     $linked = true;
     $profileOk = true;
     $toolIn = true;
@@ -22,7 +14,7 @@ it("happy: tool may run via registry when linked=True profile_ok=True tool_in_pr
     if ($linked) {
         $identity->link('42', 'u1');
     }
-    $registry = new FakeCapabilityBus();
+    $registry = new FakeCapabilityBus;
     $cfg = H::config(['agent_profile' => $profileOk ? 'support' : '']);
     $tools = $toolIn ? ['support.ping'] : [];
     $adapter = new TelegramAdapter(H::bot(), static function () use ($toolIn) {
@@ -53,8 +45,7 @@ it("happy: tool may run via registry when linked=True profile_ok=True tool_in_pr
     }
 });
 
-
-it("fail: tool blocked when linked=True profile_ok=True tool_in_profile=False [P2-007]", function () {
+it('fail: tool blocked when linked=True profile_ok=True tool_in_profile=False [P2-007]', function () {
     $linked = true;
     $profileOk = true;
     $toolIn = false;
@@ -62,7 +53,7 @@ it("fail: tool blocked when linked=True profile_ok=True tool_in_profile=False [P
     if ($linked) {
         $identity->link('42', 'u1');
     }
-    $registry = new FakeCapabilityBus();
+    $registry = new FakeCapabilityBus;
     $cfg = H::config(['agent_profile' => $profileOk ? 'support' : '']);
     $tools = $toolIn ? ['support.ping'] : [];
     $adapter = new TelegramAdapter(H::bot(), static function () use ($toolIn) {
@@ -93,8 +84,7 @@ it("fail: tool blocked when linked=True profile_ok=True tool_in_profile=False [P
     }
 });
 
-
-it("fail: fail loud when linked=True profile_ok=False tool_in_profile=True [D-008]", function () {
+it('fail: fail loud when linked=True profile_ok=False tool_in_profile=True [D-008]', function () {
     $linked = true;
     $profileOk = false;
     $toolIn = true;
@@ -102,7 +92,7 @@ it("fail: fail loud when linked=True profile_ok=False tool_in_profile=True [D-00
     if ($linked) {
         $identity->link('42', 'u1');
     }
-    $registry = new FakeCapabilityBus();
+    $registry = new FakeCapabilityBus;
     $cfg = H::config(['agent_profile' => $profileOk ? 'support' : '']);
     $tools = $toolIn ? ['support.ping'] : [];
     $adapter = new TelegramAdapter(H::bot(), static function () use ($toolIn) {
@@ -133,8 +123,7 @@ it("fail: fail loud when linked=True profile_ok=False tool_in_profile=True [D-00
     }
 });
 
-
-it("fail: fail loud when linked=True profile_ok=False tool_in_profile=False [D-008]", function () {
+it('fail: fail loud when linked=True profile_ok=False tool_in_profile=False [D-008]', function () {
     $linked = true;
     $profileOk = false;
     $toolIn = false;
@@ -142,7 +131,7 @@ it("fail: fail loud when linked=True profile_ok=False tool_in_profile=False [D-0
     if ($linked) {
         $identity->link('42', 'u1');
     }
-    $registry = new FakeCapabilityBus();
+    $registry = new FakeCapabilityBus;
     $cfg = H::config(['agent_profile' => $profileOk ? 'support' : '']);
     $tools = $toolIn ? ['support.ping'] : [];
     $adapter = new TelegramAdapter(H::bot(), static function () use ($toolIn) {
@@ -173,8 +162,7 @@ it("fail: fail loud when linked=True profile_ok=False tool_in_profile=False [D-0
     }
 });
 
-
-it("fail: no tools when linked=False profile_ok=True tool_in_profile=True [MSG-002]", function () {
+it('fail: no tools when linked=False profile_ok=True tool_in_profile=True [MSG-002]', function () {
     $linked = false;
     $profileOk = true;
     $toolIn = true;
@@ -182,7 +170,7 @@ it("fail: no tools when linked=False profile_ok=True tool_in_profile=True [MSG-0
     if ($linked) {
         $identity->link('42', 'u1');
     }
-    $registry = new FakeCapabilityBus();
+    $registry = new FakeCapabilityBus;
     $cfg = H::config(['agent_profile' => $profileOk ? 'support' : '']);
     $tools = $toolIn ? ['support.ping'] : [];
     $adapter = new TelegramAdapter(H::bot(), static function () use ($toolIn) {
@@ -213,8 +201,7 @@ it("fail: no tools when linked=False profile_ok=True tool_in_profile=True [MSG-0
     }
 });
 
-
-it("fail: no tools when linked=False profile_ok=True tool_in_profile=False [MSG-002]", function () {
+it('fail: no tools when linked=False profile_ok=True tool_in_profile=False [MSG-002]', function () {
     $linked = false;
     $profileOk = true;
     $toolIn = false;
@@ -222,7 +209,7 @@ it("fail: no tools when linked=False profile_ok=True tool_in_profile=False [MSG-
     if ($linked) {
         $identity->link('42', 'u1');
     }
-    $registry = new FakeCapabilityBus();
+    $registry = new FakeCapabilityBus;
     $cfg = H::config(['agent_profile' => $profileOk ? 'support' : '']);
     $tools = $toolIn ? ['support.ping'] : [];
     $adapter = new TelegramAdapter(H::bot(), static function () use ($toolIn) {
@@ -253,8 +240,7 @@ it("fail: no tools when linked=False profile_ok=True tool_in_profile=False [MSG-
     }
 });
 
-
-it("fail: no tools when linked=False profile_ok=False tool_in_profile=True [MSG-002]", function () {
+it('fail: no tools when linked=False profile_ok=False tool_in_profile=True [MSG-002]', function () {
     $linked = false;
     $profileOk = false;
     $toolIn = true;
@@ -262,7 +248,7 @@ it("fail: no tools when linked=False profile_ok=False tool_in_profile=True [MSG-
     if ($linked) {
         $identity->link('42', 'u1');
     }
-    $registry = new FakeCapabilityBus();
+    $registry = new FakeCapabilityBus;
     $cfg = H::config(['agent_profile' => $profileOk ? 'support' : '']);
     $tools = $toolIn ? ['support.ping'] : [];
     $adapter = new TelegramAdapter(H::bot(), static function () use ($toolIn) {
@@ -293,8 +279,7 @@ it("fail: no tools when linked=False profile_ok=False tool_in_profile=True [MSG-
     }
 });
 
-
-it("fail: no tools when linked=False profile_ok=False tool_in_profile=False [MSG-002]", function () {
+it('fail: no tools when linked=False profile_ok=False tool_in_profile=False [MSG-002]', function () {
     $linked = false;
     $profileOk = false;
     $toolIn = false;
@@ -302,7 +287,7 @@ it("fail: no tools when linked=False profile_ok=False tool_in_profile=False [MSG
     if ($linked) {
         $identity->link('42', 'u1');
     }
-    $registry = new FakeCapabilityBus();
+    $registry = new FakeCapabilityBus;
     $cfg = H::config(['agent_profile' => $profileOk ? 'support' : '']);
     $tools = $toolIn ? ['support.ping'] : [];
     $adapter = new TelegramAdapter(H::bot(), static function () use ($toolIn) {

@@ -2,12 +2,16 @@
 
 namespace Rawphp\Capabilities\Contracts;
 
+use Illuminate\Contracts\Cache\Repository;
+use Rawphp\Capabilities\Support\ArrayRateLimitCache;
+use Rawphp\Capabilities\Support\IlluminateRateLimitCache;
+
 /**
  * Narrow shared-cache surface for multi-worker rate limits (L-008 / D-013).
  *
- * Hosts typically wrap {@see \Illuminate\Contracts\Cache\Repository} via
- * {@see \Rawphp\Capabilities\Support\IlluminateRateLimitCache}. Unit tests use
- * {@see \Rawphp\Capabilities\Support\ArrayRateLimitCache} (no Redis/app boot).
+ * Hosts typically wrap {@see Repository} via
+ * {@see IlluminateRateLimitCache}. Unit tests use
+ * {@see ArrayRateLimitCache} (no Redis/app boot).
  */
 interface RateLimitCache
 {

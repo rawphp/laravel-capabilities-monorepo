@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use Illuminate\Container\Container;
 use Illuminate\Database\Capsule\Manager as Capsule;
-use Illuminate\Database\Schema\Builder;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Schema;

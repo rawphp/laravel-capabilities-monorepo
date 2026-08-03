@@ -3,12 +3,14 @@
 namespace Rawphp\Capabilities\Contracts;
 
 use DateTimeImmutable;
+use Rawphp\Capabilities\Support\FixedClock;
+use Rawphp\Capabilities\Support\SystemClock;
 
 /**
  * Injectable clock for TTL, expiry, and lease logic.
  *
- * Unit tests use {@see \Rawphp\Capabilities\Support\FixedClock}; production
- * uses {@see \Rawphp\Capabilities\Support\SystemClock}.
+ * Unit tests use {@see FixedClock}; production
+ * uses {@see SystemClock}.
  */
 interface Clock
 {

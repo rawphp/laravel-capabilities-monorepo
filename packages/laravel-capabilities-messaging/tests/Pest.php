@@ -14,12 +14,13 @@
 */
 
 declare(strict_types=1);
+use Composer\Autoload\ClassLoader;
 
 $packageSrc = dirname(__DIR__).'/src';
 $packageTests = __DIR__;
 
 $loader = require dirname(__DIR__, 3).'/vendor/autoload.php';
-if ($loader instanceof Composer\Autoload\ClassLoader) {
+if ($loader instanceof ClassLoader) {
     $loader->setPsr4('Rawphp\\CapabilitiesMessaging\\', [$packageSrc]);
     $loader->setPsr4('Rawphp\\CapabilitiesMessaging\\Tests\\', [$packageTests]);
 }

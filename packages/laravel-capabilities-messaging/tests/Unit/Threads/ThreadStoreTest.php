@@ -2,40 +2,22 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Contracts\ApprovalNotifier;
-use Rawphp\Capabilities\Support\CapabilityContext;
-use Rawphp\Capabilities\Support\CapabilityResult;
-use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
-use Rawphp\CapabilitiesMessaging\MessagingConfig;
-use Rawphp\CapabilitiesMessaging\MessagingServiceProvider;
-use Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier;
-use Rawphp\CapabilitiesMessaging\Tests\Fixtures\FakeCapabilityBus;
-use Rawphp\CapabilitiesMessaging\Support\FakeQueue;
-use Rawphp\CapabilitiesMessaging\Support\FakeTelegramBotClient;
-use Rawphp\CapabilitiesMessaging\Support\LinkedUser;
-use Rawphp\CapabilitiesMessaging\Telegram\CallbackHandler;
-use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdate;
-use Rawphp\CapabilitiesMessaging\Telegram\TelegramAdapter;
-use Rawphp\CapabilitiesMessaging\Telegram\TelegramCallbackSigner;
-use Rawphp\CapabilitiesMessaging\Telegram\TelegramWebhookController;
-use Rawphp\CapabilitiesMessaging\Threads\ThreadStore;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers as H;
 
-
-it("happy: creates and retrieves thread by chat id [MSG-004]", function () {
+it('happy: creates and retrieves thread by chat id [MSG-004]', function () {
     $s = H::threads();
     $t = $s->getOrCreate('100');
     expect($s->find('100')['id'])->toBe($t['id']);
 });
 
-it("happy: appends history for agent turn [MSG-004]", function () {
+it('happy: appends history for agent turn [MSG-004]', function () {
     $s = H::threads();
     $t = $s->getOrCreate('100');
     $s->appendHistory($t['id'], ['role' => 'user', 'text' => 'hi']);
     expect($s->history($t['id']))->toHaveCount(1);
 });
 
-it("edge: topic threads isolated per topic id [MSG-004]", function () {
+it('edge: topic threads isolated per topic id [MSG-004]', function () {
     $s = H::threads();
     $a = $s->getOrCreate('100', 1);
     $b = $s->getOrCreate('100', 2);
@@ -44,19 +26,19 @@ it("edge: topic threads isolated per topic id [MSG-004]", function () {
     expect($a['id'])->not->toBe($b['id']);
 });
 
-it("happy: maps chat topic to conversation thread id [MSG-004]", function () {
+it('happy: maps chat topic to conversation thread id [MSG-004]', function () {
     $s = H::threads();
     expect($s->threadIdFor('c1', 'general'))->toBe('tg:c1:general');
 });
 
-it("fail: unknown chat without create policy does not leak other threads [MSG-004]", function () {
+it('fail: unknown chat without create policy does not leak other threads [MSG-004]', function () {
     $s = H::threads();
     $t = $s->getOrCreate('known');
     $s->appendHistory($t['id'], ['secret' => true]);
     expect($s->historyForChat('unknown', null, create: false))->toBeEmpty();
 });
 
-it("edge: history append is ordered [MSG-004]", function () {
+it('edge: history append is ordered [MSG-004]', function () {
     $s = H::threads();
     $t = $s->getOrCreate('100');
     $s->appendHistory($t['id'], ['n' => 1]);

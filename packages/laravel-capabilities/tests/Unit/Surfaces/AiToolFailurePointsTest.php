@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Capability;
+use Rawphp\Capabilities\Adapters\StructuredToolResponse;
 use Rawphp\Capabilities\Pipeline\PipelineStages;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Tests\Fixtures\AdapterHelpers;
@@ -11,7 +11,6 @@ use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
 /**
  * AI-001: structured tool errors + no incorrect mutation for each failure class.
  */
-
 function ai_failure_harness(array $opts = []): array
 {
     return AdapterHelpers::harness($opts);
@@ -19,7 +18,7 @@ function ai_failure_harness(array $opts = []): array
 
 function assert_ai_no_mutate_and_structured(array $h, CapabilityResult $result, string $expectedCode, string $cap = 'create-invoice'): void
 {
-    $structured = \Rawphp\Capabilities\Adapters\StructuredToolResponse::fromResult(
+    $structured = StructuredToolResponse::fromResult(
         $result,
         $result->error['normalized_code'] ?? null,
     );
@@ -82,7 +81,7 @@ it('happy: ai tool handle failure approval_required returns structured tool erro
     $h['registry']->forceFailStages(PipelineStages::NEEDS_APPROVAL);
     // forceFail on needs_approval may not yield approval_required — invoke with needs_approval option
     $r = CapabilityResult::approvalRequired('appr-1');
-    $s = \Rawphp\Capabilities\Adapters\StructuredToolResponse::fromResult($r);
+    $s = StructuredToolResponse::fromResult($r);
     expect($s['error']['code'])->toBe('approval_required')->and($s['error']['structured'])->toBeTrue();
 });
 

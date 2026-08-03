@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Domain;
 
+use Illuminate\Database\Capsule\Manager;
+use Illuminate\Database\Connection;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Rawphp\CapabilitiesAi\Models\TableNames;
 use Rawphp\CapabilitiesAi\Models\Turn;
 
@@ -15,7 +18,7 @@ use Rawphp\CapabilitiesAi\Models\Turn;
 final class TurnClaim
 {
     /**
-     * @return Turn|null  null when claim lost the race (0 rows)
+     * @return Turn|null null when claim lost the race (0 rows)
      */
     public function claim(string $turnUlid, string $owner): ?Turn
     {
@@ -42,23 +45,23 @@ final class TurnClaim
     }
 
     /**
-     * @return \Illuminate\Database\Connection
+     * @return Connection
      */
     private function connection()
     {
         if (
             function_exists('app')
-            && class_exists(\Illuminate\Support\Facades\DB::class)
+            && class_exists(DB::class)
         ) {
             try {
                 if (app()->bound('db')) {
-                    return \Illuminate\Support\Facades\DB::connection();
+                    return DB::connection();
                 }
             } catch (\Throwable) {
                 // fall through to Capsule
             }
         }
 
-        return \Illuminate\Database\Capsule\Manager::connection();
+        return Manager::connection();
     }
 }

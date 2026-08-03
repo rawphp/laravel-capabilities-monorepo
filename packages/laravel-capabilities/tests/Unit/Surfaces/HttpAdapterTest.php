@@ -10,7 +10,7 @@ use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Tests\Fixtures\FakeCapabilityBus;
 use Rawphp\Capabilities\Tests\Fixtures\HttpHelpers;
 
-it("happy: POST invoke maps JSON body to registry invoke [HTTP-001]", function () {
+it('happy: POST invoke maps JSON body to registry invoke [HTTP-001]', function () {
     $bus = new FakeCapabilityBus(CapabilityResult::ok(['invoice_id' => 7]));
     $controller = new CapabilityController($bus);
     $body = ['customer_id' => 42, 'amount_cents' => 2500, 'currency' => 'USD'];
@@ -26,7 +26,7 @@ it("happy: POST invoke maps JSON body to registry invoke [HTTP-001]", function (
         ->and($bus->invocations[0]['options']['caller'] ?? null)->toBe('http');
 });
 
-it("happy: GET list maps to catalog [HTTP-001]", function () {
+it('happy: GET list maps to catalog [HTTP-001]', function () {
     $h = HttpHelpers::harness();
     $res = $h['controller']->list(HttpHelpers::authedRequest());
     expect($res->isOk())->toBeTrue()
@@ -34,7 +34,7 @@ it("happy: GET list maps to catalog [HTTP-001]", function () {
         ->and($res->body['data']['capabilities'])->not->toBeEmpty();
 });
 
-it("happy: GET describe maps to capability detail [HTTP-001]", function () {
+it('happy: GET describe maps to capability detail [HTTP-001]', function () {
     $h = HttpHelpers::harness();
     $res = $h['controller']->describe(HttpHelpers::authedRequest(), $h['name']);
     expect($res->isOk())->toBeTrue()
@@ -42,7 +42,7 @@ it("happy: GET describe maps to capability detail [HTTP-001]", function () {
         ->and($res->body['data']['name'])->toBe($h['name']);
 });
 
-it("happy: POST approval accept reject map to ApprovalManager [HTTP-001]", function () {
+it('happy: POST approval accept reject map to ApprovalManager [HTTP-001]', function () {
     $h = HttpHelpers::harness();
     // Ensure controllers wire to ApprovalManager methods (shared tree).
     expect(method_exists($h['approvalController'], 'accept'))->toBeTrue()
@@ -52,7 +52,7 @@ it("happy: POST approval accept reject map to ApprovalManager [HTTP-001]", funct
     expect($guest->errorCode())->toBe('unauthenticated');
 });
 
-it("fail: unauthenticated request returns unauthenticated envelope [HTTP-001]", function () {
+it('fail: unauthenticated request returns unauthenticated envelope [HTTP-001]', function () {
     $h = HttpHelpers::harness();
     $res = $h['controller']->invoke(HttpHelpers::guestRequest([
         'method' => 'POST',
@@ -64,7 +64,7 @@ it("fail: unauthenticated request returns unauthenticated envelope [HTTP-001]", 
         ->and($res->body['error'])->toHaveKeys(['code', 'message', 'retryable', 'http_status']);
 });
 
-it("happy: middleware stack from config applied [HTTP-001]", function () {
+it('happy: middleware stack from config applied [HTTP-001]', function () {
     $mw = ['api', 'auth:sanctum', 'throttle:api'];
     $routes = HttpHelpers::routes([
         'enabled' => true,
@@ -81,7 +81,7 @@ it("happy: middleware stack from config applied [HTTP-001]", function () {
     }
 });
 
-it("edge: prefix from config surfaces.http.prefix [HTTP-001]", function () {
+it('edge: prefix from config surfaces.http.prefix [HTTP-001]', function () {
     $routes = HttpHelpers::routes([
         'enabled' => true,
         'prefix' => 'api/v1/caps',
@@ -94,7 +94,7 @@ it("edge: prefix from config surfaces.http.prefix [HTTP-001]", function () {
         ->and(RouteTable::pathFor(RouteTable::ROUTE_HEALTH, 'api/v1/caps'))->toBe('/api/v1/caps/health');
 });
 
-it("fail: forged caller header does not change derived caller [D-022]", function () {
+it('fail: forged caller header does not change derived caller [D-022]', function () {
     $bus = new FakeCapabilityBus(CapabilityResult::ok(['ok' => true]));
     $controller = new CapabilityController($bus, [
         'token_abilities' => ['capabilities:cli' => 'cli'],
@@ -118,7 +118,7 @@ it("fail: forged caller header does not change derived caller [D-022]", function
         ->and($res->body['meta']['derived_caller'] ?? null)->toBe('cli');
 });
 
-it("happy: Idempotency-Key header forwarded to registry [D-005]", function () {
+it('happy: Idempotency-Key header forwarded to registry [D-005]', function () {
     $bus = new FakeCapabilityBus(CapabilityResult::ok(['ok' => true]));
     $controller = new CapabilityController($bus);
     $controller->invoke(HttpHelpers::authedRequest([
@@ -131,7 +131,7 @@ it("happy: Idempotency-Key header forwarded to registry [D-005]", function () {
         ->and($controller->lastInvokeOptions()['idempotency_key'] ?? null)->toBe('key-abc-001');
 });
 
-it("fail: malformed JSON returns validation or bad request envelope [HTTP-001]", function () {
+it('fail: malformed JSON returns validation or bad request envelope [HTTP-001]', function () {
     $bus = new FakeCapabilityBus(CapabilityResult::ok(['should' => 'not-run']));
     $controller = new CapabilityController($bus);
     $res = $controller->invoke(HttpHelpers::authedRequest([

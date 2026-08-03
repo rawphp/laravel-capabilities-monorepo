@@ -7,8 +7,8 @@ Shared project instructions for all AI coding agents. **AGENTS.md is the source 
 - **Laravel Capabilities** is a **product capability bus** for Laravel apps in an agent-era world — not a chatbot, not an LLM SDK, not agent-native-with-PHP.
 - Job: **one domain capability → many surfaces**, without dual mutation paths.
 - A *capability* is a real product operation (create invoice, void subscription, …) defined once with name/description, schema, authorization, single `run()`, optional approval + audit — then exposed as needed.
-- Surfaces: in-app agent (`laravel/ai`), MCP (`laravel/mcp`), HTTP, product CLI (downloadable client), jobs. Messaging is a **sibling package**, not core.
-- Working titles: `rawphp/laravel-capabilities` (core), `rawphp/laravel-capabilities-messaging`, `rawphp/capabilities-cli` (Go).
+- Surfaces: in-app agent (`laravel/ai`), MCP (`laravel/mcp`), HTTP, product CLI (downloadable client), jobs. Messaging and AI turns are **sibling packages**, not core.
+- Working titles: `rawphp/laravel-capabilities` (core), `rawphp/laravel-capabilities-messaging`, `rawphp/laravel-capabilities-ai`, `rawphp/capabilities-cli` (Go).
 - **Status:** monorepo **unit-complete design** (package unit suites largely cover v0.1–v0.5 scope) — **not Packagist-published**, **not a stable public API**. Spec remains the design oracle where tests are silent; unit-green ≠ shipped product. See root README readiness residuals.
 - **Ship model:** develop here; on push to `main` / tags `v*`, CI mirrors each `packages/*` tree to its public package repo (`.github/workflows/split-packages.yml`). Package docs must stay **self-contained** after split (no relative links into monorepo-only `docs/`).
 
@@ -24,6 +24,8 @@ One sentence: *Define what the product can do once; let every agent-era channel 
   **Read when:** core package work
 - `@packages/laravel-capabilities-messaging/` — Telegram (then Slack/…); implements core contracts only  
   **Read when:** conversation surfaces
+- `@packages/laravel-capabilities-ai/` — turn / proposal runtime; tools only via bus  
+  **Read when:** conversation turns, LLM client seam, progress store
 - `@packages/capabilities-cli/` — Go product CLI (HTTP client; D-016)  
   **Read when:** CLI auth/catalog/run/MCP stdio
 
@@ -33,9 +35,10 @@ One sentence: *Define what the product can do once; let every agent-era channel 
 |---|---|---|---|
 | `packages/laravel-capabilities` | `rawphp/laravel-capabilities` | `rawphp/laravel-capabilities` | Registry, schema, HTTP API, AI/MCP/job adapters, approval SM, audit, scope, idempotency, **conversation ingress contracts** |
 | `packages/laravel-capabilities-messaging` | `rawphp/laravel-capabilities-messaging` | `rawphp/laravel-capabilities-messaging` | Telegram first: webhooks, identity, threads, chat approval notifier |
+| `packages/laravel-capabilities-ai` | `rawphp/laravel-capabilities-ai` | `rawphp/laravel-capabilities-ai` | Turn / proposal runtime, pluggable `LlmClient`, progress store; tools only via `CapabilityBus::invoke` |
 | `packages/capabilities-cli` | `rawphp/capabilities-cli` | `rawphp/capabilities-cli` | Downloadable Go client: auth + catalog + run + optional MCP stdio |
 
-Namespaces: `Rawphp\Capabilities\` (core), `Rawphp\CapabilitiesMessaging\` (messaging).
+Namespaces: `Rawphp\Capabilities\` (core), `Rawphp\CapabilitiesMessaging\` (messaging), `Rawphp\CapabilitiesAi\` (AI).
 
 Root `composer.json` path-requires the PHP packages for local work. CLI is Go (`go.mod`), not Composer. Consumer VCS/Packagist targets are the **package remotes**, not this monorepo.
 
@@ -56,7 +59,7 @@ Root `composer.json` path-requires the PHP packages for local work. CLI is Go (`
 - Do **not** invent a third capability discovery path beyond class `#[Capability]` + fluent `Capability::define` (D-017).
 - Do **not** commit secrets except `.env.example`; do not use `git commit --no-verify`.
 - Do **not** delete or clobber `docs/spec.md` when scaffolding or refactoring.
-- Do **not** add relative links from `packages/*/README.md` or `packages/*/docs/*` into monorepo-only paths (`../../docs/…`, monorepo root README) — those break after the three-package split. Use in-package paths or absolute monorepo GitHub URLs.
+- Do **not** add relative links from `packages/*/README.md` or `packages/*/docs/*` into monorepo-only paths (`../../docs/…`, monorepo root README) — those break after the four-package split. Use in-package paths or absolute monorepo GitHub URLs.
 - Do **not** add feature tests, HTTP/browser tests, database-backed tests, or any suite that requires a real DB, Redis, queue worker, or full Laravel app boot for assertions. **Unit tests only** (see Testing).
 
 ## Testing (IMPORTANT — non-negotiable)
@@ -76,7 +79,7 @@ Root `composer.json` path-requires the PHP packages for local work. CLI is Go (`
 
 ### Coverage floor (blocking)
 
-- **Minimum: 95%** unit-test coverage on package source (`packages/laravel-capabilities/src`, `packages/laravel-capabilities-messaging/src`, and Go packages for the CLI).
+- **Minimum: 95%** unit-test coverage on package source (`packages/laravel-capabilities/src`, `packages/laravel-capabilities-messaging/src`, `packages/laravel-capabilities-ai/src`, and Go packages for the CLI).
 - Measured with Pest/PCOV (or Xdebug) for PHP and `go test -cover` for the CLI — exact CI commands live with the test harness when added.
 - Coverage is **necessary but not sufficient**: 95% of weak asserts does not pass review. Tests must exercise real behaviour (happy path + intentional edges).
 - Do **not** game coverage with empty asserts, `@codeCoverageIgnore` on production logic, or shipping dead code to “raise %.”
@@ -114,6 +117,11 @@ packages/laravel-capabilities-messaging/
   tests/Pest.php
   tests/Unit/…          # only allowed PHP automated tests for messaging
 
+packages/laravel-capabilities-ai/
+  phpunit.xml
+  tests/Pest.php
+  tests/Unit/…          # only allowed PHP automated tests for AI turns
+
 packages/capabilities-cli/
   **/*_test.go          # Go unit tests next to code; no live network by default
 
@@ -130,7 +138,7 @@ Do **not** put package behaviour tests under monorepo-root `tests/`. Each Compos
 - **Gap report (matrix-aware):** `python3 tools/report_inventory_gaps.py` prints remaining inventory gaps after the same matching (totals + by package; does not rewrite the inventory).
 - **Source of truth:** when implemented, the tests define what the product is and is not. Spec text that has no scenario is incomplete; behaviour without a unit scenario is not specified for this monorepo.
 - Implement todos with mocks/fakes; do not convert them into feature/DB tests.
-- Run: `composer test:core` · `composer test:messaging` · `composer test:cli` (or `composer test` for both PHP packages).
+- Run: `composer test:core` · `composer test:messaging` · `composer test:ai` · `composer test:cli` (or `composer test` for the PHP packages).
 
 ### Quality bar
 

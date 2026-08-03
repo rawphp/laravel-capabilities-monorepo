@@ -30,6 +30,6 @@ it('InMemoryAuditWriter implements AuditWriter and records entries for read-back
 });
 
 it('InMemoryAuditWriter requires a Clock and fails loudly without it', function () {
-    expect(fn () => new InMemoryAuditWriter())
+    expect(fn () => new InMemoryAuditWriter)
         ->toThrow(ArgumentCountError::class);
 });

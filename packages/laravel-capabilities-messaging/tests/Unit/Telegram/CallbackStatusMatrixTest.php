@@ -2,27 +2,10 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Support\CapabilityContext;
-use Rawphp\Capabilities\Support\CapabilityResult;
-use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
-use Rawphp\CapabilitiesMessaging\MessagingConfig;
-use Rawphp\CapabilitiesMessaging\MessagingServiceProvider;
-use Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier;
-use Rawphp\CapabilitiesMessaging\Tests\Fixtures\FakeCapabilityBus;
-use Rawphp\CapabilitiesMessaging\Support\FakeQueue;
-use Rawphp\CapabilitiesMessaging\Support\FakeTelegramBotClient;
-use Rawphp\CapabilitiesMessaging\Support\LinkedUser;
 use Rawphp\CapabilitiesMessaging\Telegram\CallbackHandler;
-use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdate;
-use Rawphp\CapabilitiesMessaging\Telegram\TelegramAdapter;
-use Rawphp\CapabilitiesMessaging\Telegram\TelegramCallbackSigner;
-use Rawphp\CapabilitiesMessaging\Telegram\TelegramWebhookController;
-use Rawphp\CapabilitiesMessaging\Threads\ThreadStore;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers as H;
 
-
-
-it("edge: callback routes to manager when action=accept status=pending [D-006]", function () {
+it('edge: callback routes to manager when action=accept status=pending [D-006]', function () {
     $approvals = H::approvals();
     $approvals->request([
         'id' => 'st-accept-pending',
@@ -39,8 +22,7 @@ it("edge: callback routes to manager when action=accept status=pending [D-006]",
     expect($r['status'])->toBe('ok');
 });
 
-
-it("happy: callback no-op already handled when action=accept status=approved [D-006]", function () {
+it('happy: callback no-op already handled when action=accept status=approved [D-006]', function () {
     $approvals = H::approvals();
     $approvals->request([
         'id' => 'st-accept-approved',
@@ -58,8 +40,7 @@ it("happy: callback no-op already handled when action=accept status=approved [D-
     expect($r['status'])->toBe('already_handled');
 });
 
-
-it("happy: callback no-op already handled when action=accept status=rejected [D-006]", function () {
+it('happy: callback no-op already handled when action=accept status=rejected [D-006]', function () {
     $approvals = H::approvals();
     $approvals->request([
         'id' => 'st-accept-rejected',
@@ -77,8 +58,7 @@ it("happy: callback no-op already handled when action=accept status=rejected [D-
     expect($r['status'])->toBe('already_handled');
 });
 
-
-it("happy: callback no-op already handled when action=accept status=expired [D-006]", function () {
+it('happy: callback no-op already handled when action=accept status=expired [D-006]', function () {
     $approvals = H::approvals();
     $approvals->request([
         'id' => 'st-accept-expired',
@@ -96,8 +76,7 @@ it("happy: callback no-op already handled when action=accept status=expired [D-0
     expect($r['status'])->toBe('already_handled');
 });
 
-
-it("happy: callback no-op already handled when action=accept status=executed [D-006]", function () {
+it('happy: callback no-op already handled when action=accept status=executed [D-006]', function () {
     $approvals = H::approvals();
     $approvals->request([
         'id' => 'st-accept-executed',
@@ -115,8 +94,7 @@ it("happy: callback no-op already handled when action=accept status=executed [D-
     expect($r['status'])->toBe('already_handled');
 });
 
-
-it("edge: callback routes to manager when action=reject status=pending [D-006]", function () {
+it('edge: callback routes to manager when action=reject status=pending [D-006]', function () {
     $approvals = H::approvals();
     $approvals->request([
         'id' => 'st-reject-pending',
@@ -133,8 +111,7 @@ it("edge: callback routes to manager when action=reject status=pending [D-006]",
     expect($r['status'])->toBe('ok');
 });
 
-
-it("happy: callback no-op already handled when action=reject status=approved [D-006]", function () {
+it('happy: callback no-op already handled when action=reject status=approved [D-006]', function () {
     $approvals = H::approvals();
     $approvals->request([
         'id' => 'st-reject-approved',
@@ -152,8 +129,7 @@ it("happy: callback no-op already handled when action=reject status=approved [D-
     expect($r['status'])->toBe('already_handled');
 });
 
-
-it("happy: callback no-op already handled when action=reject status=rejected [D-006]", function () {
+it('happy: callback no-op already handled when action=reject status=rejected [D-006]', function () {
     $approvals = H::approvals();
     $approvals->request([
         'id' => 'st-reject-rejected',
@@ -171,8 +147,7 @@ it("happy: callback no-op already handled when action=reject status=rejected [D-
     expect($r['status'])->toBe('already_handled');
 });
 
-
-it("happy: callback no-op already handled when action=reject status=expired [D-006]", function () {
+it('happy: callback no-op already handled when action=reject status=expired [D-006]', function () {
     $approvals = H::approvals();
     $approvals->request([
         'id' => 'st-reject-expired',
@@ -190,8 +165,7 @@ it("happy: callback no-op already handled when action=reject status=expired [D-0
     expect($r['status'])->toBe('already_handled');
 });
 
-
-it("happy: callback no-op already handled when action=reject status=executed [D-006]", function () {
+it('happy: callback no-op already handled when action=reject status=executed [D-006]', function () {
     $approvals = H::approvals();
     $approvals->request([
         'id' => 'st-reject-executed',

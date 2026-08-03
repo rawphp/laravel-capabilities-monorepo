@@ -13,7 +13,7 @@ interface ScopedQueryFactory
 {
     /**
      * @param  class-string  $model
-     * @return mixed  Eloquent Builder or test double
+     * @return mixed Eloquent Builder or test double
      */
     public function for(CapabilityScope $scope, string $model): mixed;
 }

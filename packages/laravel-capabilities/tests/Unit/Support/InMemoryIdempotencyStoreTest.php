@@ -43,6 +43,6 @@ it('InMemoryIdempotencyStore implements IdempotencyStore and records a completed
 });
 
 it('InMemoryIdempotencyStore requires a Clock and fails loudly without it', function () {
-    expect(fn () => new InMemoryIdempotencyStore())
+    expect(fn () => new InMemoryIdempotencyStore)
         ->toThrow(ArgumentCountError::class);
 });

@@ -2,19 +2,9 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Approval\ApprovalCallbackVerifier;
-use Rawphp\Capabilities\Approval\ApprovalManager;
-use Rawphp\Capabilities\Approval\ApprovalPolicy;
-use Rawphp\Capabilities\Approval\ApprovalStateMachine;
-use Rawphp\Capabilities\Approval\Notifiers\CliApprovalNotifier;
-use Rawphp\Capabilities\Approval\Notifiers\HttpApprovalNotifier;
-use Rawphp\Capabilities\Approval\Notifiers\TelegramApprovalNotifier;
-use Rawphp\Capabilities\Events\CapabilityApprovalExecuted;
-use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\ApprovalHelpers;
-use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
-it("edge: decision path when shape=deferred status=pending action=accept actor=requester [D-006]", function () {
+it('edge: decision path when shape=deferred status=pending action=accept actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -51,7 +41,7 @@ it("edge: decision path when shape=deferred status=pending action=accept actor=r
     }
 });
 
-it("edge: decision path when shape=deferred status=pending action=accept actor=approver_role [D-006]", function () {
+it('edge: decision path when shape=deferred status=pending action=accept actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -88,7 +78,7 @@ it("edge: decision path when shape=deferred status=pending action=accept actor=a
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=pending action=accept actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=pending action=accept actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -125,7 +115,7 @@ it("fail: invalid or denied when shape=deferred status=pending action=accept act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=pending action=accept actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=pending action=accept actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -162,7 +152,7 @@ it("fail: invalid or denied when shape=deferred status=pending action=accept act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=pending action=accept actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=pending action=accept actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -199,7 +189,7 @@ it("fail: invalid or denied when shape=deferred status=pending action=accept act
     }
 });
 
-it("edge: decision path when shape=deferred status=pending action=reject actor=requester [D-006]", function () {
+it('edge: decision path when shape=deferred status=pending action=reject actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -210,6 +200,43 @@ it("edge: decision path when shape=deferred status=pending action=reject actor=r
         ]);
     }
     $actorObj = ApprovalHelpers::actorFor('requester', $row);
+    $before = $h['runCount']->value;
+    $tenant = isset($actorObj->tenant_id) ? $actorObj->tenant_id : null;
+    if ('reject' === 'accept') {
+        $r = $h['manager']->accept($id, $actorObj, ['tenant_id' => $tenant]);
+    } elseif ('reject' === 'reject') {
+        $r = $h['manager']->reject($id, $actorObj, 'reason', ['tenant_id' => $tenant]);
+    } else {
+        $r = $h['manager']->resume($id, $actorObj)[0];
+    }
+    if (true) {
+        if ('reject' === 'reject') {
+            expect($r->errorCode())->toBe('rejected');
+            expect($h['runCount']->value)->toBe($before);
+        } else {
+            $fresh = $h['store']->find($id);
+            $ok = $r->isOk() || ($r->meta['approval_replay'] ?? false) || ($fresh['status'] ?? '') === 'executed' || ($r->errorCode() === 'conflict' && 'deferred' === 'atomic');
+            expect($ok)->toBeTrue();
+        }
+    } else {
+        // No second domain apply. Terminal/invalid may replay stored result or error.
+        expect($h['runCount']->value)->toBe($before);
+        $isReplay = ($r->meta['approval_replay'] ?? false) || ($r->meta['idempotent_replay'] ?? false);
+        expect($isReplay || $r->isOk() === false)->toBeTrue();
+    }
+});
+
+it('edge: decision path when shape=deferred status=pending action=reject actor=approver_role [D-006]', function () {
+    $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
+    $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
+    $id = (string) $row['id'];
+    if ('pending' === 'approved') {
+        $h['store']->update($id, [
+            'approved_at' => $h['clock']->now()->modify('-120 seconds')->format(DATE_ATOM),
+            'execution_lease_until' => null,
+        ]);
+    }
+    $actorObj = ApprovalHelpers::actorFor('approver_role', $row);
     $before = $h['runCount']->value;
     $tenant = isset($actorObj->tenant_id) ? $actorObj->tenant_id : null;
     if ('reject' === 'accept') {
@@ -236,44 +263,7 @@ it("edge: decision path when shape=deferred status=pending action=reject actor=r
     }
 });
 
-it("edge: decision path when shape=deferred status=pending action=reject actor=approver_role [D-006]", function () {
-    $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
-    $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
-    $id = (string) $row['id'];
-    if ('pending' === 'approved') {
-        $h['store']->update($id, [
-            'approved_at' => $h['clock']->now()->modify('-120 seconds')->format(DATE_ATOM),
-            'execution_lease_until' => null,
-        ]);
-    }
-    $actorObj = ApprovalHelpers::actorFor('approver_role', $row);
-    $before = $h['runCount']->value;
-    $tenant = isset($actorObj->tenant_id) ? $actorObj->tenant_id : null;
-    if ('reject' === 'accept') {
-        $r = $h['manager']->accept($id, $actorObj, ['tenant_id' => $tenant]);
-    } elseif ('reject' === 'reject') {
-        $r = $h['manager']->reject($id, $actorObj, 'reason', ['tenant_id' => $tenant]);
-    } else {
-        $r = $h['manager']->resume($id, $actorObj)[0];
-    }
-    if (true) {
-        if ('reject' === 'reject') {
-            expect($r->errorCode())->toBe('rejected');
-            expect($h['runCount']->value)->toBe($before);
-        } else {
-            $fresh = $h['store']->find($id);
-            $ok = $r->isOk() || ($r->meta['approval_replay'] ?? false) || ($fresh['status'] ?? '') === 'executed' || ($r->errorCode() === 'conflict' && 'deferred' === 'atomic');
-            expect($ok)->toBeTrue();
-        }
-    } else {
-        // No second domain apply. Terminal/invalid may replay stored result or error.
-        expect($h['runCount']->value)->toBe($before);
-        $isReplay = ($r->meta['approval_replay'] ?? false) || ($r->meta['idempotent_replay'] ?? false);
-        expect($isReplay || $r->isOk() === false)->toBeTrue();
-    }
-});
-
-it("fail: invalid or denied when shape=deferred status=pending action=reject actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=pending action=reject actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -310,7 +300,7 @@ it("fail: invalid or denied when shape=deferred status=pending action=reject act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=pending action=reject actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=pending action=reject actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -347,7 +337,7 @@ it("fail: invalid or denied when shape=deferred status=pending action=reject act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=pending action=reject actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=pending action=reject actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -384,7 +374,7 @@ it("fail: invalid or denied when shape=deferred status=pending action=reject act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=pending action=resume actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=pending action=resume actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -421,7 +411,7 @@ it("fail: invalid or denied when shape=deferred status=pending action=resume act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=pending action=resume actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=pending action=resume actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -458,7 +448,7 @@ it("fail: invalid or denied when shape=deferred status=pending action=resume act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=pending action=resume actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=pending action=resume actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -495,7 +485,7 @@ it("fail: invalid or denied when shape=deferred status=pending action=resume act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=pending action=resume actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=pending action=resume actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -532,7 +522,7 @@ it("fail: invalid or denied when shape=deferred status=pending action=resume act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=pending action=resume actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=pending action=resume actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -569,7 +559,7 @@ it("fail: invalid or denied when shape=deferred status=pending action=resume act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=approved action=accept actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=approved action=accept actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -606,7 +596,7 @@ it("fail: invalid or denied when shape=deferred status=approved action=accept ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=approved action=accept actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=approved action=accept actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -643,7 +633,7 @@ it("fail: invalid or denied when shape=deferred status=approved action=accept ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=approved action=accept actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=approved action=accept actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -680,7 +670,7 @@ it("fail: invalid or denied when shape=deferred status=approved action=accept ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=approved action=accept actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=approved action=accept actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -717,7 +707,7 @@ it("fail: invalid or denied when shape=deferred status=approved action=accept ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=approved action=accept actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=approved action=accept actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -754,7 +744,7 @@ it("fail: invalid or denied when shape=deferred status=approved action=accept ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=approved action=reject actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=approved action=reject actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -791,7 +781,7 @@ it("fail: invalid or denied when shape=deferred status=approved action=reject ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=approved action=reject actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=approved action=reject actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -828,7 +818,7 @@ it("fail: invalid or denied when shape=deferred status=approved action=reject ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=approved action=reject actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=approved action=reject actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -865,7 +855,7 @@ it("fail: invalid or denied when shape=deferred status=approved action=reject ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=approved action=reject actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=approved action=reject actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -902,7 +892,7 @@ it("fail: invalid or denied when shape=deferred status=approved action=reject ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=approved action=reject actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=approved action=reject actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -939,7 +929,7 @@ it("fail: invalid or denied when shape=deferred status=approved action=reject ac
     }
 });
 
-it("edge: resume path when shape=deferred status=approved action=resume actor=requester [P2-004]", function () {
+it('edge: resume path when shape=deferred status=approved action=resume actor=requester [P2-004]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -976,7 +966,7 @@ it("edge: resume path when shape=deferred status=approved action=resume actor=re
     }
 });
 
-it("edge: resume path when shape=deferred status=approved action=resume actor=approver_role [P2-004]", function () {
+it('edge: resume path when shape=deferred status=approved action=resume actor=approver_role [P2-004]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -1013,7 +1003,7 @@ it("edge: resume path when shape=deferred status=approved action=resume actor=ap
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=approved action=resume actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=approved action=resume actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -1050,7 +1040,7 @@ it("fail: invalid or denied when shape=deferred status=approved action=resume ac
     }
 });
 
-it("edge: resume path when shape=deferred status=approved action=resume actor=system [P2-004]", function () {
+it('edge: resume path when shape=deferred status=approved action=resume actor=system [P2-004]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -1087,7 +1077,7 @@ it("edge: resume path when shape=deferred status=approved action=resume actor=sy
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=approved action=resume actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=approved action=resume actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -1124,7 +1114,7 @@ it("fail: invalid or denied when shape=deferred status=approved action=resume ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=rejected action=accept actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=rejected action=accept actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -1161,7 +1151,7 @@ it("fail: invalid or denied when shape=deferred status=rejected action=accept ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=rejected action=accept actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=rejected action=accept actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -1198,7 +1188,7 @@ it("fail: invalid or denied when shape=deferred status=rejected action=accept ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=rejected action=accept actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=rejected action=accept actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -1235,7 +1225,7 @@ it("fail: invalid or denied when shape=deferred status=rejected action=accept ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=rejected action=accept actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=rejected action=accept actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -1272,7 +1262,7 @@ it("fail: invalid or denied when shape=deferred status=rejected action=accept ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=rejected action=accept actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=rejected action=accept actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -1309,7 +1299,7 @@ it("fail: invalid or denied when shape=deferred status=rejected action=accept ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=rejected action=reject actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=rejected action=reject actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -1346,7 +1336,7 @@ it("fail: invalid or denied when shape=deferred status=rejected action=reject ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=rejected action=reject actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=rejected action=reject actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -1383,7 +1373,7 @@ it("fail: invalid or denied when shape=deferred status=rejected action=reject ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=rejected action=reject actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=rejected action=reject actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -1420,7 +1410,7 @@ it("fail: invalid or denied when shape=deferred status=rejected action=reject ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=rejected action=reject actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=rejected action=reject actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -1457,7 +1447,7 @@ it("fail: invalid or denied when shape=deferred status=rejected action=reject ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=rejected action=reject actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=rejected action=reject actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -1494,7 +1484,7 @@ it("fail: invalid or denied when shape=deferred status=rejected action=reject ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=rejected action=resume actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=rejected action=resume actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -1531,7 +1521,7 @@ it("fail: invalid or denied when shape=deferred status=rejected action=resume ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=rejected action=resume actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=rejected action=resume actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -1568,7 +1558,7 @@ it("fail: invalid or denied when shape=deferred status=rejected action=resume ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=rejected action=resume actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=rejected action=resume actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -1605,7 +1595,7 @@ it("fail: invalid or denied when shape=deferred status=rejected action=resume ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=rejected action=resume actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=rejected action=resume actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -1642,7 +1632,7 @@ it("fail: invalid or denied when shape=deferred status=rejected action=resume ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=rejected action=resume actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=rejected action=resume actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -1679,7 +1669,7 @@ it("fail: invalid or denied when shape=deferred status=rejected action=resume ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=expired action=accept actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=expired action=accept actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -1716,7 +1706,7 @@ it("fail: invalid or denied when shape=deferred status=expired action=accept act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=expired action=accept actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=expired action=accept actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -1753,7 +1743,7 @@ it("fail: invalid or denied when shape=deferred status=expired action=accept act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=expired action=accept actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=expired action=accept actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -1790,7 +1780,7 @@ it("fail: invalid or denied when shape=deferred status=expired action=accept act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=expired action=accept actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=expired action=accept actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -1827,7 +1817,7 @@ it("fail: invalid or denied when shape=deferred status=expired action=accept act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=expired action=accept actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=expired action=accept actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -1864,7 +1854,7 @@ it("fail: invalid or denied when shape=deferred status=expired action=accept act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=expired action=reject actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=expired action=reject actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -1901,7 +1891,7 @@ it("fail: invalid or denied when shape=deferred status=expired action=reject act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=expired action=reject actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=expired action=reject actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -1938,7 +1928,7 @@ it("fail: invalid or denied when shape=deferred status=expired action=reject act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=expired action=reject actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=expired action=reject actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -1975,7 +1965,7 @@ it("fail: invalid or denied when shape=deferred status=expired action=reject act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=expired action=reject actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=expired action=reject actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -2012,7 +2002,7 @@ it("fail: invalid or denied when shape=deferred status=expired action=reject act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=expired action=reject actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=expired action=reject actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -2049,7 +2039,7 @@ it("fail: invalid or denied when shape=deferred status=expired action=reject act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=expired action=resume actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=expired action=resume actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -2086,7 +2076,7 @@ it("fail: invalid or denied when shape=deferred status=expired action=resume act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=expired action=resume actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=expired action=resume actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -2123,7 +2113,7 @@ it("fail: invalid or denied when shape=deferred status=expired action=resume act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=expired action=resume actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=expired action=resume actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -2160,7 +2150,7 @@ it("fail: invalid or denied when shape=deferred status=expired action=resume act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=expired action=resume actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=expired action=resume actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -2197,7 +2187,7 @@ it("fail: invalid or denied when shape=deferred status=expired action=resume act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=expired action=resume actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=expired action=resume actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -2234,7 +2224,7 @@ it("fail: invalid or denied when shape=deferred status=expired action=resume act
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=executed action=accept actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=executed action=accept actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -2271,7 +2261,7 @@ it("fail: invalid or denied when shape=deferred status=executed action=accept ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=executed action=accept actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=executed action=accept actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -2308,7 +2298,7 @@ it("fail: invalid or denied when shape=deferred status=executed action=accept ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=executed action=accept actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=executed action=accept actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -2345,7 +2335,7 @@ it("fail: invalid or denied when shape=deferred status=executed action=accept ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=executed action=accept actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=executed action=accept actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -2382,7 +2372,7 @@ it("fail: invalid or denied when shape=deferred status=executed action=accept ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=executed action=accept actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=executed action=accept actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -2419,7 +2409,7 @@ it("fail: invalid or denied when shape=deferred status=executed action=accept ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=executed action=reject actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=executed action=reject actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -2456,7 +2446,7 @@ it("fail: invalid or denied when shape=deferred status=executed action=reject ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=executed action=reject actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=executed action=reject actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -2493,7 +2483,7 @@ it("fail: invalid or denied when shape=deferred status=executed action=reject ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=executed action=reject actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=executed action=reject actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -2530,7 +2520,7 @@ it("fail: invalid or denied when shape=deferred status=executed action=reject ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=executed action=reject actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=executed action=reject actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -2567,7 +2557,7 @@ it("fail: invalid or denied when shape=deferred status=executed action=reject ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=executed action=reject actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=executed action=reject actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -2604,7 +2594,7 @@ it("fail: invalid or denied when shape=deferred status=executed action=reject ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=executed action=resume actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=executed action=resume actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -2641,7 +2631,7 @@ it("fail: invalid or denied when shape=deferred status=executed action=resume ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=executed action=resume actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=executed action=resume actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -2678,7 +2668,7 @@ it("fail: invalid or denied when shape=deferred status=executed action=resume ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=executed action=resume actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=executed action=resume actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -2715,7 +2705,7 @@ it("fail: invalid or denied when shape=deferred status=executed action=resume ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=executed action=resume actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=executed action=resume actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -2752,7 +2742,7 @@ it("fail: invalid or denied when shape=deferred status=executed action=resume ac
     }
 });
 
-it("fail: invalid or denied when shape=deferred status=executed action=resume actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=deferred status=executed action=resume actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -2789,7 +2779,7 @@ it("fail: invalid or denied when shape=deferred status=executed action=resume ac
     }
 });
 
-it("edge: decision path when shape=atomic status=pending action=accept actor=requester [D-006]", function () {
+it('edge: decision path when shape=atomic status=pending action=accept actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -2800,43 +2790,6 @@ it("edge: decision path when shape=atomic status=pending action=accept actor=req
         ]);
     }
     $actorObj = ApprovalHelpers::actorFor('requester', $row);
-    $before = $h['runCount']->value;
-    $tenant = isset($actorObj->tenant_id) ? $actorObj->tenant_id : null;
-    if ('accept' === 'accept') {
-        $r = $h['manager']->accept($id, $actorObj, ['tenant_id' => $tenant]);
-    } elseif ('accept' === 'reject') {
-        $r = $h['manager']->reject($id, $actorObj, 'reason', ['tenant_id' => $tenant]);
-    } else {
-        $r = $h['manager']->resume($id, $actorObj)[0];
-    }
-    if (true) {
-        if ('accept' === 'reject') {
-            expect($r->errorCode())->toBe('rejected');
-            expect($h['runCount']->value)->toBe($before);
-        } else {
-            $fresh = $h['store']->find($id);
-            $ok = $r->isOk() || ($r->meta['approval_replay'] ?? false) || ($fresh['status'] ?? '') === 'executed' || ($r->errorCode() === 'conflict' && 'atomic' === 'atomic');
-            expect($ok)->toBeTrue();
-        }
-    } else {
-        // No second domain apply. Terminal/invalid may replay stored result or error.
-        expect($h['runCount']->value)->toBe($before);
-        $isReplay = ($r->meta['approval_replay'] ?? false) || ($r->meta['idempotent_replay'] ?? false);
-        expect($isReplay || $r->isOk() === false)->toBeTrue();
-    }
-});
-
-it("edge: decision path when shape=atomic status=pending action=accept actor=approver_role [D-006]", function () {
-    $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
-    $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
-    $id = (string) $row['id'];
-    if ('pending' === 'approved') {
-        $h['store']->update($id, [
-            'approved_at' => $h['clock']->now()->modify('-120 seconds')->format(DATE_ATOM),
-            'execution_lease_until' => null,
-        ]);
-    }
-    $actorObj = ApprovalHelpers::actorFor('approver_role', $row);
     $before = $h['runCount']->value;
     $tenant = isset($actorObj->tenant_id) ? $actorObj->tenant_id : null;
     if ('accept' === 'accept') {
@@ -2863,7 +2816,44 @@ it("edge: decision path when shape=atomic status=pending action=accept actor=app
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=pending action=accept actor=random [D-006]", function () {
+it('edge: decision path when shape=atomic status=pending action=accept actor=approver_role [D-006]', function () {
+    $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
+    $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
+    $id = (string) $row['id'];
+    if ('pending' === 'approved') {
+        $h['store']->update($id, [
+            'approved_at' => $h['clock']->now()->modify('-120 seconds')->format(DATE_ATOM),
+            'execution_lease_until' => null,
+        ]);
+    }
+    $actorObj = ApprovalHelpers::actorFor('approver_role', $row);
+    $before = $h['runCount']->value;
+    $tenant = isset($actorObj->tenant_id) ? $actorObj->tenant_id : null;
+    if ('accept' === 'accept') {
+        $r = $h['manager']->accept($id, $actorObj, ['tenant_id' => $tenant]);
+    } elseif ('accept' === 'reject') {
+        $r = $h['manager']->reject($id, $actorObj, 'reason', ['tenant_id' => $tenant]);
+    } else {
+        $r = $h['manager']->resume($id, $actorObj)[0];
+    }
+    if (true) {
+        if ('accept' === 'reject') {
+            expect($r->errorCode())->toBe('rejected');
+            expect($h['runCount']->value)->toBe($before);
+        } else {
+            $fresh = $h['store']->find($id);
+            $ok = $r->isOk() || ($r->meta['approval_replay'] ?? false) || ($fresh['status'] ?? '') === 'executed' || ($r->errorCode() === 'conflict' && 'atomic' === 'atomic');
+            expect($ok)->toBeTrue();
+        }
+    } else {
+        // No second domain apply. Terminal/invalid may replay stored result or error.
+        expect($h['runCount']->value)->toBe($before);
+        $isReplay = ($r->meta['approval_replay'] ?? false) || ($r->meta['idempotent_replay'] ?? false);
+        expect($isReplay || $r->isOk() === false)->toBeTrue();
+    }
+});
+
+it('fail: invalid or denied when shape=atomic status=pending action=accept actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -2900,7 +2890,7 @@ it("fail: invalid or denied when shape=atomic status=pending action=accept actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=pending action=accept actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=pending action=accept actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -2937,7 +2927,7 @@ it("fail: invalid or denied when shape=atomic status=pending action=accept actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=pending action=accept actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=pending action=accept actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -2974,7 +2964,7 @@ it("fail: invalid or denied when shape=atomic status=pending action=accept actor
     }
 });
 
-it("edge: decision path when shape=atomic status=pending action=reject actor=requester [D-006]", function () {
+it('edge: decision path when shape=atomic status=pending action=reject actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -3011,7 +3001,7 @@ it("edge: decision path when shape=atomic status=pending action=reject actor=req
     }
 });
 
-it("edge: decision path when shape=atomic status=pending action=reject actor=approver_role [D-006]", function () {
+it('edge: decision path when shape=atomic status=pending action=reject actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -3048,7 +3038,7 @@ it("edge: decision path when shape=atomic status=pending action=reject actor=app
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=pending action=reject actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=pending action=reject actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -3085,7 +3075,7 @@ it("fail: invalid or denied when shape=atomic status=pending action=reject actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=pending action=reject actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=pending action=reject actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -3122,7 +3112,7 @@ it("fail: invalid or denied when shape=atomic status=pending action=reject actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=pending action=reject actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=pending action=reject actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -3159,7 +3149,7 @@ it("fail: invalid or denied when shape=atomic status=pending action=reject actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=pending action=resume actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=pending action=resume actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -3196,7 +3186,7 @@ it("fail: invalid or denied when shape=atomic status=pending action=resume actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=pending action=resume actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=pending action=resume actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -3233,7 +3223,7 @@ it("fail: invalid or denied when shape=atomic status=pending action=resume actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=pending action=resume actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=pending action=resume actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -3270,7 +3260,7 @@ it("fail: invalid or denied when shape=atomic status=pending action=resume actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=pending action=resume actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=pending action=resume actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -3307,7 +3297,7 @@ it("fail: invalid or denied when shape=atomic status=pending action=resume actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=pending action=resume actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=pending action=resume actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -3344,7 +3334,7 @@ it("fail: invalid or denied when shape=atomic status=pending action=resume actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=approved action=accept actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=approved action=accept actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -3381,7 +3371,7 @@ it("fail: invalid or denied when shape=atomic status=approved action=accept acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=approved action=accept actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=approved action=accept actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -3418,7 +3408,7 @@ it("fail: invalid or denied when shape=atomic status=approved action=accept acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=approved action=accept actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=approved action=accept actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -3455,7 +3445,7 @@ it("fail: invalid or denied when shape=atomic status=approved action=accept acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=approved action=accept actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=approved action=accept actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -3492,7 +3482,7 @@ it("fail: invalid or denied when shape=atomic status=approved action=accept acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=approved action=accept actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=approved action=accept actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -3529,7 +3519,7 @@ it("fail: invalid or denied when shape=atomic status=approved action=accept acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=approved action=reject actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=approved action=reject actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -3566,7 +3556,7 @@ it("fail: invalid or denied when shape=atomic status=approved action=reject acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=approved action=reject actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=approved action=reject actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -3603,7 +3593,7 @@ it("fail: invalid or denied when shape=atomic status=approved action=reject acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=approved action=reject actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=approved action=reject actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -3640,7 +3630,7 @@ it("fail: invalid or denied when shape=atomic status=approved action=reject acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=approved action=reject actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=approved action=reject actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -3677,7 +3667,7 @@ it("fail: invalid or denied when shape=atomic status=approved action=reject acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=approved action=reject actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=approved action=reject actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -3714,7 +3704,7 @@ it("fail: invalid or denied when shape=atomic status=approved action=reject acto
     }
 });
 
-it("edge: resume path when shape=atomic status=approved action=resume actor=requester [P2-004]", function () {
+it('edge: resume path when shape=atomic status=approved action=resume actor=requester [P2-004]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -3751,7 +3741,7 @@ it("edge: resume path when shape=atomic status=approved action=resume actor=requ
     }
 });
 
-it("edge: resume path when shape=atomic status=approved action=resume actor=approver_role [P2-004]", function () {
+it('edge: resume path when shape=atomic status=approved action=resume actor=approver_role [P2-004]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -3788,7 +3778,7 @@ it("edge: resume path when shape=atomic status=approved action=resume actor=appr
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=approved action=resume actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=approved action=resume actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -3825,7 +3815,7 @@ it("fail: invalid or denied when shape=atomic status=approved action=resume acto
     }
 });
 
-it("edge: resume path when shape=atomic status=approved action=resume actor=system [P2-004]", function () {
+it('edge: resume path when shape=atomic status=approved action=resume actor=system [P2-004]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -3862,7 +3852,7 @@ it("edge: resume path when shape=atomic status=approved action=resume actor=syst
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=approved action=resume actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=approved action=resume actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -3899,7 +3889,7 @@ it("fail: invalid or denied when shape=atomic status=approved action=resume acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=rejected action=accept actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=rejected action=accept actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -3936,7 +3926,7 @@ it("fail: invalid or denied when shape=atomic status=rejected action=accept acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=rejected action=accept actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=rejected action=accept actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -3973,7 +3963,7 @@ it("fail: invalid or denied when shape=atomic status=rejected action=accept acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=rejected action=accept actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=rejected action=accept actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -4010,7 +4000,7 @@ it("fail: invalid or denied when shape=atomic status=rejected action=accept acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=rejected action=accept actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=rejected action=accept actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -4047,7 +4037,7 @@ it("fail: invalid or denied when shape=atomic status=rejected action=accept acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=rejected action=accept actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=rejected action=accept actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -4084,7 +4074,7 @@ it("fail: invalid or denied when shape=atomic status=rejected action=accept acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=rejected action=reject actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=rejected action=reject actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -4121,7 +4111,7 @@ it("fail: invalid or denied when shape=atomic status=rejected action=reject acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=rejected action=reject actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=rejected action=reject actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -4158,7 +4148,7 @@ it("fail: invalid or denied when shape=atomic status=rejected action=reject acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=rejected action=reject actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=rejected action=reject actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -4195,7 +4185,7 @@ it("fail: invalid or denied when shape=atomic status=rejected action=reject acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=rejected action=reject actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=rejected action=reject actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -4232,7 +4222,7 @@ it("fail: invalid or denied when shape=atomic status=rejected action=reject acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=rejected action=reject actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=rejected action=reject actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -4269,7 +4259,7 @@ it("fail: invalid or denied when shape=atomic status=rejected action=reject acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=rejected action=resume actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=rejected action=resume actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -4306,7 +4296,7 @@ it("fail: invalid or denied when shape=atomic status=rejected action=resume acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=rejected action=resume actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=rejected action=resume actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -4343,7 +4333,7 @@ it("fail: invalid or denied when shape=atomic status=rejected action=resume acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=rejected action=resume actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=rejected action=resume actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -4380,7 +4370,7 @@ it("fail: invalid or denied when shape=atomic status=rejected action=resume acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=rejected action=resume actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=rejected action=resume actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -4417,7 +4407,7 @@ it("fail: invalid or denied when shape=atomic status=rejected action=resume acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=rejected action=resume actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=rejected action=resume actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -4454,7 +4444,7 @@ it("fail: invalid or denied when shape=atomic status=rejected action=resume acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=expired action=accept actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=expired action=accept actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -4491,7 +4481,7 @@ it("fail: invalid or denied when shape=atomic status=expired action=accept actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=expired action=accept actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=expired action=accept actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -4528,7 +4518,7 @@ it("fail: invalid or denied when shape=atomic status=expired action=accept actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=expired action=accept actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=expired action=accept actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -4565,7 +4555,7 @@ it("fail: invalid or denied when shape=atomic status=expired action=accept actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=expired action=accept actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=expired action=accept actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -4602,7 +4592,7 @@ it("fail: invalid or denied when shape=atomic status=expired action=accept actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=expired action=accept actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=expired action=accept actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -4639,7 +4629,7 @@ it("fail: invalid or denied when shape=atomic status=expired action=accept actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=expired action=reject actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=expired action=reject actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -4676,7 +4666,7 @@ it("fail: invalid or denied when shape=atomic status=expired action=reject actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=expired action=reject actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=expired action=reject actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -4713,7 +4703,7 @@ it("fail: invalid or denied when shape=atomic status=expired action=reject actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=expired action=reject actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=expired action=reject actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -4750,7 +4740,7 @@ it("fail: invalid or denied when shape=atomic status=expired action=reject actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=expired action=reject actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=expired action=reject actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -4787,7 +4777,7 @@ it("fail: invalid or denied when shape=atomic status=expired action=reject actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=expired action=reject actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=expired action=reject actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -4824,7 +4814,7 @@ it("fail: invalid or denied when shape=atomic status=expired action=reject actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=expired action=resume actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=expired action=resume actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -4861,7 +4851,7 @@ it("fail: invalid or denied when shape=atomic status=expired action=resume actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=expired action=resume actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=expired action=resume actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -4898,7 +4888,7 @@ it("fail: invalid or denied when shape=atomic status=expired action=resume actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=expired action=resume actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=expired action=resume actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -4935,7 +4925,7 @@ it("fail: invalid or denied when shape=atomic status=expired action=resume actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=expired action=resume actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=expired action=resume actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -4972,7 +4962,7 @@ it("fail: invalid or denied when shape=atomic status=expired action=resume actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=expired action=resume actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=expired action=resume actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -5009,7 +4999,7 @@ it("fail: invalid or denied when shape=atomic status=expired action=resume actor
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=executed action=accept actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=executed action=accept actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -5046,7 +5036,7 @@ it("fail: invalid or denied when shape=atomic status=executed action=accept acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=executed action=accept actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=executed action=accept actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -5083,7 +5073,7 @@ it("fail: invalid or denied when shape=atomic status=executed action=accept acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=executed action=accept actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=executed action=accept actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -5120,7 +5110,7 @@ it("fail: invalid or denied when shape=atomic status=executed action=accept acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=executed action=accept actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=executed action=accept actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -5157,7 +5147,7 @@ it("fail: invalid or denied when shape=atomic status=executed action=accept acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=executed action=accept actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=executed action=accept actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -5194,7 +5184,7 @@ it("fail: invalid or denied when shape=atomic status=executed action=accept acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=executed action=reject actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=executed action=reject actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -5231,7 +5221,7 @@ it("fail: invalid or denied when shape=atomic status=executed action=reject acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=executed action=reject actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=executed action=reject actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -5268,7 +5258,7 @@ it("fail: invalid or denied when shape=atomic status=executed action=reject acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=executed action=reject actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=executed action=reject actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -5305,7 +5295,7 @@ it("fail: invalid or denied when shape=atomic status=executed action=reject acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=executed action=reject actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=executed action=reject actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -5342,7 +5332,7 @@ it("fail: invalid or denied when shape=atomic status=executed action=reject acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=executed action=reject actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=executed action=reject actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -5379,7 +5369,7 @@ it("fail: invalid or denied when shape=atomic status=executed action=reject acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=executed action=resume actor=requester [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=executed action=resume actor=requester [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -5416,7 +5406,7 @@ it("fail: invalid or denied when shape=atomic status=executed action=resume acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=executed action=resume actor=approver_role [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=executed action=resume actor=approver_role [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -5453,7 +5443,7 @@ it("fail: invalid or denied when shape=atomic status=executed action=resume acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=executed action=resume actor=random [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=executed action=resume actor=random [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -5490,7 +5480,7 @@ it("fail: invalid or denied when shape=atomic status=executed action=resume acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=executed action=resume actor=system [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=executed action=resume actor=system [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -5527,7 +5517,7 @@ it("fail: invalid or denied when shape=atomic status=executed action=resume acto
     }
 });
 
-it("fail: invalid or denied when shape=atomic status=executed action=resume actor=other_tenant [D-006]", function () {
+it('fail: invalid or denied when shape=atomic status=executed action=resume actor=other_tenant [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic', 'grace_seconds' => 0, 'lease_seconds' => 1]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -5563,4 +5553,3 @@ it("fail: invalid or denied when shape=atomic status=executed action=resume acto
         expect($isReplay || $r->isOk() === false)->toBeTrue();
     }
 });
-

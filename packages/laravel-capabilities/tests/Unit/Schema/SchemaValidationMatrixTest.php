@@ -127,4 +127,3 @@ foreach ($cases as [$kind, $badLabel, $bad, $good]) {
         expect($violations)->toBeEmpty();
     });
 }
-

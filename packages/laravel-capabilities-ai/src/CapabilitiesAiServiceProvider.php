@@ -76,7 +76,6 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
             return ContainerBindings::makeTurnService($app->make(ProgressStore::class));
         });
 
-
         $this->app->singleton(TurnRunner::class, function ($app) {
             $config = self::configFromApp($app);
 

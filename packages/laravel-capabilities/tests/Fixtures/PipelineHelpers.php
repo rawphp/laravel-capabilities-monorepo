@@ -5,16 +5,12 @@ declare(strict_types=1);
 namespace Rawphp\Capabilities\Tests\Fixtures;
 
 use Rawphp\Capabilities\Capability;
-use Rawphp\Capabilities\Contracts\Authorizer;
 use Rawphp\Capabilities\Pipeline\PipelineStages;
 use Rawphp\Capabilities\Pipeline\ResolveActor;
-use Rawphp\Capabilities\Registry\CapabilityDefinition;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Schema\FailingServerRuleChecker;
 use Rawphp\Capabilities\Schema\ServerRuleChecker;
 use Rawphp\Capabilities\Support\CapabilityResult;
-use Rawphp\Capabilities\Support\InMemoryRateLimiter;
-use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Support\SharedFakes;
 use stdClass;
@@ -40,7 +36,7 @@ final class PipelineHelpers
 
     /**
      * @param  array<string, mixed>  $opts
-     * @return array{registry: CapabilityRegistry, fakes: SharedFakes, runCount: \stdClass}
+     * @return array{registry: CapabilityRegistry, fakes: SharedFakes, runCount: stdClass}
      */
     public static function harness(array $opts = []): array
     {

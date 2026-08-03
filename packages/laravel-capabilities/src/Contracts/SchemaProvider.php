@@ -2,10 +2,12 @@
 
 namespace Rawphp\Capabilities\Contracts;
 
+use Rawphp\Capabilities\Support\CapabilityData;
+
 /**
  * Escape hatch / DTO contract for JSON Schema + hydration (D-015).
  *
- * Package-native {@see \Rawphp\Capabilities\Support\CapabilityData} implements this.
+ * Package-native {@see CapabilityData} implements this.
  * Custom types and optional Spatie bridges may implement it directly.
  */
 interface SchemaProvider

@@ -83,9 +83,6 @@ function req049SqliteConnection(): ConnectionInterface
     return $connection;
 }
 
-/**
- * @param  object  $store
- */
 function req049StoreGateway(object $store): TableGateway
 {
     $prop = (new ReflectionClass($store))->getProperty('table');

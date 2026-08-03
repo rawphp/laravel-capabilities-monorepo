@@ -9,9 +9,10 @@ use Rawphp\Capabilities\Adapters\Http\AuthController;
 use Rawphp\Capabilities\Adapters\Http\CapabilityController;
 use Rawphp\Capabilities\Http\HttpRequestContext;
 use Rawphp\Capabilities\Http\RouteTable;
+use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Tests\Fixtures\HttpHelpers;
 
-it("happy: catalog list describe invoke approval auth live on one CapabilityController tree [D-009]", function () {
+it('happy: catalog list describe invoke approval auth live on one CapabilityController tree [D-009]', function () {
     $h = HttpHelpers::harness();
     $routes = HttpHelpers::routes($h['http']);
 
@@ -30,7 +31,7 @@ it("happy: catalog list describe invoke approval auth live on one CapabilityCont
         ->and(class_exists(AuthController::class))->toBeTrue();
 });
 
-it("happy: product CLI is HTTP client of same invoke endpoint not separate controller [D-009]", function () {
+it('happy: product CLI is HTTP client of same invoke endpoint not separate controller [D-009]', function () {
     $routes = HttpHelpers::routes(['enabled' => true, 'prefix' => 'capabilities']);
     $invoke = RouteTable::find($routes, RouteTable::ROUTE_INVOKE);
     expect($invoke)->not->toBeNull()
@@ -44,13 +45,13 @@ it("happy: product CLI is HTTP client of same invoke endpoint not separate contr
     }
 });
 
-it("fail: no CliApiController invoke pipeline class exists [D-009]", function () {
+it('fail: no CliApiController invoke pipeline class exists [D-009]', function () {
     expect(class_exists('Rawphp\\Capabilities\\Adapters\\Http\\CliApiController'))->toBeFalse()
         ->and(class_exists('Rawphp\\Capabilities\\Http\\CliApiController'))->toBeFalse()
         ->and(class_exists('CliApiController'))->toBeFalse();
 });
 
-it("happy: validation authorize scope approval idempotency audit identical for caller http and cli in-process [D-009]", function () {
+it('happy: validation authorize scope approval idempotency audit identical for caller http and cli in-process [D-009]', function () {
     $h = HttpHelpers::harness();
     $input = [
         'customer_id' => 42,
@@ -66,9 +67,9 @@ it("happy: validation authorize scope approval idempotency audit identical for c
         ->and($http->data)->toEqual($cli->data);
 });
 
-it("edge: Accept vnd.capabilities.cli+json only changes presentation envelope [D-009]", function () {
+it('edge: Accept vnd.capabilities.cli+json only changes presentation envelope [D-009]', function () {
     $bus = HttpHelpers::mockBus(
-        invokeResult: \Rawphp\Capabilities\Support\CapabilityResult::ok(['invoice_id' => 1]),
+        invokeResult: CapabilityResult::ok(['invoice_id' => 1]),
     );
     $controller = new CapabilityController($bus);
     $req = HttpHelpers::authedRequest([
@@ -84,7 +85,7 @@ it("edge: Accept vnd.capabilities.cli+json only changes presentation envelope [D
         ->and($res->body['ok'])->toBeTrue();
 });
 
-it("happy: AuthController serves token and device-code for CLI and API clients [D-009]", function () {
+it('happy: AuthController serves token and device-code for CLI and API clients [D-009]', function () {
     $auth = new AuthController(['enabled' => true], ['enabled' => true], HttpHelpers::fakeAuthTokenIssuer());
     expect($auth->tokenFlowAvailable())->toBeTrue()
         ->and($auth->deviceCodeFlowAvailable())->toBeTrue()
@@ -99,7 +100,7 @@ it("happy: AuthController serves token and device-code for CLI and API clients [
         ->and($device->body['data'])->toHaveKey('device_code');
 });
 
-it("happy: ApprovalController shared for UI CLI and API [D-009]", function () {
+it('happy: ApprovalController shared for UI CLI and API [D-009]', function () {
     expect(class_exists(ApprovalController::class))->toBeTrue();
     $routes = HttpHelpers::routes(['enabled' => true]);
     $accept = RouteTable::find($routes, RouteTable::ROUTE_APPROVAL_ACCEPT);
@@ -108,7 +109,7 @@ it("happy: ApprovalController shared for UI CLI and API [D-009]", function () {
         ->and($reject['action'])->toBe('ApprovalController@reject');
 });
 
-it("happy: route GET /capabilities registered when http enabled [D-009]", function () {
+it('happy: route GET /capabilities registered when http enabled [D-009]', function () {
     $routes = HttpHelpers::routes(['enabled' => true, 'prefix' => 'capabilities']);
     $r = RouteTable::find($routes, RouteTable::ROUTE_LIST);
     expect($r)->not->toBeNull()
@@ -117,59 +118,59 @@ it("happy: route GET /capabilities registered when http enabled [D-009]", functi
         ->and(RouteTable::pathFor(RouteTable::ROUTE_LIST))->toBe('/capabilities');
 });
 
-it("fail: route GET /capabilities not registered when http disabled [D-009]", function () {
+it('fail: route GET /capabilities not registered when http disabled [D-009]', function () {
     $routes = HttpHelpers::routes(['enabled' => false]);
     expect(RouteTable::has($routes, RouteTable::ROUTE_LIST))->toBeFalse()
         ->and($routes)->toBeEmpty();
 });
 
-it("happy: route GET /capabilities/{name} registered when http enabled [D-009]", function () {
+it('happy: route GET /capabilities/{name} registered when http enabled [D-009]', function () {
     $routes = HttpHelpers::routes(['enabled' => true]);
     $r = RouteTable::find($routes, RouteTable::ROUTE_DESCRIBE);
     expect($r['method'])->toBe('GET')->and($r['uri'])->toBe('capabilities/{name}');
 });
 
-it("fail: route GET /capabilities/{name} not registered when http disabled [D-009]", function () {
+it('fail: route GET /capabilities/{name} not registered when http disabled [D-009]', function () {
     expect(RouteTable::has(HttpHelpers::routes(['enabled' => false]), RouteTable::ROUTE_DESCRIBE))->toBeFalse();
 });
 
-it("happy: route POST /capabilities/{name} registered when http enabled [D-009]", function () {
+it('happy: route POST /capabilities/{name} registered when http enabled [D-009]', function () {
     $r = RouteTable::find(HttpHelpers::routes(['enabled' => true]), RouteTable::ROUTE_INVOKE);
     expect($r['method'])->toBe('POST')->and($r['uri'])->toBe('capabilities/{name}');
 });
 
-it("fail: route POST /capabilities/{name} not registered when http disabled [D-009]", function () {
+it('fail: route POST /capabilities/{name} not registered when http disabled [D-009]', function () {
     expect(RouteTable::has(HttpHelpers::routes(['enabled' => false]), RouteTable::ROUTE_INVOKE))->toBeFalse();
 });
 
-it("happy: route POST /capabilities/approvals/{id}/accept registered when http enabled [D-009]", function () {
+it('happy: route POST /capabilities/approvals/{id}/accept registered when http enabled [D-009]', function () {
     $r = RouteTable::find(HttpHelpers::routes(['enabled' => true]), RouteTable::ROUTE_APPROVAL_ACCEPT);
     expect($r['method'])->toBe('POST')->and($r['uri'])->toBe('capabilities/approvals/{id}/accept');
 });
 
-it("fail: route POST /capabilities/approvals/{id}/accept not registered when http disabled [D-009]", function () {
+it('fail: route POST /capabilities/approvals/{id}/accept not registered when http disabled [D-009]', function () {
     expect(RouteTable::has(HttpHelpers::routes(['enabled' => false]), RouteTable::ROUTE_APPROVAL_ACCEPT))->toBeFalse();
 });
 
-it("happy: route POST /capabilities/approvals/{id}/reject registered when http enabled [D-009]", function () {
+it('happy: route POST /capabilities/approvals/{id}/reject registered when http enabled [D-009]', function () {
     $r = RouteTable::find(HttpHelpers::routes(['enabled' => true]), RouteTable::ROUTE_APPROVAL_REJECT);
     expect($r['uri'])->toBe('capabilities/approvals/{id}/reject');
 });
 
-it("fail: route POST /capabilities/approvals/{id}/reject not registered when http disabled [D-009]", function () {
+it('fail: route POST /capabilities/approvals/{id}/reject not registered when http disabled [D-009]', function () {
     expect(RouteTable::has(HttpHelpers::routes(['enabled' => false]), RouteTable::ROUTE_APPROVAL_REJECT))->toBeFalse();
 });
 
-it("happy: route GET /capabilities/health registered when http enabled [D-009]", function () {
+it('happy: route GET /capabilities/health registered when http enabled [D-009]', function () {
     $r = RouteTable::find(HttpHelpers::routes(['enabled' => true]), RouteTable::ROUTE_HEALTH);
     expect($r['method'])->toBe('GET')->and($r['uri'])->toBe('capabilities/health');
 });
 
-it("fail: route GET /capabilities/health not registered when http disabled [D-009]", function () {
+it('fail: route GET /capabilities/health not registered when http disabled [D-009]', function () {
     expect(RouteTable::has(HttpHelpers::routes(['enabled' => false]), RouteTable::ROUTE_HEALTH))->toBeFalse();
 });
 
-it("fail: second invoke controller tree for CLI is refused [D-009]", function () {
+it('fail: second invoke controller tree for CLI is refused [D-009]', function () {
     $routes = HttpHelpers::routes(['enabled' => true]);
     $invokeActions = array_filter($routes, fn ($r) => str_contains($r['action'], 'invoke'));
     expect(count($invokeActions))->toBe(1)

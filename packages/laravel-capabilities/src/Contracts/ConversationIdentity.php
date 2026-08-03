@@ -13,7 +13,7 @@ interface ConversationIdentity
      * Resolve a linked product actor for the external identity, or null if unlinked.
      *
      * @param  array<string, mixed>  $externalIdentity  e.g. channel + external user id
-     * @return object|null  Authenticatable / user principal when linked
+     * @return object|null Authenticatable / user principal when linked
      */
     public function resolve(array $externalIdentity): ?object;
 }

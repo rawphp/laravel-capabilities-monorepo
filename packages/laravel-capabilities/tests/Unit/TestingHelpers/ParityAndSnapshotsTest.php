@@ -5,9 +5,11 @@
 declare(strict_types=1);
 
 use InvalidArgumentException;
+use Rawphp\Capabilities\Support\ParityAssertionException;
 use Rawphp\Capabilities\Support\SchemaSnapshotException;
 use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\CatalogHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
 /**
  * @return array{input_schema: array<string, mixed>|null, output_schema: array<string, mixed>|null}
@@ -28,7 +30,7 @@ it('happy: assertSchemaSnapshot fails when input_schema changes without update [
     $snap['input_schema'] = ['type' => 'string'];
 
     expect(fn () => $h['registry']->assertSchemaSnapshot($h['name'], $snap))
-        ->toThrow(SchemaSnapshotException::class, "input_schema");
+        ->toThrow(SchemaSnapshotException::class, 'input_schema');
 });
 
 it('happy: assertSchemaSnapshot fails when output_schema changes without update [D-020]', function () {
@@ -37,7 +39,7 @@ it('happy: assertSchemaSnapshot fails when output_schema changes without update 
     $snap['output_schema'] = ['type' => 'string'];
 
     expect(fn () => $h['registry']->assertSchemaSnapshot($h['name'], $snap))
-        ->toThrow(SchemaSnapshotException::class, "output_schema");
+        ->toThrow(SchemaSnapshotException::class, 'output_schema');
 });
 
 it('happy: assertSchemaSnapshot passes when schema matches snapshot [D-020]', function () {
@@ -179,13 +181,13 @@ it('happy: assertLastScopeTenant reflects SystemActor first-class tenant not smu
 
 it('edge: assertParity same deny class across registry http and ai with mocks [D-020]', function () {
     // authorize: false → every surface denies; assert callback must not run on deny-path parity
-    $h = \Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers::harness([
+    $h = PipelineHelpers::harness([
         'authorize' => false,
         'allowSystemCallers' => true,
     ]);
     $asserted = 0;
     expect($h['registry']->assertParity($h['name'], [
-        'input' => \Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers::validInput(),
+        'input' => PipelineHelpers::validInput(),
         'surfaces' => ['http', 'ai'],
         'assert' => function () use (&$asserted) {
             $asserted++;
@@ -203,7 +205,7 @@ it('edge: assertParity mismatch throws with surface names and result classes [D-
         'input' => CatalogHelpers::input(),
         'surfaces' => ['http', 'mcp'],
     ]))->toThrow(
-        \Rawphp\Capabilities\Support\ParityAssertionException::class,
+        ParityAssertionException::class,
         'parity mismatch',
     );
 });

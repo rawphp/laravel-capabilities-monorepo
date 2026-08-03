@@ -5,7 +5,6 @@ declare(strict_types=1);
 use Rawphp\Capabilities\Capability;
 use Rawphp\Capabilities\Discovery\AttributeDiscoverer;
 use Rawphp\Capabilities\Discovery\DiscoveryPaths;
-use Rawphp\Capabilities\Tests\Fixtures\Capabilities\AttributedCreateInvoice;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\DiscoveryHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\Outside\OutsideCapability;

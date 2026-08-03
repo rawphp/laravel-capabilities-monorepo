@@ -22,7 +22,7 @@ final class CallbackHandler
 
     /**
      * @param  array<string, mixed>  $callbackPayload  decoded callback_data fields
-     * @param  array<string, mixed>  $telegramUser     from callback_query.from
+     * @param  array<string, mixed>  $telegramUser  from callback_query.from
      * @return array{status: string, result?: CapabilityResult|null, message: string}
      */
     public function handle(array $callbackPayload, array $telegramUser): array

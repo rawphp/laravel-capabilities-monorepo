@@ -7,7 +7,7 @@ declare(strict_types=1);
 use Rawphp\Capabilities\RateLimiting\AgentTurnBudget;
 use Rawphp\Capabilities\Tests\Fixtures\RateLimitHelpers;
 
-it("happy: agent loop allows when budget=1 calls=0 [D-013]", function () {
+it('happy: agent loop allows when budget=1 calls=0 [D-013]', function () {
     $budget = new AgentTurnBudget(1);
     expect($budget->allows(0))->toBeTrue();
     expect($budget->exhausted(0))->toBeFalse();
@@ -16,7 +16,7 @@ it("happy: agent loop allows when budget=1 calls=0 [D-013]", function () {
     expect($r->isOk())->toBeTrue();
 });
 
-it("happy: agent loop allows when budget=1 calls=1 [D-013]", function () {
+it('happy: agent loop allows when budget=1 calls=1 [D-013]', function () {
     $budget = new AgentTurnBudget(1);
     expect($budget->allows(1))->toBeTrue();
     expect($budget->exhausted(1))->toBeFalse();
@@ -25,7 +25,7 @@ it("happy: agent loop allows when budget=1 calls=1 [D-013]", function () {
     expect($r->isOk())->toBeTrue();
 });
 
-it("happy: agent loop allows when budget=1 calls=1 (case 1) [D-013]", function () {
+it('happy: agent loop allows when budget=1 calls=1 (case 1) [D-013]', function () {
     $budget = new AgentTurnBudget(1);
     expect($budget->allows(1))->toBeTrue();
     expect($budget->exhausted(1))->toBeFalse();
@@ -34,7 +34,7 @@ it("happy: agent loop allows when budget=1 calls=1 (case 1) [D-013]", function (
     expect($r->isOk())->toBeTrue();
 });
 
-it("fail: agent loop stops when budget=1 calls=2 [D-013]", function () {
+it('fail: agent loop stops when budget=1 calls=2 [D-013]', function () {
     $budget = new AgentTurnBudget(1);
     expect($budget->exhausted(2))->toBeTrue();
     expect($budget->allows(2))->toBeFalse();
@@ -43,7 +43,7 @@ it("fail: agent loop stops when budget=1 calls=2 [D-013]", function () {
     expect($r->errorCode())->toBe('rate_limited')->and($r->error['structured'] ?? null)->not->toBeNull();
 });
 
-it("happy: agent loop allows when budget=2 calls=0 [D-013]", function () {
+it('happy: agent loop allows when budget=2 calls=0 [D-013]', function () {
     $budget = new AgentTurnBudget(2);
     expect($budget->allows(0))->toBeTrue();
     expect($budget->exhausted(0))->toBeFalse();
@@ -52,7 +52,7 @@ it("happy: agent loop allows when budget=2 calls=0 [D-013]", function () {
     expect($r->isOk())->toBeTrue();
 });
 
-it("happy: agent loop allows when budget=2 calls=1 [D-013]", function () {
+it('happy: agent loop allows when budget=2 calls=1 [D-013]', function () {
     $budget = new AgentTurnBudget(2);
     expect($budget->allows(1))->toBeTrue();
     expect($budget->exhausted(1))->toBeFalse();
@@ -61,7 +61,7 @@ it("happy: agent loop allows when budget=2 calls=1 [D-013]", function () {
     expect($r->isOk())->toBeTrue();
 });
 
-it("happy: agent loop allows when budget=2 calls=2 [D-013]", function () {
+it('happy: agent loop allows when budget=2 calls=2 [D-013]', function () {
     $budget = new AgentTurnBudget(2);
     expect($budget->allows(2))->toBeTrue();
     expect($budget->exhausted(2))->toBeFalse();
@@ -70,7 +70,7 @@ it("happy: agent loop allows when budget=2 calls=2 [D-013]", function () {
     expect($r->isOk())->toBeTrue();
 });
 
-it("fail: agent loop stops when budget=2 calls=3 [D-013]", function () {
+it('fail: agent loop stops when budget=2 calls=3 [D-013]', function () {
     $budget = new AgentTurnBudget(2);
     expect($budget->exhausted(3))->toBeTrue();
     expect($budget->allows(3))->toBeFalse();
@@ -79,7 +79,7 @@ it("fail: agent loop stops when budget=2 calls=3 [D-013]", function () {
     expect($r->errorCode())->toBe('rate_limited')->and($r->error['structured'] ?? null)->not->toBeNull();
 });
 
-it("happy: agent loop allows when budget=8 calls=0 [D-013]", function () {
+it('happy: agent loop allows when budget=8 calls=0 [D-013]', function () {
     $budget = new AgentTurnBudget(8);
     expect($budget->allows(0))->toBeTrue();
     expect($budget->exhausted(0))->toBeFalse();
@@ -88,7 +88,7 @@ it("happy: agent loop allows when budget=8 calls=0 [D-013]", function () {
     expect($r->isOk())->toBeTrue();
 });
 
-it("happy: agent loop allows when budget=8 calls=1 [D-013]", function () {
+it('happy: agent loop allows when budget=8 calls=1 [D-013]', function () {
     $budget = new AgentTurnBudget(8);
     expect($budget->allows(1))->toBeTrue();
     expect($budget->exhausted(1))->toBeFalse();
@@ -97,7 +97,7 @@ it("happy: agent loop allows when budget=8 calls=1 [D-013]", function () {
     expect($r->isOk())->toBeTrue();
 });
 
-it("happy: agent loop allows when budget=8 calls=8 [D-013]", function () {
+it('happy: agent loop allows when budget=8 calls=8 [D-013]', function () {
     $budget = new AgentTurnBudget(8);
     expect($budget->allows(8))->toBeTrue();
     expect($budget->exhausted(8))->toBeFalse();
@@ -106,7 +106,7 @@ it("happy: agent loop allows when budget=8 calls=8 [D-013]", function () {
     expect($r->isOk())->toBeTrue();
 });
 
-it("fail: agent loop stops when budget=8 calls=9 [D-013]", function () {
+it('fail: agent loop stops when budget=8 calls=9 [D-013]', function () {
     $budget = new AgentTurnBudget(8);
     expect($budget->exhausted(9))->toBeTrue();
     expect($budget->allows(9))->toBeFalse();
@@ -115,7 +115,7 @@ it("fail: agent loop stops when budget=8 calls=9 [D-013]", function () {
     expect($r->errorCode())->toBe('rate_limited')->and($r->error['structured'] ?? null)->not->toBeNull();
 });
 
-it("happy: agent loop allows when budget=16 calls=0 [D-013]", function () {
+it('happy: agent loop allows when budget=16 calls=0 [D-013]', function () {
     $budget = new AgentTurnBudget(16);
     expect($budget->allows(0))->toBeTrue();
     expect($budget->exhausted(0))->toBeFalse();
@@ -124,7 +124,7 @@ it("happy: agent loop allows when budget=16 calls=0 [D-013]", function () {
     expect($r->isOk())->toBeTrue();
 });
 
-it("happy: agent loop allows when budget=16 calls=1 [D-013]", function () {
+it('happy: agent loop allows when budget=16 calls=1 [D-013]', function () {
     $budget = new AgentTurnBudget(16);
     expect($budget->allows(1))->toBeTrue();
     expect($budget->exhausted(1))->toBeFalse();
@@ -133,7 +133,7 @@ it("happy: agent loop allows when budget=16 calls=1 [D-013]", function () {
     expect($r->isOk())->toBeTrue();
 });
 
-it("happy: agent loop allows when budget=16 calls=16 [D-013]", function () {
+it('happy: agent loop allows when budget=16 calls=16 [D-013]', function () {
     $budget = new AgentTurnBudget(16);
     expect($budget->allows(16))->toBeTrue();
     expect($budget->exhausted(16))->toBeFalse();
@@ -142,7 +142,7 @@ it("happy: agent loop allows when budget=16 calls=16 [D-013]", function () {
     expect($r->isOk())->toBeTrue();
 });
 
-it("fail: agent loop stops when budget=16 calls=17 [D-013]", function () {
+it('fail: agent loop stops when budget=16 calls=17 [D-013]', function () {
     $budget = new AgentTurnBudget(16);
     expect($budget->exhausted(17))->toBeTrue();
     expect($budget->allows(17))->toBeFalse();
@@ -151,7 +151,7 @@ it("fail: agent loop stops when budget=16 calls=17 [D-013]", function () {
     expect($r->errorCode())->toBe('rate_limited')->and($r->error['structured'] ?? null)->not->toBeNull();
 });
 
-it("happy: agent loop allows when budget=32 calls=0 [D-013]", function () {
+it('happy: agent loop allows when budget=32 calls=0 [D-013]', function () {
     $budget = new AgentTurnBudget(32);
     expect($budget->allows(0))->toBeTrue();
     expect($budget->exhausted(0))->toBeFalse();
@@ -160,7 +160,7 @@ it("happy: agent loop allows when budget=32 calls=0 [D-013]", function () {
     expect($r->isOk())->toBeTrue();
 });
 
-it("happy: agent loop allows when budget=32 calls=1 [D-013]", function () {
+it('happy: agent loop allows when budget=32 calls=1 [D-013]', function () {
     $budget = new AgentTurnBudget(32);
     expect($budget->allows(1))->toBeTrue();
     expect($budget->exhausted(1))->toBeFalse();
@@ -169,7 +169,7 @@ it("happy: agent loop allows when budget=32 calls=1 [D-013]", function () {
     expect($r->isOk())->toBeTrue();
 });
 
-it("happy: agent loop allows when budget=32 calls=32 [D-013]", function () {
+it('happy: agent loop allows when budget=32 calls=32 [D-013]', function () {
     $budget = new AgentTurnBudget(32);
     expect($budget->allows(32))->toBeTrue();
     expect($budget->exhausted(32))->toBeFalse();
@@ -178,7 +178,7 @@ it("happy: agent loop allows when budget=32 calls=32 [D-013]", function () {
     expect($r->isOk())->toBeTrue();
 });
 
-it("fail: agent loop stops when budget=32 calls=33 [D-013]", function () {
+it('fail: agent loop stops when budget=32 calls=33 [D-013]', function () {
     $budget = new AgentTurnBudget(32);
     expect($budget->exhausted(33))->toBeTrue();
     expect($budget->allows(33))->toBeFalse();
@@ -186,4 +186,3 @@ it("fail: agent loop stops when budget=32 calls=33 [D-013]", function () {
     $r = $h['registry']->invoke($h['name'], RateLimitHelpers::input(), RateLimitHelpers::options('agent', ['agent_turn_tool_calls' => 33]));
     expect($r->errorCode())->toBe('rate_limited')->and($r->error['structured'] ?? null)->not->toBeNull();
 });
-

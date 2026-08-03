@@ -1,6 +1,6 @@
 {
     "name": "rawphp/laravel-capabilities-monorepo",
-    "description": "Monorepo for rawphp/laravel-capabilities, messaging sibling, and product CLI",
+    "description": "Monorepo for rawphp/laravel-capabilities, messaging + AI siblings, and product CLI",
     "type": "project",
     "license": "MIT",
     "require": {
@@ -11,6 +11,7 @@
         "rawphp/laravel-capabilities-ai": "*@dev"
     },
     "require-dev": {
+        "laravel/pint": "^1.30",
         "pestphp/pest": "^3.0",
         "phpstan/phpstan": "^2.0"
     },
@@ -52,6 +53,8 @@
         }
     ],
     "scripts": {
+        "format": "pint --config=pint.json packages/laravel-capabilities packages/laravel-capabilities-messaging packages/laravel-capabilities-ai",
+        "format:test": "pint --test --config=pint.json packages/laravel-capabilities packages/laravel-capabilities-messaging packages/laravel-capabilities-ai",
         "test": [
             "@test:core",
             "@test:messaging",

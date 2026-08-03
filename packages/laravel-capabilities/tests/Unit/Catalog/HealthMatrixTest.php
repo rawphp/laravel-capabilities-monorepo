@@ -6,7 +6,7 @@ declare(strict_types=1);
 
 use Rawphp\Capabilities\Tests\Fixtures\CatalogHelpers;
 
-it("edge: health reports surface agent status up when applicable [D-011]", function () {
+it('edge: health reports surface agent status up when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['agent' => 'up'],
         'surfaces' => ['agent' => 'up' != 'disabled_config'],
@@ -21,7 +21,7 @@ it("edge: health reports surface agent status up when applicable [D-011]", funct
     expect($report['surfaces']['agent']['status'] ?? null)->toBe('up');
 });
 
-it("edge: health reports surface agent status disabled_incompatible when applicable [D-011]", function () {
+it('edge: health reports surface agent status disabled_incompatible when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['agent' => 'disabled_incompatible'],
         'surfaces' => ['agent' => 'disabled_incompatible' != 'disabled_config'],
@@ -36,7 +36,7 @@ it("edge: health reports surface agent status disabled_incompatible when applica
     expect($report['surfaces']['agent']['status'] ?? null)->toBe('disabled_incompatible');
 });
 
-it("edge: health reports surface agent status disabled_config when applicable [D-011]", function () {
+it('edge: health reports surface agent status disabled_config when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['agent' => 'disabled_config'],
         'surfaces' => ['agent' => 'disabled_config' != 'disabled_config'],
@@ -51,7 +51,7 @@ it("edge: health reports surface agent status disabled_config when applicable [D
     expect($report['surfaces']['agent']['status'] ?? null)->toBe('disabled_config');
 });
 
-it("edge: health reports surface mcp status up when applicable [D-011]", function () {
+it('edge: health reports surface mcp status up when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['mcp' => 'up'],
         'surfaces' => ['mcp' => 'up' != 'disabled_config'],
@@ -66,7 +66,7 @@ it("edge: health reports surface mcp status up when applicable [D-011]", functio
     expect($report['surfaces']['mcp']['status'] ?? null)->toBe('up');
 });
 
-it("edge: health reports surface mcp status disabled_incompatible when applicable [D-011]", function () {
+it('edge: health reports surface mcp status disabled_incompatible when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['mcp' => 'disabled_incompatible'],
         'surfaces' => ['mcp' => 'disabled_incompatible' != 'disabled_config'],
@@ -81,7 +81,7 @@ it("edge: health reports surface mcp status disabled_incompatible when applicabl
     expect($report['surfaces']['mcp']['status'] ?? null)->toBe('disabled_incompatible');
 });
 
-it("edge: health reports surface mcp status disabled_config when applicable [D-011]", function () {
+it('edge: health reports surface mcp status disabled_config when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['mcp' => 'disabled_config'],
         'surfaces' => ['mcp' => 'disabled_config' != 'disabled_config'],
@@ -96,7 +96,7 @@ it("edge: health reports surface mcp status disabled_config when applicable [D-0
     expect($report['surfaces']['mcp']['status'] ?? null)->toBe('disabled_config');
 });
 
-it("edge: health reports surface http status up when applicable [D-011]", function () {
+it('edge: health reports surface http status up when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['http' => 'up'],
         'surfaces' => ['http' => 'up' != 'disabled_config'],
@@ -111,7 +111,7 @@ it("edge: health reports surface http status up when applicable [D-011]", functi
     expect($report['surfaces']['http']['status'] ?? null)->toBe('up');
 });
 
-it("edge: health reports surface http status disabled_incompatible when applicable [D-011]", function () {
+it('edge: health reports surface http status disabled_incompatible when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['http' => 'disabled_incompatible'],
         'surfaces' => ['http' => 'disabled_incompatible' != 'disabled_config'],
@@ -126,7 +126,7 @@ it("edge: health reports surface http status disabled_incompatible when applicab
     expect($report['surfaces']['http']['status'] ?? null)->toBe('disabled_incompatible');
 });
 
-it("edge: health reports surface http status disabled_config when applicable [D-011]", function () {
+it('edge: health reports surface http status disabled_config when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['http' => 'disabled_config'],
         'surfaces' => ['http' => 'disabled_config' != 'disabled_config'],
@@ -141,7 +141,7 @@ it("edge: health reports surface http status disabled_config when applicable [D-
     expect($report['surfaces']['http']['status'] ?? null)->toBe('disabled_config');
 });
 
-it("edge: health reports surface cli status up when applicable [D-011]", function () {
+it('edge: health reports surface cli status up when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['cli' => 'up'],
         'surfaces' => ['cli' => 'up' != 'disabled_config'],
@@ -156,7 +156,7 @@ it("edge: health reports surface cli status up when applicable [D-011]", functio
     expect($report['surfaces']['cli']['status'] ?? null)->toBe('up');
 });
 
-it("edge: health reports surface cli status disabled_incompatible when applicable [D-011]", function () {
+it('edge: health reports surface cli status disabled_incompatible when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['cli' => 'disabled_incompatible'],
         'surfaces' => ['cli' => 'disabled_incompatible' != 'disabled_config'],
@@ -171,7 +171,7 @@ it("edge: health reports surface cli status disabled_incompatible when applicabl
     expect($report['surfaces']['cli']['status'] ?? null)->toBe('disabled_incompatible');
 });
 
-it("edge: health reports surface cli status disabled_config when applicable [D-011]", function () {
+it('edge: health reports surface cli status disabled_config when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['cli' => 'disabled_config'],
         'surfaces' => ['cli' => 'disabled_config' != 'disabled_config'],
@@ -186,7 +186,7 @@ it("edge: health reports surface cli status disabled_config when applicable [D-0
     expect($report['surfaces']['cli']['status'] ?? null)->toBe('disabled_config');
 });
 
-it("edge: health reports surface job status up when applicable [D-011]", function () {
+it('edge: health reports surface job status up when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['job' => 'up'],
         'surfaces' => ['job' => 'up' != 'disabled_config'],
@@ -201,7 +201,7 @@ it("edge: health reports surface job status up when applicable [D-011]", functio
     expect($report['surfaces']['job']['status'] ?? null)->toBe('up');
 });
 
-it("edge: health reports surface job status disabled_incompatible when applicable [D-011]", function () {
+it('edge: health reports surface job status disabled_incompatible when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['job' => 'disabled_incompatible'],
         'surfaces' => ['job' => 'disabled_incompatible' != 'disabled_config'],
@@ -216,7 +216,7 @@ it("edge: health reports surface job status disabled_incompatible when applicabl
     expect($report['surfaces']['job']['status'] ?? null)->toBe('disabled_incompatible');
 });
 
-it("edge: health reports surface job status disabled_config when applicable [D-011]", function () {
+it('edge: health reports surface job status disabled_config when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['job' => 'disabled_config'],
         'surfaces' => ['job' => 'disabled_config' != 'disabled_config'],
@@ -231,7 +231,7 @@ it("edge: health reports surface job status disabled_config when applicable [D-0
     expect($report['surfaces']['job']['status'] ?? null)->toBe('disabled_config');
 });
 
-it("edge: health reports surface artisan status up when applicable [D-011]", function () {
+it('edge: health reports surface artisan status up when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['artisan' => 'up'],
         'surfaces' => ['artisan' => 'up' != 'disabled_config'],
@@ -246,7 +246,7 @@ it("edge: health reports surface artisan status up when applicable [D-011]", fun
     expect($report['surfaces']['artisan']['status'] ?? null)->toBe('up');
 });
 
-it("edge: health reports surface artisan status disabled_incompatible when applicable [D-011]", function () {
+it('edge: health reports surface artisan status disabled_incompatible when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['artisan' => 'disabled_incompatible'],
         'surfaces' => ['artisan' => 'disabled_incompatible' != 'disabled_config'],
@@ -261,7 +261,7 @@ it("edge: health reports surface artisan status disabled_incompatible when appli
     expect($report['surfaces']['artisan']['status'] ?? null)->toBe('disabled_incompatible');
 });
 
-it("edge: health reports surface artisan status disabled_config when applicable [D-011]", function () {
+it('edge: health reports surface artisan status disabled_config when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['artisan' => 'disabled_config'],
         'surfaces' => ['artisan' => 'disabled_config' != 'disabled_config'],
@@ -276,7 +276,7 @@ it("edge: health reports surface artisan status disabled_config when applicable 
     expect($report['surfaces']['artisan']['status'] ?? null)->toBe('disabled_config');
 });
 
-it("edge: health reports surface messaging status up when applicable [D-011]", function () {
+it('edge: health reports surface messaging status up when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['messaging' => 'up'],
         'surfaces' => ['messaging' => 'up' != 'disabled_config'],
@@ -291,7 +291,7 @@ it("edge: health reports surface messaging status up when applicable [D-011]", f
     expect($report['surfaces']['messaging']['status'] ?? null)->toBe('up');
 });
 
-it("edge: health reports surface messaging status disabled_incompatible when applicable [D-011]", function () {
+it('edge: health reports surface messaging status disabled_incompatible when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['messaging' => 'disabled_incompatible'],
         'surfaces' => ['messaging' => 'disabled_incompatible' != 'disabled_config'],
@@ -306,7 +306,7 @@ it("edge: health reports surface messaging status disabled_incompatible when app
     expect($report['surfaces']['messaging']['status'] ?? null)->toBe('disabled_incompatible');
 });
 
-it("edge: health reports surface messaging status disabled_config when applicable [D-011]", function () {
+it('edge: health reports surface messaging status disabled_config when applicable [D-011]', function () {
     $h = CatalogHelpers::harness([
         'health_overrides' => ['messaging' => 'disabled_config'],
         'surfaces' => ['messaging' => 'disabled_config' != 'disabled_config'],

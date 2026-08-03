@@ -143,6 +143,7 @@ final class IdempotencyStore implements IdempotencyStoreContract
         foreach ($this->rows as $identity => $row) {
             if ($this->isExpired($row)) {
                 unset($this->rows[$identity]);
+
                 continue;
             }
             $live[] = $row;

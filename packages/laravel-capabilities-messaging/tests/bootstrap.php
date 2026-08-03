@@ -8,7 +8,6 @@ declare(strict_types=1);
  * Parallel worktrees share monorepo vendor; classmap entries may point at sibling
  * worktrees. Register a prepended autoloader *after* Composer so local files win.
  */
-
 $packageRoot = dirname(__DIR__);
 $packageSrc = $packageRoot.'/src';
 $packageTests = $packageRoot.'/tests';

@@ -6,6 +6,7 @@ namespace Rawphp\Capabilities\Tests\Fixtures;
 
 use DateTimeImmutable;
 use Rawphp\Capabilities\Capability;
+use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Idempotency\IdempotencyConfig;
 use Rawphp\Capabilities\Idempotency\IdempotencyStore as DomainIdempotencyStore;
 use Rawphp\Capabilities\Idempotency\RequestHash;
@@ -68,7 +69,7 @@ final class IdempotencyHelpers
         $store ??= self::store($clock, $config?->ttlHours ?? 24);
 
         return new IdempotencyGuard(
-            store: $store instanceof \Rawphp\Capabilities\Contracts\IdempotencyStore ? $store : null,
+            store: $store instanceof IdempotencyStore ? $store : null,
             clock: $clock,
             config: $config ?? IdempotencyConfig::defaults(),
         );

@@ -8,8 +8,8 @@ use Rawphp\Capabilities\Contracts\ConversationIngress;
 use Rawphp\Capabilities\Contracts\ConversationReply;
 use Rawphp\Capabilities\Contracts\DefinesCapability;
 use Rawphp\Capabilities\Contracts\SchemaProvider;
-use Rawphp\Capabilities\Contracts\ScopeResolver;
 use Rawphp\Capabilities\Contracts\ScopedQueryFactory;
+use Rawphp\Capabilities\Contracts\ScopeResolver;
 
 /**
  * Bot / channel SDK type fragments that must never appear on core conversation contracts.

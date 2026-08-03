@@ -5,7 +5,6 @@
 declare(strict_types=1);
 
 use Rawphp\Capabilities\Http\HttpAuthGate;
-use Rawphp\Capabilities\Http\HttpRequestContext;
 use Rawphp\Capabilities\Http\RouteTable;
 use Rawphp\Capabilities\Tests\Fixtures\HttpHelpers;
 

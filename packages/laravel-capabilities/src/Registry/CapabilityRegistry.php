@@ -10,6 +10,7 @@ use Rawphp\Capabilities\Contracts\ApprovalStore;
 use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Contracts\Authorizer;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
+use Rawphp\Capabilities\Contracts\Clock;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\SchemaProvider;
@@ -30,27 +31,24 @@ use Rawphp\Capabilities\Profiles\TooManyToolsException;
 use Rawphp\Capabilities\RateLimiting\AgentTurnBudget;
 use Rawphp\Capabilities\RateLimiting\RateLimitKey;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
-use Rawphp\Capabilities\Schema\FailingServerRuleChecker;
 use Rawphp\Capabilities\Schema\InputValidator;
 use Rawphp\Capabilities\Schema\JsonSchemaValidator;
 use Rawphp\Capabilities\Schema\OutputValidator;
-use Rawphp\Capabilities\Schema\PassThroughServerRuleChecker;
-use Rawphp\Capabilities\Schema\SchemaValidationException;
 use Rawphp\Capabilities\Schema\ServerRuleChecker;
 use Rawphp\Capabilities\Schema\ToolSchemaExporter;
+use Rawphp\Capabilities\Support\AssertParity;
 use Rawphp\Capabilities\Support\CapabilityContext;
 use Rawphp\Capabilities\Support\CapabilityData;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\CapabilityScope;
 use Rawphp\Capabilities\Support\ErrorCodeMap;
 use Rawphp\Capabilities\Support\InMemoryRateLimiter;
-use Rawphp\Capabilities\Support\AssertParity;
 use Rawphp\Capabilities\Support\ParityAssertionException;
 use Rawphp\Capabilities\Support\SchemaSnapshot;
+use Rawphp\Capabilities\Support\SchemaSnapshotException;
 use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Support\SystemClock;
-use Rawphp\Capabilities\Contracts\Clock;
 use Throwable;
 
 /**
@@ -906,7 +904,7 @@ final class CapabilityRegistry implements CapabilityBus
     /**
      * Lock catalog input_schema + output_schema for a capability (D-020).
      *
-     * Contract: returns `true` on match; throws {@see \Rawphp\Capabilities\Support\SchemaSnapshotException}
+     * Contract: returns `true` on match; throws {@see SchemaSnapshotException}
      * on drift or missing snapshot file. Never throws on match.
      *
      * Modes:
@@ -1057,8 +1055,8 @@ final class CapabilityRegistry implements CapabilityBus
      *
      * @param  array<string, mixed>  $input
      * @param  array<string, mixed>  $options
-     *         caller, actor, context, scope, tenant_id, idempotency_key,
-     *         needs_approval, skip_server_rules, require_scope, fail_scope
+     *                                         caller, actor, context, scope, tenant_id, idempotency_key,
+     *                                         needs_approval, skip_server_rules, require_scope, fail_scope
      */
     public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
     {
@@ -2249,4 +2247,3 @@ final class CapabilityRegistry implements CapabilityBus
         ];
     }
 }
-

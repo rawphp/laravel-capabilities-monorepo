@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Domain;
 
+use Illuminate\Database\Capsule\Manager;
+use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Models\TableNames;
 use Rawphp\CapabilitiesAi\Models\Turn;
@@ -118,23 +121,23 @@ final class TurnService
     }
 
     /**
-     * @return \Illuminate\Database\Connection
+     * @return Connection
      */
     private function connection()
     {
         if (
             function_exists('app')
-            && class_exists(\Illuminate\Support\Facades\DB::class)
+            && class_exists(DB::class)
         ) {
             try {
                 if (app()->bound('db')) {
-                    return \Illuminate\Support\Facades\DB::connection();
+                    return DB::connection();
                 }
             } catch (\Throwable) {
                 // fall through
             }
         }
 
-        return \Illuminate\Database\Capsule\Manager::connection();
+        return Manager::connection();
     }
 }

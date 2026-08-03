@@ -13,6 +13,7 @@ use Rawphp\Capabilities\Boot\SurfaceRegistrar;
 use Rawphp\Capabilities\Registry\CapabilityDefinition;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Support\SystemActor;
 
 /**
@@ -186,7 +187,7 @@ final class BootHelpers
         // tests need authorize to pass so domain reachability is the surface gate alone.
         $registry = new CapabilityRegistry(
             globallyEnabledSurfaces: self::globalMap($globalEnabled),
-            authorizer: \Rawphp\Capabilities\Support\StubAuthorizer::allow(),
+            authorizer: StubAuthorizer::allow(),
         );
         $name = 'boot-invoke-probe';
         $registry->register(new CapabilityDefinition(
@@ -214,4 +215,3 @@ final class BootHelpers
         ]);
     }
 }
-

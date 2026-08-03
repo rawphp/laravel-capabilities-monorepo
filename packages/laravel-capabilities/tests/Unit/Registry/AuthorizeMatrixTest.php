@@ -2,50 +2,36 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Capability;
-use Rawphp\Capabilities\Facades\Capability as CapabilityFacade;
-use Rawphp\Capabilities\Pipeline\IdempotencyGuard;
 use Rawphp\Capabilities\Pipeline\PipelineStages;
-use Rawphp\Capabilities\Pipeline\ResolveActor;
-use Rawphp\Capabilities\Pipeline\ResolveTenantFromCaller;
-use Rawphp\Capabilities\Registry\CapabilityRegistry;
-use Rawphp\Capabilities\Support\CapabilityContext;
-use Rawphp\Capabilities\Support\CapabilityResult;
-use Rawphp\Capabilities\Support\CapabilityScope;
-use Rawphp\Capabilities\Support\FixedClock;
-use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
-use Rawphp\Capabilities\Support\StubAuthorizer;
-use Rawphp\Capabilities\Support\SystemActor;
-use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
-use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
-use Rawphp\Capabilities\Tests\Support\SharedFakes;
-use Illuminate\Support\Facades\Facade;
-use DateTimeImmutable;
 
-it("edge: authorize allow continues pipeline when actor=user caller=agent authorize=True [PIPE-001]", function () {
+it('edge: authorize allow continues pipeline when actor=user caller=agent authorize=True [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => true]);
     $extra = [];
     if ('user' === 'system') {
         $extra['actor'] = PipelineHelpers::systemActor('billing-worker');
-        if ('agent' === 'job') { $extra['job'] = ['tenant_id' => 't-1']; }
+        if ('agent' === 'job') {
+            $extra['job'] = ['tenant_id' => 't-1'];
+        }
     }
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('agent', $extra));
     expect($result->isOk())->toBeTrue()->and($h['registry']->lastStages())->toContain(PipelineStages::AUTHORIZE);
 });
 
-it("fail: authorize deny stops before run when actor=user caller=agent authorize=False [PIPE-001]", function () {
+it('fail: authorize deny stops before run when actor=user caller=agent authorize=False [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('user' === 'system') {
         $extra['actor'] = PipelineHelpers::systemActor('billing-worker');
-        if ('agent' === 'job') { $extra['job'] = ['tenant_id' => 't-1']; }
+        if ('agent' === 'job') {
+            $extra['job'] = ['tenant_id' => 't-1'];
+        }
     }
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('agent', $extra));
     expect($result->errorCode())->toBe('forbidden')->and($h['runCount']->value)->toBe(0);
 });
 
-it("fail: authorize deny no domain side effects when actor=user caller=agent authorize=False [PIPE-001]", function () {
+it('fail: authorize deny no domain side effects when actor=user caller=agent authorize=False [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('user' === 'system') {
@@ -55,7 +41,7 @@ it("fail: authorize deny no domain side effects when actor=user caller=agent aut
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: authorize deny may audit when actor=user caller=agent authorize=False [D-010]", function () {
+it('happy: authorize deny may audit when actor=user caller=agent authorize=False [D-010]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('user' === 'system') {
@@ -65,29 +51,33 @@ it("happy: authorize deny may audit when actor=user caller=agent authorize=False
     expect($h['fakes']->audit->all())->not->toBeEmpty();
 });
 
-it("edge: authorize allow continues pipeline when actor=user caller=mcp authorize=True [PIPE-001]", function () {
+it('edge: authorize allow continues pipeline when actor=user caller=mcp authorize=True [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => true]);
     $extra = [];
     if ('user' === 'system') {
         $extra['actor'] = PipelineHelpers::systemActor('billing-worker');
-        if ('mcp' === 'job') { $extra['job'] = ['tenant_id' => 't-1']; }
+        if ('mcp' === 'job') {
+            $extra['job'] = ['tenant_id' => 't-1'];
+        }
     }
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('mcp', $extra));
     expect($result->isOk())->toBeTrue()->and($h['registry']->lastStages())->toContain(PipelineStages::AUTHORIZE);
 });
 
-it("fail: authorize deny stops before run when actor=user caller=mcp authorize=False [PIPE-001]", function () {
+it('fail: authorize deny stops before run when actor=user caller=mcp authorize=False [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('user' === 'system') {
         $extra['actor'] = PipelineHelpers::systemActor('billing-worker');
-        if ('mcp' === 'job') { $extra['job'] = ['tenant_id' => 't-1']; }
+        if ('mcp' === 'job') {
+            $extra['job'] = ['tenant_id' => 't-1'];
+        }
     }
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('mcp', $extra));
     expect($result->errorCode())->toBe('forbidden')->and($h['runCount']->value)->toBe(0);
 });
 
-it("fail: authorize deny no domain side effects when actor=user caller=mcp authorize=False [PIPE-001]", function () {
+it('fail: authorize deny no domain side effects when actor=user caller=mcp authorize=False [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('user' === 'system') {
@@ -97,7 +87,7 @@ it("fail: authorize deny no domain side effects when actor=user caller=mcp autho
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: authorize deny may audit when actor=user caller=mcp authorize=False [D-010]", function () {
+it('happy: authorize deny may audit when actor=user caller=mcp authorize=False [D-010]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('user' === 'system') {
@@ -107,29 +97,33 @@ it("happy: authorize deny may audit when actor=user caller=mcp authorize=False [
     expect($h['fakes']->audit->all())->not->toBeEmpty();
 });
 
-it("edge: authorize allow continues pipeline when actor=user caller=http authorize=True [PIPE-001]", function () {
+it('edge: authorize allow continues pipeline when actor=user caller=http authorize=True [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => true]);
     $extra = [];
     if ('user' === 'system') {
         $extra['actor'] = PipelineHelpers::systemActor('billing-worker');
-        if ('http' === 'job') { $extra['job'] = ['tenant_id' => 't-1']; }
+        if ('http' === 'job') {
+            $extra['job'] = ['tenant_id' => 't-1'];
+        }
     }
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http', $extra));
     expect($result->isOk())->toBeTrue()->and($h['registry']->lastStages())->toContain(PipelineStages::AUTHORIZE);
 });
 
-it("fail: authorize deny stops before run when actor=user caller=http authorize=False [PIPE-001]", function () {
+it('fail: authorize deny stops before run when actor=user caller=http authorize=False [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('user' === 'system') {
         $extra['actor'] = PipelineHelpers::systemActor('billing-worker');
-        if ('http' === 'job') { $extra['job'] = ['tenant_id' => 't-1']; }
+        if ('http' === 'job') {
+            $extra['job'] = ['tenant_id' => 't-1'];
+        }
     }
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http', $extra));
     expect($result->errorCode())->toBe('forbidden')->and($h['runCount']->value)->toBe(0);
 });
 
-it("fail: authorize deny no domain side effects when actor=user caller=http authorize=False [PIPE-001]", function () {
+it('fail: authorize deny no domain side effects when actor=user caller=http authorize=False [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('user' === 'system') {
@@ -139,7 +133,7 @@ it("fail: authorize deny no domain side effects when actor=user caller=http auth
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: authorize deny may audit when actor=user caller=http authorize=False [D-010]", function () {
+it('happy: authorize deny may audit when actor=user caller=http authorize=False [D-010]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('user' === 'system') {
@@ -149,29 +143,33 @@ it("happy: authorize deny may audit when actor=user caller=http authorize=False 
     expect($h['fakes']->audit->all())->not->toBeEmpty();
 });
 
-it("edge: authorize allow continues pipeline when actor=user caller=cli authorize=True [PIPE-001]", function () {
+it('edge: authorize allow continues pipeline when actor=user caller=cli authorize=True [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => true]);
     $extra = [];
     if ('user' === 'system') {
         $extra['actor'] = PipelineHelpers::systemActor('billing-worker');
-        if ('cli' === 'job') { $extra['job'] = ['tenant_id' => 't-1']; }
+        if ('cli' === 'job') {
+            $extra['job'] = ['tenant_id' => 't-1'];
+        }
     }
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('cli', $extra));
     expect($result->isOk())->toBeTrue()->and($h['registry']->lastStages())->toContain(PipelineStages::AUTHORIZE);
 });
 
-it("fail: authorize deny stops before run when actor=user caller=cli authorize=False [PIPE-001]", function () {
+it('fail: authorize deny stops before run when actor=user caller=cli authorize=False [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('user' === 'system') {
         $extra['actor'] = PipelineHelpers::systemActor('billing-worker');
-        if ('cli' === 'job') { $extra['job'] = ['tenant_id' => 't-1']; }
+        if ('cli' === 'job') {
+            $extra['job'] = ['tenant_id' => 't-1'];
+        }
     }
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('cli', $extra));
     expect($result->errorCode())->toBe('forbidden')->and($h['runCount']->value)->toBe(0);
 });
 
-it("fail: authorize deny no domain side effects when actor=user caller=cli authorize=False [PIPE-001]", function () {
+it('fail: authorize deny no domain side effects when actor=user caller=cli authorize=False [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('user' === 'system') {
@@ -181,7 +179,7 @@ it("fail: authorize deny no domain side effects when actor=user caller=cli autho
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: authorize deny may audit when actor=user caller=cli authorize=False [D-010]", function () {
+it('happy: authorize deny may audit when actor=user caller=cli authorize=False [D-010]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('user' === 'system') {
@@ -191,29 +189,33 @@ it("happy: authorize deny may audit when actor=user caller=cli authorize=False [
     expect($h['fakes']->audit->all())->not->toBeEmpty();
 });
 
-it("edge: authorize allow continues pipeline when actor=user caller=job authorize=True [PIPE-001]", function () {
+it('edge: authorize allow continues pipeline when actor=user caller=job authorize=True [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => true]);
     $extra = [];
     if ('user' === 'system') {
         $extra['actor'] = PipelineHelpers::systemActor('billing-worker');
-        if ('job' === 'job') { $extra['job'] = ['tenant_id' => 't-1']; }
+        if ('job' === 'job') {
+            $extra['job'] = ['tenant_id' => 't-1'];
+        }
     }
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('job', $extra));
     expect($result->isOk())->toBeTrue()->and($h['registry']->lastStages())->toContain(PipelineStages::AUTHORIZE);
 });
 
-it("fail: authorize deny stops before run when actor=user caller=job authorize=False [PIPE-001]", function () {
+it('fail: authorize deny stops before run when actor=user caller=job authorize=False [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('user' === 'system') {
         $extra['actor'] = PipelineHelpers::systemActor('billing-worker');
-        if ('job' === 'job') { $extra['job'] = ['tenant_id' => 't-1']; }
+        if ('job' === 'job') {
+            $extra['job'] = ['tenant_id' => 't-1'];
+        }
     }
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('job', $extra));
     expect($result->errorCode())->toBe('forbidden')->and($h['runCount']->value)->toBe(0);
 });
 
-it("fail: authorize deny no domain side effects when actor=user caller=job authorize=False [PIPE-001]", function () {
+it('fail: authorize deny no domain side effects when actor=user caller=job authorize=False [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('user' === 'system') {
@@ -223,7 +225,7 @@ it("fail: authorize deny no domain side effects when actor=user caller=job autho
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: authorize deny may audit when actor=user caller=job authorize=False [D-010]", function () {
+it('happy: authorize deny may audit when actor=user caller=job authorize=False [D-010]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('user' === 'system') {
@@ -233,29 +235,33 @@ it("happy: authorize deny may audit when actor=user caller=job authorize=False [
     expect($h['fakes']->audit->all())->not->toBeEmpty();
 });
 
-it("edge: authorize allow continues pipeline when actor=system caller=agent authorize=True [PIPE-001]", function () {
+it('edge: authorize allow continues pipeline when actor=system caller=agent authorize=True [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => true]);
     $extra = [];
     if ('system' === 'system') {
         $extra['actor'] = PipelineHelpers::systemActor('billing-worker');
-        if ('agent' === 'job') { $extra['job'] = ['tenant_id' => 't-1']; }
+        if ('agent' === 'job') {
+            $extra['job'] = ['tenant_id' => 't-1'];
+        }
     }
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('agent', $extra));
     expect($result->isOk())->toBeTrue()->and($h['registry']->lastStages())->toContain(PipelineStages::AUTHORIZE);
 });
 
-it("fail: authorize deny stops before run when actor=system caller=agent authorize=False [PIPE-001]", function () {
+it('fail: authorize deny stops before run when actor=system caller=agent authorize=False [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('system' === 'system') {
         $extra['actor'] = PipelineHelpers::systemActor('billing-worker');
-        if ('agent' === 'job') { $extra['job'] = ['tenant_id' => 't-1']; }
+        if ('agent' === 'job') {
+            $extra['job'] = ['tenant_id' => 't-1'];
+        }
     }
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('agent', $extra));
     expect($result->errorCode())->toBe('forbidden')->and($h['runCount']->value)->toBe(0);
 });
 
-it("fail: authorize deny no domain side effects when actor=system caller=agent authorize=False [PIPE-001]", function () {
+it('fail: authorize deny no domain side effects when actor=system caller=agent authorize=False [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('system' === 'system') {
@@ -265,7 +271,7 @@ it("fail: authorize deny no domain side effects when actor=system caller=agent a
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: authorize deny may audit when actor=system caller=agent authorize=False [D-010]", function () {
+it('happy: authorize deny may audit when actor=system caller=agent authorize=False [D-010]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('system' === 'system') {
@@ -275,29 +281,33 @@ it("happy: authorize deny may audit when actor=system caller=agent authorize=Fal
     expect($h['fakes']->audit->all())->not->toBeEmpty();
 });
 
-it("edge: authorize allow continues pipeline when actor=system caller=mcp authorize=True [PIPE-001]", function () {
+it('edge: authorize allow continues pipeline when actor=system caller=mcp authorize=True [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => true]);
     $extra = [];
     if ('system' === 'system') {
         $extra['actor'] = PipelineHelpers::systemActor('billing-worker');
-        if ('mcp' === 'job') { $extra['job'] = ['tenant_id' => 't-1']; }
+        if ('mcp' === 'job') {
+            $extra['job'] = ['tenant_id' => 't-1'];
+        }
     }
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('mcp', $extra));
     expect($result->isOk())->toBeTrue()->and($h['registry']->lastStages())->toContain(PipelineStages::AUTHORIZE);
 });
 
-it("fail: authorize deny stops before run when actor=system caller=mcp authorize=False [PIPE-001]", function () {
+it('fail: authorize deny stops before run when actor=system caller=mcp authorize=False [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('system' === 'system') {
         $extra['actor'] = PipelineHelpers::systemActor('billing-worker');
-        if ('mcp' === 'job') { $extra['job'] = ['tenant_id' => 't-1']; }
+        if ('mcp' === 'job') {
+            $extra['job'] = ['tenant_id' => 't-1'];
+        }
     }
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('mcp', $extra));
     expect($result->errorCode())->toBe('forbidden')->and($h['runCount']->value)->toBe(0);
 });
 
-it("fail: authorize deny no domain side effects when actor=system caller=mcp authorize=False [PIPE-001]", function () {
+it('fail: authorize deny no domain side effects when actor=system caller=mcp authorize=False [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('system' === 'system') {
@@ -307,7 +317,7 @@ it("fail: authorize deny no domain side effects when actor=system caller=mcp aut
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: authorize deny may audit when actor=system caller=mcp authorize=False [D-010]", function () {
+it('happy: authorize deny may audit when actor=system caller=mcp authorize=False [D-010]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('system' === 'system') {
@@ -317,29 +327,33 @@ it("happy: authorize deny may audit when actor=system caller=mcp authorize=False
     expect($h['fakes']->audit->all())->not->toBeEmpty();
 });
 
-it("edge: authorize allow continues pipeline when actor=system caller=http authorize=True [PIPE-001]", function () {
+it('edge: authorize allow continues pipeline when actor=system caller=http authorize=True [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => true]);
     $extra = [];
     if ('system' === 'system') {
         $extra['actor'] = PipelineHelpers::systemActor('billing-worker');
-        if ('http' === 'job') { $extra['job'] = ['tenant_id' => 't-1']; }
+        if ('http' === 'job') {
+            $extra['job'] = ['tenant_id' => 't-1'];
+        }
     }
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http', $extra));
     expect($result->isOk())->toBeTrue()->and($h['registry']->lastStages())->toContain(PipelineStages::AUTHORIZE);
 });
 
-it("fail: authorize deny stops before run when actor=system caller=http authorize=False [PIPE-001]", function () {
+it('fail: authorize deny stops before run when actor=system caller=http authorize=False [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('system' === 'system') {
         $extra['actor'] = PipelineHelpers::systemActor('billing-worker');
-        if ('http' === 'job') { $extra['job'] = ['tenant_id' => 't-1']; }
+        if ('http' === 'job') {
+            $extra['job'] = ['tenant_id' => 't-1'];
+        }
     }
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http', $extra));
     expect($result->errorCode())->toBe('forbidden')->and($h['runCount']->value)->toBe(0);
 });
 
-it("fail: authorize deny no domain side effects when actor=system caller=http authorize=False [PIPE-001]", function () {
+it('fail: authorize deny no domain side effects when actor=system caller=http authorize=False [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('system' === 'system') {
@@ -349,7 +363,7 @@ it("fail: authorize deny no domain side effects when actor=system caller=http au
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: authorize deny may audit when actor=system caller=http authorize=False [D-010]", function () {
+it('happy: authorize deny may audit when actor=system caller=http authorize=False [D-010]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('system' === 'system') {
@@ -359,29 +373,33 @@ it("happy: authorize deny may audit when actor=system caller=http authorize=Fals
     expect($h['fakes']->audit->all())->not->toBeEmpty();
 });
 
-it("edge: authorize allow continues pipeline when actor=system caller=cli authorize=True [PIPE-001]", function () {
+it('edge: authorize allow continues pipeline when actor=system caller=cli authorize=True [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => true]);
     $extra = [];
     if ('system' === 'system') {
         $extra['actor'] = PipelineHelpers::systemActor('billing-worker');
-        if ('cli' === 'job') { $extra['job'] = ['tenant_id' => 't-1']; }
+        if ('cli' === 'job') {
+            $extra['job'] = ['tenant_id' => 't-1'];
+        }
     }
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('cli', $extra));
     expect($result->isOk())->toBeTrue()->and($h['registry']->lastStages())->toContain(PipelineStages::AUTHORIZE);
 });
 
-it("fail: authorize deny stops before run when actor=system caller=cli authorize=False [PIPE-001]", function () {
+it('fail: authorize deny stops before run when actor=system caller=cli authorize=False [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('system' === 'system') {
         $extra['actor'] = PipelineHelpers::systemActor('billing-worker');
-        if ('cli' === 'job') { $extra['job'] = ['tenant_id' => 't-1']; }
+        if ('cli' === 'job') {
+            $extra['job'] = ['tenant_id' => 't-1'];
+        }
     }
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('cli', $extra));
     expect($result->errorCode())->toBe('forbidden')->and($h['runCount']->value)->toBe(0);
 });
 
-it("fail: authorize deny no domain side effects when actor=system caller=cli authorize=False [PIPE-001]", function () {
+it('fail: authorize deny no domain side effects when actor=system caller=cli authorize=False [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('system' === 'system') {
@@ -391,7 +409,7 @@ it("fail: authorize deny no domain side effects when actor=system caller=cli aut
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: authorize deny may audit when actor=system caller=cli authorize=False [D-010]", function () {
+it('happy: authorize deny may audit when actor=system caller=cli authorize=False [D-010]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('system' === 'system') {
@@ -401,29 +419,33 @@ it("happy: authorize deny may audit when actor=system caller=cli authorize=False
     expect($h['fakes']->audit->all())->not->toBeEmpty();
 });
 
-it("edge: authorize allow continues pipeline when actor=system caller=job authorize=True [PIPE-001]", function () {
+it('edge: authorize allow continues pipeline when actor=system caller=job authorize=True [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => true]);
     $extra = [];
     if ('system' === 'system') {
         $extra['actor'] = PipelineHelpers::systemActor('billing-worker');
-        if ('job' === 'job') { $extra['job'] = ['tenant_id' => 't-1']; }
+        if ('job' === 'job') {
+            $extra['job'] = ['tenant_id' => 't-1'];
+        }
     }
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('job', $extra));
     expect($result->isOk())->toBeTrue()->and($h['registry']->lastStages())->toContain(PipelineStages::AUTHORIZE);
 });
 
-it("fail: authorize deny stops before run when actor=system caller=job authorize=False [PIPE-001]", function () {
+it('fail: authorize deny stops before run when actor=system caller=job authorize=False [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('system' === 'system') {
         $extra['actor'] = PipelineHelpers::systemActor('billing-worker');
-        if ('job' === 'job') { $extra['job'] = ['tenant_id' => 't-1']; }
+        if ('job' === 'job') {
+            $extra['job'] = ['tenant_id' => 't-1'];
+        }
     }
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('job', $extra));
     expect($result->errorCode())->toBe('forbidden')->and($h['runCount']->value)->toBe(0);
 });
 
-it("fail: authorize deny no domain side effects when actor=system caller=job authorize=False [PIPE-001]", function () {
+it('fail: authorize deny no domain side effects when actor=system caller=job authorize=False [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('system' === 'system') {
@@ -433,7 +455,7 @@ it("fail: authorize deny no domain side effects when actor=system caller=job aut
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: authorize deny may audit when actor=system caller=job authorize=False [D-010]", function () {
+it('happy: authorize deny may audit when actor=system caller=job authorize=False [D-010]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $extra = [];
     if ('system' === 'system') {
@@ -442,4 +464,3 @@ it("happy: authorize deny may audit when actor=system caller=job authorize=False
     $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('job', $extra));
     expect($h['fakes']->audit->all())->not->toBeEmpty();
 });
-

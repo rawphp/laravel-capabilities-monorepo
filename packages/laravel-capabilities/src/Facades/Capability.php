@@ -22,7 +22,6 @@ use Rawphp\Capabilities\Support\CapabilityResult;
  * @method static CapabilityRegistry fake()
  * @method static bool assertParity(string $name, array $options = [])
  * @method static bool assertSchemaSnapshot(string $name, array|string|null $expected = null, ?string $snapshotDirectory = null)
-
  * @method static bool assertCannotInvokeAcrossTenant(array|string|null $nameOrOpts = null, array $input = [], ?string $foreignTenant = null)
  * @method static bool assertScopeResolvedTo(?string $tenantId)
  * @method static bool assertLastScopeTenant(?string $tenantId)
@@ -44,7 +43,7 @@ final class Capability extends Facade
      */
     public static function swapRegistry(CapabilityRegistry $registry): void
     {
-        static::swap($registry);
-        static::resolved(static fn () => null);
+        self::swap($registry);
+        self::resolved(static fn () => null);
     }
 }
