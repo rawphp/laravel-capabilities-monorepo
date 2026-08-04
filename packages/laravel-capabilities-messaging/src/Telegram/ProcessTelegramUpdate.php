@@ -72,7 +72,7 @@ final class ProcessTelegramUpdate
     public function handle(array $update): array
     {
         $this->completedSteps = [];
-        $this->lastTags = $this->buildTags($update);
+        $this->lastTags = TelegramUpdateParser::tags($update);
 
         try {
             return $this->process($update);
@@ -156,7 +156,7 @@ final class ProcessTelegramUpdate
     public function failedJobTags(?array $update = null): array
     {
         if ($update !== null) {
-            return $this->buildTags($update);
+            return TelegramUpdateParser::tags($update);
         }
 
         return $this->lastTags ?? ['channel' => 'telegram', 'chat_id' => null, 'update_id' => null];
@@ -181,18 +181,18 @@ final class ProcessTelegramUpdate
      */
     private function process(array $update, ?string $failAt = null): array
     {
-        if ($failAt === 'invalid_update_shape' || ! $this->isValidShape($update)) {
+        if ($failAt === 'invalid_update_shape' || ! TelegramUpdateParser::isValidShape($update)) {
             throw new RuntimeException('invalid_update_shape');
         }
 
-        $chatId = $this->extractChatId($update);
+        $chatId = TelegramUpdateParser::chatId($update);
         if ($failAt === 'unknown_chat' || $chatId === null) {
             throw new RuntimeException('unknown_chat');
         }
 
-        $telegramUserId = $this->extractTelegramUserId($update);
-        $topicId = $this->extractTopicId($update);
-        $text = $this->extractText($update);
+        $telegramUserId = TelegramUpdateParser::telegramUserId($update);
+        $topicId = TelegramUpdateParser::topicId($update);
+        $text = TelegramUpdateParser::text($update);
 
         // resolve_identity
         if ($failAt === 'identity_unresolved') {
@@ -244,7 +244,7 @@ final class ProcessTelegramUpdate
         $messagingMeta = [
             'channel' => 'telegram',
             'chat_id' => (string) $chatId,
-            'message_id' => $this->extractMessageId($update),
+            'message_id' => TelegramUpdateParser::messageId($update),
             'topic_id' => $topicId,
             'user_link_id' => $telegramUserId,
         ];
@@ -338,86 +338,6 @@ final class ProcessTelegramUpdate
             'caller' => 'agent',
             'steps' => $this->completedSteps,
             'domain_bypass' => false,
-        ];
-    }
-
-    /**
-     * @param  array<string, mixed>  $update
-     */
-    private function isValidShape(array $update): bool
-    {
-        return isset($update['update_id'])
-            || isset($update['message'])
-            || isset($update['callback_query']);
-    }
-
-    /**
-     * @param  array<string, mixed>  $update
-     */
-    private function extractChatId(array $update): string|int|null
-    {
-        return $update['message']['chat']['id']
-            ?? $update['callback_query']['message']['chat']['id']
-            ?? $update['chat_id']
-            ?? null;
-    }
-
-    /**
-     * @param  array<string, mixed>  $update
-     */
-    private function extractTelegramUserId(array $update): ?string
-    {
-        $id = $update['message']['from']['id']
-            ?? $update['callback_query']['from']['id']
-            ?? $update['telegram_user_id']
-            ?? null;
-
-        return $id === null ? null : (string) $id;
-    }
-
-    /**
-     * @param  array<string, mixed>  $update
-     */
-    private function extractTopicId(array $update): string|int|null
-    {
-        return $update['message']['message_thread_id']
-            ?? $update['topic_id']
-            ?? null;
-    }
-
-    /**
-     * @param  array<string, mixed>  $update
-     */
-    private function extractText(array $update): string
-    {
-        return (string) ($update['message']['text']
-            ?? $update['callback_query']['data']
-            ?? $update['text']
-            ?? '');
-    }
-
-    /**
-     * @param  array<string, mixed>  $update
-     */
-    private function extractMessageId(array $update): string|int|null
-    {
-        return $update['message']['message_id']
-            ?? $update['callback_query']['message']['message_id']
-            ?? null;
-    }
-
-    /**
-     * @param  array<string, mixed>  $update
-     * @return array{channel: string, chat_id: string|null, update_id: int|string|null}
-     */
-    private function buildTags(array $update): array
-    {
-        $chat = $this->extractChatId($update);
-
-        return [
-            'channel' => 'telegram',
-            'chat_id' => $chat === null ? null : (string) $chat,
-            'update_id' => $update['update_id'] ?? null,
         ];
     }
 
