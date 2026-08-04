@@ -14,6 +14,7 @@ use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\ScopeResolver;
 use Rawphp\Capabilities\Pipeline\IdempotencyGuard;
+use Rawphp\Capabilities\Pipeline\InvokeAuditStage;
 use Rawphp\Capabilities\Pipeline\InvokeObservation;
 use Rawphp\Capabilities\Pipeline\InvokePipeline;
 use Rawphp\Capabilities\Pipeline\InvokeState;
@@ -215,12 +216,15 @@ final class CapabilityRegistry implements CapabilityBus
             approvalManager: $approvalManager,
             outputValidator: $this->outputValidator,
             observation: $this->observation,
-            auditWriter: $auditWriter,
-            auditMode: $auditModeResolved,
-            auditEnabled: $auditEnabled,
-            auditRequired: $auditRequired,
-            auditDriver: $auditDriver,
-            auditOutbox: $auditOutbox,
+            auditStage: new InvokeAuditStage(
+                observation: $this->observation,
+                auditWriter: $auditWriter,
+                auditMode: $auditModeResolved,
+                auditEnabled: $auditEnabled,
+                auditRequired: $auditRequired,
+                auditDriver: $auditDriver,
+                auditOutbox: $auditOutbox,
+            ),
             wrapRun: $wrapRun,
             eventsEnabled: $eventsEnabled,
             validateOutputEnabled: (bool) ($this->validationConfig['validate_output'] ?? true),
@@ -304,7 +308,7 @@ final class CapabilityRegistry implements CapabilityBus
     {
         $this->validationConfig = array_merge($this->validationConfig, $config);
         if (isset($config['audit_mode'])) {
-            $this->pipeline->auditMode = AuditLogger::assertValidMode((string) $config['audit_mode']);
+            $this->pipeline->auditStage->auditMode = AuditLogger::assertValidMode((string) $config['audit_mode']);
         }
         if (array_key_exists('validate_output', $config)) {
             $this->pipeline->validateOutputEnabled = (bool) $config['validate_output'];
@@ -334,7 +338,7 @@ final class CapabilityRegistry implements CapabilityBus
 
     public function withAuditWriter(?AuditWriter $writer): self
     {
-        $this->pipeline->auditWriter = $writer;
+        $this->pipeline->auditStage->auditWriter = $writer;
 
         return $this;
     }
@@ -351,16 +355,16 @@ final class CapabilityRegistry implements CapabilityBus
     public function withAuditConfig(array $config): self
     {
         if (isset($config['mode'])) {
-            $this->pipeline->auditMode = AuditLogger::assertValidMode((string) $config['mode']);
+            $this->pipeline->auditStage->auditMode = AuditLogger::assertValidMode((string) $config['mode']);
         }
         if (array_key_exists('enabled', $config)) {
-            $this->pipeline->auditEnabled = (bool) $config['enabled'];
+            $this->pipeline->auditStage->auditEnabled = (bool) $config['enabled'];
         }
         if (array_key_exists('required', $config)) {
-            $this->pipeline->auditRequired = (bool) $config['required'];
+            $this->pipeline->auditStage->auditRequired = (bool) $config['required'];
         }
         if (isset($config['driver'])) {
-            $this->pipeline->auditDriver = AuditLogger::assertValidDriver((string) $config['driver']);
+            $this->pipeline->auditStage->auditDriver = AuditLogger::assertValidDriver((string) $config['driver']);
         }
 
         return $this;
@@ -368,34 +372,34 @@ final class CapabilityRegistry implements CapabilityBus
 
     public function withAuditOutbox(?AuditOutbox $outbox): self
     {
-        $this->pipeline->auditOutbox = $outbox;
+        $this->pipeline->auditStage->auditOutbox = $outbox;
 
         return $this;
     }
 
     public function auditOutbox(): ?AuditOutbox
     {
-        return $this->pipeline->auditOutbox;
+        return $this->pipeline->auditStage->auditOutbox;
     }
 
     public function auditMode(): string
     {
-        return $this->pipeline->auditMode;
+        return $this->pipeline->auditStage->auditMode;
     }
 
     public function auditEnabled(): bool
     {
-        return $this->pipeline->auditEnabled;
+        return $this->pipeline->auditStage->auditEnabled;
     }
 
     public function auditRequired(): bool
     {
-        return $this->pipeline->auditRequired;
+        return $this->pipeline->auditStage->auditRequired;
     }
 
     public function auditDriver(): string
     {
-        return $this->pipeline->auditDriver;
+        return $this->pipeline->auditStage->auditDriver;
     }
 
     public function transactionsWrapRun(): bool
@@ -533,7 +537,7 @@ final class CapabilityRegistry implements CapabilityBus
 
     public function throwOnAuditFailure(bool $throw = true): self
     {
-        $this->pipeline->throwOnAuditFailure = $throw;
+        $this->pipeline->auditStage->throwOnAuditFailure = $throw;
 
         return $this;
     }
@@ -555,7 +559,7 @@ final class CapabilityRegistry implements CapabilityBus
 
     public function audit(): ?AuditWriter
     {
-        return $this->pipeline->auditWriter;
+        return $this->pipeline->auditStage->auditWriter;
     }
 
     /**

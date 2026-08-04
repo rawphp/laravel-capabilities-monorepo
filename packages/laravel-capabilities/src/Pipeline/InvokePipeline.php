@@ -4,9 +4,6 @@ namespace Rawphp\Capabilities\Pipeline;
 
 use InvalidArgumentException;
 use Rawphp\Capabilities\Approval\ApprovalManager;
-use Rawphp\Capabilities\Audit\AuditLogger;
-use Rawphp\Capabilities\Audit\AuditOutbox;
-use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Contracts\Authorizer;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\SchemaProvider;
@@ -54,16 +51,10 @@ final class InvokePipeline
         public ApprovalManager $approvalManager,
         public OutputValidator $outputValidator,
         public InvokeObservation $observation,
-        public ?AuditWriter $auditWriter = null,
-        public string $auditMode = 'best_effort',
-        public bool $auditEnabled = true,
-        public bool $auditRequired = false,
-        public string $auditDriver = 'database',
-        public ?AuditOutbox $auditOutbox = null,
+        public InvokeAuditStage $auditStage,
         public bool $wrapRun = false,
         public bool $eventsEnabled = true,
         public bool $validateOutputEnabled = true,
-        public bool $throwOnAuditFailure = false,
         public array $rateLimitConfig = [
             'enabled' => true,
             'defaults' => [
@@ -793,80 +784,9 @@ final class InvokePipeline
         );
     }
 
-    /**
-     * Write audit entry. On success-path audit failure:
-     * - best_effort: log (+ outbox when required); return null so client still succeeds
-     * - strict: return failure envelope; domain run is NOT rolled back by the registry
-     */
     private function stageRecordAudit(InvokeState $state, bool $success, ?CapabilityResult $failure = null): ?CapabilityResult
     {
-        $state->mark(PipelineStages::RECORD_AUDIT);
-
-        if (! $this->auditEnabled || $this->auditWriter === null || ! $state->definition->shouldAudit()) {
-            return null;
-        }
-
-        $durationMs = $this->observation->invokeStartedAt !== null
-            ? (microtime(true) - $this->observation->invokeStartedAt) * 1000
-            : 0.0;
-
-        $entry = AuditLogger::entry($state, $success, $failure, $durationMs);
-
-        try {
-            if ($this->throwOnAuditFailure) {
-                throw new \RuntimeException('Audit writer failed.');
-            }
-
-            $this->auditWriter->write($entry);
-        } catch (Throwable $e) {
-            if ($this->auditMode === 'strict' && $success) {
-                $this->observation->logs[] = [
-                    'level' => 'error',
-                    'message' => 'Audit failed in strict mode: '.$e->getMessage(),
-                    'context' => ['capability' => $state->definition->name],
-                ];
-
-                // When required, still enqueue for operators even in strict.
-                if ($this->auditRequired) {
-                    $this->ensureOutbox()->enqueue($entry);
-                }
-
-                return CapabilityResult::failure(
-                    code: 'audit_failed',
-                    message: 'Audit failed in strict mode: '.$e->getMessage(),
-                    extra: array_merge(ErrorCodeMap::wireFields('audit_failed'), [
-                        'retryable' => true,
-                        'domain_committed' => $state->domainSideEffect,
-                    ]),
-                    meta: [
-                        'request_id' => $state->requestId,
-                        'stages' => $state->stages,
-                        'domain_side_effect' => $state->domainSideEffect,
-                    ],
-                );
-            }
-
-            $this->observation->logs[] = [
-                'level' => 'warning',
-                'message' => 'Audit failed (best_effort): '.$e->getMessage(),
-                'context' => ['capability' => $state->definition->name],
-            ];
-
-            // best_effort + required: never silent drop — durable outbox intent.
-            if ($this->auditRequired) {
-                $this->ensureOutbox()->enqueue($entry);
-            } elseif ($this->auditRequired === false) {
-                // optional retry path may still enqueue when outbox is bound
-                $this->auditOutbox?->enqueue($entry);
-            }
-        }
-
-        return null;
-    }
-
-    private function ensureOutbox(): AuditOutbox
-    {
-        return $this->auditOutbox ??= new AuditOutbox;
+        return $this->auditStage->record($state, $success, $failure);
     }
 
     private function stageEmitEvents(InvokeState $state, bool $success, ?CapabilityResult $failure = null): void
