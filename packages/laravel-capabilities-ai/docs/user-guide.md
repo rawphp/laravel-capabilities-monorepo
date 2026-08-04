@@ -27,6 +27,21 @@ The ALTER is idempotent (no-op if the column already exists). Greenfield install
 - `ToolCatalog`
 - `LlmClient` (Fake in tests, Anthropic in prod)
 
+### Upgrade for hosts (manual DI / constructor / job handle)
+
+Hosts that construct AI runtime services with `new` (or jobs without container method injection) must match current required constructor / handle signatures. Preferred path: **`CapabilitiesAiServiceProvider` + `ContainerBindings`** — resolve from the container; manual construction is advanced.
+
+| Site | Required now | Notes |
+|------|--------------|--------|
+| `TurnRunner` | `ProgressStore $progress` | Required 3rd ctor arg (`TurnClaim`, `LlmClient`, **`ProgressStore`**, then optional context/tools/bus…). Was optional `?ProgressStore = null`. |
+| `ConversationService` | `ProgressStore $progress` | Required 2nd ctor arg after `$dispatch`. **No** silent `ArrayProgressStore` default in ctor. |
+| `RunTurnJob::handle` | `handle(TurnRunner $runner)` | Workers resolve `TurnRunner` via **container method injection**. Empty `handle()` is invalid. |
+| `ProposalService` | `IdempotencyReadiness $idempotency` | Required 2nd ctor arg after `CapabilityBus`. SP default **`AlwaysReadyIdempotency`**; rebind a live probe for production fail-closed accept. |
+
+**Host impact:** constructing outside SP without these deps, or dispatching `RunTurnJob` without container injection, breaks at construct / handle time.
+
+Authoritative matrix: [CHANGELOG Unreleased → Breaking → Manual DI / constructor / job handle](../CHANGELOG.md#manual-di--constructor--job-handle).
+
 ### Upgrade for hosts (LlmClient / tool rounds)
 
 `LlmClient` requires **`supportsToolRounds(): bool`**. Hosts with a custom implementor must add the method or:
