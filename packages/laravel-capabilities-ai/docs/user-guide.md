@@ -18,6 +18,34 @@ Path package in monorepo. Host: require `rawphp/laravel-capabilities-ai`, publis
 - `ToolCatalog`
 - `LlmClient` (Fake in tests, Anthropic in prod)
 
+### Upgrade for hosts (LlmClient / tool rounds)
+
+`LlmClient` requires **`supportsToolRounds(): bool`**. Hosts with a custom implementor must add the method or:
+
+```php
+use Rawphp\CapabilitiesAi\Support\LlmClientDefaults;
+
+class MyLlmClient implements LlmClient
+{
+    use LlmClientDefaults; // returns false
+
+    // override to true only if complete() accepts tool results next
+}
+```
+
+| Client | Default | Host impact |
+|--------|---------|-------------|
+| Custom without method | n/a | **Compile/runtime break** until implemented |
+| `LlmClientDefaults` | **false** | Safe default — multi-round tools off |
+| `AnthropicLlmClient` | **false** | Tools not advertised to the model; if tool_calls still appear, TurnRunner **refuses bus invoke** before mutation (fail closed) |
+| `FakeLlmClient` | **true** | Unit tests can exercise multi-round tools |
+
+**Honesty rule:** return `true` only when the client can continue after tool results are appended (OpenAI-style `role=tool` or Anthropic `tool_result` blocks). Returning true without that support can mutate product state via the bus, then crash on the follow-up `complete()`.
+
+**MVS product default:** multi-round tools stay **off** until a client opts in. Empty tool defs + refuse-before-bus is defense-in-depth for Anthropic and other non-tool-round clients — not a second product surface.
+
+Authoritative behaviour: `TurnRunner` + `LlmClient` interface / `LlmClientDefaults` (see package unit tests).
+
 ## Progress
 
 `ProgressStore` array or Redis — never product MySQL.

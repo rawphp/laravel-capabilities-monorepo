@@ -13,6 +13,8 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Breaking (upgrade for hosts)
 
+#### Proposal accept/reject wire
+
 Wire contract changes on **proposal accept/reject** (0.x pre-stable). Hosts coded against older “always reject” / throw-as-API accept paths must update clients. Full tables: [docs/user-guide.md](docs/user-guide.md#upgrade-for-hosts-acceptreject-wire).
 
 | Path | Old expectation | Current wire |
@@ -35,6 +37,19 @@ Accept HTTP (from `AcceptOutcome.httpStatus` when set, else controller kind defa
 | `refuse` (expired) | **410** | Do not re-drive |
 | missing | **404** | — |
 
+#### LlmClient `supportsToolRounds()` (compile / runtime)
+
+`LlmClient` now **requires** `supportsToolRounds(): bool`. Custom host implementors fail type-check / runtime until they add the method or `use LlmClientDefaults` (returns **false**). Full host upgrade: [docs/user-guide.md](docs/user-guide.md#upgrade-for-hosts-llmclient-tool-rounds).
+
+| Client | `supportsToolRounds()` | Effect |
+|--------|------------------------|--------|
+| Host custom (no method) | **Break** until implemented | PHP interface missing method |
+| `LlmClientDefaults` trait | **false** | Fail-closed default for hosts |
+| `AnthropicLlmClient` | **false** (trait) | Tools **not** advertised; bus tool path **refused before mutation** |
+| `FakeLlmClient` | **true** | Multi-round tool unit tests opt in |
+
+Honesty rule: return **true** only if the next `complete()` accepts tool-result messages (OpenAI-style `role=tool` or Anthropic `tool_result` blocks). Lying opens bus-then-crash after mutation.
+
 ### Fixed
 
 - **Proposal accept/reject split-brain:** one fail-closed SM that returns typed `AcceptOutcome` for all known accept statuses (rejected/expired → refuse outcomes; no throw-as-API on accept). Atomic CAS claim/reject helpers, D-005 `idempotency_key=proposal:{ulid}`, `isApprovalRequired` then `isHardRefuse` then `isRetryable`, `last_error` on terminal failed, clear on accepted. Reject remains RuntimeException → 409 for non-pending.
@@ -44,7 +59,6 @@ Accept HTTP (from `AcceptOutcome.httpStatus` when set, else controller kind defa
 - Proposal accept: explicit match arms for rejected/expired (not “is not pending” default copy).
 - Proposal accept: single safety system — claim `pending→accepting`, resume re-invokes under `proposal:{ulid}` (D-005); no local `accept_outcome` cache.
 - Proposal reject: atomic `pending→rejected` only; refuse accepting/accepted/failed/expired (idempotent rejected).
-- `LlmClientDefaults` trait (`supportsToolRounds() => false`) for host implementors; multi-round tools opt-in only.
 - SP config: claim_ttl via `configFromApp` (one typed config path).
 - `ProposalFenceExtractor`: brace-balanced nested JSON (no silent drop on nested objects).
 - Cheap create passes `claim_ttl` into `RunTurnJob` timeout.
