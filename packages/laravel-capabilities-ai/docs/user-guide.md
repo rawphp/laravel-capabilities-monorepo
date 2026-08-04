@@ -30,6 +30,36 @@ Set `CAPABILITIES_AI_ROUTES_ENABLED=true`. Prefix default `capabilities-ai/chat`
 
 Fail-closed state machine + typed `AcceptOutcome` for HTTP. Atomic CAS claims; D-005 resume key on every accept invoke.
 
+### Upgrade for hosts (accept/reject wire)
+
+Hosts that still assume “reject always succeeds” or “accept failures are exceptions / 500s” must change clients.
+
+**Reject (breaking vs force-reject):**
+
+| Case | HTTP | Body / notes |
+|------|------|----------------|
+| `pending` | **200** | CAS → `rejected` |
+| already `rejected` | **200** | Idempotent success — not an error |
+| `accepting` / `accepted` / `failed` / `expired` | **409** | Refuse; do not force-reject mid-accept or after terminal states |
+| missing | **404** | — |
+
+**Accept (breaking vs throw-as-API):**
+
+JSON body always includes `ulid`, `status`, `outcome` when the proposal exists. Accept does **not** throw for known statuses.
+
+| Outcome (`outcome`) | HTTP | Host action |
+|---------------------|------|-------------|
+| `accepted` | **200** | Done |
+| `approval_required` | **202** | Wait for approval; re-drive accept (D-005) |
+| `retryable` | **429** or **409** | Re-drive when ready (`httpStatus` from result; rate_limited → 429) |
+| `failed` | **422** or **503** | Terminal failure, or idempotency store not ready (503) — do not treat as success |
+| `refuse` (bus hard) | **403** | Terminal — do not re-drive as success |
+| `refuse` (already rejected) | **409** | Do not re-drive |
+| `refuse` (expired) | **410** | Do not re-drive |
+| (missing proposal) | **404** | — |
+
+Authoritative mapping: `ProposalService` + `ChatController::jsonFromAcceptOutcome` / `rejectProposal` (see package unit tests).
+
 ### Accept
 
 1. Live `IdempotencyReadiness` — not ready → `failed` (503), no bus invoke.

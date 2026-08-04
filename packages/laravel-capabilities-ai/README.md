@@ -19,6 +19,7 @@ Requires [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabil
 | Doc | Where |
 |---|---|
 | User guide | [docs/user-guide.md](docs/user-guide.md) |
+| **Upgrade (accept/reject wire)** | [docs/user-guide.md#upgrade-for-hosts-acceptreject-wire](docs/user-guide.md#upgrade-for-hosts-acceptreject-wire) · [CHANGELOG Unreleased Breaking](CHANGELOG.md) |
 | Core package | [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities) |
 | Messaging sibling | [rawphp/laravel-capabilities-messaging](https://github.com/rawphp/laravel-capabilities-messaging) |
 | Monorepo design | [laravel-capabilities-monorepo](https://github.com/rawphp/laravel-capabilities-monorepo) |
@@ -82,7 +83,7 @@ $app->bind(LlmClient::class, fn () => new AnthropicLlmClient(
 
 **MVS product default:** multi-round tools are **off** until a client opts in. `AnthropicLlmClient` stays false until real `tool_result` support ships; `FakeLlmClient` opts in for unit tests. Empty tool defs + refuse-before-bus is defense-in-depth for that default, not a second product surface.
 
-**Proposals (single accept/reject model):** Accept returns typed `AcceptOutcome` for every known status (rejected/expired → `refuse`); HTTP maps outcomes + 404 when missing. Reject uses CAS + RuntimeException → 409 for non-pending (documented).
+**Proposals (single accept/reject model):** Accept returns typed `AcceptOutcome` for every known status (rejected/expired → `refuse`); HTTP maps outcomes + 404 when missing. Reject uses CAS + RuntimeException → 409 for non-pending. **Host upgrade callouts:** [user guide](docs/user-guide.md#upgrade-for-hosts-acceptreject-wire) · [CHANGELOG Breaking](CHANGELOG.md).
 
 - **Accept:** atomic CAS `pending → accepting`, then bus invoke with `idempotency_key=proposal:{ulid}` (D-005). Live `IdempotencyReadiness` probe (fail closed) — not a constructor stamp. Branch `isApprovalRequired()` then `isHardRefuse()` then `isRetryable()`; approval/retry leave status `accepting` for host re-drive. Hard non-retryable → `failed` + `last_error`. Success → atomic `accepting → accepted`, clear `last_error`. Returns typed `AcceptOutcome` (`accepted` | `approval_required` | `retryable` | `failed` | `refuse`).
 - **Reject:** atomic CAS `pending → rejected` only; already-rejected is idempotent; accepting/accepted/failed/expired refuse (HTTP 409).
