@@ -461,3 +461,14 @@ it('happy: successful path executes stage wire_response [PIPE-001]', function ()
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http', ['idempotency_key' => 'stage-wire_response']));
     expect($result->isOk())->toBeTrue()->and($h['registry']->lastStages())->toContain('wire_response');
 });
+
+it('fail: lastStages includes authorize and wire_response when force-failed at authorize [PIPE-001]', function () {
+    $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
+    $h['registry']->forceFailStages(PipelineStages::AUTHORIZE);
+    $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http'));
+    expect($result->isOk())->toBeFalse()
+        ->and($result->errorCode())->toBe('forbidden')
+        ->and($h['registry']->lastStages())->toContain(PipelineStages::AUTHORIZE)
+        ->and($h['registry']->lastStages())->toContain(PipelineStages::WIRE_RESPONSE)
+        ->and($h['runCount']->value)->toBe(0);
+});
