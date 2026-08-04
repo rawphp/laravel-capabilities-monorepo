@@ -150,6 +150,17 @@ JSON body always includes `ulid`, `status`, `outcome` when the proposal exists. 
 
 Authoritative mapping: `ProposalService` + `ChatController::jsonFromAcceptOutcome` / `rejectProposal` (see package unit tests).
 
+**Accept D-005 key + host IdempotencyStore (breaking vs bare invoke):**
+
+| | Old / wrong assumption | Current |
+|--|------------------------|---------|
+| Accept bus options | Bare invoke or optional key | **Always** `idempotency_key=proposal:{ulid}` |
+| Double-accept / re-drive from `accepting` | May re-run domain twice | Same stable key; host core **`IdempotencyStore`** must be wired so the bus can dedupe |
+| Store not ready | Silent / still invoke | Live `IdempotencyReadiness` → `failed` (**HTTP 503**), **no** bus invoke |
+| Conversation tool bus invokes | Confused with accept | Remain **bare** (`idempotency_key` null) — only proposal **accept** uses `proposal:{ulid}` |
+
+Hosts own core `IdempotencyStore` configuration. This package does **not** ship a second store; readiness alone is not enough for real dedupe.
+
 ### Accept
 
 1. Live `IdempotencyReadiness` — not ready → `failed` (503), no bus invoke.

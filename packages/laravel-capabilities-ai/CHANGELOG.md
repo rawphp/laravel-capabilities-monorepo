@@ -23,6 +23,7 @@ Wire contract changes on **proposal accept/reject** (0.x pre-stable). Hosts code
 | **Reject** already-`rejected` | Varies | **Idempotent success** (still 200) — do not treat as error |
 | **Accept** rejected / expired / failed / other terminals | Often `RuntimeException` / **500** | Typed `AcceptOutcome` + JSON body with `outcome` (no throw-as-API for known statuses) |
 | **Accept** missing proposal | Often 500 / throw | **HTTP 404** |
+| **Accept** bus invoke | Bare invoke / optional key | **Always** `idempotency_key=proposal:{ulid}` (D-005). Host must wire core **`IdempotencyStore`** so double-accept / resume dedupe; readiness not ready → **503** `failed` (no bus). Conversation/tool invokes stay **bare** (`idempotency_key` null) — not proposal keys |
 
 Accept HTTP (from `AcceptOutcome.httpStatus` when set, else controller kind defaults):
 
