@@ -267,6 +267,22 @@ it('accept passes D-005 idempotency_key proposal:{ulid}', function () {
         ->and($bus->lastOptions['idempotency_key'])->toBe('proposal:'.$proposal->ulid);
 });
 
+it('resume from accepting re-drive still passes D-005 proposal:{ulid} key', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $proposal->status = Proposal::STATUS_ACCEPTING;
+    $proposal->save();
+
+    $bus = proposalBus();
+    $service = new ProposalService($bus, new AlwaysReadyIdempotency);
+    $out = $service->accept($proposal->ulid);
+
+    expect($out->kind)->toBe(AcceptOutcome::KIND_ACCEPTED)
+        ->and($bus->invokes)->toBe(1)
+        ->and($bus->lastOptions)->toHaveKey('idempotency_key')
+        ->and($bus->lastOptions['idempotency_key'])->toBe('proposal:'.$proposal->ulid);
+});
+
 it('terminal failed sets last_error', function () {
     bootProposalSqlite();
     $proposal = seedPendingProposal();
