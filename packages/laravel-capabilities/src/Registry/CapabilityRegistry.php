@@ -33,7 +33,6 @@ use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\InMemoryRateLimiter;
 use Rawphp\Capabilities\Support\RegistryAssertions;
 use Rawphp\Capabilities\Support\StubAuthorizer;
-use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Support\SystemClock;
 
 /**
