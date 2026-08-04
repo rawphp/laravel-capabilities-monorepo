@@ -60,6 +60,43 @@ it('migrates four package tables on sqlite', function () {
         ->and($schema->hasTable(TableNames::proposals()))->toBeTrue();
 });
 
+it('proposals table has last_error after full migrate', function () {
+    bootAiSqlite();
+    runAiMigrations();
+
+    $schema = Capsule::connection()->getSchemaBuilder();
+    expect($schema->hasColumn(TableNames::proposals(), 'last_error'))->toBeTrue();
+});
+
+it('add last_error migration upgrades table that already exists without the column', function () {
+    bootAiSqlite();
+    $schema = Capsule::connection()->getSchemaBuilder();
+    $table = TableNames::proposals();
+
+    // Simulate host that ran create before last_error was added in-place.
+    $schema->create($table, function (\Illuminate\Database\Schema\Blueprint $blueprint): void {
+        $blueprint->id();
+        $blueprint->string('ulid', 26)->unique();
+        $blueprint->string('status', 32)->default('pending');
+        $blueprint->timestamps();
+    });
+
+    expect($schema->hasColumn($table, 'last_error'))->toBeFalse();
+
+    $migration = require dirname(__DIR__, 3).'/database/migrations/2026_08_04_000001_add_last_error_to_capabilities_ai_proposals_table.php';
+    $migration->up();
+
+    expect($schema->hasColumn($table, 'last_error'))->toBeTrue();
+
+    // Idempotent: second up() must not throw.
+    $migration->up();
+    expect($schema->hasColumn($table, 'last_error'))->toBeTrue();
+
+    $migration->down();
+    expect($schema->hasColumn($table, 'last_error'))->toBeFalse()
+        ->and($schema->hasTable($table))->toBeTrue();
+});
+
 it('creates conversation and message by ulid', function () {
     bootAiSqlite();
     runAiMigrations();
