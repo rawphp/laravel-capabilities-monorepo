@@ -20,6 +20,7 @@ Requires [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabil
 |---|---|
 | User guide | [docs/user-guide.md](docs/user-guide.md) |
 | **Upgrade (accept/reject wire)** | [docs/user-guide.md#upgrade-for-hosts-acceptreject-wire](docs/user-guide.md#upgrade-for-hosts-acceptreject-wire) · [CHANGELOG Unreleased Breaking](CHANGELOG.md) |
+| **Upgrade (chat HTTP non-proposal routes)** | [docs/user-guide.md#upgrade-for-hosts-chat-http-non-proposal-routes](docs/user-guide.md#upgrade-for-hosts-chat-http-non-proposal-routes) · [CHANGELOG Unreleased Breaking](CHANGELOG.md) (history / showTurn / cancelTurn / turnEvents / destroyConversation; **404** / **409**; `routes.enabled`) |
 | **Upgrade (LlmClient / tool rounds)** | [docs/user-guide.md#upgrade-for-hosts-llmclient-tool-rounds](docs/user-guide.md#upgrade-for-hosts-llmclient-tool-rounds) · [CHANGELOG Unreleased Breaking](CHANGELOG.md) |
 | **Upgrade (tool progress + tool messages)** | [docs/user-guide.md#upgrade-for-hosts-tool-progress-and-tool-messages](docs/user-guide.md#upgrade-for-hosts-tool-progress-and-tool-messages) · [CHANGELOG Unreleased Breaking](CHANGELOG.md) |
 | **Upgrade (Anthropic default model ID)** | [docs/user-guide.md#upgrade-for-hosts-anthropic-default-model-id](docs/user-guide.md#upgrade-for-hosts-anthropic-default-model-id) · [CHANGELOG Unreleased Breaking](CHANGELOG.md) |

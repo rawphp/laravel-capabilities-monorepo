@@ -118,7 +118,38 @@ Authoritative: `TurnRunner` (`progress->append` tool data + `encodeToolResult`).
 
 ## Optional routes
 
-Set `CAPABILITIES_AI_ROUTES_ENABLED=true`. Prefix default `capabilities-ai/chat`.
+Set `CAPABILITIES_AI_ROUTES_ENABLED=true` (config `capabilities-ai.routes.enabled`; **default false**). Prefix default `capabilities-ai/chat`.
+
+When enabled, `ChatController` exposes history, message create, turn show/cancel/events, proposal accept/reject, and conversation destroy. Domain logic stays in services; the controller only maps exceptions to HTTP.
+
+### Upgrade for hosts (chat HTTP non-proposal routes)
+
+**Non-proposal** routes moved from stub / always-**200** behaviour to real service payloads and fail-closed status codes (0.x pre-stable). Proposal accept/reject are documented separately: [Upgrade for hosts (accept/reject wire)](#upgrade-for-hosts-acceptreject-wire) · [CHANGELOG Unreleased Breaking](../CHANGELOG.md).
+
+| Route action | Old expectation | Current wire |
+|--------------|-----------------|--------------|
+| **history** | Empty messages / always **200** | Real history from `ConversationService`; missing conversation → **HTTP 404** |
+| **showTurn** | Stub body `{turn_ulid}` | Real turn from `TurnService`; missing → **HTTP 404** |
+| **cancelTurn** | Always **200** cancelled stub | Real cancel; missing → **HTTP 404**; conflict (not cancellable) → **HTTP 409** + `message` |
+| **turnEvents** | Empty events | Real progress events; query `cursor` (default **0**); JSON body `{turn_ulid, events}`; missing turn → **HTTP 404** |
+| **destroyConversation** | Always **200** deleted stub | Real destroy; missing → **HTTP 404**; conflict (e.g. active turns) → **HTTP 409** + `message` |
+
+**Status mapping (controller):**
+
+| Exception / case | HTTP | Typical routes |
+|------------------|------|----------------|
+| `ModelNotFoundException` | **404** | history, showTurn, cancelTurn, turnEvents, destroyConversation |
+| `RuntimeException` (domain conflict) | **409** + `message` | cancelTurn, destroyConversation |
+| Success | **200** (message create **201**) | real service payload — not an empty stub |
+
+**turnEvents shape (high level):**
+
+- Query: `cursor` integer, default **0** when omitted
+- Body: `{ "turn_ulid": "<ulid>", "events": [ … ] }` from `TurnService::events`
+
+**Host action:** if you enable routes, stop assuming always-**200** empty bodies. Handle **404** for missing conversation/turn and **409** for cancel/destroy conflicts. Leave `routes.enabled` false until clients are ready.
+
+Authoritative: `ChatController` + conversation/turn services (see package unit tests). CHANGELOG: [Unreleased Breaking — Chat HTTP non-proposal routes](../CHANGELOG.md).
 
 ## Proposal accept / reject (one model)
 
