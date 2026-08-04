@@ -33,6 +33,10 @@ Empty PHP arrays that represent JSON `{}` (and empty list-shaped `[]` when the s
 - Unit-test contract scaffold aligned with monorepo `docs/spec.md` / requirements inventory (≥95% coverage target).
 - **Laravel 13 / illuminate 13 support** — all `illuminate/*` requirements allow `^11.0|^12.0|^13.0`
   (PHP remains `^8.2`; Laravel 13 apps still need PHP `^8.3` per framework).
+- **Additive helpers (non-breaking)** on invoke results — existing callers are unaffected:
+  - `CapabilityResult::isRetryable()` — non-ok retry policy from wire `retryable` or `ErrorCodeMap` default; success is never retryable
+  - `CapabilityResult::isHardRefuse()` — terminal auth/profile/runnability refuse via `ErrorCodeMap`
+  - `ErrorCodeMap::isHardRefuse(string $code)` — hard refuse code set (`forbidden`, `capability_not_in_profile`, `not_runnable`, `unauthenticated`)
 
 ### Notes
 
