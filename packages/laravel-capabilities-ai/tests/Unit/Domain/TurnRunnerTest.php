@@ -147,19 +147,88 @@ it('tool call path invokes CapabilityBus exactly once with expected name/payload
             return [['name' => 'demo.tool']];
         }
     };
+    $progress = new ArrayProgressStore;
     $runner = new TurnRunner(
         claim: new TurnClaim,
         llm: $llm,
         context: $context,
         tools: $tools,
         bus: $bus,
-        progress: new ArrayProgressStore,
+        progress: $progress,
     );
     $turn = $runner->run($turnUlid);
     expect($turn->status)->toBe(Turn::STATUS_COMPLETED)
         ->and($bus->invokes)->toBe(1)
         ->and($bus->lastName)->toBe('demo.tool')
         ->and($bus->lastInput)->toBe(['x' => 1]);
+
+    $toolEvents = array_values(array_filter(
+        $progress->since($turnUlid),
+        static fn (array $e): bool => ($e['kind'] ?? null) === 'tool',
+    ));
+    expect($toolEvents)->toHaveCount(1);
+    $data = $toolEvents[0]['data'] ?? [];
+    expect($data['name'] ?? null)->toBe('demo.tool')
+        ->and($data['payload'] ?? null)->toBe(['x' => 1])
+        ->and($data['ok'] ?? null)->toBeTrue()
+        ->and(array_key_exists('error_code', $data))->toBeTrue()
+        ->and($data['error_code'])->toBeNull();
+});
+
+it('progress tool events expose ok false and error_code on bus failure', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurn('use tool');
+    $bus = new class implements CapabilityBus
+    {
+        public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
+        {
+            return CapabilityResult::failure('forbidden', 'nope');
+        }
+
+        public function catalog(): CatalogPresenter
+        {
+            throw new RuntimeException('unused');
+        }
+    };
+    $llm = new FakeLlmClient([
+        ['tool_calls' => [['name' => 'demo.tool', 'arguments' => ['x' => 1]]]],
+        ['content' => 'after failure'],
+    ]);
+    $context = new class implements ConversationContextProvider
+    {
+        public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['role' => 'user', 'content' => 'use tool']];
+        }
+    };
+    $tools = new class implements ToolCatalog
+    {
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['name' => 'demo.tool']];
+        }
+    };
+    $progress = new ArrayProgressStore;
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        bus: $bus,
+        progress: $progress,
+    );
+    $runner->run($turnUlid);
+
+    $toolEvents = array_values(array_filter(
+        $progress->since($turnUlid),
+        static fn (array $e): bool => ($e['kind'] ?? null) === 'tool',
+    ));
+    expect($toolEvents)->toHaveCount(1);
+    $data = $toolEvents[0]['data'] ?? [];
+    expect($data['ok'] ?? true)->toBeFalse()
+        ->and($data['error_code'] ?? null)->toBe('forbidden')
+        ->and($data['name'] ?? null)->toBe('demo.tool')
+        ->and($data['payload'] ?? null)->toBe(['x' => 1]);
 });
 
 it('does not pass tool definitions when LlmClient cannot continue tool rounds', function () {
