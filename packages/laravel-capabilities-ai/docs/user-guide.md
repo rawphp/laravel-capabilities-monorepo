@@ -61,12 +61,12 @@ class MyLlmClient implements LlmClient
 |--------|---------|-------------|
 | Custom without method | n/a | **Compile/runtime break** until implemented |
 | `LlmClientDefaults` | **false** | Safe default — multi-round tools off |
-| `AnthropicLlmClient` | **false** | Tools not advertised to the model; if tool_calls still appear, TurnRunner **refuses bus invoke** before mutation (fail closed) |
+| `AnthropicLlmClient` | **true** | Tools advertised; `tool_use` → `tool_calls` with `id`; `role=tool` → Anthropic `tool_result` blocks |
 | `FakeLlmClient` | **true** | Unit tests can exercise multi-round tools |
 
 **Honesty rule:** return `true` only when the client can continue after tool results are appended (OpenAI-style `role=tool` or Anthropic `tool_result` blocks). Returning true without that support can mutate product state via the bus, then crash on the follow-up `complete()`.
 
-**MVS product default:** multi-round tools stay **off** until a client opts in. Empty tool defs + refuse-before-bus is defense-in-depth for Anthropic and other non-tool-round clients — not a second product surface.
+**MVS product default:** multi-round tools stay **off** for host custom clients using `LlmClientDefaults` until they opt in. Package Anthropic + Fake clients opt in. Empty tool defs + refuse-before-bus remains defense-in-depth for non-tool-round clients — not a second product surface.
 
 Authoritative behaviour: `TurnRunner` + `LlmClient` interface / `LlmClientDefaults` (see package unit tests).
 
