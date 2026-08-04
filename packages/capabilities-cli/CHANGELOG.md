@@ -11,6 +11,12 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Changed
+
+- **Internal split** — CLI command handlers moved from monolithic `cmd/capabilities/cli.go`
+  into focused files (`cmd_auth.go`, `cmd_catalog.go`, `cmd_domain.go`, `cmd_run.go`,
+  `cmd_mcp.go`). Public binary behaviour and `Execute` dispatch unchanged.
+
 ### Added
 
 - Complete user documentation set: `docs/README.md` index, expanded
