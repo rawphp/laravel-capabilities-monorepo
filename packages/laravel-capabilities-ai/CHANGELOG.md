@@ -86,6 +86,24 @@ Default Anthropic model ID changed (0.x pre-stable). Hosts that rely on package 
 
 **Mitigation (pin previous ID):** set env `CAPABILITIES_AI_ANTHROPIC_MODEL=claude-sonnet-4-20250514`, or pass constructor `model: 'claude-sonnet-4-20250514'` when constructing `AnthropicLlmClient` directly.
 
+#### Chat HTTP non-proposal routes (stub → real)
+
+Wire contract changes on **non-proposal** chat HTTP routes (0.x pre-stable). Only applies when hosts enable the optional route table (`capabilities-ai.routes.enabled` / `CAPABILITIES_AI_ROUTES_ENABLED`; **default false**). Clients written against always-200 / empty stubs must handle real service payloads and **404** / **409**. Proposal accept/reject have their own Breaking tables — see [Proposal accept/reject wire](#proposal-acceptreject-wire) (do not re-document here). Full host tables: [docs/user-guide.md](docs/user-guide.md#upgrade-for-hosts-chat-http-non-proposal-routes).
+
+| Route action | Old expectation | Current wire |
+|--------------|-----------------|--------------|
+| **history** (`GET …/conversations/{ulid}`) | Empty messages / always **200** | Real history payload from `ConversationService`; missing conversation → **HTTP 404** (`ModelNotFoundException` → `ChatController`) |
+| **showTurn** (`GET …/turns/{ulid}`) | Stub body `{turn_ulid}` / always **200** | Real turn payload from `TurnService`; missing turn → **HTTP 404** |
+| **cancelTurn** (`POST …/turns/{ulid}/cancel`) | Always **200** cancelled stub | Real cancel; missing → **HTTP 404**; not cancellable / conflict → **HTTP 409** + `message` (`RuntimeException`) |
+| **turnEvents** (`GET …/turns/{ulid}/events`) | Empty events / always **200** | Real progress events; query `cursor` (default **0**); body `{turn_ulid, events}`; missing turn → **HTTP 404** |
+| **destroyConversation** (`DELETE …/conversations/{ulid}`) | Always **200** deleted stub | Real destroy; missing → **HTTP 404**; conflict (e.g. active turns) → **HTTP 409** + `message` (`RuntimeException`) |
+
+**Host impact:** clients that treated these endpoints as always-**200** empty/stub bodies will mis-handle missing resources and conflicts once routes are enabled. Expect real domain payloads on success and branch on **404** / **409**.
+
+**Gate:** no Breaking surface while `routes.enabled` remains **false** (package default). Enabling the route table is the upgrade trigger.
+
+Authoritative mapping: `ChatController` (`history`, `showTurn`, `cancelTurn`, `turnEvents`, `destroyConversation`).
+
 ### Fixed
 
 - **Proposals `last_error` column (upgrade hosts):** `last_error` was added in-place to the create migration after some hosts had already run it. Hosts whose `capabilities_ai_proposals` table lacks the column will SQL-error on accept fail/success paths that write or clear `last_error`. Run **`php artisan migrate`** so package migration `2026_08_04_000001_add_last_error_to_capabilities_ai_proposals_table` applies (idempotent ALTER; greenfield installs already get the column from the create migration). VCS/path consumers — not Packagist-required yet.
