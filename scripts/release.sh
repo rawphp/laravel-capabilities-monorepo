@@ -360,7 +360,9 @@ if [[ -n "$RANGE_BASE" ]]; then
   if [[ -z "$local_log" ]]; then
     printf '    (none — HEAD is at or behind %s)\n' "$RANGE_BASE"
   else
-    printf '%s\n' "$local_log" | head -40 | sed 's/^/    /'
+    # sed -n '1,40…' (not head|sed): under set -o pipefail, head closes after 40
+    # lines and printf gets SIGPIPE → exit 141, aborting the release before gates.
+    printf '%s\n' "$local_log" | sed -n '1,40s/^/    /p'
     if [[ "${commit_count}" -gt 40 ]]; then
       printf '    … (%s total)\n' "$commit_count"
     fi
