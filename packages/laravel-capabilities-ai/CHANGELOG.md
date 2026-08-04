@@ -14,6 +14,8 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 ### Added
 
 - **Anthropic multi-round tools (ORI-730):** `AnthropicLlmClient::supportsToolRounds()` is **true**. Package tool defs map to Anthropic `tools` (`name`, `description`, `input_schema`). Responses parse `tool_use` into `tool_calls` **with `id`**. Request encoding maps assistant `tool_calls` → `tool_use` blocks and `role=tool` → user `tool_result` blocks (`tool_use_id`). Empty API key / HTTP errors stay fail-closed. `TurnRunner` now re-appends the assistant `tool_calls` turn into the transcript before `role=tool` results so providers can correlate.
+- **Anthropic max_tokens host parity (ORI-739):** `AnthropicLlmClient` no longer hard-codes `max_tokens => 1024`. Constructor default and package config `llm.anthropic.max_tokens` (`CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS`) default to **64000**. `ContainerBindings::makeLlmClient` wires the config value.
+
 
 ### Breaking (upgrade for hosts)
 

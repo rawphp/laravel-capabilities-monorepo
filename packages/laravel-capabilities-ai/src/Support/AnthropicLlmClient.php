@@ -24,6 +24,7 @@ final class AnthropicLlmClient implements LlmClient
         private readonly string $apiKey,
         private readonly string $model = 'claude-sonnet-4-6',
         private readonly string $baseUrl = 'https://api.anthropic.com',
+        private readonly int $maxTokens = 64000,
     ) {}
 
     public function supportsToolRounds(): bool
@@ -94,7 +95,7 @@ final class AnthropicLlmClient implements LlmClient
 
         $payload = [
             'model' => $this->model,
-            'max_tokens' => 1024,
+            'max_tokens' => $this->maxTokens,
             'messages' => $merged !== [] ? $merged : [['role' => 'user', 'content' => '(empty)']],
         ];
         if ($systemParts !== []) {

@@ -100,6 +100,73 @@ it('makeLlmClient returns AnthropicLlmClient for anthropic driver', function () 
     expect($client)->toBeInstanceOf(AnthropicLlmClient::class);
 });
 
+it('makeLlmClient wires anthropic max_tokens from config into outbound payload', function () {
+    $app = new \Illuminate\Container\Container;
+    \Illuminate\Support\Facades\Facade::setFacadeApplication($app);
+    $app->singleton('http', fn () => new \Illuminate\Http\Client\Factory);
+    \Illuminate\Support\Facades\Http::swap(new \Illuminate\Http\Client\Factory);
+
+    \Illuminate\Support\Facades\Http::fake([
+        'example.test/*' => \Illuminate\Support\Facades\Http::response([
+            'content' => [
+                ['type' => 'text', 'text' => 'ok'],
+            ],
+        ], 200),
+    ]);
+
+    $client = ContainerBindings::makeLlmClient(aiConfig([
+        'llm' => [
+            'driver' => 'anthropic',
+            'anthropic' => [
+                'api_key' => 'test-key',
+                'model' => 'claude-test',
+                'base_url' => 'https://example.test',
+                'max_tokens' => 2048,
+            ],
+        ],
+    ]));
+
+    $client->complete([['role' => 'user', 'content' => 'hi']]);
+
+    \Illuminate\Support\Facades\Http::assertSent(function ($request) {
+        $body = $request->data();
+
+        return ($body['max_tokens'] ?? null) === 2048;
+    });
+});
+
+it('makeLlmClient anthropic default max_tokens is 64000 from package config', function () {
+    $app = new \Illuminate\Container\Container;
+    \Illuminate\Support\Facades\Facade::setFacadeApplication($app);
+    $app->singleton('http', fn () => new \Illuminate\Http\Client\Factory);
+    \Illuminate\Support\Facades\Http::swap(new \Illuminate\Http\Client\Factory);
+
+    \Illuminate\Support\Facades\Http::fake([
+        'api.anthropic.com/*' => \Illuminate\Support\Facades\Http::response([
+            'content' => [
+                ['type' => 'text', 'text' => 'ok'],
+            ],
+        ], 200),
+    ]);
+
+    $client = ContainerBindings::makeLlmClient(aiConfig([
+        'llm' => [
+            'driver' => 'anthropic',
+            'anthropic' => [
+                'api_key' => 'test-key',
+            ],
+        ],
+    ]));
+
+    $client->complete([['role' => 'user', 'content' => 'hi']]);
+
+    \Illuminate\Support\Facades\Http::assertSent(function ($request) {
+        $body = $request->data();
+
+        return ($body['max_tokens'] ?? null) === 64000;
+    });
+});
+
 it('makeProgressStore returns ArrayProgressStore for array driver', function () {
     $store = ContainerBindings::makeProgressStore(aiConfig(['progress' => ['driver' => 'array']]));
 

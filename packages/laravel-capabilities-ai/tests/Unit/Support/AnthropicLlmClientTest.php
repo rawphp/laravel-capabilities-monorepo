@@ -283,3 +283,49 @@ it('role=tool maps to tool_result without throwing', function () {
             && ! str_contains($body, '"role":"tool"');
     });
 });
+
+it('outbound payload uses max_tokens 64000 by default (host parity)', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'content' => [
+                ['type' => 'text', 'text' => 'ok'],
+            ],
+        ], 200),
+    ]);
+
+    $client = new AnthropicLlmClient('test-key');
+    $client->complete([
+        ['role' => 'user', 'content' => 'hi'],
+    ]);
+
+    Http::assertSent(function ($request) {
+        $body = $request->data();
+
+        return ($body['max_tokens'] ?? null) === 64000;
+    });
+});
+
+it('constructor max_tokens override is sent in outbound payload', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'content' => [
+                ['type' => 'text', 'text' => 'ok'],
+            ],
+        ], 200),
+    ]);
+
+    $client = new AnthropicLlmClient(apiKey: 'test-key', maxTokens: 2048);
+    $client->complete([
+        ['role' => 'user', 'content' => 'hi'],
+    ]);
+
+    Http::assertSent(function ($request) {
+        $body = $request->data();
+
+        return ($body['max_tokens'] ?? null) === 2048;
+    });
+});
