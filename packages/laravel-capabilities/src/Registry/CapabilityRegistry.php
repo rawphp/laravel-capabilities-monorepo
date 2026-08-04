@@ -2,7 +2,6 @@
 
 namespace Rawphp\Capabilities\Registry;
 
-use InvalidArgumentException;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Audit\AuditLogger;
 use Rawphp\Capabilities\Audit\AuditOutbox;
@@ -15,6 +14,7 @@ use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\ScopeResolver;
 use Rawphp\Capabilities\Pipeline\IdempotencyGuard;
+use Rawphp\Capabilities\Pipeline\InvokeAuditStage;
 use Rawphp\Capabilities\Pipeline\InvokeObservation;
 use Rawphp\Capabilities\Pipeline\InvokePipeline;
 use Rawphp\Capabilities\Pipeline\InvokeState;
@@ -28,16 +28,11 @@ use Rawphp\Capabilities\Schema\InputValidator;
 use Rawphp\Capabilities\Schema\OutputValidator;
 use Rawphp\Capabilities\Schema\ServerRuleChecker;
 use Rawphp\Capabilities\Schema\ToolSchemaExporter;
-use Rawphp\Capabilities\Support\AssertParity;
 use Rawphp\Capabilities\Support\CapabilityContext;
 use Rawphp\Capabilities\Support\CapabilityResult;
-use Rawphp\Capabilities\Support\CapabilityScope;
 use Rawphp\Capabilities\Support\InMemoryRateLimiter;
-use Rawphp\Capabilities\Support\ParityAssertionException;
-use Rawphp\Capabilities\Support\SchemaSnapshot;
-use Rawphp\Capabilities\Support\SchemaSnapshotException;
+use Rawphp\Capabilities\Support\RegistryAssertions;
 use Rawphp\Capabilities\Support\StubAuthorizer;
-use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Support\SystemClock;
 
 /**
@@ -70,6 +65,8 @@ final class CapabilityRegistry implements CapabilityBus
     private ProfileSelector $profileSelector;
 
     private ToolSurfaceResolver $toolSurfaceResolver;
+
+    private RegistryAssertions $assertions;
 
     private Clock $clock;
 
@@ -206,6 +203,7 @@ final class CapabilityRegistry implements CapabilityBus
             globallyEnabledSurfaces: $this->globallyEnabledSurfaces,
             toolSurfaceConfig: $this->toolSurfaceConfig,
         );
+        $this->assertions = new RegistryAssertions($this, $this->observation);
         $this->pipeline = new InvokePipeline(
             jsonSchema: $jsonSchema,
             serverRuleChecker: $serverRuleChecker,
@@ -217,12 +215,15 @@ final class CapabilityRegistry implements CapabilityBus
             approvalManager: $approvalManager,
             outputValidator: $this->outputValidator,
             observation: $this->observation,
-            auditWriter: $auditWriter,
-            auditMode: $auditModeResolved,
-            auditEnabled: $auditEnabled,
-            auditRequired: $auditRequired,
-            auditDriver: $auditDriver,
-            auditOutbox: $auditOutbox,
+            auditStage: new InvokeAuditStage(
+                observation: $this->observation,
+                auditWriter: $auditWriter,
+                auditMode: $auditModeResolved,
+                auditEnabled: $auditEnabled,
+                auditRequired: $auditRequired,
+                auditDriver: $auditDriver,
+                auditOutbox: $auditOutbox,
+            ),
             wrapRun: $wrapRun,
             eventsEnabled: $eventsEnabled,
             validateOutputEnabled: (bool) ($this->validationConfig['validate_output'] ?? true),
@@ -306,7 +307,7 @@ final class CapabilityRegistry implements CapabilityBus
     {
         $this->validationConfig = array_merge($this->validationConfig, $config);
         if (isset($config['audit_mode'])) {
-            $this->pipeline->auditMode = AuditLogger::assertValidMode((string) $config['audit_mode']);
+            $this->pipeline->auditStage->auditMode = AuditLogger::assertValidMode((string) $config['audit_mode']);
         }
         if (array_key_exists('validate_output', $config)) {
             $this->pipeline->validateOutputEnabled = (bool) $config['validate_output'];
@@ -336,7 +337,7 @@ final class CapabilityRegistry implements CapabilityBus
 
     public function withAuditWriter(?AuditWriter $writer): self
     {
-        $this->pipeline->auditWriter = $writer;
+        $this->pipeline->auditStage->auditWriter = $writer;
 
         return $this;
     }
@@ -353,16 +354,16 @@ final class CapabilityRegistry implements CapabilityBus
     public function withAuditConfig(array $config): self
     {
         if (isset($config['mode'])) {
-            $this->pipeline->auditMode = AuditLogger::assertValidMode((string) $config['mode']);
+            $this->pipeline->auditStage->auditMode = AuditLogger::assertValidMode((string) $config['mode']);
         }
         if (array_key_exists('enabled', $config)) {
-            $this->pipeline->auditEnabled = (bool) $config['enabled'];
+            $this->pipeline->auditStage->auditEnabled = (bool) $config['enabled'];
         }
         if (array_key_exists('required', $config)) {
-            $this->pipeline->auditRequired = (bool) $config['required'];
+            $this->pipeline->auditStage->auditRequired = (bool) $config['required'];
         }
         if (isset($config['driver'])) {
-            $this->pipeline->auditDriver = AuditLogger::assertValidDriver((string) $config['driver']);
+            $this->pipeline->auditStage->auditDriver = AuditLogger::assertValidDriver((string) $config['driver']);
         }
 
         return $this;
@@ -370,34 +371,34 @@ final class CapabilityRegistry implements CapabilityBus
 
     public function withAuditOutbox(?AuditOutbox $outbox): self
     {
-        $this->pipeline->auditOutbox = $outbox;
+        $this->pipeline->auditStage->auditOutbox = $outbox;
 
         return $this;
     }
 
     public function auditOutbox(): ?AuditOutbox
     {
-        return $this->pipeline->auditOutbox;
+        return $this->pipeline->auditStage->auditOutbox;
     }
 
     public function auditMode(): string
     {
-        return $this->pipeline->auditMode;
+        return $this->pipeline->auditStage->auditMode;
     }
 
     public function auditEnabled(): bool
     {
-        return $this->pipeline->auditEnabled;
+        return $this->pipeline->auditStage->auditEnabled;
     }
 
     public function auditRequired(): bool
     {
-        return $this->pipeline->auditRequired;
+        return $this->pipeline->auditStage->auditRequired;
     }
 
     public function auditDriver(): string
     {
-        return $this->pipeline->auditDriver;
+        return $this->pipeline->auditStage->auditDriver;
     }
 
     public function transactionsWrapRun(): bool
@@ -535,7 +536,7 @@ final class CapabilityRegistry implements CapabilityBus
 
     public function throwOnAuditFailure(bool $throw = true): self
     {
-        $this->pipeline->throwOnAuditFailure = $throw;
+        $this->pipeline->auditStage->throwOnAuditFailure = $throw;
 
         return $this;
     }
@@ -557,7 +558,7 @@ final class CapabilityRegistry implements CapabilityBus
 
     public function audit(): ?AuditWriter
     {
-        return $this->pipeline->auditWriter;
+        return $this->pipeline->auditStage->auditWriter;
     }
 
     /**
@@ -700,230 +701,69 @@ final class CapabilityRegistry implements CapabilityBus
      * D-020: invoke a capability on each listed surface path and require the same
      * success/deny **class** (not identical payload shape unless `$options['assert']` checks it).
      *
-     * Contract: returns `true` when all surfaces share success or all share deny;
-     * throws {@see ParityAssertionException} on class mismatch; throws
-     * {@see InvalidArgumentException} for empty/unknown surfaces.
+     * @param  array<string, mixed>  $options
      *
-     * Optional `assert` callback runs **only on successful results** (deny-path parity
-     * skips the callback so deny fixtures need not produce data).
-     *
-     * Breaking vs presence-only API: first argument is capability name (not surfaces list).
-     *
-     * @param  array{
-     *     input?: array<string, mixed>,
-     *     surfaces?: list<string>,
-     *     assert?: callable(CapabilityResult): void,
-     *     actor?: object|null,
-     *     tenant_id?: string|null,
-     *     scope?: CapabilityScope|null,
-     *     options?: array<string, mixed>
-     * }  $options  D-020 shape: input + surfaces + optional assert; extra keys merge into invoke options
+     * @see RegistryAssertions::assertParity()
      */
     public function assertParity(string $name, array $options = []): bool
     {
-        $surfaces = AssertParity::normalizeSurfaces(
-            isset($options['surfaces']) && is_array($options['surfaces'])
-                ? $options['surfaces']
-                : null
-        );
-
-        $input = isset($options['input']) && is_array($options['input'])
-            ? $options['input']
-            : [];
-
-        $assert = $options['assert'] ?? null;
-        if ($assert !== null && ! is_callable($assert)) {
-            throw new InvalidArgumentException('assertParity options.assert must be callable when provided.');
-        }
-
-        // Build shared invoke options (actor/tenant/scope); caller is set per surface.
-        $invokeBase = [];
-        if (array_key_exists('actor', $options)) {
-            $invokeBase['actor'] = $options['actor'];
-        }
-        if (array_key_exists('tenant_id', $options)) {
-            $invokeBase['tenant_id'] = $options['tenant_id'];
-        }
-        if (array_key_exists('scope', $options)) {
-            $invokeBase['scope'] = $options['scope'];
-        }
-        if (isset($options['options']) && is_array($options['options'])) {
-            $invokeBase = array_merge($invokeBase, $options['options']);
-        }
-
-        /** @var array<string, string> $classesBySurface */
-        $classesBySurface = [];
-        /** @var list<CapabilityResult> $successResults */
-        $successResults = [];
-
-        foreach ($surfaces as $label) {
-            $caller = AssertParity::resolveCaller($label);
-            $invokeOptions = array_merge($invokeBase, [
-                'caller' => $caller,
-            ]);
-
-            // Job surface: ensure SystemActor-friendly job bag when not provided.
-            if ($caller === 'job' && ! isset($invokeOptions['job'])) {
-                $tenant = $invokeOptions['tenant_id'] ?? null;
-                $invokeOptions['job'] = is_string($tenant) && $tenant !== ''
-                    ? ['tenant_id' => $tenant]
-                    : ['tenant_id' => 't-parity'];
-            }
-
-            $result = $this->invoke($name, $input, $invokeOptions);
-            $classesBySurface[$label] = AssertParity::resultClass($result);
-
-            if ($result->isOk()) {
-                $successResults[] = $result;
-            }
-        }
-
-        $unique = array_unique(array_values($classesBySurface));
-        if (count($unique) > 1) {
-            throw ParityAssertionException::mismatch($name, $classesBySurface);
-        }
-
-        if (is_callable($assert)) {
-            foreach ($successResults as $result) {
-                $assert($result);
-            }
-        }
-
-        return true;
+        return $this->assertions->assertParity($name, $options);
     }
 
     /**
      * Lock catalog input_schema + output_schema for a capability (D-020).
      *
-     * Contract: returns `true` on match; throws {@see SchemaSnapshotException}
-     * on drift or missing snapshot file. Never throws on match.
+     * @param  array{input_schema?: array<string, mixed>|null, output_schema?: array<string, mixed>|null}|string|null  $expected
      *
-     * Modes:
-     * - In-memory expected envelope: `assertSchemaSnapshot($name, ['input_schema' => …, 'output_schema' => …])`
-     * - Durable file path: `assertSchemaSnapshot($name, '/path/to/name.schema.json')`
-     * - Conventional directory: `assertSchemaSnapshot($name, null, $dir)` → `{dir}/{name}.schema.json`
-     * - No lock (`null` expected, no directory): resolves the capability and returns `true` (no comparison).
-     *
-     * @param  array{
-     *     input_schema?: array<string, mixed>|null,
-     *     output_schema?: array<string, mixed>|null
-     * }|string|null  $expected  Envelope array, absolute/relative snapshot JSON path, or null
-     * @param  string|null  $snapshotDirectory  When set (and $expected is null), load conventional file under this dir
+     * @see RegistryAssertions::assertSchemaSnapshot()
      */
     public function assertSchemaSnapshot(
         string $name,
         array|string|null $expected = null,
         ?string $snapshotDirectory = null,
     ): bool {
-        $definition = $this->get($name);
-        $actualInput = $definition->inputSchema();
-        $actualOutput = $definition->outputSchema();
-
-        $locked = null;
-
-        if (is_string($expected)) {
-            $locked = SchemaSnapshot::loadFile($name, $expected);
-        } elseif (is_array($expected)) {
-            $locked = SchemaSnapshot::normalizeExpectedArray($expected);
-        } elseif ($snapshotDirectory !== null && $snapshotDirectory !== '') {
-            $path = SchemaSnapshot::conventionalPath($snapshotDirectory, $name);
-            $locked = SchemaSnapshot::loadFile($name, $path);
-        }
-
-        if ($locked === null) {
-            return true;
-        }
-
-        SchemaSnapshot::compare($name, $locked, $actualInput, $actualOutput);
-
-        return true;
+        return $this->assertions->assertSchemaSnapshot($name, $expected, $snapshotDirectory);
     }
 
     /**
      * Cross-tenant invoke must fail (D-003 testing helper).
      *
-     * @param  array{
-     *     name?: string,
-     *     input?: array<string, mixed>,
-     *     foreignTenant?: string,
-     *     caller?: string,
-     *     actor?: object,
-     *     tenant_id?: string
-     * }|string|null  $nameOrOpts
+     * @param  array<string, mixed>|string|null  $nameOrOpts
      * @param  array<string, mixed>  $input
+     *
+     * @see RegistryAssertions::assertCannotInvokeAcrossTenant()
      */
     public function assertCannotInvokeAcrossTenant(
         array|string|null $nameOrOpts = null,
         array $input = [],
         ?string $foreignTenant = null,
     ): bool {
-        if ($nameOrOpts === null) {
-            // Presence of the helper for package consumers / facade surface.
-            return true;
-        }
-
-        $opts = is_array($nameOrOpts) ? $nameOrOpts : [
-            'name' => $nameOrOpts,
-            'input' => $input,
-            'foreignTenant' => $foreignTenant,
-        ];
-
-        $name = (string) ($opts['name'] ?? '');
-        $payload = $opts['input'] ?? $input;
-        $homeTenant = (string) ($opts['tenant_id'] ?? 'tenant-a');
-        $foreign = (string) ($opts['foreignTenant'] ?? $foreignTenant ?? 'tenant-b');
-        $caller = (string) ($opts['caller'] ?? 'http');
-
-        $invokeOpts = array_merge([
-            'caller' => $caller,
-            'tenant_id' => $homeTenant,
-            'require_scope' => true,
-        ], $opts['options'] ?? []);
-        if (isset($opts['actor']) && is_object($opts['actor'])) {
-            $invokeOpts['actor'] = $opts['actor'];
-        }
-
-        $result = $this->invoke($name, $payload, $invokeOpts);
-
-        if ($result->isOk()) {
-            throw new InvalidArgumentException(sprintf(
-                'assertCannotInvokeAcrossTenant failed: capability "%s" succeeded while targeting foreign tenant "%s".',
-                $name,
-                $foreign,
-            ));
-        }
-
-        return true;
+        return $this->assertions->assertCannotInvokeAcrossTenant($nameOrOpts, $input, $foreignTenant);
     }
 
     /**
      * Assert last invoke resolved scope tenant (D-003).
+     *
+     * @see RegistryAssertions::assertScopeResolvedTo()
      */
     public function assertScopeResolvedTo(?string $tenantId): bool
     {
-        $actual = $this->observation->lastState?->context?->tenantId();
-        if ($actual !== $tenantId) {
-            throw new InvalidArgumentException(sprintf(
-                'assertScopeResolvedTo failed: expected tenant "%s", got "%s".',
-                (string) $tenantId,
-                (string) $actual,
-            ));
-        }
-
-        return true;
+        return $this->assertions->assertScopeResolvedTo($tenantId);
     }
 
     /**
      * Assert last scope tenant matches first-class value, not smuggled input (P2-005).
+     *
+     * @see RegistryAssertions::assertLastScopeTenant()
      */
     public function assertLastScopeTenant(?string $tenantId): bool
     {
-        return $this->assertScopeResolvedTo($tenantId);
+        return $this->assertions->assertLastScopeTenant($tenantId);
     }
 
     public function lastScopeTenant(): ?string
     {
-        return $this->observation->lastState?->context?->tenantId();
+        return $this->assertions->lastScopeTenant();
     }
 
     /**

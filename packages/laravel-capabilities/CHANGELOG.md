@@ -20,6 +20,27 @@ Empty PHP arrays that represent JSON `{}` (and empty list-shaped `[]` when the s
 - **Scope:** **object** schemas only (`type: object` or schemas that declare `properties`). Does **not** claim that array-typed empty lists fail for being lists.
 - **Consumer impact:** hosts/wire callers that sent empty objects (`{}` / PHP `[]`) for object schemas with required fields can start getting validation failures on the same payload that previously passed.
 
+#### InvokePipeline — audit constructor / public field reshape (`InvokeAuditStage`)
+
+`InvokePipeline` now requires a typed `InvokeAuditStage $auditStage` constructor argument. Pipeline-level audit configuration no longer lives as public props/params on `InvokePipeline`.
+
+- **Required:** `InvokeAuditStage $auditStage` (audit write + mode/driver/outbox/failure policy live on the stage).
+- **Removed from `InvokePipeline` (constructor kwargs and public props):** `auditWriter`, `auditMode`, `auditEnabled`, `auditRequired`, `auditDriver`, `auditOutbox`, `throwOnAuditFailure`.
+- **Consumer guidance:** Prefer `CapabilityRegistry` / facade audit APIs (`withAuditWriter`, `withAuditConfig`, `throwOnAuditFailure`, `auditMode()`, …). Do **not** construct `InvokePipeline` with legacy audit kwargs or read `$pipeline->auditWriter` (etc.). In-repo only the registry builds the pipeline; sibling packages do not.
+- **Distinct from** the JsonSchema empty-object required-enforcement break above.
+
+### Changed
+
+#### Internal extract — `ApprovalExecutor`, `InvokeAuditStage`, `RegistryAssertions`
+
+Phase-2 peeled focused collaborators out of larger types (additive public classes under PSR-4; not a removal of host APIs):
+
+- `ApprovalExecutor` — execution path extracted from `ApprovalManager`
+- `InvokeAuditStage` — audit stage extracted from `InvokePipeline` (constructor reshape is **Breaking** above; this bullet only names the extract)
+- `RegistryAssertions` — assertion helpers extracted from `CapabilityRegistry`
+
+**Supported host surface is unchanged:** keep using `CapabilityRegistry`, `ApprovalManager`, and the `Capability` facade. New classes are additive for package internals / advanced wiring; they do not require host migration if you already use the registry/manager/facade path.
+
 ### Added
 
 - Core product capability bus for Laravel apps: single registry choke point and invoke pipeline
