@@ -11,6 +11,30 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Breaking (upgrade for hosts)
+
+Wire contract changes on **proposal accept/reject** (0.x pre-stable). Hosts coded against older “always reject” / throw-as-API accept paths must update clients. Full tables: [docs/user-guide.md](docs/user-guide.md#upgrade-for-hosts-acceptreject-wire).
+
+| Path | Old expectation | Current wire |
+|------|-----------------|--------------|
+| **Reject** non-pending (`accepting` / `accepted` / `failed` / `expired`) | Often force-set `rejected` / always 200 | Atomic CAS **pending→rejected** only; refuse → **HTTP 409** (`RuntimeException` in domain, mapped by `ChatController`) |
+| **Reject** already-`rejected` | Varies | **Idempotent success** (still 200) — do not treat as error |
+| **Accept** rejected / expired / failed / other terminals | Often `RuntimeException` / **500** | Typed `AcceptOutcome` + JSON body with `outcome` (no throw-as-API for known statuses) |
+| **Accept** missing proposal | Often 500 / throw | **HTTP 404** |
+
+Accept HTTP (from `AcceptOutcome.httpStatus` when set, else controller kind defaults):
+
+| Outcome | Typical HTTP | Notes |
+|---------|--------------|--------|
+| `accepted` | **200** | Done |
+| `approval_required` | **202** | Stays `accepting`; re-drive |
+| `retryable` | **429** / **409** | Stays `accepting`; `httpStatus` from result (rate_limited → 429; kind default 409) |
+| `failed` | **422** / **503** | Terminal failed, or idempotency not ready (503) |
+| `refuse` (bus hard) | **403** | Terminal |
+| `refuse` (already rejected) | **409** | Do not re-drive |
+| `refuse` (expired) | **410** | Do not re-drive |
+| missing | **404** | — |
+
 ### Fixed
 
 - **Proposal accept/reject split-brain:** one fail-closed SM that returns typed `AcceptOutcome` for all known accept statuses (rejected/expired → refuse outcomes; no throw-as-API on accept). Atomic CAS claim/reject helpers, D-005 `idempotency_key=proposal:{ulid}`, `isApprovalRequired` then `isHardRefuse` then `isRetryable`, `last_error` on terminal failed, clear on accepted. Reject remains RuntimeException → 409 for non-pending.
