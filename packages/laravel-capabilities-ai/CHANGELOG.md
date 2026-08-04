@@ -73,6 +73,19 @@ Progress `kind=tool` events and multi-round tool-role message `content` are **ho
 
 Authoritative: `TurnRunner` progress append + `encodeToolResult` (see package unit tests).
 
+#### Anthropic default model ID
+
+Default Anthropic model ID changed (0.x pre-stable). Hosts that rely on package defaults without pinning hit a **different model** at runtime.
+
+| Site | Old default | New default |
+|------|-------------|-------------|
+| `config/capabilities-ai.php` (`CAPABILITIES_AI_ANTHROPIC_MODEL`) | `claude-sonnet-4-20250514` | `claude-sonnet-4-6` |
+| `AnthropicLlmClient` constructor `model` parameter | `claude-sonnet-4-20250514` | `claude-sonnet-4-6` |
+
+**Host impact:** package-default hosts receive `claude-sonnet-4-6` instead of `claude-sonnet-4-20250514` (different model behaviour / cost / latency).
+
+**Mitigation (pin previous ID):** set env `CAPABILITIES_AI_ANTHROPIC_MODEL=claude-sonnet-4-20250514`, or pass constructor `model: 'claude-sonnet-4-20250514'` when constructing `AnthropicLlmClient` directly.
+
 ### Fixed
 
 - **Proposals `last_error` column (upgrade hosts):** `last_error` was added in-place to the create migration after some hosts had already run it. Hosts whose `capabilities_ai_proposals` table lacks the column will SQL-error on accept fail/success paths that write or clear `last_error`. Run **`php artisan migrate`** so package migration `2026_08_04_000001_add_last_error_to_capabilities_ai_proposals_table` applies (idempotent ALTER; greenfield installs already get the column from the create migration). VCS/path consumers — not Packagist-required yet.

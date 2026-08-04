@@ -55,6 +55,10 @@ class MyLlmClient implements LlmClient
 
 Authoritative behaviour: `TurnRunner` + `LlmClient` interface / `LlmClientDefaults` (see package unit tests).
 
+### Upgrade for hosts (Anthropic default model ID)
+
+Package default Anthropic model ID is now **`claude-sonnet-4-6`** (was `claude-sonnet-4-20250514`) in `config/capabilities-ai.php` (`CAPABILITIES_AI_ANTHROPIC_MODEL`) and the `AnthropicLlmClient` constructor. Hosts on package defaults hit a different model at runtime. Pin the previous ID via env or constructor `model` if you need the old default. See [CHANGELOG Unreleased Breaking](../CHANGELOG.md).
+
 ## Progress
 
 `ProgressStore` array or Redis — never product MySQL.
