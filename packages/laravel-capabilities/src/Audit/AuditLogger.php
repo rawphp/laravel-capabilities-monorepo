@@ -107,7 +107,7 @@ final class AuditLogger
     /**
      * @return array<string, mixed>|list<mixed>|null
      */
-    private static function redactInput(InvokeState $state): array|null
+    private static function redactInput(InvokeState $state): ?array
     {
         $raw = $state->input instanceof CapabilityData
             ? $state->input->toArray()

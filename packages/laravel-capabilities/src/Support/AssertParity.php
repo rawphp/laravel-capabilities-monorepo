@@ -3,11 +3,12 @@
 namespace Rawphp\Capabilities\Support;
 
 use InvalidArgumentException;
+use Rawphp\Capabilities\Registry\CapabilityRegistry;
 
 /**
  * Pure helpers for D-020 assertParity surface resolution and result class labels.
  *
- * Unit-test friendly; no IO. Registry uses these then invokes via {@see \Rawphp\Capabilities\Registry\CapabilityRegistry::invoke}.
+ * Unit-test friendly; no IO. Registry uses these then invokes via {@see CapabilityRegistry::invoke}.
  */
 final class AssertParity
 {
@@ -79,7 +80,7 @@ final class AssertParity
      * Validate and normalize the surfaces list from options.
      *
      * @param  list<string>|null  $surfaces
-     * @return list<string>  original labels (not callers) in order
+     * @return list<string> original labels (not callers) in order
      *
      * @throws InvalidArgumentException
      */

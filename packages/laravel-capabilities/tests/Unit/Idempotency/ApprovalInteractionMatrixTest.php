@@ -4,6 +4,7 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Idempotency\WireKeyResolver;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Tests\Fixtures\IdempotencyHelpers;
 
@@ -32,7 +33,7 @@ it('happy: scenario invoke_with_key_approval_required_stores_key [D-005]', funct
 });
 
 it('happy: scenario accept_uses_stored_key [D-005]', function () {
-    $fromStored = \Rawphp\Capabilities\Idempotency\WireKeyResolver::resolve(
+    $fromStored = WireKeyResolver::resolve(
         'approval_accept',
         storedKey: 'stored-on-row',
     );

@@ -92,7 +92,6 @@ it('path: database + connection builds QueryTableGateway (not silent ArrayTableG
         ->and($idemGw->tableName())->toBe(MigrationCatalog::TABLE_IDEMPOTENCY);
 });
 
-
 it('path: memory config keeps in-memory stores for unit tests', function () {
     $config = BootHelpers::config([
         'approval' => ['store' => 'memory'],

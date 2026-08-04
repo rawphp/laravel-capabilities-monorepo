@@ -2,19 +2,9 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Approval\ApprovalCallbackVerifier;
-use Rawphp\Capabilities\Approval\ApprovalManager;
-use Rawphp\Capabilities\Approval\ApprovalPolicy;
-use Rawphp\Capabilities\Approval\ApprovalStateMachine;
-use Rawphp\Capabilities\Approval\Notifiers\CliApprovalNotifier;
-use Rawphp\Capabilities\Approval\Notifiers\HttpApprovalNotifier;
-use Rawphp\Capabilities\Approval\Notifiers\TelegramApprovalNotifier;
-use Rawphp\Capabilities\Events\CapabilityApprovalExecuted;
-use Rawphp\Capabilities\Support\SystemActor;
-use Rawphp\Capabilities\Tests\Fixtures\ApprovalHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
-it("edge: needsApproval can branch on caller agent [D-006]", function () {
+it('edge: needsApproval can branch on caller agent [D-006]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $r = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('agent', [
         'needs_approval_callback' => fn ($in, $ctx) => $ctx->caller() === 'agent',
@@ -22,7 +12,7 @@ it("edge: needsApproval can branch on caller agent [D-006]", function () {
     expect($r->isApprovalRequired())->toBeTrue();
 });
 
-it("fail: needsApproval branch for agent uses derived caller not header [D-022]", function () {
+it('fail: needsApproval branch for agent uses derived caller not header [D-022]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $r = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('agent', [
         'headers' => ['X-Capability-Caller' => 'http'],
@@ -40,7 +30,7 @@ it("fail: needsApproval branch for agent uses derived caller not header [D-022]"
     }
 });
 
-it("edge: needsApproval can branch on caller mcp [D-006]", function () {
+it('edge: needsApproval can branch on caller mcp [D-006]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $r = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('mcp', [
         'needs_approval_callback' => fn ($in, $ctx) => $ctx->caller() === 'mcp',
@@ -48,7 +38,7 @@ it("edge: needsApproval can branch on caller mcp [D-006]", function () {
     expect($r->isApprovalRequired())->toBeTrue();
 });
 
-it("fail: needsApproval branch for mcp uses derived caller not header [D-022]", function () {
+it('fail: needsApproval branch for mcp uses derived caller not header [D-022]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $r = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('mcp', [
         'headers' => ['X-Capability-Caller' => 'http'],
@@ -66,7 +56,7 @@ it("fail: needsApproval branch for mcp uses derived caller not header [D-022]", 
     }
 });
 
-it("edge: needsApproval can branch on caller http [D-006]", function () {
+it('edge: needsApproval can branch on caller http [D-006]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $r = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http', [
         'needs_approval_callback' => fn ($in, $ctx) => $ctx->caller() === 'http',
@@ -74,7 +64,7 @@ it("edge: needsApproval can branch on caller http [D-006]", function () {
     expect($r->isApprovalRequired())->toBeTrue();
 });
 
-it("fail: needsApproval branch for http uses derived caller not header [D-022]", function () {
+it('fail: needsApproval branch for http uses derived caller not header [D-022]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $r = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http', [
         'headers' => ['X-Capability-Caller' => 'http'],
@@ -92,7 +82,7 @@ it("fail: needsApproval branch for http uses derived caller not header [D-022]",
     }
 });
 
-it("edge: needsApproval can branch on caller cli [D-006]", function () {
+it('edge: needsApproval can branch on caller cli [D-006]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $r = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('cli', [
         'needs_approval_callback' => fn ($in, $ctx) => $ctx->caller() === 'cli',
@@ -100,7 +90,7 @@ it("edge: needsApproval can branch on caller cli [D-006]", function () {
     expect($r->isApprovalRequired())->toBeTrue();
 });
 
-it("fail: needsApproval branch for cli uses derived caller not header [D-022]", function () {
+it('fail: needsApproval branch for cli uses derived caller not header [D-022]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $r = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('cli', [
         'headers' => ['X-Capability-Caller' => 'http'],
@@ -118,7 +108,7 @@ it("fail: needsApproval branch for cli uses derived caller not header [D-022]", 
     }
 });
 
-it("edge: needsApproval can branch on caller job [D-006]", function () {
+it('edge: needsApproval can branch on caller job [D-006]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $r = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('job', [
         'needs_approval_callback' => fn ($in, $ctx) => $ctx->caller() === 'job',
@@ -126,7 +116,7 @@ it("edge: needsApproval can branch on caller job [D-006]", function () {
     expect($r->isApprovalRequired())->toBeTrue();
 });
 
-it("fail: needsApproval branch for job uses derived caller not header [D-022]", function () {
+it('fail: needsApproval branch for job uses derived caller not header [D-022]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $r = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('job', [
         'headers' => ['X-Capability-Caller' => 'http'],
@@ -144,7 +134,7 @@ it("fail: needsApproval branch for job uses derived caller not header [D-022]", 
     }
 });
 
-it("happy: example large amount requires approval for agent mcp cli not necessarily http [D-006]", function () {
+it('happy: example large amount requires approval for agent mcp cli not necessarily http [D-006]', function () {
     foreach (['agent', 'mcp', 'cli'] as $caller) {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
         $r = $h['registry']->invoke($h['name'], ['customer_id' => 1, 'amount_cents' => 100000, 'currency' => 'USD'], PipelineHelpers::options($caller, [
@@ -158,4 +148,3 @@ it("happy: example large amount requires approval for agent mcp cli not necessar
     ]));
     expect($r->isApprovalRequired())->toBeFalse();
 });
-

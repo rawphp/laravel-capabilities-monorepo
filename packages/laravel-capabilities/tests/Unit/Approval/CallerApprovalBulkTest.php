@@ -2,19 +2,10 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Approval\ApprovalCallbackVerifier;
-use Rawphp\Capabilities\Approval\ApprovalManager;
-use Rawphp\Capabilities\Approval\ApprovalPolicy;
-use Rawphp\Capabilities\Approval\ApprovalStateMachine;
-use Rawphp\Capabilities\Approval\Notifiers\CliApprovalNotifier;
-use Rawphp\Capabilities\Approval\Notifiers\HttpApprovalNotifier;
-use Rawphp\Capabilities\Approval\Notifiers\TelegramApprovalNotifier;
-use Rawphp\Capabilities\Events\CapabilityApprovalExecuted;
-use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\ApprovalHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
-it("happy: approval needs_true_pending for original caller agent [D-006]", function () {
+it('happy: approval needs_true_pending for original caller agent [D-006]', function () {
     $caller = 'agent';
     if ('needs_true_pending' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -49,7 +40,7 @@ it("happy: approval needs_true_pending for original caller agent [D-006]", funct
     }
 });
 
-it("happy: approval needs_false_runs for original caller agent [D-006]", function () {
+it('happy: approval needs_false_runs for original caller agent [D-006]', function () {
     $caller = 'agent';
     if ('needs_false_runs' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -84,7 +75,7 @@ it("happy: approval needs_false_runs for original caller agent [D-006]", functio
     }
 });
 
-it("happy: approval accept_ok for original caller agent [D-006]", function () {
+it('happy: approval accept_ok for original caller agent [D-006]', function () {
     $caller = 'agent';
     if ('accept_ok' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -119,7 +110,7 @@ it("happy: approval accept_ok for original caller agent [D-006]", function () {
     }
 });
 
-it("fail: approval accept_stale for original caller agent [D-006]", function () {
+it('fail: approval accept_stale for original caller agent [D-006]', function () {
     $caller = 'agent';
     if ('accept_stale' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -154,7 +145,7 @@ it("fail: approval accept_stale for original caller agent [D-006]", function () 
     }
 });
 
-it("happy: approval reject for original caller agent [D-006]", function () {
+it('happy: approval reject for original caller agent [D-006]', function () {
     $caller = 'agent';
     if ('reject' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -189,7 +180,7 @@ it("happy: approval reject for original caller agent [D-006]", function () {
     }
 });
 
-it("happy: approval expire for original caller agent [D-006]", function () {
+it('happy: approval expire for original caller agent [D-006]', function () {
     $caller = 'agent';
     if ('expire' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -224,7 +215,7 @@ it("happy: approval expire for original caller agent [D-006]", function () {
     }
 });
 
-it("happy: approval double_accept_replay for original caller agent [D-006]", function () {
+it('happy: approval double_accept_replay for original caller agent [D-006]', function () {
     $caller = 'agent';
     if ('double_accept_replay' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -259,7 +250,7 @@ it("happy: approval double_accept_replay for original caller agent [D-006]", fun
     }
 });
 
-it("happy: approval needs_true_pending for original caller mcp [D-006]", function () {
+it('happy: approval needs_true_pending for original caller mcp [D-006]', function () {
     $caller = 'mcp';
     if ('needs_true_pending' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -294,7 +285,7 @@ it("happy: approval needs_true_pending for original caller mcp [D-006]", functio
     }
 });
 
-it("happy: approval needs_false_runs for original caller mcp [D-006]", function () {
+it('happy: approval needs_false_runs for original caller mcp [D-006]', function () {
     $caller = 'mcp';
     if ('needs_false_runs' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -329,7 +320,7 @@ it("happy: approval needs_false_runs for original caller mcp [D-006]", function 
     }
 });
 
-it("happy: approval accept_ok for original caller mcp [D-006]", function () {
+it('happy: approval accept_ok for original caller mcp [D-006]', function () {
     $caller = 'mcp';
     if ('accept_ok' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -364,7 +355,7 @@ it("happy: approval accept_ok for original caller mcp [D-006]", function () {
     }
 });
 
-it("fail: approval accept_stale for original caller mcp [D-006]", function () {
+it('fail: approval accept_stale for original caller mcp [D-006]', function () {
     $caller = 'mcp';
     if ('accept_stale' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -399,7 +390,7 @@ it("fail: approval accept_stale for original caller mcp [D-006]", function () {
     }
 });
 
-it("happy: approval reject for original caller mcp [D-006]", function () {
+it('happy: approval reject for original caller mcp [D-006]', function () {
     $caller = 'mcp';
     if ('reject' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -434,7 +425,7 @@ it("happy: approval reject for original caller mcp [D-006]", function () {
     }
 });
 
-it("happy: approval expire for original caller mcp [D-006]", function () {
+it('happy: approval expire for original caller mcp [D-006]', function () {
     $caller = 'mcp';
     if ('expire' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -469,7 +460,7 @@ it("happy: approval expire for original caller mcp [D-006]", function () {
     }
 });
 
-it("happy: approval double_accept_replay for original caller mcp [D-006]", function () {
+it('happy: approval double_accept_replay for original caller mcp [D-006]', function () {
     $caller = 'mcp';
     if ('double_accept_replay' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -504,7 +495,7 @@ it("happy: approval double_accept_replay for original caller mcp [D-006]", funct
     }
 });
 
-it("happy: approval needs_true_pending for original caller http [D-006]", function () {
+it('happy: approval needs_true_pending for original caller http [D-006]', function () {
     $caller = 'http';
     if ('needs_true_pending' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -539,7 +530,7 @@ it("happy: approval needs_true_pending for original caller http [D-006]", functi
     }
 });
 
-it("happy: approval needs_false_runs for original caller http [D-006]", function () {
+it('happy: approval needs_false_runs for original caller http [D-006]', function () {
     $caller = 'http';
     if ('needs_false_runs' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -574,7 +565,7 @@ it("happy: approval needs_false_runs for original caller http [D-006]", function
     }
 });
 
-it("happy: approval accept_ok for original caller http [D-006]", function () {
+it('happy: approval accept_ok for original caller http [D-006]', function () {
     $caller = 'http';
     if ('accept_ok' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -609,7 +600,7 @@ it("happy: approval accept_ok for original caller http [D-006]", function () {
     }
 });
 
-it("fail: approval accept_stale for original caller http [D-006]", function () {
+it('fail: approval accept_stale for original caller http [D-006]', function () {
     $caller = 'http';
     if ('accept_stale' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -644,7 +635,7 @@ it("fail: approval accept_stale for original caller http [D-006]", function () {
     }
 });
 
-it("happy: approval reject for original caller http [D-006]", function () {
+it('happy: approval reject for original caller http [D-006]', function () {
     $caller = 'http';
     if ('reject' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -679,7 +670,7 @@ it("happy: approval reject for original caller http [D-006]", function () {
     }
 });
 
-it("happy: approval expire for original caller http [D-006]", function () {
+it('happy: approval expire for original caller http [D-006]', function () {
     $caller = 'http';
     if ('expire' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -714,7 +705,7 @@ it("happy: approval expire for original caller http [D-006]", function () {
     }
 });
 
-it("happy: approval double_accept_replay for original caller http [D-006]", function () {
+it('happy: approval double_accept_replay for original caller http [D-006]', function () {
     $caller = 'http';
     if ('double_accept_replay' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -749,7 +740,7 @@ it("happy: approval double_accept_replay for original caller http [D-006]", func
     }
 });
 
-it("happy: approval needs_true_pending for original caller cli [D-006]", function () {
+it('happy: approval needs_true_pending for original caller cli [D-006]', function () {
     $caller = 'cli';
     if ('needs_true_pending' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -784,7 +775,7 @@ it("happy: approval needs_true_pending for original caller cli [D-006]", functio
     }
 });
 
-it("happy: approval needs_false_runs for original caller cli [D-006]", function () {
+it('happy: approval needs_false_runs for original caller cli [D-006]', function () {
     $caller = 'cli';
     if ('needs_false_runs' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -819,7 +810,7 @@ it("happy: approval needs_false_runs for original caller cli [D-006]", function 
     }
 });
 
-it("happy: approval accept_ok for original caller cli [D-006]", function () {
+it('happy: approval accept_ok for original caller cli [D-006]', function () {
     $caller = 'cli';
     if ('accept_ok' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -854,7 +845,7 @@ it("happy: approval accept_ok for original caller cli [D-006]", function () {
     }
 });
 
-it("fail: approval accept_stale for original caller cli [D-006]", function () {
+it('fail: approval accept_stale for original caller cli [D-006]', function () {
     $caller = 'cli';
     if ('accept_stale' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -889,7 +880,7 @@ it("fail: approval accept_stale for original caller cli [D-006]", function () {
     }
 });
 
-it("happy: approval reject for original caller cli [D-006]", function () {
+it('happy: approval reject for original caller cli [D-006]', function () {
     $caller = 'cli';
     if ('reject' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -924,7 +915,7 @@ it("happy: approval reject for original caller cli [D-006]", function () {
     }
 });
 
-it("happy: approval expire for original caller cli [D-006]", function () {
+it('happy: approval expire for original caller cli [D-006]', function () {
     $caller = 'cli';
     if ('expire' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -959,7 +950,7 @@ it("happy: approval expire for original caller cli [D-006]", function () {
     }
 });
 
-it("happy: approval double_accept_replay for original caller cli [D-006]", function () {
+it('happy: approval double_accept_replay for original caller cli [D-006]', function () {
     $caller = 'cli';
     if ('double_accept_replay' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -994,7 +985,7 @@ it("happy: approval double_accept_replay for original caller cli [D-006]", funct
     }
 });
 
-it("happy: approval needs_true_pending for original caller job [D-006]", function () {
+it('happy: approval needs_true_pending for original caller job [D-006]', function () {
     $caller = 'job';
     if ('needs_true_pending' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -1029,7 +1020,7 @@ it("happy: approval needs_true_pending for original caller job [D-006]", functio
     }
 });
 
-it("happy: approval needs_false_runs for original caller job [D-006]", function () {
+it('happy: approval needs_false_runs for original caller job [D-006]', function () {
     $caller = 'job';
     if ('needs_false_runs' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -1064,7 +1055,7 @@ it("happy: approval needs_false_runs for original caller job [D-006]", function 
     }
 });
 
-it("happy: approval accept_ok for original caller job [D-006]", function () {
+it('happy: approval accept_ok for original caller job [D-006]', function () {
     $caller = 'job';
     if ('accept_ok' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -1099,7 +1090,7 @@ it("happy: approval accept_ok for original caller job [D-006]", function () {
     }
 });
 
-it("fail: approval accept_stale for original caller job [D-006]", function () {
+it('fail: approval accept_stale for original caller job [D-006]', function () {
     $caller = 'job';
     if ('accept_stale' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -1134,7 +1125,7 @@ it("fail: approval accept_stale for original caller job [D-006]", function () {
     }
 });
 
-it("happy: approval reject for original caller job [D-006]", function () {
+it('happy: approval reject for original caller job [D-006]', function () {
     $caller = 'job';
     if ('reject' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -1169,7 +1160,7 @@ it("happy: approval reject for original caller job [D-006]", function () {
     }
 });
 
-it("happy: approval expire for original caller job [D-006]", function () {
+it('happy: approval expire for original caller job [D-006]', function () {
     $caller = 'job';
     if ('expire' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -1204,7 +1195,7 @@ it("happy: approval expire for original caller job [D-006]", function () {
     }
 });
 
-it("happy: approval double_accept_replay for original caller job [D-006]", function () {
+it('happy: approval double_accept_replay for original caller job [D-006]', function () {
     $caller = 'job';
     if ('double_accept_replay' === 'needs_true_pending') {
         $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
@@ -1238,4 +1229,3 @@ it("happy: approval double_accept_replay for original caller job [D-006]", funct
         expect(($r2->meta['approval_replay'] ?? false) || ($r2->meta['idempotent_replay'] ?? false))->toBeTrue();
     }
 });
-

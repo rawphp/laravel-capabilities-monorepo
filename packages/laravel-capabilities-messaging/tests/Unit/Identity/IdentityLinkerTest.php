@@ -2,27 +2,10 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Contracts\ApprovalNotifier;
-use Rawphp\Capabilities\Support\CapabilityContext;
-use Rawphp\Capabilities\Support\CapabilityResult;
-use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
-use Rawphp\CapabilitiesMessaging\MessagingConfig;
-use Rawphp\CapabilitiesMessaging\MessagingServiceProvider;
-use Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier;
-use Rawphp\CapabilitiesMessaging\Tests\Fixtures\FakeCapabilityBus;
-use Rawphp\CapabilitiesMessaging\Support\FakeQueue;
-use Rawphp\CapabilitiesMessaging\Support\FakeTelegramBotClient;
 use Rawphp\CapabilitiesMessaging\Support\LinkedUser;
-use Rawphp\CapabilitiesMessaging\Telegram\CallbackHandler;
-use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdate;
-use Rawphp\CapabilitiesMessaging\Telegram\TelegramAdapter;
-use Rawphp\CapabilitiesMessaging\Telegram\TelegramCallbackSigner;
-use Rawphp\CapabilitiesMessaging\Telegram\TelegramWebhookController;
-use Rawphp\CapabilitiesMessaging\Threads\ThreadStore;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers as H;
 
-
-it("happy: code link flow binds Telegram user to Laravel User [MSG-002]", function () {
+it('happy: code link flow binds Telegram user to Laravel User [MSG-002]', function () {
     $id = H::identity();
     $code = $id->issueLinkCode('user-9', 'tenant-a');
     $user = $id->bindWithCode('tg-1', $code);
@@ -31,7 +14,7 @@ it("happy: code link flow binds Telegram user to Laravel User [MSG-002]", functi
         ->and($id->isLinked('tg-1'))->toBeTrue();
 });
 
-it("happy: allowlist mode allows listed identities [MSG-002]", function () {
+it('happy: allowlist mode allows listed identities [MSG-002]', function () {
     $id = H::identity([
         'identity' => [
             'mode' => 'allowlist',
@@ -44,19 +27,19 @@ it("happy: allowlist mode allows listed identities [MSG-002]", function () {
     expect($user)->not->toBeNull()->and($user->id)->toBe('user-al');
 });
 
-it("fail: unlinked user cannot run tools [MSG-002]", function () {
+it('fail: unlinked user cannot run tools [MSG-002]', function () {
     $id = H::identity();
     $user = $id->resolve(['telegram_user_id' => 'unknown']);
     expect($id->canUseTools($user))->toBeFalse();
 });
 
-it("fail: forged identity payload rejected [MSG-002]", function () {
+it('fail: forged identity payload rejected [MSG-002]', function () {
     $id = H::identity();
     expect(fn () => $id->rejectForgedBind(['laravel_user_id' => '1', 'telegram_user_id' => '2']))
         ->toThrow(RuntimeException::class);
 });
 
-it("edge: code link expires and cannot be reused after bind [MSG-002]", function () {
+it('edge: code link expires and cannot be reused after bind [MSG-002]', function () {
     $id = H::identity(['identity' => ['code_ttl_seconds' => 10]]);
     $now = 1_700_000_000;
     $code = $id->issueLinkCode('user-1', null, $now);
@@ -66,7 +49,7 @@ it("edge: code link expires and cannot be reused after bind [MSG-002]", function
     expect($id->bindWithCode('tg-z', $code2, $now + 2))->toBeNull();
 });
 
-it("fail: allowlist identity from wrong tenant cannot escalate [MSG-002]", function () {
+it('fail: allowlist identity from wrong tenant cannot escalate [MSG-002]', function () {
     $id = H::identity([
         'identity' => [
             'mode' => 'allowlist',
@@ -79,14 +62,14 @@ it("fail: allowlist identity from wrong tenant cannot escalate [MSG-002]", funct
     expect($user)->toBeNull();
 });
 
-it("fail: unlinked identity never starts agent turn with tools [MSG-002]", function () {
+it('fail: unlinked identity never starts agent turn with tools [MSG-002]', function () {
     $identity = H::identity();
     $p = H::processor(['identity' => $identity]);
     $r = $p->handle(H::telegramUpdate(userId: 999));
     expect($r['ok'])->toBeFalse()->and($r['error'])->toContain('identity');
 });
 
-it("happy: linked identity resolves to User for ConversationIngress [MSG-002]", function () {
+it('happy: linked identity resolves to User for ConversationIngress [MSG-002]', function () {
     $identity = H::identity();
     $identity->link('42', 'user-1', 'tenant-a');
     $user = $identity->resolve(['telegram_user_id' => '42']);

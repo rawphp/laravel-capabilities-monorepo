@@ -9,7 +9,7 @@ use Rawphp\CapabilitiesAi\Jobs\RunTurnJob;
 use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Message;
 use Rawphp\CapabilitiesAi\Models\Turn;
-use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
+use Rawphp\CapabilitiesAi\Package;
 
 /**
  * Cheap message create — never calls LlmClient.
@@ -21,10 +21,14 @@ final class ConversationService
      */
     public function __construct(
         private readonly mixed $dispatch,
-        private readonly ?ProgressStore $progress = null,
+        private readonly ProgressStore $progress,
+        private readonly int $claimTtl = Package::DEFAULT_CLAIM_TTL,
     ) {
         if (! is_callable($this->dispatch)) {
             throw new \InvalidArgumentException('dispatch must be callable');
+        }
+        if ($this->claimTtl <= 0) {
+            throw new \InvalidArgumentException('claimTtl must be positive');
         }
     }
 
@@ -63,10 +67,11 @@ final class ConversationService
             'request_hash' => null,
         ]);
 
-        ($this->dispatch)(new RunTurnJob($turn->ulid));
+        $job = new RunTurnJob($turn->ulid);
+        $job->timeout = $this->claimTtl;
+        ($this->dispatch)($job);
 
-        $progress = $this->progress ?? new ArrayProgressStore;
-        $progress->append($turn->ulid, [
+        $this->progress->append($turn->ulid, [
             'kind' => 'status',
             'data' => ['status' => Turn::STATUS_QUEUED],
         ]);
@@ -75,6 +80,65 @@ final class ConversationService
             'conversation_ulid' => $conversation->ulid,
             'message_ulid' => $message->ulid,
             'turn_ulid' => $turn->ulid,
+        ];
+    }
+
+    /**
+     * Ordered messages for a conversation (HTTP history).
+     *
+     * @return array{conversation_ulid: string, messages: list<array{ulid: string, role: string, content: ?string, created_at: ?string}>}
+     */
+    public function history(string $conversationUlid): array
+    {
+        $conversation = Conversation::query()->where('ulid', $conversationUlid)->firstOrFail();
+
+        $messages = Message::query()
+            ->where('conversation_id', $conversation->id)
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get()
+            ->map(static fn (Message $m): array => [
+                'ulid' => $m->ulid,
+                'role' => (string) $m->role,
+                'content' => $m->content,
+                'created_at' => $m->created_at?->toIso8601String(),
+            ])
+            ->all();
+
+        return [
+            'conversation_ulid' => $conversation->ulid,
+            'messages' => $messages,
+        ];
+    }
+
+    /**
+     * Close conversation (status=closed). Fail closed if any turn is queued or running.
+     * Idempotent when already closed and no active turns.
+     *
+     * @return array{conversation_ulid: string, status: string, closed: bool}
+     */
+    public function destroy(string $conversationUlid): array
+    {
+        $conversation = Conversation::query()->where('ulid', $conversationUlid)->firstOrFail();
+
+        $active = Turn::query()
+            ->where('conversation_id', $conversation->id)
+            ->whereIn('status', [Turn::STATUS_QUEUED, Turn::STATUS_RUNNING])
+            ->exists();
+
+        if ($active) {
+            throw new \RuntimeException("Conversation {$conversationUlid} has queued or running turns");
+        }
+
+        if ($conversation->status !== 'closed') {
+            $conversation->status = 'closed';
+            $conversation->save();
+        }
+
+        return [
+            'conversation_ulid' => $conversation->ulid,
+            'status' => 'closed',
+            'closed' => true,
         ];
     }
 

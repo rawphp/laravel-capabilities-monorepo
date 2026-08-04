@@ -170,7 +170,7 @@ it('edge: expired key after TTL treated as new key [D-005]', function () {
     $hash = IdempotencyHelpers::hash(IdempotencyHelpers::inputA());
     $guard->lookup($def, $ctx, 'exp-1', $hash);
     $guard->storeResult($def, $ctx, 'exp-1', $hash, CapabilityResult::success(['id' => 1]));
-    $clock->advance(new \DateInterval('PT2H'));
+    $clock->advance(new DateInterval('PT2H'));
     $out = $guard->lookup($def, $ctx, 'exp-1', $hash);
     expect($out['action'])->toBe('continue');
 });

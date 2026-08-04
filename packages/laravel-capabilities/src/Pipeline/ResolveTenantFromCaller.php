@@ -25,8 +25,8 @@ final class ResolveTenantFromCaller
 
     /**
      * @param  array<string, mixed>  $options
-     *         scope, tenant_id, require_scope, fail_scope, global_system,
-     *         attributes, input (ignored for SystemActor scope)
+     *                                         scope, tenant_id, require_scope, fail_scope, global_system,
+     *                                         attributes, input (ignored for SystemActor scope)
      */
     public function resolve(CapabilityContext $partial, array $options = []): CapabilityScope
     {

@@ -25,7 +25,7 @@ final class SchemaSnapshot
     {
         $safe = str_replace(['/', '\\'], '_', $capabilityName);
 
-        return rtrim($directory, "/\\").DIRECTORY_SEPARATOR.$safe.self::FILE_SUFFIX;
+        return rtrim($directory, '/\\').DIRECTORY_SEPARATOR.$safe.self::FILE_SUFFIX;
     }
 
     /**

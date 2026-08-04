@@ -24,6 +24,7 @@ return new class extends Migration
             $blueprint->string('target_capability', 191)->nullable();
             $blueprint->string('status', 32)->default('pending')->index();
             $blueprint->timestamp('accepted_at')->nullable();
+            $blueprint->text('last_error')->nullable();
             $blueprint->timestamps();
 
             $blueprint->foreign('turn_id')

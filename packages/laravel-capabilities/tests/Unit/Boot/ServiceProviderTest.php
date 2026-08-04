@@ -20,46 +20,46 @@ use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
 use Rawphp\Capabilities\Tests\Fixtures\BootHelpers;
 
-it("happy: registers config merge [BOOT-001]", function () {
+it('happy: registers config merge [BOOT-001]', function () {
     $plan = CapabilitiesServiceProvider::registrationPlan();
-    expect($plan["config_merged"])->toBeTrue()
+    expect($plan['config_merged'])->toBeTrue()
         ->and(CapabilitiesConfig::defaults())->toHaveKeys(CapabilitiesConfig::TOP_LEVEL_KEYS);
 });
 
-it("happy: registers registry singleton [BOOT-001]", function () {
+it('happy: registers registry singleton [BOOT-001]', function () {
     $plan = CapabilitiesServiceProvider::registrationPlan();
-    expect($plan["registry_singleton"])->toBeTrue()
-        ->and($plan["bindings"])->toContain("CapabilityRegistry");
+    expect($plan['registry_singleton'])->toBeTrue()
+        ->and($plan['bindings'])->toContain('CapabilityRegistry');
 });
 
-it("edge: registers routes when http enabled [BOOT-001]", function () {
+it('edge: registers routes when http enabled [BOOT-001]', function () {
     $plan = CapabilitiesServiceProvider::registrationPlan(BootHelpers::config([
-        "surfaces" => BootHelpers::surfaces(["http" => true]),
+        'surfaces' => BootHelpers::surfaces(['http' => true]),
     ]));
-    expect($plan["routes"])->not->toBeEmpty()->and($plan["routes"])->toContain("invoke");
+    expect($plan['routes'])->not->toBeEmpty()->and($plan['routes'])->toContain('invoke');
 });
 
-it("edge: registers commands when artisan enabled [BOOT-001]", function () {
+it('edge: registers commands when artisan enabled [BOOT-001]', function () {
     $plan = CapabilitiesServiceProvider::registrationPlan(BootHelpers::config([
-        "surfaces" => BootHelpers::surfaces(["artisan" => true]),
+        'surfaces' => BootHelpers::surfaces(['artisan' => true]),
     ]));
-    expect($plan["commands"])->not->toBeEmpty();
+    expect($plan['commands'])->not->toBeEmpty();
 });
 
-it("fail: does not register AI tools when agent disabled [SURF-003]", function () {
+it('fail: does not register AI tools when agent disabled [SURF-003]', function () {
     $plan = CapabilitiesServiceProvider::registrationPlan(BootHelpers::config([
-        "surfaces" => BootHelpers::surfaces(["agent" => false]),
+        'surfaces' => BootHelpers::surfaces(['agent' => false]),
     ]), BootHelpers::probe());
-    expect($plan["ai_tools"])->toBeEmpty()
-        ->and($plan["surfaces"][SurfaceNames::AGENT])->toBeEmpty();
+    expect($plan['ai_tools'])->toBeEmpty()
+        ->and($plan['surfaces'][SurfaceNames::AGENT])->toBeEmpty();
 });
 
-it("fail: does not register MCP tools when mcp disabled [SURF-003]", function () {
+it('fail: does not register MCP tools when mcp disabled [SURF-003]', function () {
     $plan = CapabilitiesServiceProvider::registrationPlan(BootHelpers::config([
-        "surfaces" => BootHelpers::surfaces(["mcp" => false]),
+        'surfaces' => BootHelpers::surfaces(['mcp' => false]),
     ]), BootHelpers::probe());
-    expect($plan["mcp_tools"])->toBeEmpty()
-        ->and($plan["surfaces"][SurfaceNames::MCP])->toBeEmpty();
+    expect($plan['mcp_tools'])->toBeEmpty()
+        ->and($plan['surfaces'][SurfaceNames::MCP])->toBeEmpty();
 });
 
 // --- REQ-048: store singleton parity (invoke vs accept paths) ---

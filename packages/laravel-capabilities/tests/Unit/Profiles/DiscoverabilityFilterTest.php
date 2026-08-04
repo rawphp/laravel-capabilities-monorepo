@@ -4,12 +4,9 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Profiles\ProfileRequiredException;
-use Rawphp\Capabilities\Profiles\TooManyToolsException;
-use Rawphp\Capabilities\RateLimiting\AgentTurnBudget;
 use Rawphp\Capabilities\Tests\Fixtures\ProfileHelpers;
 
-it("happy: tool listed when surface=agent can_discover=True in_profile=True [D-008]", function () {
+it('happy: tool listed when surface=agent can_discover=True in_profile=True [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness([
         'caps' => [
             ['name' => 'create-invoice', 'groups' => ['billing'], 'canDiscover' => true, 'surfaces' => ['agent', 'http']],
@@ -22,7 +19,7 @@ it("happy: tool listed when surface=agent can_discover=True in_profile=True [D-0
     expect(in_array('create-invoice', $names, true))->toBe(true);
 });
 
-it("happy: authorize still runs on invoke when surface=agent can_discover=True in_profile=True [D-008]", function () {
+it('happy: authorize still runs on invoke when surface=agent can_discover=True in_profile=True [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness([
         'authorizer' => ProfileHelpers::denyAuthorizer(),
         'caps' => [
@@ -33,7 +30,7 @@ it("happy: authorize still runs on invoke when surface=agent can_discover=True i
     expect($r->errorCode())->toBe('forbidden');
 });
 
-it("fail: tool not listed when surface=agent can_discover=True in_profile=False [D-008]", function () {
+it('fail: tool not listed when surface=agent can_discover=True in_profile=False [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness([
         'caps' => [
             ['name' => 'create-invoice', 'groups' => ['billing'], 'canDiscover' => true, 'surfaces' => ['agent', 'http']],
@@ -46,7 +43,7 @@ it("fail: tool not listed when surface=agent can_discover=True in_profile=False 
     expect(in_array('create-invoice', $names, true))->toBe(false);
 });
 
-it("happy: authorize still runs on invoke when surface=agent can_discover=True in_profile=False [D-008]", function () {
+it('happy: authorize still runs on invoke when surface=agent can_discover=True in_profile=False [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness([
         'authorizer' => ProfileHelpers::denyAuthorizer(),
         'caps' => [
@@ -57,7 +54,7 @@ it("happy: authorize still runs on invoke when surface=agent can_discover=True i
     expect($r->errorCode())->toBe('forbidden');
 });
 
-it("fail: tool not listed when surface=agent can_discover=False in_profile=True [D-008]", function () {
+it('fail: tool not listed when surface=agent can_discover=False in_profile=True [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness([
         'caps' => [
             ['name' => 'create-invoice', 'groups' => ['billing'], 'canDiscover' => false, 'surfaces' => ['agent', 'http']],
@@ -70,7 +67,7 @@ it("fail: tool not listed when surface=agent can_discover=False in_profile=True 
     expect(in_array('create-invoice', $names, true))->toBe(false);
 });
 
-it("happy: authorize still runs on invoke when surface=agent can_discover=False in_profile=True [D-008]", function () {
+it('happy: authorize still runs on invoke when surface=agent can_discover=False in_profile=True [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness([
         'authorizer' => ProfileHelpers::denyAuthorizer(),
         'caps' => [
@@ -81,7 +78,7 @@ it("happy: authorize still runs on invoke when surface=agent can_discover=False 
     expect($r->errorCode())->toBe('forbidden');
 });
 
-it("fail: tool not listed when surface=agent can_discover=False in_profile=False [D-008]", function () {
+it('fail: tool not listed when surface=agent can_discover=False in_profile=False [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness([
         'caps' => [
             ['name' => 'create-invoice', 'groups' => ['billing'], 'canDiscover' => false, 'surfaces' => ['agent', 'http']],
@@ -94,7 +91,7 @@ it("fail: tool not listed when surface=agent can_discover=False in_profile=False
     expect(in_array('create-invoice', $names, true))->toBe(false);
 });
 
-it("happy: authorize still runs on invoke when surface=agent can_discover=False in_profile=False [D-008]", function () {
+it('happy: authorize still runs on invoke when surface=agent can_discover=False in_profile=False [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness([
         'authorizer' => ProfileHelpers::denyAuthorizer(),
         'caps' => [
@@ -105,7 +102,7 @@ it("happy: authorize still runs on invoke when surface=agent can_discover=False 
     expect($r->errorCode())->toBe('forbidden');
 });
 
-it("happy: tool listed when surface=mcp can_discover=True in_profile=True [D-008]", function () {
+it('happy: tool listed when surface=mcp can_discover=True in_profile=True [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness([
         'caps' => [
             ['name' => 'create-invoice', 'groups' => ['billing'], 'canDiscover' => true, 'surfaces' => ['mcp', 'http']],
@@ -118,7 +115,7 @@ it("happy: tool listed when surface=mcp can_discover=True in_profile=True [D-008
     expect(in_array('create-invoice', $names, true))->toBe(true);
 });
 
-it("happy: authorize still runs on invoke when surface=mcp can_discover=True in_profile=True [D-008]", function () {
+it('happy: authorize still runs on invoke when surface=mcp can_discover=True in_profile=True [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness([
         'authorizer' => ProfileHelpers::denyAuthorizer(),
         'caps' => [
@@ -129,7 +126,7 @@ it("happy: authorize still runs on invoke when surface=mcp can_discover=True in_
     expect($r->errorCode())->toBe('forbidden');
 });
 
-it("fail: tool not listed when surface=mcp can_discover=True in_profile=False [D-008]", function () {
+it('fail: tool not listed when surface=mcp can_discover=True in_profile=False [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness([
         'caps' => [
             ['name' => 'create-invoice', 'groups' => ['billing'], 'canDiscover' => true, 'surfaces' => ['mcp', 'http']],
@@ -142,7 +139,7 @@ it("fail: tool not listed when surface=mcp can_discover=True in_profile=False [D
     expect(in_array('create-invoice', $names, true))->toBe(false);
 });
 
-it("happy: authorize still runs on invoke when surface=mcp can_discover=True in_profile=False [D-008]", function () {
+it('happy: authorize still runs on invoke when surface=mcp can_discover=True in_profile=False [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness([
         'authorizer' => ProfileHelpers::denyAuthorizer(),
         'caps' => [
@@ -153,7 +150,7 @@ it("happy: authorize still runs on invoke when surface=mcp can_discover=True in_
     expect($r->errorCode())->toBe('forbidden');
 });
 
-it("fail: tool not listed when surface=mcp can_discover=False in_profile=True [D-008]", function () {
+it('fail: tool not listed when surface=mcp can_discover=False in_profile=True [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness([
         'caps' => [
             ['name' => 'create-invoice', 'groups' => ['billing'], 'canDiscover' => false, 'surfaces' => ['mcp', 'http']],
@@ -166,7 +163,7 @@ it("fail: tool not listed when surface=mcp can_discover=False in_profile=True [D
     expect(in_array('create-invoice', $names, true))->toBe(false);
 });
 
-it("happy: authorize still runs on invoke when surface=mcp can_discover=False in_profile=True [D-008]", function () {
+it('happy: authorize still runs on invoke when surface=mcp can_discover=False in_profile=True [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness([
         'authorizer' => ProfileHelpers::denyAuthorizer(),
         'caps' => [
@@ -177,7 +174,7 @@ it("happy: authorize still runs on invoke when surface=mcp can_discover=False in
     expect($r->errorCode())->toBe('forbidden');
 });
 
-it("fail: tool not listed when surface=mcp can_discover=False in_profile=False [D-008]", function () {
+it('fail: tool not listed when surface=mcp can_discover=False in_profile=False [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness([
         'caps' => [
             ['name' => 'create-invoice', 'groups' => ['billing'], 'canDiscover' => false, 'surfaces' => ['mcp', 'http']],
@@ -190,7 +187,7 @@ it("fail: tool not listed when surface=mcp can_discover=False in_profile=False [
     expect(in_array('create-invoice', $names, true))->toBe(false);
 });
 
-it("happy: authorize still runs on invoke when surface=mcp can_discover=False in_profile=False [D-008]", function () {
+it('happy: authorize still runs on invoke when surface=mcp can_discover=False in_profile=False [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness([
         'authorizer' => ProfileHelpers::denyAuthorizer(),
         'caps' => [

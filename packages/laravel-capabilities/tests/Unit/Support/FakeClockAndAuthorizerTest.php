@@ -23,7 +23,7 @@ it('FixedClock implements Clock and returns frozen time', function () {
 });
 
 it('FixedClock requires a DateTimeImmutable and fails loudly without it', function () {
-    expect(fn () => new FixedClock())
+    expect(fn () => new FixedClock)
         ->toThrow(ArgumentCountError::class);
 });
 

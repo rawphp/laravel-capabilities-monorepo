@@ -9,7 +9,6 @@ use Rawphp\Capabilities\Tests\Fixtures\AdapterHelpers;
 /**
  * Matrix: auth profile × allow_integration × allowSystemCallers.
  */
-
 function matrix_case(string $profile, bool $allowInt, bool|array $allowSys): array
 {
     $h = AdapterHelpers::harness([

@@ -15,7 +15,6 @@ use Rawphp\Capabilities\Tests\Fixtures\PeerContractFixtures;
  * Fail when AI/MCP adapters, probe PEER_CLASSES, or AdapterApi shapes drift.
  * Mock/fake peers only — never require live laravel/ai or laravel/mcp.
  */
-
 it('happy: fixture defines AI tool map keys for AdapterApi V1 [D-011]', function () {
     expect(PeerContractFixtures::aiToolKeys())->not->toBeEmpty()
         ->and(PeerContractFixtures::aiToolKeys())->toBe([

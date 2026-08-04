@@ -8,6 +8,7 @@ use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 
 /**
  * Deterministic LLM for tests — records complete() call count.
+ * Supports multi-round tools (accepts role=tool messages in the transcript).
  */
 final class FakeLlmClient implements LlmClient
 {
@@ -22,6 +23,11 @@ final class FakeLlmClient implements LlmClient
     public function __construct(array $responses = [])
     {
         $this->responses = $responses !== [] ? $responses : [['content' => 'ok']];
+    }
+
+    public function supportsToolRounds(): bool
+    {
+        return true;
     }
 
     public function complete(array $messages, array $tools = []): array

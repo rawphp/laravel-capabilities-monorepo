@@ -2,8 +2,6 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Adapters\Ai\AiToolAdapterV1;
-use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 use Rawphp\Capabilities\Tests\Fixtures\AdapterHelpers;
 
 it('happy: AiToolAdapterV1 builds tools from profile selection [D-011]', function () {

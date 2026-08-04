@@ -6,7 +6,6 @@ use Rawphp\Capabilities\Boot\BootException;
 use Rawphp\Capabilities\Boot\CapabilitiesConfig;
 use Rawphp\Capabilities\Boot\ContainerBindings;
 use Rawphp\Capabilities\Contracts\RateLimiter;
-use Rawphp\Capabilities\Persistence\ArrayTableGateway;
 use Rawphp\Capabilities\Support\ArrayRateLimitCache;
 use Rawphp\Capabilities\Support\InMemoryRateLimiter;
 use Rawphp\Capabilities\Support\LaravelCacheRateLimiter;

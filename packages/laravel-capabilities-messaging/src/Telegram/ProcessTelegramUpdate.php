@@ -43,10 +43,10 @@ final class ProcessTelegramUpdate
     /** @var array<string, mixed>|null */
     private ?array $lastTags = null;
 
-    /** @var callable|null  (profile, tools) => list of tool names available */
+    /** @var callable|null (profile, tools) => list of tool names available */
     private $profileResolver;
 
-    /** @var callable|null  agent turn: (message, context) => array{text: string, tool_calls?: list} */
+    /** @var callable|null agent turn: (message, context) => array{text: string, tool_calls?: list} */
     private $agentRunner;
 
     private bool $domainBypassAttempted = false;

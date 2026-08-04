@@ -4,18 +4,17 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\RateLimiting\AgentTurnBudget;
 use Rawphp\Capabilities\RateLimiting\RateLimitKey;
 use Rawphp\Capabilities\Support\ErrorCodeMap;
 use Rawphp\Capabilities\Tests\Fixtures\RateLimitHelpers;
 
-it("happy: under limit invoke succeeds [D-013]", function () {
+it('happy: under limit invoke succeeds [D-013]', function () {
     $h = RateLimitHelpers::harness(['per_min' => 10, 'per_cap' => 10]);
     $r = $h['registry']->invoke($h['name'], RateLimitHelpers::input(), RateLimitHelpers::options());
     expect($r->isOk())->toBeTrue()->and($h['runCount']->value)->toBe(1);
 });
 
-it("fail: exceeding per_minute returns rate_limited [D-013]", function () {
+it('fail: exceeding per_minute returns rate_limited [D-013]', function () {
     $h = RateLimitHelpers::harness(['per_min' => 1, 'per_cap' => 100, 'name' => 'rl-pm']);
     $opts = RateLimitHelpers::options();
     $h['registry']->invoke($h['name'], RateLimitHelpers::input(), $opts);
@@ -23,7 +22,7 @@ it("fail: exceeding per_minute returns rate_limited [D-013]", function () {
     expect($r->errorCode())->toBe('rate_limited')->and($h['runCount']->value)->toBe(1);
 });
 
-it("fail: exceeding per_capability_per_minute returns rate_limited [D-013]", function () {
+it('fail: exceeding per_capability_per_minute returns rate_limited [D-013]', function () {
     $h = RateLimitHelpers::harness(['per_min' => 100, 'per_cap' => 1, 'name' => 'rl-pc']);
     $opts = RateLimitHelpers::options();
     $h['registry']->invoke($h['name'], RateLimitHelpers::input(), $opts);
@@ -31,7 +30,7 @@ it("fail: exceeding per_capability_per_minute returns rate_limited [D-013]", fun
     expect($r->errorCode())->toBe('rate_limited')->and($h['runCount']->value)->toBe(1);
 });
 
-it("happy: agent turn max_tool_calls stops loop with structured message [D-013]", function () {
+it('happy: agent turn max_tool_calls stops loop with structured message [D-013]', function () {
     $h = RateLimitHelpers::harness(['max_tool_calls' => 2, 'per_min' => 1000, 'per_cap' => 1000]);
     $r = $h['registry']->invoke($h['name'], RateLimitHelpers::input(), RateLimitHelpers::options('agent', [
         'agent_turn_tool_calls' => 3,
@@ -42,7 +41,7 @@ it("happy: agent turn max_tool_calls stops loop with structured message [D-013]"
         ->and($h['runCount']->value)->toBe(0);
 });
 
-it("edge: per-capability rateLimit attribute overrides defaults [D-013]", function () {
+it('edge: per-capability rateLimit attribute overrides defaults [D-013]', function () {
     $h = RateLimitHelpers::harness([
         'per_min' => 1000,
         'per_cap' => 1000,
@@ -55,7 +54,7 @@ it("edge: per-capability rateLimit attribute overrides defaults [D-013]", functi
     expect($r->errorCode())->toBe('rate_limited')->and($h['runCount']->value)->toBe(1);
 });
 
-it("happy: rate limit keys include actor capability surface tenant [D-013]", function () {
+it('happy: rate limit keys include actor capability surface tenant [D-013]', function () {
     $h = RateLimitHelpers::harness(['per_min' => 10, 'per_cap' => 10]);
     $h['registry']->invoke($h['name'], RateLimitHelpers::input(), RateLimitHelpers::options('http'));
     $key = $h['registry']->lastRateLimitKey();
@@ -66,7 +65,7 @@ it("happy: rate limit keys include actor capability surface tenant [D-013]", fun
         ->and(RateLimitKey::includesTenant($key, 't-1'))->toBeTrue();
 });
 
-it("edge: rate limits disabled when config enabled false [D-013]", function () {
+it('edge: rate limits disabled when config enabled false [D-013]', function () {
     $h = RateLimitHelpers::harness(['enabled' => false, 'per_min' => 1, 'per_cap' => 1]);
     $opts = RateLimitHelpers::options();
     $h['registry']->invoke($h['name'], RateLimitHelpers::input(), $opts);
@@ -92,7 +91,7 @@ foreach (['agent', 'mcp', 'http', 'cli', 'job'] as $caller) {
     });
 }
 
-it("happy: rate_limited maps to HTTP 429 and CLI exit 6 [D-018]", function () {
+it('happy: rate_limited maps to HTTP 429 and CLI exit 6 [D-018]', function () {
     expect(ErrorCodeMap::httpStatus('rate_limited'))->toBe(429)
         ->and(ErrorCodeMap::cliExit('rate_limited'))->toBe(6);
     $h = RateLimitHelpers::harness(['per_min' => 0, 'per_cap' => 0]);

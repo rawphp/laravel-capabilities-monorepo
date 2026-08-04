@@ -2,10 +2,11 @@
 
 namespace Rawphp\Capabilities\Support;
 
+use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use RuntimeException;
 
 /**
- * Thrown by {@see \Rawphp\Capabilities\Registry\CapabilityRegistry::assertSchemaSnapshot}
+ * Thrown by {@see CapabilityRegistry::assertSchemaSnapshot}
  * when a locked schema snapshot is missing or drifts from the live catalog (D-020).
  *
  * Messages name the capability and which side mismatched (`input_schema` / `output_schema`)

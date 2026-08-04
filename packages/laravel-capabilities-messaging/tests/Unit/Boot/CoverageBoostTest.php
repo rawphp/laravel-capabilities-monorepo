@@ -17,14 +17,13 @@ use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdate;
 use Rawphp\CapabilitiesMessaging\Telegram\TelegramAdapter;
 use Rawphp\CapabilitiesMessaging\Telegram\TelegramCallbackSigner;
 use Rawphp\CapabilitiesMessaging\Telegram\TelegramWebhookController;
-use Rawphp\CapabilitiesMessaging\Threads\ThreadStore;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\FakeCapabilityBus;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers as H;
+use Rawphp\CapabilitiesMessaging\Threads\ThreadStore;
 
 /**
  * Targeted branch coverage for messaging package (≥95%).
  */
-
 it('covers MessagingBindings build and aliases', function () {
     $built = MessagingBindings::build([
         'telegram' => [

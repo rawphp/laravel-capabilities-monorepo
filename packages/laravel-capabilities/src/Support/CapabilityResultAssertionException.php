@@ -9,6 +9,4 @@ use RuntimeException;
  *
  * Used by package unit tests and consumer tests that call assertOk / assertFailed / …
  */
-final class CapabilityResultAssertionException extends RuntimeException
-{
-}
+final class CapabilityResultAssertionException extends RuntimeException {}

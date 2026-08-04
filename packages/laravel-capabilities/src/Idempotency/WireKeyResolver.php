@@ -17,9 +17,9 @@ final class WireKeyResolver
 {
     /**
      * @param  array<string, mixed>  $headers  Case-insensitive header bag (or map)
-     * @param  array<string, mixed>  $body     Request / tool / job payload
-     * @param  string|null  $storedKey         Approval row key when accepting
-     * @param  string|null  $configHeader      Configurable header name
+     * @param  array<string, mixed>  $body  Request / tool / job payload
+     * @param  string|null  $storedKey  Approval row key when accepting
+     * @param  string|null  $configHeader  Configurable header name
      */
     public static function resolve(
         string $surface,

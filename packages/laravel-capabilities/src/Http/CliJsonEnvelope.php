@@ -29,4 +29,3 @@ final class CliJsonEnvelope
         return ErrorCodeMap::cliExit($code);
     }
 }
-

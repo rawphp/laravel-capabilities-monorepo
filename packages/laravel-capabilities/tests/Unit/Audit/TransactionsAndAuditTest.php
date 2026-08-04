@@ -13,13 +13,12 @@ use Rawphp\Capabilities\Events\CapabilityApprovalRequested;
 use Rawphp\Capabilities\Events\CapabilityFailed;
 use Rawphp\Capabilities\Events\CapabilityInvoked;
 use Rawphp\Capabilities\Pipeline\PipelineStages;
-use Rawphp\Capabilities\Support\FailingAuditWriter;
 use Rawphp\Capabilities\Support\InMemoryAuditWriter;
-use Rawphp\Capabilities\Tests\Fixtures\AuditHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\ApprovalHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\AuditHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
-it("happy: mutating capability emits audit record on success [D-010]", function () {
+it('happy: mutating capability emits audit record on success [D-010]', function () {
     $h = AuditHelpers::harness();
     $r = $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
     expect($r->isOk())->toBeTrue()
@@ -27,7 +26,7 @@ it("happy: mutating capability emits audit record on success [D-010]", function 
         ->and($h['audit']->all()[0]['event'])->toBe('capability.invoked');
 });
 
-it("happy: readOnly skips audit unless audit forced true [D-010]", function () {
+it('happy: readOnly skips audit unless audit forced true [D-010]', function () {
     $h = AuditHelpers::harness(['readOnly' => true, 'audit' => false, 'name' => 'ro-skip']);
     // readOnly definitions still need input in this package unless truly empty — harness sets input
     $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
@@ -38,7 +37,7 @@ it("happy: readOnly skips audit unless audit forced true [D-010]", function () {
     expect($forced['audit']->all())->not->toBeEmpty();
 });
 
-it("happy: best_effort audit failure after successful run still returns success [D-010]", function () {
+it('happy: best_effort audit failure after successful run still returns success [D-010]', function () {
     $h = AuditHelpers::harness(['mode' => 'best_effort', 'fail_audit' => true, 'required' => false]);
     $r = $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
     expect($r->isOk())->toBeTrue()
@@ -46,7 +45,7 @@ it("happy: best_effort audit failure after successful run still returns success 
         ->and($h['runCount']->sideEffect)->toBeTrue();
 });
 
-it("happy: best_effort with required true writes outbox on audit failure [D-010]", function () {
+it('happy: best_effort with required true writes outbox on audit failure [D-010]', function () {
     $h = AuditHelpers::harness(['mode' => 'best_effort', 'fail_audit' => true, 'required' => true]);
     $r = $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
     expect($r->isOk())->toBeTrue()
@@ -54,7 +53,7 @@ it("happy: best_effort with required true writes outbox on audit failure [D-010]
         ->and($h['outbox']->all()[0]['status'])->toBe(AuditOutbox::STATUS_PENDING);
 });
 
-it("fail: silent drop of audit never occurs when required true [D-010]", function () {
+it('fail: silent drop of audit never occurs when required true [D-010]', function () {
     $h = AuditHelpers::harness(['mode' => 'best_effort', 'fail_audit' => true, 'required' => true]);
     $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
     expect($h['outbox']->all())->not->toBeEmpty();
@@ -64,7 +63,7 @@ it("fail: silent drop of audit never occurs when required true [D-010]", functio
     expect($hasDurable)->toBeTrue();
 });
 
-it("edge: strict mode surfaces failure when audit fails depending on txn design [D-010]", function () {
+it('edge: strict mode surfaces failure when audit fails depending on txn design [D-010]', function () {
     $h = AuditHelpers::harness(['mode' => 'strict', 'fail_audit' => true]);
     $r = $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
     expect($r->isOk())->toBeFalse()
@@ -72,14 +71,14 @@ it("edge: strict mode surfaces failure when audit fails depending on txn design 
         ->and($h['runCount']->value)->toBe(1); // domain already ran
 });
 
-it("happy: transactions wrap_run false by default does not wrap run [D-010]", function () {
+it('happy: transactions wrap_run false by default does not wrap run [D-010]', function () {
     $h = AuditHelpers::harness(['transactions' => ['wrap_run' => false]]);
     expect($h['registry']->transactionsWrapRun())->toBeFalse();
     $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
     expect($h['registry']->lastRunWasWrapped())->toBeFalse();
 });
 
-it("edge: wrap_run true wraps run optionally with sync audit [D-010]", function () {
+it('edge: wrap_run true wraps run optionally with sync audit [D-010]', function () {
     $h = AuditHelpers::harness(['transactions' => ['wrap_run' => true]]);
     expect($h['registry']->transactionsWrapRun())->toBeTrue();
     $r = $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
@@ -88,18 +87,18 @@ it("edge: wrap_run true wraps run optionally with sync audit [D-010]", function 
         ->and($h['audit']->all())->not->toBeEmpty();
 });
 
-it("happy: bus event CapabilityInvoked emitted on matching condition [D-010]", function () {
+it('happy: bus event CapabilityInvoked emitted on matching condition [D-010]', function () {
     $h = AuditHelpers::harness();
     $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
     expect($h['registry']->invokedEvents())->not->toBeEmpty()
         ->and($h['registry']->invokedEvents()[0])->toBeInstanceOf(CapabilityInvoked::class);
 });
 
-it("edge: listeners for CapabilityInvoked should use afterCommit when touching DB [D-010]", function () {
+it('edge: listeners for CapabilityInvoked should use afterCommit when touching DB [D-010]', function () {
     expect(CapabilityInvoked::listenersShouldUseAfterCommit())->toBeTrue();
 });
 
-it("happy: bus event CapabilityFailed emitted on matching condition [D-010]", function () {
+it('happy: bus event CapabilityFailed emitted on matching condition [D-010]', function () {
     $h = AuditHelpers::harness(['run_throws' => 'boom']);
     $r = $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
     expect($r->isFailed())->toBeTrue()
@@ -107,11 +106,11 @@ it("happy: bus event CapabilityFailed emitted on matching condition [D-010]", fu
         ->and($h['registry']->failedEvents()[0])->toBeInstanceOf(CapabilityFailed::class);
 });
 
-it("edge: listeners for CapabilityFailed should use afterCommit when touching DB [D-010]", function () {
+it('edge: listeners for CapabilityFailed should use afterCommit when touching DB [D-010]', function () {
     expect(CapabilityFailed::listenersShouldUseAfterCommit())->toBeTrue();
 });
 
-it("happy: bus event CapabilityApprovalRequested emitted on matching condition [D-010]", function () {
+it('happy: bus event CapabilityApprovalRequested emitted on matching condition [D-010]', function () {
     $h = AuditHelpers::harness(['approvalPolicy' => 'requester_or_role']);
     $r = $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options('http', [
         'needs_approval' => true,
@@ -121,11 +120,11 @@ it("happy: bus event CapabilityApprovalRequested emitted on matching condition [
         ->and($h['registry']->approvalEvents()[0])->toBeInstanceOf(CapabilityApprovalRequested::class);
 });
 
-it("edge: listeners for CapabilityApprovalRequested should use afterCommit when touching DB [D-010]", function () {
+it('edge: listeners for CapabilityApprovalRequested should use afterCommit when touching DB [D-010]', function () {
     expect(CapabilityApprovalRequested::listenersShouldUseAfterCommit())->toBeTrue();
 });
 
-it("happy: bus event CapabilityApprovalDecided emitted on matching condition [D-010]", function () {
+it('happy: bus event CapabilityApprovalDecided emitted on matching condition [D-010]', function () {
     $pending = ApprovalHelpers::withPending();
     $pending['manager']->accept((string) $pending['row']['id'], ApprovalHelpers::requester());
     $events = $pending['manager']->events();
@@ -133,21 +132,21 @@ it("happy: bus event CapabilityApprovalDecided emitted on matching condition [D-
     expect($decided)->not->toBeEmpty();
 });
 
-it("edge: listeners for CapabilityApprovalDecided should use afterCommit when touching DB [D-010]", function () {
+it('edge: listeners for CapabilityApprovalDecided should use afterCommit when touching DB [D-010]', function () {
     expect(CapabilityApprovalDecided::listenersShouldUseAfterCommit())->toBeTrue();
 });
 
-it("happy: bus event CapabilityApprovalExecuted emitted on matching condition [D-010]", function () {
+it('happy: bus event CapabilityApprovalExecuted emitted on matching condition [D-010]', function () {
     // Construction + after-run executed event shape (manager may emit on accept+run path).
     $e = new CapabilityApprovalExecuted(capability: 'x', approvalId: 'a1', via: 'accept');
     expect($e->capability)->toBe('x')->and($e->approvalId)->toBe('a1');
 });
 
-it("edge: listeners for CapabilityApprovalExecuted should use afterCommit when touching DB [D-010]", function () {
+it('edge: listeners for CapabilityApprovalExecuted should use afterCommit when touching DB [D-010]', function () {
     expect(CapabilityApprovalExecuted::listenersShouldUseAfterCommit())->toBeTrue();
 });
 
-it("happy: domain events remain app responsibility inside run [D-010]", function () {
+it('happy: domain events remain app responsibility inside run [D-010]', function () {
     $h = AuditHelpers::harness(['domain_event' => 'InvoiceCreated']);
     $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
     expect($h['runCount']->domainEvents)->toBe(['InvoiceCreated']);
@@ -170,7 +169,7 @@ foreach (['name', 'caller', 'actor', 'scope', 'idempotency', 'replay', 'result',
     });
 }
 
-it("happy: WriteAuditJob drains outbox at least once [D-010]", function () {
+it('happy: WriteAuditJob drains outbox at least once [D-010]', function () {
     $h = AuditHelpers::harness(['fail_audit' => true, 'required' => true]);
     $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
     expect($h['outbox']->pending())->not->toBeEmpty();
@@ -182,7 +181,7 @@ it("happy: WriteAuditJob drains outbox at least once [D-010]", function () {
         ->and($h['outbox']->countByStatus(AuditOutbox::STATUS_COMPLETED))->toBeGreaterThan(0);
 });
 
-it("happy: stage before run fails leaves no domain writes [D-010]", function () {
+it('happy: stage before run fails leaves no domain writes [D-010]', function () {
     $h = AuditHelpers::harness();
     $r = $h['registry']->invoke($h['name'], PipelineHelpers::invalidInput(), AuditHelpers::options());
     expect($r->isFailed())->toBeTrue()
@@ -190,7 +189,7 @@ it("happy: stage before run fails leaves no domain writes [D-010]", function () 
         ->and($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage before run may write optional deny audit [D-010]", function () {
+it('happy: stage before run may write optional deny audit [D-010]', function () {
     $h = AuditHelpers::harness(['authorize' => false]);
     $r = $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
     expect($r->errorCode())->toBe('forbidden');
@@ -199,7 +198,7 @@ it("happy: stage before run may write optional deny audit [D-010]", function () 
     expect($hasAuditStage || $h['audit']->all() !== [])->toBeTrue();
 });
 
-it("fail: run throws with domain txn rollback leaves no domain writes [D-010]", function () {
+it('fail: run throws with domain txn rollback leaves no domain writes [D-010]', function () {
     $h = AuditHelpers::harness([
         'run' => function () {
             // Simulate domain rolled back: no side effect flag set by harness run
@@ -211,19 +210,19 @@ it("fail: run throws with domain txn rollback leaves no domain writes [D-010]", 
         ->and($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: run throws emits CapabilityFailed [D-010]", function () {
+it('happy: run throws emits CapabilityFailed [D-010]', function () {
     $h = AuditHelpers::harness(['run_throws' => 'nope']);
     $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
     expect($h['registry']->failedEvents())->not->toBeEmpty();
 });
 
-it("happy: run succeeds audit sync fails best_effort keeps domain returns 200 [D-010]", function () {
+it('happy: run succeeds audit sync fails best_effort keeps domain returns 200 [D-010]', function () {
     $h = AuditHelpers::harness(['mode' => 'best_effort', 'fail_audit' => true]);
     $r = $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
     expect($r->isOk())->toBeTrue()->and($h['runCount']->sideEffect)->toBeTrue();
 });
 
-it("edge: run succeeds audit fails strict plus outer txn rolls back if not committed [D-010]", function () {
+it('edge: run succeeds audit fails strict plus outer txn rolls back if not committed [D-010]', function () {
     $h = AuditHelpers::harness([
         'mode' => 'strict',
         'fail_audit' => true,
@@ -234,7 +233,7 @@ it("edge: run succeeds audit fails strict plus outer txn rolls back if not commi
         ->and($h['registry']->lastRunWasWrapped())->toBeTrue();
 });
 
-it("edge: run succeeds audit fails strict domain already committed documents footgun [D-010]", function () {
+it('edge: run succeeds audit fails strict domain already committed documents footgun [D-010]', function () {
     $h = AuditHelpers::harness(['mode' => 'strict', 'fail_audit' => true, 'transactions' => ['wrap_run' => false]]);
     $r = $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
     expect($r->errorCode())->toBe('audit_failed')
@@ -242,7 +241,7 @@ it("edge: run succeeds audit fails strict domain already committed documents foo
         ->and($h['runCount']->value)->toBe(1);
 });
 
-it("edge: idempotent replay may skip or mark replay audit [D-010]", function () {
+it('edge: idempotent replay may skip or mark replay audit [D-010]', function () {
     $h = AuditHelpers::harness(['idempotent' => 'optional']);
     $opts = AuditHelpers::options('http', ['idempotency_key' => 'replay-audit-1']);
     $h['registry']->invoke($h['name'], AuditHelpers::input(), $opts);
@@ -257,17 +256,17 @@ it("edge: idempotent replay may skip or mark replay audit [D-010]", function () 
     expect($hasReplay || count($entries) >= 1)->toBeTrue();
 });
 
-it("fail: undefined audit after run with no mode is refused [D-010]", function () {
+it('fail: undefined audit after run with no mode is refused [D-010]', function () {
     expect(fn () => AuditLogger::assertValidMode('undefined'))
         ->toThrow(InvalidArgumentException::class);
 });
 
-it("fail: default outer transaction wrapping money plus audit is not default [D-010]", function () {
+it('fail: default outer transaction wrapping money plus audit is not default [D-010]', function () {
     $h = AuditHelpers::harness();
     expect($h['registry']->transactionsWrapRun())->toBeFalse();
 });
 
-it("fail: firing bus events before domain commit by default is refused [D-010]", function () {
+it('fail: firing bus events before domain commit by default is refused [D-010]', function () {
     $h = AuditHelpers::harness();
     $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
     $stages = $h['registry']->lastStages();
@@ -278,19 +277,19 @@ it("fail: firing bus events before domain commit by default is refused [D-010]",
         ->and($emitIdx)->toBeGreaterThan($runIdx);
 });
 
-it("happy: audit.mode best_effort is default [D-010]", function () {
+it('happy: audit.mode best_effort is default [D-010]', function () {
     $h = AuditHelpers::harness();
     expect($h['registry']->auditMode())->toBe('best_effort');
 });
 
-it("edge: audit.driver database log queue supported [D-010]", function () {
+it('edge: audit.driver database log queue supported [D-010]', function () {
     foreach (['database', 'log', 'queue'] as $driver) {
         expect(AuditLogger::assertValidDriver($driver))->toBe($driver);
     }
     expect(fn () => AuditLogger::assertValidDriver('redis'))->toThrow(InvalidArgumentException::class);
 });
 
-it("edge: events.enabled false suppresses bus events [D-010]", function () {
+it('edge: events.enabled false suppresses bus events [D-010]', function () {
     $h = AuditHelpers::harness(['events' => ['enabled' => false]]);
     $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
     expect($h['registry']->invokedEvents())->toBeEmpty()

@@ -4,6 +4,7 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\CapabilitiesServiceProvider;
 use Rawphp\Capabilities\Http\HttpRouteRegistrar;
 use Rawphp\Capabilities\Http\RouteTable;
 use Rawphp\Capabilities\Tests\Fixtures\BootHelpers;
@@ -58,7 +59,7 @@ it('resolves controller classes for each action', function () {
 });
 
 it('provider registration plan still lists http keys when enabled', function () {
-    $plan = \Rawphp\Capabilities\CapabilitiesServiceProvider::registrationPlan(BootHelpers::config([
+    $plan = CapabilitiesServiceProvider::registrationPlan(BootHelpers::config([
         'surfaces' => BootHelpers::surfaces(['http' => true]),
     ]));
     expect($plan['routes'])->toContain(RouteTable::ROUTE_INVOKE)

@@ -5,8 +5,8 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Adapters\Artisan\ArtisanCommandTable;
 use Rawphp\Capabilities\Adapters\Artisan\ArtisanCapabilityInvoker;
+use Rawphp\Capabilities\Adapters\Artisan\ArtisanCommandTable;
 use Rawphp\Capabilities\Support\MissingArtisanActorException;
 use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\ScopeCallerJobHelpers as H;

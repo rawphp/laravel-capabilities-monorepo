@@ -7,6 +7,7 @@ declare(strict_types=1);
  * SM helpers, peer probe, surface registrar, caller deriver, schema edges.
  */
 
+use DateTimeImmutable;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Approval\ApprovalPolicy;
@@ -19,6 +20,7 @@ use Rawphp\Capabilities\Registry\CapabilityDefinition;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Schema\CatalogHealth;
 use Rawphp\Capabilities\Schema\JsonSchemaValidator;
+use Rawphp\Capabilities\Support\CapabilityData;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\CapabilityScope;
 use Rawphp\Capabilities\Support\FixedClock;
@@ -29,8 +31,6 @@ use Rawphp\Capabilities\Support\InMemoryScopedQueryFactory;
 use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
-use DateInterval;
-use DateTimeImmutable;
 
 it('covers registry forceFail run/output, no handler, needs_approval, rate overrides, agent budget', function () {
     $clock = new FixedClock(new DateTimeImmutable('2026-05-01T00:00:00Z'));
@@ -504,7 +504,7 @@ it('covers InMemoryApprovalStore custom id and ScopedQuery first', function () {
 });
 
 it('covers CapabilityData optional default and union failure paths', function () {
-    final class NeedDefaultDto extends \Rawphp\Capabilities\Support\CapabilityData
+    final class NeedDefaultDto extends CapabilityData
     {
         public function __construct(
             public string $name = 'default',
@@ -514,7 +514,7 @@ it('covers CapabilityData optional default and union failure paths', function ()
 
     expect(NeedDefaultDto::fromArray([])->name)->toBe('default');
 
-    final class StrictUnionDto extends \Rawphp\Capabilities\Support\CapabilityData
+    final class StrictUnionDto extends CapabilityData
     {
         public function __construct(public int|bool $flag) {}
     }

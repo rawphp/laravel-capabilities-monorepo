@@ -4,24 +4,21 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Profiles\ProfileRequiredException;
-use Rawphp\Capabilities\Profiles\TooManyToolsException;
-use Rawphp\Capabilities\RateLimiting\AgentTurnBudget;
 use Rawphp\Capabilities\Tests\Fixtures\ProfileHelpers;
 
-it("happy: group finance composes tools from capability groups [D-008]", function () {
+it('happy: group finance composes tools from capability groups [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness();
     $names = array_column($h['registry']->aiTools(['groups' => ['finance']]), 'name');
     expect($names)->not->toBeEmpty();
 });
 
-it("edge: tag finance can contribute to selection [D-008]", function () {
+it('edge: tag finance can contribute to selection [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness();
     $names = array_column($h['registry']->aiTools(['tags' => ['finance']]), 'name');
     expect($names)->not->toBeEmpty();
 });
 
-it("fail: group finance still filtered by canDiscover [D-008]", function () {
+it('fail: group finance still filtered by canDiscover [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness([
         'caps' => [
             ['name' => 'visible-cap', 'groups' => ['finance'], 'canDiscover' => true],
@@ -32,19 +29,19 @@ it("fail: group finance still filtered by canDiscover [D-008]", function () {
     expect($names)->toContain('visible-cap')->and($names)->not->toContain('hidden-cap');
 });
 
-it("happy: group support composes tools from capability groups [D-008]", function () {
+it('happy: group support composes tools from capability groups [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness();
     $names = array_column($h['registry']->aiTools(['groups' => ['support']]), 'name');
     expect($names)->not->toBeEmpty();
 });
 
-it("edge: tag support can contribute to selection [D-008]", function () {
+it('edge: tag support can contribute to selection [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness();
     $names = array_column($h['registry']->aiTools(['tags' => ['support']]), 'name');
     expect($names)->not->toBeEmpty();
 });
 
-it("fail: group support still filtered by canDiscover [D-008]", function () {
+it('fail: group support still filtered by canDiscover [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness([
         'caps' => [
             ['name' => 'visible-cap', 'groups' => ['support'], 'canDiscover' => true],
@@ -55,19 +52,19 @@ it("fail: group support still filtered by canDiscover [D-008]", function () {
     expect($names)->toContain('visible-cap')->and($names)->not->toContain('hidden-cap');
 });
 
-it("happy: group ops composes tools from capability groups [D-008]", function () {
+it('happy: group ops composes tools from capability groups [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness();
     $names = array_column($h['registry']->aiTools(['groups' => ['ops']]), 'name');
     expect($names)->not->toBeEmpty();
 });
 
-it("edge: tag ops can contribute to selection [D-008]", function () {
+it('edge: tag ops can contribute to selection [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness();
     $names = array_column($h['registry']->aiTools(['tags' => ['ops']]), 'name');
     expect($names)->not->toBeEmpty();
 });
 
-it("fail: group ops still filtered by canDiscover [D-008]", function () {
+it('fail: group ops still filtered by canDiscover [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness([
         'caps' => [
             ['name' => 'visible-cap', 'groups' => ['ops'], 'canDiscover' => true],
@@ -78,19 +75,19 @@ it("fail: group ops still filtered by canDiscover [D-008]", function () {
     expect($names)->toContain('visible-cap')->and($names)->not->toContain('hidden-cap');
 });
 
-it("happy: group billing composes tools from capability groups [D-008]", function () {
+it('happy: group billing composes tools from capability groups [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness();
     $names = array_column($h['registry']->aiTools(['groups' => ['billing']]), 'name');
     expect($names)->not->toBeEmpty();
 });
 
-it("edge: tag billing can contribute to selection [D-008]", function () {
+it('edge: tag billing can contribute to selection [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness();
     $names = array_column($h['registry']->aiTools(['tags' => ['billing']]), 'name');
     expect($names)->not->toBeEmpty();
 });
 
-it("fail: group billing still filtered by canDiscover [D-008]", function () {
+it('fail: group billing still filtered by canDiscover [D-008]', function () {
     $h = ProfileHelpers::multiCapHarness([
         'caps' => [
             ['name' => 'visible-cap', 'groups' => ['billing'], 'canDiscover' => true],

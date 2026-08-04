@@ -11,6 +11,15 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Breaking (0.x behavior change)
+
+#### JsonSchemaValidator — empty object / `[]`-as-object `required` enforcement
+
+Empty PHP arrays that represent JSON `{}` (and empty list-shaped `[]` when the schema is an **object** or has `properties`) now run `required` and `additionalProperties` checks that previously skipped those payloads (`JsonSchemaValidator` `$asObject` path).
+
+- **Scope:** **object** schemas only (`type: object` or schemas that declare `properties`). Does **not** claim that array-typed empty lists fail for being lists.
+- **Consumer impact:** hosts/wire callers that sent empty objects (`{}` / PHP `[]`) for object schemas with required fields can start getting validation failures on the same payload that previously passed.
+
 ### Added
 
 - Core product capability bus for Laravel apps: single registry choke point and invoke pipeline
@@ -24,6 +33,10 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 - Unit-test contract scaffold aligned with monorepo `docs/spec.md` / requirements inventory (≥95% coverage target).
 - **Laravel 13 / illuminate 13 support** — all `illuminate/*` requirements allow `^11.0|^12.0|^13.0`
   (PHP remains `^8.2`; Laravel 13 apps still need PHP `^8.3` per framework).
+- **Additive helpers (non-breaking)** on invoke results — existing callers are unaffected:
+  - `CapabilityResult::isRetryable()` — non-ok retry policy from wire `retryable` or `ErrorCodeMap` default; success is never retryable
+  - `CapabilityResult::isHardRefuse()` — terminal auth/profile/runnability refuse via `ErrorCodeMap`
+  - `ErrorCodeMap::isHardRefuse(string $code)` — hard refuse code set (`forbidden`, `capability_not_in_profile`, `not_runnable`, `unauthenticated`)
 
 ### Notes
 

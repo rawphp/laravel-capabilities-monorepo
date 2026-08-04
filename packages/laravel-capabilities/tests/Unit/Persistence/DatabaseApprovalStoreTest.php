@@ -4,12 +4,14 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Contracts\ApprovalStore;
 use Rawphp\Capabilities\Persistence\ArrayTableGateway;
 use Rawphp\Capabilities\Persistence\DatabaseApprovalStore;
+use Rawphp\Capabilities\Persistence\TableGateway;
 use Rawphp\Capabilities\Support\FixedClock;
 
 it('put and find round-trip approval records', function () {
-    $clock = new FixedClock(new \DateTimeImmutable('2026-07-27T12:00:00Z'));
+    $clock = new FixedClock(new DateTimeImmutable('2026-07-27T12:00:00Z'));
     $store = new DatabaseApprovalStore(new ArrayTableGateway, $clock);
 
     $row = $store->put([
@@ -31,7 +33,7 @@ it('put and find round-trip approval records', function () {
 });
 
 it('compareAndUpdate only mutates when status matches', function () {
-    $clock = new FixedClock(new \DateTimeImmutable('2026-07-27T12:00:00Z'));
+    $clock = new FixedClock(new DateTimeImmutable('2026-07-27T12:00:00Z'));
     $store = new DatabaseApprovalStore(new ArrayTableGateway, $clock);
     $row = $store->put(['capability_name' => 'x', 'status' => 'pending', 'requester_actor_type' => 'user', 'requester_actor_id' => '1', 'original_caller' => 'http']);
 
@@ -45,7 +47,7 @@ it('compareAndUpdate only mutates when status matches', function () {
 });
 
 it('claimLease returns null when lease still held', function () {
-    $clock = new FixedClock(new \DateTimeImmutable('2026-07-27T12:00:00Z'));
+    $clock = new FixedClock(new DateTimeImmutable('2026-07-27T12:00:00Z'));
     $store = new DatabaseApprovalStore(new ArrayTableGateway, $clock);
     $row = $store->put([
         'capability_name' => 'x',
@@ -65,7 +67,7 @@ it('claimLease returns null when lease still held', function () {
 });
 
 it('claimLease succeeds when lease expired', function () {
-    $clock = new FixedClock(new \DateTimeImmutable('2026-07-27T12:00:00Z'));
+    $clock = new FixedClock(new DateTimeImmutable('2026-07-27T12:00:00Z'));
     $store = new DatabaseApprovalStore(new ArrayTableGateway, $clock);
     $row = $store->put([
         'capability_name' => 'x',
@@ -86,7 +88,7 @@ it('claimLease succeeds when lease expired', function () {
 });
 
 it('findByStatus returns matching rows', function () {
-    $clock = new FixedClock(new \DateTimeImmutable('2026-07-27T12:00:00Z'));
+    $clock = new FixedClock(new DateTimeImmutable('2026-07-27T12:00:00Z'));
     $store = new DatabaseApprovalStore(new ArrayTableGateway, $clock);
     $store->put(['capability_name' => 'a', 'status' => 'pending', 'requester_actor_type' => 'user', 'requester_actor_id' => '1', 'original_caller' => 'http']);
     $store->put(['capability_name' => 'b', 'status' => 'approved', 'requester_actor_type' => 'user', 'requester_actor_id' => '1', 'original_caller' => 'http']);
@@ -97,13 +99,13 @@ it('findByStatus returns matching rows', function () {
 });
 
 it('implements ApprovalStore contract', function () {
-    $store = new DatabaseApprovalStore(new ArrayTableGateway, new FixedClock(new \DateTimeImmutable('2026-07-27T12:00:00Z')));
-    expect($store)->toBeInstanceOf(\Rawphp\Capabilities\Contracts\ApprovalStore::class);
+    $store = new DatabaseApprovalStore(new ArrayTableGateway, new FixedClock(new DateTimeImmutable('2026-07-27T12:00:00Z')));
+    expect($store)->toBeInstanceOf(ApprovalStore::class);
 });
 
 // REQ-069 / L-005: durable approval ids must be unguessable and not process-local sequences.
 it('put assigns unguessable random ids unique across two store instances (not sequential approval-n)', function () {
-    $clock = new FixedClock(new \DateTimeImmutable('2026-07-27T12:00:00Z'));
+    $clock = new FixedClock(new DateTimeImmutable('2026-07-27T12:00:00Z'));
     $storeA = new DatabaseApprovalStore(new ArrayTableGateway, $clock);
     $storeB = new DatabaseApprovalStore(new ArrayTableGateway, $clock);
 
@@ -134,7 +136,7 @@ it('put assigns unguessable random ids unique across two store instances (not se
 
 // REQ-069 / L-007: second claim while lease held must fail; path is a single atomic lease-free update.
 it('claimLease fails second claim while lease held (atomic lease condition)', function () {
-    $clock = new FixedClock(new \DateTimeImmutable('2026-07-27T12:00:00Z'));
+    $clock = new FixedClock(new DateTimeImmutable('2026-07-27T12:00:00Z'));
     $store = new DatabaseApprovalStore(new ArrayTableGateway, $clock);
     $row = $store->put([
         'capability_name' => 'x',
@@ -162,7 +164,7 @@ it('claimLease fails second claim while lease held (atomic lease condition)', fu
 });
 
 it('claimLease uses atomic updateWhereLeaseFree without prior find TOCTOU', function () {
-    $gateway = new class implements \Rawphp\Capabilities\Persistence\TableGateway
+    $gateway = new class implements TableGateway
     {
         public int $findCalls = 0;
 
@@ -245,7 +247,7 @@ it('claimLease uses atomic updateWhereLeaseFree without prior find TOCTOU', func
         }
     };
 
-    $clock = new FixedClock(new \DateTimeImmutable('2026-07-27T12:00:00Z'));
+    $clock = new FixedClock(new DateTimeImmutable('2026-07-27T12:00:00Z'));
     $store = new DatabaseApprovalStore($gateway, $clock);
     $row = $store->put([
         'capability_name' => 'x',

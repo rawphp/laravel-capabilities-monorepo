@@ -7,14 +7,19 @@ declare(strict_types=1);
  * approval manager branches, HTTP controller edges, service provider register/boot.
  */
 
+use DateTimeImmutable;
 use Rawphp\Capabilities\Adapters\Http\CapabilityController;
+use Rawphp\Capabilities\Adapters\StructuredToolResponse;
 use Rawphp\Capabilities\Approval\ApprovalManager;
+use Rawphp\Capabilities\Approval\ApprovalPolicy;
 use Rawphp\Capabilities\Approval\ApprovalStateMachine;
 use Rawphp\Capabilities\Approval\Notifiers\HttpApprovalNotifier;
 use Rawphp\Capabilities\CapabilitiesServiceProvider;
+use Rawphp\Capabilities\Contracts\Metrics;
 use Rawphp\Capabilities\Contracts\SchemaProvider;
+use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\Capabilities\Http\HttpAuthGate;
-use Rawphp\Capabilities\Http\HttpRequestContext;
+use Rawphp\Capabilities\Http\HttpResponse;
 use Rawphp\Capabilities\Idempotency\IdempotencyConfig;
 use Rawphp\Capabilities\Idempotency\IdempotencyKey;
 use Rawphp\Capabilities\Idempotency\MissingKeyWarner;
@@ -30,8 +35,8 @@ use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
 use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Support\SystemActor;
+use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\HttpHelpers;
-use DateTimeImmutable;
 
 // ── force-fail every pipeline stage ─────────────────────────────────────────
 
@@ -127,7 +132,7 @@ it('covers registry assertParity empty surface, artisan caller, assert helpers, 
     $reg->register(new CapabilityDefinition(
         name: 'skip-rules',
         description: 's',
-        input: \Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput::class,
+        input: CreateInvoiceInput::class,
         readOnly: true,
         allowSystemCallers: true,
         run: static fn () => CapabilityResult::ok(['ok' => true]),
@@ -181,7 +186,7 @@ it('covers IdempotencyGuard policy, lookup statuses, storeResult, isExpired', fu
     $required = new CapabilityDefinition(
         name: 'req',
         description: 'd',
-        input: \Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput::class,
+        input: CreateInvoiceInput::class,
         readOnly: false,
         idempotent: CapabilityDefinition::IDEMPOTENT_REQUIRED,
         run: static fn () => CapabilityResult::ok([]),
@@ -192,7 +197,7 @@ it('covers IdempotencyGuard policy, lookup statuses, storeResult, isExpired', fu
     $optional = new CapabilityDefinition(
         name: 'opt',
         description: 'd',
-        input: \Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput::class,
+        input: CreateInvoiceInput::class,
         readOnly: false,
         idempotent: CapabilityDefinition::IDEMPOTENT_OPTIONAL,
         run: static fn () => CapabilityResult::ok([]),
@@ -356,8 +361,8 @@ it('covers ApprovalManager request/find/accept/reject edge branches', function (
     // accept with policy that allows any (custom)
     $open = ApprovalManager::inMemory($clock)
         ->withConfig(['execution' => ApprovalStateMachine::EXECUTION_ATOMIC])
-        ->withPolicy(new \Rawphp\Capabilities\Approval\ApprovalPolicy(
-            policy: \Rawphp\Capabilities\Approval\ApprovalPolicy::CUSTOM,
+        ->withPolicy(new ApprovalPolicy(
+            policy: ApprovalPolicy::CUSTOM,
             customChecker: static fn () => true,
         ))
         ->withExecutor(static fn () => CapabilityResult::ok(['done' => 1]))
@@ -382,8 +387,8 @@ it('covers ApprovalManager request/find/accept/reject edge branches', function (
     // stale revalidator path
     $staleMgr = ApprovalManager::inMemory($clock)
         ->withConfig(['execution' => ApprovalStateMachine::EXECUTION_ATOMIC])
-        ->withPolicy(new \Rawphp\Capabilities\Approval\ApprovalPolicy(
-            policy: \Rawphp\Capabilities\Approval\ApprovalPolicy::CUSTOM,
+        ->withPolicy(new ApprovalPolicy(
+            policy: ApprovalPolicy::CUSTOM,
             customChecker: static fn () => true,
         ))
         ->withRevalidator(static fn () => CapabilityResult::failure('conflict', 'stale input'))
@@ -401,8 +406,8 @@ it('covers ApprovalManager request/find/accept/reject edge branches', function (
     // original authorizer deny
     $authDeny = ApprovalManager::inMemory($clock)
         ->withConfig(['execution' => ApprovalStateMachine::EXECUTION_ATOMIC])
-        ->withPolicy(new \Rawphp\Capabilities\Approval\ApprovalPolicy(
-            policy: \Rawphp\Capabilities\Approval\ApprovalPolicy::CUSTOM,
+        ->withPolicy(new ApprovalPolicy(
+            policy: ApprovalPolicy::CUSTOM,
             customChecker: static fn () => true,
         ))
         ->withOriginalAuthorizer(static fn () => false)
@@ -455,7 +460,7 @@ it('covers CapabilityController describe not_found, health deny, non-array body'
         'jsonBody' => ['not' => 'schema'], // no input class — ok
         'headers' => ['idempotency-key' => str_repeat('k', 16)],
     ]), 'listed');
-    expect($inv)->toBeInstanceOf(\Rawphp\Capabilities\Http\HttpResponse::class);
+    expect($inv)->toBeInstanceOf(HttpResponse::class);
     expect($ctrl->lastInvokeOptions())->toBeArray();
 });
 
@@ -609,15 +614,15 @@ it('covers CapabilitiesServiceProvider register and boot with fake container', f
         ->and($configStore->get('capabilities'))->toBeArray();
 
     // Resolve Metrics/Tracer factories
-    $metricsFactory = $app->singletons[\Rawphp\Capabilities\Contracts\Metrics::class] ?? null;
+    $metricsFactory = $app->singletons[Metrics::class] ?? null;
     if (is_callable($metricsFactory)) {
         $metrics = $metricsFactory($app);
-        expect($metrics)->toBeInstanceOf(\Rawphp\Capabilities\Contracts\Metrics::class);
+        expect($metrics)->toBeInstanceOf(Metrics::class);
     }
-    $tracerFactory = $app->singletons[\Rawphp\Capabilities\Contracts\Tracer::class] ?? null;
+    $tracerFactory = $app->singletons[Tracer::class] ?? null;
     if (is_callable($tracerFactory)) {
         $tracer = $tracerFactory($app);
-        expect($tracer)->toBeInstanceOf(\Rawphp\Capabilities\Contracts\Tracer::class);
+        expect($tracer)->toBeInstanceOf(Tracer::class);
     }
 });
 
@@ -626,7 +631,7 @@ it('covers CapabilitiesServiceProvider register and boot with fake container', f
 final class NullOnlyUnionDto extends CapabilityData
 {
     public function __construct(
-        public int|null $maybe = null,
+        public ?int $maybe = null,
         public NestedCovDto|string|null $mixed = null,
     ) {}
 }
@@ -669,12 +674,12 @@ it('covers remaining CapabilityData null-union and untyped parameter branches', 
 // ── StructuredToolResponse / PeerSurfaceStatus / FixedClock edge ────────────
 
 it('covers StructuredToolResponse and FixedClock advance helpers when present', function () {
-    $ok = \Rawphp\Capabilities\Adapters\StructuredToolResponse::fromResult(
+    $ok = StructuredToolResponse::fromResult(
         CapabilityResult::ok(['a' => 1]),
     );
     expect($ok)->toBeArray();
 
-    $fail = \Rawphp\Capabilities\Adapters\StructuredToolResponse::fromResult(
+    $fail = StructuredToolResponse::fromResult(
         CapabilityResult::failure('forbidden', 'no'),
     );
     expect($fail)->toBeArray();

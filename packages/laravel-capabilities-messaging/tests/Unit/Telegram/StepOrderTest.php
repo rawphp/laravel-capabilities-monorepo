@@ -2,19 +2,9 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Support\CapabilityContext;
-use Rawphp\Capabilities\Support\CapabilityResult;
-use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
-use Rawphp\CapabilitiesMessaging\MessagingConfig;
-use Rawphp\CapabilitiesMessaging\Tests\Fixtures\FakeCapabilityBus;
-use Rawphp\CapabilitiesMessaging\Support\FakeTelegramBotClient;
-use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdate;
-use Rawphp\CapabilitiesMessaging\Telegram\TelegramAdapter;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers as H;
 
-
-
-it("happy: step order 00 verify_secret [MSG-003]", function () {
+it('happy: step order 00 verify_secret [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -24,8 +14,7 @@ it("happy: step order 00 verify_secret [MSG-003]", function () {
     expect($idx)->toBeInt();
 });
 
-
-it("happy: step order 01 queue [MSG-003]", function () {
+it('happy: step order 01 queue [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -35,8 +24,7 @@ it("happy: step order 01 queue [MSG-003]", function () {
     expect($idx)->toBeInt();
 });
 
-
-it("happy: step order 02 resolve_identity [MSG-003]", function () {
+it('happy: step order 02 resolve_identity [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -46,8 +34,7 @@ it("happy: step order 02 resolve_identity [MSG-003]", function () {
     expect($idx)->toBeInt();
 });
 
-
-it("happy: step order 03 map_thread [MSG-003]", function () {
+it('happy: step order 03 map_thread [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -57,8 +44,7 @@ it("happy: step order 03 map_thread [MSG-003]", function () {
     expect($idx)->toBeInt();
 });
 
-
-it("happy: step order 04 ingress [MSG-003]", function () {
+it('happy: step order 04 ingress [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -68,8 +54,7 @@ it("happy: step order 04 ingress [MSG-003]", function () {
     expect($idx)->toBeInt();
 });
 
-
-it("happy: step order 05 agent [MSG-003]", function () {
+it('happy: step order 05 agent [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -79,8 +64,7 @@ it("happy: step order 05 agent [MSG-003]", function () {
     expect($idx)->toBeInt();
 });
 
-
-it("happy: step order 06 tools [MSG-003]", function () {
+it('happy: step order 06 tools [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -90,8 +74,7 @@ it("happy: step order 06 tools [MSG-003]", function () {
     expect($idx)->toBeInt();
 });
 
-
-it("happy: step order 07 reply [MSG-003]", function () {
+it('happy: step order 07 reply [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -101,8 +84,7 @@ it("happy: step order 07 reply [MSG-003]", function () {
     expect($idx)->toBeInt();
 });
 
-
-it("fail: tools not reached if verify_secret fails [MSG-003]", function () {
+it('fail: tools not reached if verify_secret fails [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -111,7 +93,7 @@ it("fail: tools not reached if verify_secret fails [MSG-003]", function () {
     expect(in_array('tool_calls_registry', $r['steps'] ?? [], true))->toBeFalse();
 });
 
-it("fail: tools not reached if resolve_identity fails [MSG-003]", function () {
+it('fail: tools not reached if resolve_identity fails [MSG-003]', function () {
     $p = H::processor(); // unlinked
     $r = $p->runPipeline(H::telegramUpdate(userId: 999));
     expect(in_array('tool_calls_registry', $r['steps'] ?? [], true))->toBeFalse();

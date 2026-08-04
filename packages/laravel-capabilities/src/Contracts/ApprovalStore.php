@@ -2,11 +2,13 @@
 
 namespace Rawphp\Capabilities\Contracts;
 
+use Rawphp\Capabilities\Support\InMemoryApprovalStore;
+
 /**
  * Persistence for capability approval rows (D-006).
  *
  * Production drivers may use Eloquent/DB; unit tests inject
- * {@see \Rawphp\Capabilities\Support\InMemoryApprovalStore}.
+ * {@see InMemoryApprovalStore}.
  *
  * @phpstan-type ApprovalRecord array{
  *     id: string,
@@ -62,7 +64,7 @@ interface ApprovalStore
      * Enables exactly-once accept/resume without double-run races (D-006).
      *
      * @param  array<string, mixed>  $attributes
-     * @return ApprovalRecord|null  null when missing or status mismatch
+     * @return ApprovalRecord|null null when missing or status mismatch
      */
     public function compareAndUpdate(string $id, string $expectedStatus, array $attributes): ?array;
 

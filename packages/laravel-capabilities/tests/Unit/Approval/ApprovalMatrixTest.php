@@ -2,19 +2,9 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Approval\ApprovalCallbackVerifier;
-use Rawphp\Capabilities\Approval\ApprovalManager;
-use Rawphp\Capabilities\Approval\ApprovalPolicy;
-use Rawphp\Capabilities\Approval\ApprovalStateMachine;
-use Rawphp\Capabilities\Approval\Notifiers\CliApprovalNotifier;
-use Rawphp\Capabilities\Approval\Notifiers\HttpApprovalNotifier;
-use Rawphp\Capabilities\Approval\Notifiers\TelegramApprovalNotifier;
-use Rawphp\Capabilities\Events\CapabilityApprovalExecuted;
-use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\ApprovalHelpers;
-use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
-it("happy: shape deferred accept from pending executes state machine [D-006]", function () {
+it('happy: shape deferred accept from pending executes state machine [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred']);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -40,7 +30,7 @@ it("happy: shape deferred accept from pending executes state machine [D-006]", f
     }
 });
 
-it("fail: shape deferred accept from approved does not re-run domain [D-006]", function () {
+it('fail: shape deferred accept from approved does not re-run domain [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred']);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -66,7 +56,7 @@ it("fail: shape deferred accept from approved does not re-run domain [D-006]", f
     }
 });
 
-it("fail: shape deferred accept from rejected does not re-run domain [D-006]", function () {
+it('fail: shape deferred accept from rejected does not re-run domain [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred']);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -92,7 +82,7 @@ it("fail: shape deferred accept from rejected does not re-run domain [D-006]", f
     }
 });
 
-it("fail: shape deferred accept from expired does not re-run domain [D-006]", function () {
+it('fail: shape deferred accept from expired does not re-run domain [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred']);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -118,7 +108,7 @@ it("fail: shape deferred accept from expired does not re-run domain [D-006]", fu
     }
 });
 
-it("happy: shape deferred accept from executed replays [D-006]", function () {
+it('happy: shape deferred accept from executed replays [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred']);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -144,7 +134,7 @@ it("happy: shape deferred accept from executed replays [D-006]", function () {
     }
 });
 
-it("happy: shape deferred reject from pending never runs [D-006]", function () {
+it('happy: shape deferred reject from pending never runs [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred']);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -170,7 +160,7 @@ it("happy: shape deferred reject from pending never runs [D-006]", function () {
     }
 });
 
-it("fail: shape deferred reject from approved does not re-run domain [D-006]", function () {
+it('fail: shape deferred reject from approved does not re-run domain [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred']);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -196,7 +186,7 @@ it("fail: shape deferred reject from approved does not re-run domain [D-006]", f
     }
 });
 
-it("fail: shape deferred reject from rejected does not re-run domain [D-006]", function () {
+it('fail: shape deferred reject from rejected does not re-run domain [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred']);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -222,7 +212,7 @@ it("fail: shape deferred reject from rejected does not re-run domain [D-006]", f
     }
 });
 
-it("fail: shape deferred reject from expired does not re-run domain [D-006]", function () {
+it('fail: shape deferred reject from expired does not re-run domain [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred']);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -248,7 +238,7 @@ it("fail: shape deferred reject from expired does not re-run domain [D-006]", fu
     }
 });
 
-it("fail: shape deferred reject from executed does not re-run domain [D-006]", function () {
+it('fail: shape deferred reject from executed does not re-run domain [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'deferred']);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -274,7 +264,7 @@ it("fail: shape deferred reject from executed does not re-run domain [D-006]", f
     }
 });
 
-it("happy: shape atomic accept from pending executes state machine [D-006]", function () {
+it('happy: shape atomic accept from pending executes state machine [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic']);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -300,7 +290,7 @@ it("happy: shape atomic accept from pending executes state machine [D-006]", fun
     }
 });
 
-it("fail: shape atomic accept from approved does not re-run domain [D-006]", function () {
+it('fail: shape atomic accept from approved does not re-run domain [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic']);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -326,7 +316,7 @@ it("fail: shape atomic accept from approved does not re-run domain [D-006]", fun
     }
 });
 
-it("fail: shape atomic accept from rejected does not re-run domain [D-006]", function () {
+it('fail: shape atomic accept from rejected does not re-run domain [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic']);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -352,7 +342,7 @@ it("fail: shape atomic accept from rejected does not re-run domain [D-006]", fun
     }
 });
 
-it("fail: shape atomic accept from expired does not re-run domain [D-006]", function () {
+it('fail: shape atomic accept from expired does not re-run domain [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic']);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -378,7 +368,7 @@ it("fail: shape atomic accept from expired does not re-run domain [D-006]", func
     }
 });
 
-it("happy: shape atomic accept from executed replays [D-006]", function () {
+it('happy: shape atomic accept from executed replays [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic']);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -404,7 +394,7 @@ it("happy: shape atomic accept from executed replays [D-006]", function () {
     }
 });
 
-it("happy: shape atomic reject from pending never runs [D-006]", function () {
+it('happy: shape atomic reject from pending never runs [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic']);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -430,7 +420,7 @@ it("happy: shape atomic reject from pending never runs [D-006]", function () {
     }
 });
 
-it("fail: shape atomic reject from approved does not re-run domain [D-006]", function () {
+it('fail: shape atomic reject from approved does not re-run domain [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic']);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -456,7 +446,7 @@ it("fail: shape atomic reject from approved does not re-run domain [D-006]", fun
     }
 });
 
-it("fail: shape atomic reject from rejected does not re-run domain [D-006]", function () {
+it('fail: shape atomic reject from rejected does not re-run domain [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic']);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'rejected');
     $id = (string) $row['id'];
@@ -482,7 +472,7 @@ it("fail: shape atomic reject from rejected does not re-run domain [D-006]", fun
     }
 });
 
-it("fail: shape atomic reject from expired does not re-run domain [D-006]", function () {
+it('fail: shape atomic reject from expired does not re-run domain [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic']);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'expired');
     $id = (string) $row['id'];
@@ -508,7 +498,7 @@ it("fail: shape atomic reject from expired does not re-run domain [D-006]", func
     }
 });
 
-it("fail: shape atomic reject from executed does not re-run domain [D-006]", function () {
+it('fail: shape atomic reject from executed does not re-run domain [D-006]', function () {
     $h = ApprovalHelpers::harness(['execution' => 'atomic']);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -534,7 +524,7 @@ it("fail: shape atomic reject from executed does not re-run domain [D-006]", fun
     }
 });
 
-it("edge: policy requester allows authorized decision [D-006]", function () {
+it('edge: policy requester allows authorized decision [D-006]', function () {
     $h = ApprovalHelpers::withPending(['policy' => 'requester']);
     $actor = ApprovalHelpers::actorFor('requester', $h['row']);
     $r = $h['manager']->accept((string) $h['row']['id'], $actor, ['tenant_id' => $actor->tenant_id ?? null]);
@@ -545,7 +535,7 @@ it("edge: policy requester allows authorized decision [D-006]", function () {
     }
 });
 
-it("fail: policy requester forbids unauthorized decision [D-006]", function () {
+it('fail: policy requester forbids unauthorized decision [D-006]', function () {
     $h = ApprovalHelpers::withPending(['policy' => 'requester']);
     $actor = ApprovalHelpers::actorFor('random_user', $h['row']);
     $r = $h['manager']->accept((string) $h['row']['id'], $actor, ['tenant_id' => $actor->tenant_id ?? null]);
@@ -556,7 +546,7 @@ it("fail: policy requester forbids unauthorized decision [D-006]", function () {
     }
 });
 
-it("edge: policy requester_or_role allows authorized decision [D-006]", function () {
+it('edge: policy requester_or_role allows authorized decision [D-006]', function () {
     $h = ApprovalHelpers::withPending(['policy' => 'requester_or_role']);
     $actor = ApprovalHelpers::actorFor('requester', $h['row']);
     $r = $h['manager']->accept((string) $h['row']['id'], $actor, ['tenant_id' => $actor->tenant_id ?? null]);
@@ -567,7 +557,7 @@ it("edge: policy requester_or_role allows authorized decision [D-006]", function
     }
 });
 
-it("fail: policy requester_or_role forbids unauthorized decision [D-006]", function () {
+it('fail: policy requester_or_role forbids unauthorized decision [D-006]', function () {
     $h = ApprovalHelpers::withPending(['policy' => 'requester_or_role']);
     $actor = ApprovalHelpers::actorFor('random_user', $h['row']);
     $r = $h['manager']->accept((string) $h['row']['id'], $actor, ['tenant_id' => $actor->tenant_id ?? null]);
@@ -578,7 +568,7 @@ it("fail: policy requester_or_role forbids unauthorized decision [D-006]", funct
     }
 });
 
-it("edge: policy role:finance-approver allows authorized decision [D-006]", function () {
+it('edge: policy role:finance-approver allows authorized decision [D-006]', function () {
     $h = ApprovalHelpers::withPending(['policy' => 'role:finance-approver']);
     $actor = ApprovalHelpers::actorFor('role_holder', $h['row']);
     $r = $h['manager']->accept((string) $h['row']['id'], $actor, ['tenant_id' => $actor->tenant_id ?? null]);
@@ -589,7 +579,7 @@ it("edge: policy role:finance-approver allows authorized decision [D-006]", func
     }
 });
 
-it("fail: policy role:finance-approver forbids unauthorized decision [D-006]", function () {
+it('fail: policy role:finance-approver forbids unauthorized decision [D-006]', function () {
     $h = ApprovalHelpers::withPending(['policy' => 'role:finance-approver']);
     $actor = ApprovalHelpers::actorFor('requester', $h['row']);
     $r = $h['manager']->accept((string) $h['row']['id'], $actor, ['tenant_id' => $actor->tenant_id ?? null]);
@@ -600,7 +590,7 @@ it("fail: policy role:finance-approver forbids unauthorized decision [D-006]", f
     }
 });
 
-it("edge: policy any_staff allows authorized decision [D-006]", function () {
+it('edge: policy any_staff allows authorized decision [D-006]', function () {
     $h = ApprovalHelpers::withPending(['policy' => 'any_staff']);
     $actor = ApprovalHelpers::actorFor('requester', $h['row']);
     $r = $h['manager']->accept((string) $h['row']['id'], $actor, ['tenant_id' => $actor->tenant_id ?? null]);
@@ -611,7 +601,7 @@ it("edge: policy any_staff allows authorized decision [D-006]", function () {
     }
 });
 
-it("fail: policy any_staff forbids unauthorized decision [D-006]", function () {
+it('fail: policy any_staff forbids unauthorized decision [D-006]', function () {
     $h = ApprovalHelpers::withPending(['policy' => 'any_staff']);
     $actor = ApprovalHelpers::actorFor('other_tenant_user', $h['row']);
     $r = $h['manager']->accept((string) $h['row']['id'], $actor, ['tenant_id' => $actor->tenant_id ?? null]);
@@ -622,7 +612,7 @@ it("fail: policy any_staff forbids unauthorized decision [D-006]", function () {
     }
 });
 
-it("edge: policy custom allows authorized decision [D-006]", function () {
+it('edge: policy custom allows authorized decision [D-006]', function () {
     $h = ApprovalHelpers::withPending(['policy' => 'custom']);
     $actor = ApprovalHelpers::actorFor('requester', $h['row']);
     $r = $h['manager']->accept((string) $h['row']['id'], $actor, ['tenant_id' => $actor->tenant_id ?? null]);
@@ -633,7 +623,7 @@ it("edge: policy custom allows authorized decision [D-006]", function () {
     }
 });
 
-it("fail: policy custom forbids unauthorized decision [D-006]", function () {
+it('fail: policy custom forbids unauthorized decision [D-006]', function () {
     $h = ApprovalHelpers::withPending(['policy' => 'custom']);
     $actor = ApprovalHelpers::actorFor('other_tenant_user', $h['row']);
     $r = $h['manager']->accept((string) $h['row']['id'], $actor, ['tenant_id' => $actor->tenant_id ?? null]);
@@ -643,4 +633,3 @@ it("fail: policy custom forbids unauthorized decision [D-006]", function () {
         expect($r->errorCode())->toBe('forbidden')->and($h['runCount']->value)->toBe(0);
     }
 });
-

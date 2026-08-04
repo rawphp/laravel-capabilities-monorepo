@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\CapabilityResultAssertionException;
+use Rawphp\Capabilities\Support\ErrorCodeMap;
 
 it('happy: ok result carries data [RES-001]', function () {
     $result = CapabilityResult::ok(['invoice_id' => 42], [
@@ -95,4 +96,35 @@ it('edge: assertConflict assertExpired helpers for tests [RES-001]', function ()
     $ok = CapabilityResult::ok([]);
     expect(fn () => $ok->assertConflict())->toThrow(CapabilityResultAssertionException::class);
     expect(fn () => $ok->assertExpired())->toThrow(CapabilityResultAssertionException::class);
+});
+
+it('happy: isRetryable follows wire flag and ErrorCodeMap defaults [RES-001]', function () {
+    expect(CapabilityResult::ok()->isRetryable())->toBeFalse();
+
+    $rateLimited = CapabilityResult::failure('rate_limited', 'slow down');
+    expect($rateLimited->isRetryable())->toBeTrue();
+
+    $forbidden = CapabilityResult::failure('forbidden', 'no');
+    expect($forbidden->isRetryable())->toBeFalse();
+
+    $override = CapabilityResult::failure('internal', 'x', ['retryable' => false]);
+    expect($override->isRetryable())->toBeFalse();
+
+    // approval_required maps retryable=false on the wire; callers branch isApprovalRequired first.
+    $approval = CapabilityResult::approvalRequired('apr-1');
+    expect($approval->isRetryable())->toBeFalse()
+        ->and($approval->isApprovalRequired())->toBeTrue();
+});
+
+it('happy: isHardRefuse follows ErrorCodeMap for refuse codes [RES-001]', function () {
+    expect(CapabilityResult::ok()->isHardRefuse())->toBeFalse();
+
+    foreach (['forbidden', 'capability_not_in_profile', 'not_runnable', 'unauthenticated'] as $code) {
+        expect(CapabilityResult::failure($code, 'x')->isHardRefuse())->toBeTrue("code={$code}");
+        expect(ErrorCodeMap::isHardRefuse($code))->toBeTrue();
+        expect(ErrorCodeMap::retryableDefault($code))->toBeFalse();
+    }
+
+    expect(CapabilityResult::failure('domain_error', 'nope')->isHardRefuse())->toBeFalse();
+    expect(ErrorCodeMap::isHardRefuse('unknown_xyz'))->toBeFalse();
 });

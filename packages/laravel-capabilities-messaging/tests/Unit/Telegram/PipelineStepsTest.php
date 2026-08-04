@@ -2,19 +2,9 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Support\CapabilityContext;
-use Rawphp\Capabilities\Support\CapabilityResult;
-use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
-use Rawphp\CapabilitiesMessaging\MessagingConfig;
-use Rawphp\CapabilitiesMessaging\Tests\Fixtures\FakeCapabilityBus;
-use Rawphp\CapabilitiesMessaging\Support\FakeTelegramBotClient;
-use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdate;
-use Rawphp\CapabilitiesMessaging\Telegram\TelegramAdapter;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers as H;
 
-
-
-it("happy: pipeline step verify_webhook_secret executes in order [MSG-003]", function () {
+it('happy: pipeline step verify_webhook_secret executes in order [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -22,7 +12,7 @@ it("happy: pipeline step verify_webhook_secret executes in order [MSG-003]", fun
     expect($r['steps'] ?? [])->toContain('verify_webhook_secret');
 });
 
-it("fail: pipeline aborts before tools when step verify_webhook_secret fails if prior required [MSG-003]", function () {
+it('fail: pipeline aborts before tools when step verify_webhook_secret fails if prior required [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -30,11 +20,13 @@ it("fail: pipeline aborts before tools when step verify_webhook_secret fails if 
     if ($failAt === 'verify_webhook_secret') {
         $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['secret_valid' => false]);
         expect($r['tools_reached'] ?? false)->toBeFalse();
+
         return;
     }
     if ($failAt === 'queue_process_update') {
         $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => 'queue_process_update']);
         expect($r['tools_reached'] ?? false)->toBeFalse();
+
         return;
     }
     $map = [
@@ -52,8 +44,7 @@ it("fail: pipeline aborts before tools when step verify_webhook_secret fails if 
     }
 });
 
-
-it("happy: pipeline step queue_process_update executes in order [MSG-003]", function () {
+it('happy: pipeline step queue_process_update executes in order [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -61,7 +52,7 @@ it("happy: pipeline step queue_process_update executes in order [MSG-003]", func
     expect($r['steps'] ?? [])->toContain('queue_process_update');
 });
 
-it("fail: pipeline aborts before tools when step queue_process_update fails if prior required [MSG-003]", function () {
+it('fail: pipeline aborts before tools when step queue_process_update fails if prior required [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -69,11 +60,13 @@ it("fail: pipeline aborts before tools when step queue_process_update fails if p
     if ($failAt === 'verify_webhook_secret') {
         $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['secret_valid' => false]);
         expect($r['tools_reached'] ?? false)->toBeFalse();
+
         return;
     }
     if ($failAt === 'queue_process_update') {
         $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => 'queue_process_update']);
         expect($r['tools_reached'] ?? false)->toBeFalse();
+
         return;
     }
     $map = [
@@ -91,8 +84,7 @@ it("fail: pipeline aborts before tools when step queue_process_update fails if p
     }
 });
 
-
-it("happy: pipeline step resolve_identity executes in order [MSG-003]", function () {
+it('happy: pipeline step resolve_identity executes in order [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -100,7 +92,7 @@ it("happy: pipeline step resolve_identity executes in order [MSG-003]", function
     expect($r['steps'] ?? [])->toContain('resolve_identity');
 });
 
-it("fail: pipeline aborts before tools when step resolve_identity fails if prior required [MSG-003]", function () {
+it('fail: pipeline aborts before tools when step resolve_identity fails if prior required [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -108,11 +100,13 @@ it("fail: pipeline aborts before tools when step resolve_identity fails if prior
     if ($failAt === 'verify_webhook_secret') {
         $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['secret_valid' => false]);
         expect($r['tools_reached'] ?? false)->toBeFalse();
+
         return;
     }
     if ($failAt === 'queue_process_update') {
         $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => 'queue_process_update']);
         expect($r['tools_reached'] ?? false)->toBeFalse();
+
         return;
     }
     $map = [
@@ -130,8 +124,7 @@ it("fail: pipeline aborts before tools when step resolve_identity fails if prior
     }
 });
 
-
-it("happy: pipeline step map_thread executes in order [MSG-003]", function () {
+it('happy: pipeline step map_thread executes in order [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -139,7 +132,7 @@ it("happy: pipeline step map_thread executes in order [MSG-003]", function () {
     expect($r['steps'] ?? [])->toContain('map_thread');
 });
 
-it("fail: pipeline aborts before tools when step map_thread fails if prior required [MSG-003]", function () {
+it('fail: pipeline aborts before tools when step map_thread fails if prior required [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -147,11 +140,13 @@ it("fail: pipeline aborts before tools when step map_thread fails if prior requi
     if ($failAt === 'verify_webhook_secret') {
         $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['secret_valid' => false]);
         expect($r['tools_reached'] ?? false)->toBeFalse();
+
         return;
     }
     if ($failAt === 'queue_process_update') {
         $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => 'queue_process_update']);
         expect($r['tools_reached'] ?? false)->toBeFalse();
+
         return;
     }
     $map = [
@@ -169,8 +164,7 @@ it("fail: pipeline aborts before tools when step map_thread fails if prior requi
     }
 });
 
-
-it("happy: pipeline step conversation_ingress executes in order [MSG-003]", function () {
+it('happy: pipeline step conversation_ingress executes in order [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -178,7 +172,7 @@ it("happy: pipeline step conversation_ingress executes in order [MSG-003]", func
     expect($r['steps'] ?? [])->toContain('conversation_ingress');
 });
 
-it("fail: pipeline aborts before tools when step conversation_ingress fails if prior required [MSG-003]", function () {
+it('fail: pipeline aborts before tools when step conversation_ingress fails if prior required [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -186,11 +180,13 @@ it("fail: pipeline aborts before tools when step conversation_ingress fails if p
     if ($failAt === 'verify_webhook_secret') {
         $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['secret_valid' => false]);
         expect($r['tools_reached'] ?? false)->toBeFalse();
+
         return;
     }
     if ($failAt === 'queue_process_update') {
         $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => 'queue_process_update']);
         expect($r['tools_reached'] ?? false)->toBeFalse();
+
         return;
     }
     $map = [
@@ -208,8 +204,7 @@ it("fail: pipeline aborts before tools when step conversation_ingress fails if p
     }
 });
 
-
-it("happy: pipeline step agent_tools_profile executes in order [MSG-003]", function () {
+it('happy: pipeline step agent_tools_profile executes in order [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -217,7 +212,7 @@ it("happy: pipeline step agent_tools_profile executes in order [MSG-003]", funct
     expect($r['steps'] ?? [])->toContain('agent_tools_profile');
 });
 
-it("fail: pipeline aborts before tools when step agent_tools_profile fails if prior required [MSG-003]", function () {
+it('fail: pipeline aborts before tools when step agent_tools_profile fails if prior required [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -225,11 +220,13 @@ it("fail: pipeline aborts before tools when step agent_tools_profile fails if pr
     if ($failAt === 'verify_webhook_secret') {
         $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['secret_valid' => false]);
         expect($r['tools_reached'] ?? false)->toBeFalse();
+
         return;
     }
     if ($failAt === 'queue_process_update') {
         $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => 'queue_process_update']);
         expect($r['tools_reached'] ?? false)->toBeFalse();
+
         return;
     }
     $map = [
@@ -247,8 +244,7 @@ it("fail: pipeline aborts before tools when step agent_tools_profile fails if pr
     }
 });
 
-
-it("happy: pipeline step tool_calls_registry executes in order [MSG-003]", function () {
+it('happy: pipeline step tool_calls_registry executes in order [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -256,7 +252,7 @@ it("happy: pipeline step tool_calls_registry executes in order [MSG-003]", funct
     expect($r['steps'] ?? [])->toContain('tool_calls_registry');
 });
 
-it("fail: pipeline aborts before tools when step tool_calls_registry fails if prior required [MSG-003]", function () {
+it('fail: pipeline aborts before tools when step tool_calls_registry fails if prior required [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -264,11 +260,13 @@ it("fail: pipeline aborts before tools when step tool_calls_registry fails if pr
     if ($failAt === 'verify_webhook_secret') {
         $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['secret_valid' => false]);
         expect($r['tools_reached'] ?? false)->toBeFalse();
+
         return;
     }
     if ($failAt === 'queue_process_update') {
         $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => 'queue_process_update']);
         expect($r['tools_reached'] ?? false)->toBeFalse();
+
         return;
     }
     $map = [
@@ -286,8 +284,7 @@ it("fail: pipeline aborts before tools when step tool_calls_registry fails if pr
     }
 });
 
-
-it("happy: pipeline step conversation_reply executes in order [MSG-003]", function () {
+it('happy: pipeline step conversation_reply executes in order [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -295,7 +292,7 @@ it("happy: pipeline step conversation_reply executes in order [MSG-003]", functi
     expect($r['steps'] ?? [])->toContain('conversation_reply');
 });
 
-it("fail: pipeline aborts before tools when step conversation_reply fails if prior required [MSG-003]", function () {
+it('fail: pipeline aborts before tools when step conversation_reply fails if prior required [MSG-003]', function () {
     $identity = H::identity();
     $identity->link('42', 'u1');
     $p = H::processor(['identity' => $identity]);
@@ -303,11 +300,13 @@ it("fail: pipeline aborts before tools when step conversation_reply fails if pri
     if ($failAt === 'verify_webhook_secret') {
         $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['secret_valid' => false]);
         expect($r['tools_reached'] ?? false)->toBeFalse();
+
         return;
     }
     if ($failAt === 'queue_process_update') {
         $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => 'queue_process_update']);
         expect($r['tools_reached'] ?? false)->toBeFalse();
+
         return;
     }
     $map = [

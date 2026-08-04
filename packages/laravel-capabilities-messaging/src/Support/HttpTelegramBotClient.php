@@ -14,7 +14,7 @@ use RuntimeException;
  */
 final class HttpTelegramBotClient implements TelegramBotClient
 {
-    /** @var callable(string $method, array<string, mixed> $params, string $token): array<string, mixed> */
+    /** @var callable(string, array<string, mixed>, string): array<string, mixed> */
     private $transport;
 
     /** @var list<array{method: string, args: array<string, mixed>}> */

@@ -2,34 +2,15 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Capability;
-use Rawphp\Capabilities\Facades\Capability as CapabilityFacade;
-use Rawphp\Capabilities\Pipeline\IdempotencyGuard;
-use Rawphp\Capabilities\Pipeline\PipelineStages;
-use Rawphp\Capabilities\Pipeline\ResolveActor;
-use Rawphp\Capabilities\Pipeline\ResolveTenantFromCaller;
-use Rawphp\Capabilities\Registry\CapabilityRegistry;
-use Rawphp\Capabilities\Support\CapabilityContext;
-use Rawphp\Capabilities\Support\CapabilityResult;
-use Rawphp\Capabilities\Support\CapabilityScope;
-use Rawphp\Capabilities\Support\FixedClock;
-use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
-use Rawphp\Capabilities\Support\StubAuthorizer;
-use Rawphp\Capabilities\Support\SystemActor;
-use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
-use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
-use Rawphp\Capabilities\Tests\Support\SharedFakes;
-use Illuminate\Support\Facades\Facade;
-use DateTimeImmutable;
 
-it("fail: unknown capability via agent is not_found [PIPE-004]", function () {
+it('fail: unknown capability via agent is not_found [PIPE-004]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $result = $h['registry']->invoke('no-such-cap', PipelineHelpers::validInput(), PipelineHelpers::options('agent'));
     expect($result->errorCode())->toBe('not_found')->and($h['runCount']->value)->toBe(0);
 });
 
-it("fail: known capability wrong surface via agent not invokable as that surface [PIPE-005]", function () {
+it('fail: known capability wrong surface via agent not invokable as that surface [PIPE-005]', function () {
     $h = PipelineHelpers::harness([
         'allowSystemCallers' => true,
         'cap_surfaces' => ['http'], // only http
@@ -48,19 +29,19 @@ it("fail: known capability wrong surface via agent not invokable as that surface
     expect($result->isOk())->toBeFalse()->and($result->errorCode())->toBe('forbidden')->and($h['runCount']->value)->toBe(0);
 });
 
-it("happy: known capability correct surface via agent invokable [PIPE-003]", function () {
+it('happy: known capability correct surface via agent invokable [PIPE-003]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('agent'));
     expect($result->isOk())->toBeTrue();
 });
 
-it("fail: unknown capability via mcp is not_found [PIPE-004]", function () {
+it('fail: unknown capability via mcp is not_found [PIPE-004]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $result = $h['registry']->invoke('no-such-cap', PipelineHelpers::validInput(), PipelineHelpers::options('mcp'));
     expect($result->errorCode())->toBe('not_found')->and($h['runCount']->value)->toBe(0);
 });
 
-it("fail: known capability wrong surface via mcp not invokable as that surface [PIPE-005]", function () {
+it('fail: known capability wrong surface via mcp not invokable as that surface [PIPE-005]', function () {
     $h = PipelineHelpers::harness([
         'allowSystemCallers' => true,
         'cap_surfaces' => ['http'], // only http
@@ -79,19 +60,19 @@ it("fail: known capability wrong surface via mcp not invokable as that surface [
     expect($result->isOk())->toBeFalse()->and($result->errorCode())->toBe('forbidden')->and($h['runCount']->value)->toBe(0);
 });
 
-it("happy: known capability correct surface via mcp invokable [PIPE-003]", function () {
+it('happy: known capability correct surface via mcp invokable [PIPE-003]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('mcp'));
     expect($result->isOk())->toBeTrue();
 });
 
-it("fail: unknown capability via http is not_found [PIPE-004]", function () {
+it('fail: unknown capability via http is not_found [PIPE-004]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $result = $h['registry']->invoke('no-such-cap', PipelineHelpers::validInput(), PipelineHelpers::options('http'));
     expect($result->errorCode())->toBe('not_found')->and($h['runCount']->value)->toBe(0);
 });
 
-it("fail: known capability wrong surface via http not invokable as that surface [PIPE-005]", function () {
+it('fail: known capability wrong surface via http not invokable as that surface [PIPE-005]', function () {
     $h = PipelineHelpers::harness([
         'allowSystemCallers' => true,
         'cap_surfaces' => ['http'], // only http
@@ -110,19 +91,19 @@ it("fail: known capability wrong surface via http not invokable as that surface 
     expect($result->isOk())->toBeFalse()->and($result->errorCode())->toBe('forbidden')->and($h['runCount']->value)->toBe(0);
 });
 
-it("happy: known capability correct surface via http invokable [PIPE-003]", function () {
+it('happy: known capability correct surface via http invokable [PIPE-003]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http'));
     expect($result->isOk())->toBeTrue();
 });
 
-it("fail: unknown capability via cli is not_found [PIPE-004]", function () {
+it('fail: unknown capability via cli is not_found [PIPE-004]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $result = $h['registry']->invoke('no-such-cap', PipelineHelpers::validInput(), PipelineHelpers::options('cli'));
     expect($result->errorCode())->toBe('not_found')->and($h['runCount']->value)->toBe(0);
 });
 
-it("fail: known capability wrong surface via cli not invokable as that surface [PIPE-005]", function () {
+it('fail: known capability wrong surface via cli not invokable as that surface [PIPE-005]', function () {
     $h = PipelineHelpers::harness([
         'allowSystemCallers' => true,
         'cap_surfaces' => ['http'], // only http
@@ -141,19 +122,19 @@ it("fail: known capability wrong surface via cli not invokable as that surface [
     expect($result->isOk())->toBeFalse()->and($result->errorCode())->toBe('forbidden')->and($h['runCount']->value)->toBe(0);
 });
 
-it("happy: known capability correct surface via cli invokable [PIPE-003]", function () {
+it('happy: known capability correct surface via cli invokable [PIPE-003]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('cli'));
     expect($result->isOk())->toBeTrue();
 });
 
-it("fail: unknown capability via job is not_found [PIPE-004]", function () {
+it('fail: unknown capability via job is not_found [PIPE-004]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $result = $h['registry']->invoke('no-such-cap', PipelineHelpers::validInput(), PipelineHelpers::options('job'));
     expect($result->errorCode())->toBe('not_found')->and($h['runCount']->value)->toBe(0);
 });
 
-it("fail: known capability wrong surface via job not invokable as that surface [PIPE-005]", function () {
+it('fail: known capability wrong surface via job not invokable as that surface [PIPE-005]', function () {
     $h = PipelineHelpers::harness([
         'allowSystemCallers' => true,
         'cap_surfaces' => ['http'], // only http
@@ -172,9 +153,8 @@ it("fail: known capability wrong surface via job not invokable as that surface [
     expect($result->isOk())->toBeFalse()->and($result->errorCode())->toBe('forbidden')->and($h['runCount']->value)->toBe(0);
 });
 
-it("happy: known capability correct surface via job invokable [PIPE-003]", function () {
+it('happy: known capability correct surface via job invokable [PIPE-003]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('job'));
     expect($result->isOk())->toBeTrue();
 });
-

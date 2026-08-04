@@ -8,8 +8,10 @@ declare(strict_types=1);
 
 use Rawphp\Capabilities\Adapters\Ai\AiToolAdapterV1;
 use Rawphp\Capabilities\Adapters\Artisan\ArtisanCapabilityInvoker;
+use Rawphp\Capabilities\Adapters\Mcp\McpAuthProfileResolver;
 use Rawphp\Capabilities\Adapters\Mcp\McpCredential;
 use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapterV1;
+use Rawphp\Capabilities\Adapters\PeerIncompatibleException;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 use Rawphp\Capabilities\Adapters\RunCapabilityJob;
 use Rawphp\Capabilities\Adapters\ToolSelection;
@@ -21,6 +23,7 @@ use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\CapabilityScope;
 use Rawphp\Capabilities\Support\MissingArtisanActorException;
+use Rawphp\Capabilities\Support\MissingJobActorException;
 use Rawphp\Capabilities\Support\MissingJobTenantException;
 use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Support\SystemActor;
@@ -43,7 +46,7 @@ it('covers AiToolAdapterV1 disabled, spoof, handleStructured, turn budget', func
         ->and($disabled->handle('ai.cap', [], SystemActor::named('s'))->errorCode())->toBe('not_runnable');
 
     $strict = new AiToolAdapterV1($reg, PeerVersionProbe::forMissingPeers(), surfaceEnabled: true, requireCompatiblePeer: true);
-    expect(fn () => $strict->register('ops'))->toThrow(\Rawphp\Capabilities\Adapters\PeerIncompatibleException::class);
+    expect(fn () => $strict->register('ops'))->toThrow(PeerIncompatibleException::class);
 
     $adapter = new AiToolAdapterV1($reg, $probeOk, surfaceEnabled: true, requireCompatiblePeer: false);
     $adapter->register(ToolSelection::of('ops'));
@@ -78,7 +81,7 @@ it('covers McpToolAdapterV1 disabled, spoof, register RuntimeException path', fu
     ));
 
     $probe = PeerVersionProbe::fake(['laravel/mcp' => true]);
-    $resolver = new \Rawphp\Capabilities\Adapters\Mcp\McpAuthProfileResolver([
+    $resolver = new McpAuthProfileResolver([
         'allow_integration_credentials' => true,
         'integration_actors' => ['c1' => 'integration-c1'],
     ]);
@@ -106,7 +109,7 @@ it('covers McpToolAdapterV1 disabled, spoof, register RuntimeException path', fu
     expect($ok)->toBeInstanceOf(CapabilityResult::class);
 
     $strict = new McpToolAdapterV1($reg, PeerVersionProbe::forMissingPeers(), $resolver, surfaceEnabled: true, requireCompatiblePeer: true);
-    expect(fn () => $strict->register('ops'))->toThrow(\Rawphp\Capabilities\Adapters\PeerIncompatibleException::class);
+    expect(fn () => $strict->register('ops'))->toThrow(PeerIncompatibleException::class);
 });
 
 it('covers ArtisanCapabilityInvoker actor/system/tenant branches', function () {
@@ -287,7 +290,7 @@ it('covers ApprovalPolicy role/staff/requester and default multi-tenant safety',
 });
 
 it('covers RunCapabilityJob construction guards when present', function () {
-    expect(fn () => RunCapabilityJob::assertDispatchable(['name' => 'x']))->toThrow(\Rawphp\Capabilities\Support\MissingJobActorException::class);
+    expect(fn () => RunCapabilityJob::assertDispatchable(['name' => 'x']))->toThrow(MissingJobActorException::class);
 
     $job = RunCapabilityJob::dispatch([
         'name' => 'job.cap',

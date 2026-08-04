@@ -2,33 +2,17 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Capability;
-use Rawphp\Capabilities\Facades\Capability as CapabilityFacade;
-use Rawphp\Capabilities\Pipeline\IdempotencyGuard;
-use Rawphp\Capabilities\Pipeline\PipelineStages;
-use Rawphp\Capabilities\Pipeline\ResolveActor;
-use Rawphp\Capabilities\Pipeline\ResolveTenantFromCaller;
-use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\CapabilityContext;
-use Rawphp\Capabilities\Support\CapabilityResult;
-use Rawphp\Capabilities\Support\CapabilityScope;
-use Rawphp\Capabilities\Support\FixedClock;
-use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
-use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Support\SystemActor;
-use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
-use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
-use Rawphp\Capabilities\Tests\Support\SharedFakes;
-use Illuminate\Support\Facades\Facade;
-use DateTimeImmutable;
 
-it("happy: authorize can match User actor [D-002]", function () {
+it('happy: authorize can match User actor [D-002]', function () {
     $seen = null;
     $h = PipelineHelpers::harness([
         'allowSystemCallers' => true,
         'authorize_cb' => function ($input, $ctx) use (&$seen) {
             $seen = $ctx->actor();
+
             return true;
         },
     ]);
@@ -37,12 +21,13 @@ it("happy: authorize can match User actor [D-002]", function () {
     expect($seen)->toBe($user);
 });
 
-it("happy: authorize can match SystemActor [D-002]", function () {
+it('happy: authorize can match SystemActor [D-002]', function () {
     $seen = null;
     $h = PipelineHelpers::harness([
         'allowSystemCallers' => true,
         'authorize_cb' => function ($input, $ctx) use (&$seen) {
             $seen = $ctx->actor();
+
             return true;
         },
     ]);
@@ -54,13 +39,18 @@ it("happy: authorize can match SystemActor [D-002]", function () {
     expect($seen)->toBeInstanceOf(SystemActor::class)->and($seen->name)->toBe('billing-worker');
 });
 
-it("fail: authorize default denies unknown actor kinds [D-002]", function () {
+it('fail: authorize default denies unknown actor kinds [D-002]', function () {
     $h = PipelineHelpers::harness([
         'allowSystemCallers' => true,
         'authorize_cb' => function ($input, $ctx) {
             $a = $ctx->actor();
-            if ($a instanceof SystemActor) return true;
-            if (is_object($a) && isset($a->id)) return true;
+            if ($a instanceof SystemActor) {
+                return true;
+            }
+            if (is_object($a) && isset($a->id)) {
+                return true;
+            }
+
             return false;
         },
     ]);
@@ -69,13 +59,14 @@ it("fail: authorize default denies unknown actor kinds [D-002]", function () {
     expect($result->errorCode())->toBe('forbidden');
 });
 
-it("fail: authorize must not use is user null allow pattern [D-002]", function () {
+it('fail: authorize must not use is user null allow pattern [D-002]', function () {
     // Registry always builds a non-null actor into CapabilityContext; authorize never sees null user as allow.
     $h = PipelineHelpers::harness([
         'allowSystemCallers' => true,
         'authorize_cb' => function ($input, $ctx) {
             // Anti-pattern: if ($user === null) return true; — context always has actor
             expect($ctx->actor())->not->toBeNull();
+
             return true;
         },
     ]);
@@ -83,12 +74,13 @@ it("fail: authorize must not use is user null allow pattern [D-002]", function (
     expect($result->isOk())->toBeTrue();
 });
 
-it("edge: authorize receives caller agent in context [CTX-001]", function () {
+it('edge: authorize receives caller agent in context [CTX-001]', function () {
     $seen = null;
     $h = PipelineHelpers::harness([
         'allowSystemCallers' => true,
         'authorize_cb' => function ($input, $ctx) use (&$seen) {
             $seen = $ctx->caller();
+
             return true;
         },
     ]);
@@ -96,12 +88,13 @@ it("edge: authorize receives caller agent in context [CTX-001]", function () {
     expect($seen)->toBe('agent');
 });
 
-it("edge: authorize receives caller mcp in context [CTX-001]", function () {
+it('edge: authorize receives caller mcp in context [CTX-001]', function () {
     $seen = null;
     $h = PipelineHelpers::harness([
         'allowSystemCallers' => true,
         'authorize_cb' => function ($input, $ctx) use (&$seen) {
             $seen = $ctx->caller();
+
             return true;
         },
     ]);
@@ -109,12 +102,13 @@ it("edge: authorize receives caller mcp in context [CTX-001]", function () {
     expect($seen)->toBe('mcp');
 });
 
-it("edge: authorize receives caller http in context [CTX-001]", function () {
+it('edge: authorize receives caller http in context [CTX-001]', function () {
     $seen = null;
     $h = PipelineHelpers::harness([
         'allowSystemCallers' => true,
         'authorize_cb' => function ($input, $ctx) use (&$seen) {
             $seen = $ctx->caller();
+
             return true;
         },
     ]);
@@ -122,12 +116,13 @@ it("edge: authorize receives caller http in context [CTX-001]", function () {
     expect($seen)->toBe('http');
 });
 
-it("edge: authorize receives caller cli in context [CTX-001]", function () {
+it('edge: authorize receives caller cli in context [CTX-001]', function () {
     $seen = null;
     $h = PipelineHelpers::harness([
         'allowSystemCallers' => true,
         'authorize_cb' => function ($input, $ctx) use (&$seen) {
             $seen = $ctx->caller();
+
             return true;
         },
     ]);
@@ -135,16 +130,16 @@ it("edge: authorize receives caller cli in context [CTX-001]", function () {
     expect($seen)->toBe('cli');
 });
 
-it("edge: authorize receives caller job in context [CTX-001]", function () {
+it('edge: authorize receives caller job in context [CTX-001]', function () {
     $seen = null;
     $h = PipelineHelpers::harness([
         'allowSystemCallers' => true,
         'authorize_cb' => function ($input, $ctx) use (&$seen) {
             $seen = $ctx->caller();
+
             return true;
         },
     ]);
     $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('job'));
     expect($seen)->toBe('job');
 });
-

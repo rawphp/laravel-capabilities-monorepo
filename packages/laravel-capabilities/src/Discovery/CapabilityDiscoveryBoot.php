@@ -2,12 +2,13 @@
 
 namespace Rawphp\Capabilities\Discovery;
 
+use Rawphp\Capabilities\CapabilitiesServiceProvider;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 
 /**
  * Boot-time auto-discovery into the shared registry (D-017 / REQ-022).
  *
- * Pure entry point for unit tests and {@see \Rawphp\Capabilities\CapabilitiesServiceProvider}.
+ * Pure entry point for unit tests and {@see CapabilitiesServiceProvider}.
  */
 final class CapabilityDiscoveryBoot
 {

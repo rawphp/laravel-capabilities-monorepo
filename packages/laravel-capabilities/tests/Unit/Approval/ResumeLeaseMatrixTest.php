@@ -2,19 +2,9 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Approval\ApprovalCallbackVerifier;
-use Rawphp\Capabilities\Approval\ApprovalManager;
-use Rawphp\Capabilities\Approval\ApprovalPolicy;
-use Rawphp\Capabilities\Approval\ApprovalStateMachine;
-use Rawphp\Capabilities\Approval\Notifiers\CliApprovalNotifier;
-use Rawphp\Capabilities\Approval\Notifiers\HttpApprovalNotifier;
-use Rawphp\Capabilities\Approval\Notifiers\TelegramApprovalNotifier;
-use Rawphp\Capabilities\Events\CapabilityApprovalExecuted;
-use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\ApprovalHelpers;
-use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
-it("edge: resume skips or waits when lease=free grace=inside_grace status=approved [P2-004]", function () {
+it('edge: resume skips or waits when lease=free grace=inside_grace status=approved [P2-004]', function () {
     $h = ApprovalHelpers::harness(['grace_seconds' => 30, 'lease_seconds' => 120]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -44,7 +34,7 @@ it("edge: resume skips or waits when lease=free grace=inside_grace status=approv
     }
 });
 
-it("happy: resume replays when lease=free grace=inside_grace status=executed [P2-004]", function () {
+it('happy: resume replays when lease=free grace=inside_grace status=executed [P2-004]', function () {
     $h = ApprovalHelpers::harness(['grace_seconds' => 30, 'lease_seconds' => 120]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -74,7 +64,7 @@ it("happy: resume replays when lease=free grace=inside_grace status=executed [P2
     }
 });
 
-it("edge: resume skips or waits when lease=free grace=inside_grace status=pending [P2-004]", function () {
+it('edge: resume skips or waits when lease=free grace=inside_grace status=pending [P2-004]', function () {
     $h = ApprovalHelpers::harness(['grace_seconds' => 30, 'lease_seconds' => 120]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -104,7 +94,7 @@ it("edge: resume skips or waits when lease=free grace=inside_grace status=pendin
     }
 });
 
-it("happy: resume claims when lease=free grace=past_grace status=approved [P2-004]", function () {
+it('happy: resume claims when lease=free grace=past_grace status=approved [P2-004]', function () {
     $h = ApprovalHelpers::harness(['grace_seconds' => 30, 'lease_seconds' => 120]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -134,7 +124,7 @@ it("happy: resume claims when lease=free grace=past_grace status=approved [P2-00
     }
 });
 
-it("happy: resume replays when lease=free grace=past_grace status=executed [P2-004]", function () {
+it('happy: resume replays when lease=free grace=past_grace status=executed [P2-004]', function () {
     $h = ApprovalHelpers::harness(['grace_seconds' => 30, 'lease_seconds' => 120]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -164,7 +154,7 @@ it("happy: resume replays when lease=free grace=past_grace status=executed [P2-0
     }
 });
 
-it("edge: resume skips or waits when lease=free grace=past_grace status=pending [P2-004]", function () {
+it('edge: resume skips or waits when lease=free grace=past_grace status=pending [P2-004]', function () {
     $h = ApprovalHelpers::harness(['grace_seconds' => 30, 'lease_seconds' => 120]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -194,7 +184,7 @@ it("edge: resume skips or waits when lease=free grace=past_grace status=pending 
     }
 });
 
-it("edge: resume skips or waits when lease=held_valid grace=inside_grace status=approved [P2-004]", function () {
+it('edge: resume skips or waits when lease=held_valid grace=inside_grace status=approved [P2-004]', function () {
     $h = ApprovalHelpers::harness(['grace_seconds' => 30, 'lease_seconds' => 120]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -224,7 +214,7 @@ it("edge: resume skips or waits when lease=held_valid grace=inside_grace status=
     }
 });
 
-it("happy: resume replays when lease=held_valid grace=inside_grace status=executed [P2-004]", function () {
+it('happy: resume replays when lease=held_valid grace=inside_grace status=executed [P2-004]', function () {
     $h = ApprovalHelpers::harness(['grace_seconds' => 30, 'lease_seconds' => 120]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -254,7 +244,7 @@ it("happy: resume replays when lease=held_valid grace=inside_grace status=execut
     }
 });
 
-it("edge: resume skips or waits when lease=held_valid grace=inside_grace status=pending [P2-004]", function () {
+it('edge: resume skips or waits when lease=held_valid grace=inside_grace status=pending [P2-004]', function () {
     $h = ApprovalHelpers::harness(['grace_seconds' => 30, 'lease_seconds' => 120]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -284,7 +274,7 @@ it("edge: resume skips or waits when lease=held_valid grace=inside_grace status=
     }
 });
 
-it("edge: resume skips or waits when lease=held_valid grace=past_grace status=approved [P2-004]", function () {
+it('edge: resume skips or waits when lease=held_valid grace=past_grace status=approved [P2-004]', function () {
     $h = ApprovalHelpers::harness(['grace_seconds' => 30, 'lease_seconds' => 120]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -314,7 +304,7 @@ it("edge: resume skips or waits when lease=held_valid grace=past_grace status=ap
     }
 });
 
-it("happy: resume replays when lease=held_valid grace=past_grace status=executed [P2-004]", function () {
+it('happy: resume replays when lease=held_valid grace=past_grace status=executed [P2-004]', function () {
     $h = ApprovalHelpers::harness(['grace_seconds' => 30, 'lease_seconds' => 120]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -344,7 +334,7 @@ it("happy: resume replays when lease=held_valid grace=past_grace status=executed
     }
 });
 
-it("edge: resume skips or waits when lease=held_valid grace=past_grace status=pending [P2-004]", function () {
+it('edge: resume skips or waits when lease=held_valid grace=past_grace status=pending [P2-004]', function () {
     $h = ApprovalHelpers::harness(['grace_seconds' => 30, 'lease_seconds' => 120]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -374,7 +364,7 @@ it("edge: resume skips or waits when lease=held_valid grace=past_grace status=pe
     }
 });
 
-it("edge: resume skips or waits when lease=held_expired grace=inside_grace status=approved [P2-004]", function () {
+it('edge: resume skips or waits when lease=held_expired grace=inside_grace status=approved [P2-004]', function () {
     $h = ApprovalHelpers::harness(['grace_seconds' => 30, 'lease_seconds' => 120]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -404,7 +394,7 @@ it("edge: resume skips or waits when lease=held_expired grace=inside_grace statu
     }
 });
 
-it("happy: resume replays when lease=held_expired grace=inside_grace status=executed [P2-004]", function () {
+it('happy: resume replays when lease=held_expired grace=inside_grace status=executed [P2-004]', function () {
     $h = ApprovalHelpers::harness(['grace_seconds' => 30, 'lease_seconds' => 120]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -434,7 +424,7 @@ it("happy: resume replays when lease=held_expired grace=inside_grace status=exec
     }
 });
 
-it("edge: resume skips or waits when lease=held_expired grace=inside_grace status=pending [P2-004]", function () {
+it('edge: resume skips or waits when lease=held_expired grace=inside_grace status=pending [P2-004]', function () {
     $h = ApprovalHelpers::harness(['grace_seconds' => 30, 'lease_seconds' => 120]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -464,7 +454,7 @@ it("edge: resume skips or waits when lease=held_expired grace=inside_grace statu
     }
 });
 
-it("happy: resume claims when lease=held_expired grace=past_grace status=approved [P2-004]", function () {
+it('happy: resume claims when lease=held_expired grace=past_grace status=approved [P2-004]', function () {
     $h = ApprovalHelpers::harness(['grace_seconds' => 30, 'lease_seconds' => 120]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'approved');
     $id = (string) $row['id'];
@@ -494,7 +484,7 @@ it("happy: resume claims when lease=held_expired grace=past_grace status=approve
     }
 });
 
-it("happy: resume replays when lease=held_expired grace=past_grace status=executed [P2-004]", function () {
+it('happy: resume replays when lease=held_expired grace=past_grace status=executed [P2-004]', function () {
     $h = ApprovalHelpers::harness(['grace_seconds' => 30, 'lease_seconds' => 120]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'executed');
     $id = (string) $row['id'];
@@ -524,7 +514,7 @@ it("happy: resume replays when lease=held_expired grace=past_grace status=execut
     }
 });
 
-it("edge: resume skips or waits when lease=held_expired grace=past_grace status=pending [P2-004]", function () {
+it('edge: resume skips or waits when lease=held_expired grace=past_grace status=pending [P2-004]', function () {
     $h = ApprovalHelpers::harness(['grace_seconds' => 30, 'lease_seconds' => 120]);
     $row = ApprovalHelpers::seedStatus($h['manager'], 'pending');
     $id = (string) $row['id'];
@@ -553,4 +543,3 @@ it("edge: resume skips or waits when lease=held_expired grace=past_grace status=
         expect($h['runCount']->value)->toBe($before);
     }
 });
-

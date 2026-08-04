@@ -52,6 +52,23 @@ final class ErrorCodeMap
         return self::MAP[$code]['retryable'] ?? false;
     }
 
+    /**
+     * Auth / profile / runnability refuses — terminal for accept mapping (not retryable limbo).
+     *
+     * @var list<string>
+     */
+    private const HARD_REFUSE_CODES = [
+        'forbidden',
+        'capability_not_in_profile',
+        'not_runnable',
+        'unauthenticated',
+    ];
+
+    public static function isHardRefuse(string $code): bool
+    {
+        return in_array($code, self::HARD_REFUSE_CODES, true);
+    }
+
     public static function isKnown(string $code): bool
     {
         return isset(self::MAP[$code]);

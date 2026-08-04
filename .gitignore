@@ -25,3 +25,7 @@ packages/capabilities-cli/**/bin/
 coverage/
 .phpstan/
 build/
+
+# Python bytecode (tools/*.py)
+__pycache__/
+*.pyc

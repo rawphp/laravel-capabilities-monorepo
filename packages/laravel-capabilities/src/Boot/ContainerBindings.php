@@ -2,6 +2,7 @@
 
 namespace Rawphp\Capabilities\Boot;
 
+use Illuminate\Database\ConnectionInterface;
 use Rawphp\Capabilities\Adapters\Ai\AiToolAdapter;
 use Rawphp\Capabilities\Adapters\Ai\AiToolAdapterV1;
 use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapter;
@@ -17,7 +18,6 @@ use Rawphp\Capabilities\Contracts\RateLimitCache;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\ScopeResolver;
 use Rawphp\Capabilities\Contracts\Tracer as TracerContract;
-use Illuminate\Database\ConnectionInterface;
 use Rawphp\Capabilities\Observability\InMemoryMetrics;
 use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\Capabilities\Observability\LogFallbackMetrics;
@@ -29,6 +29,7 @@ use Rawphp\Capabilities\Persistence\QueryTableGateway;
 use Rawphp\Capabilities\Persistence\TableGateway;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\DefaultScopeResolver;
+use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
 use Rawphp\Capabilities\Support\InMemoryRateLimiter;
 use Rawphp\Capabilities\Support\LaravelCacheRateLimiter;
@@ -53,6 +54,7 @@ final class ContainerBindings
         'scope' => 'scope_json',
         'messaging' => 'channel_meta_json',
     ];
+
     public const PUBLISH_TAGS = [
         'capabilities-config',
         'capabilities-migrations',
@@ -112,7 +114,7 @@ final class ContainerBindings
         );
         // For plan display: memory path still uses in-memory via makeApprovalManager
         if ($approvalStore['resolved'] === 'memory') {
-            $approvalStore['concrete'] = \Rawphp\Capabilities\Support\InMemoryApprovalStore::class;
+            $approvalStore['concrete'] = InMemoryApprovalStore::class;
         }
 
         $auditDriver = self::resolveStoreDriver(

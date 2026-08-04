@@ -20,7 +20,6 @@ use Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers as H;
  * REQ-074 / L-004: production bindings vs fake/testing selection.
  * No live Telegram network; HTTP bot uses injected transport only.
  */
-
 it('production auto drivers select laravel queue and http bot [L-004]', function () {
     $resolved = MessagingBindings::resolve([
         'telegram' => ['enabled' => true, 'bot_token' => 't', 'webhook_secret' => 's'],

@@ -11,7 +11,7 @@ namespace Rawphp\CapabilitiesMessaging\Support;
  */
 final class LaravelUpdateQueue implements UpdateQueue
 {
-    /** @var callable(string $job, array<string, mixed> $payload): void */
+    /** @var callable(string, array<string, mixed>): void */
     private $dispatcher;
 
     /**

@@ -2,28 +2,9 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Capability;
-use Rawphp\Capabilities\Facades\Capability as CapabilityFacade;
-use Rawphp\Capabilities\Pipeline\IdempotencyGuard;
-use Rawphp\Capabilities\Pipeline\PipelineStages;
-use Rawphp\Capabilities\Pipeline\ResolveActor;
-use Rawphp\Capabilities\Pipeline\ResolveTenantFromCaller;
-use Rawphp\Capabilities\Registry\CapabilityRegistry;
-use Rawphp\Capabilities\Support\CapabilityContext;
-use Rawphp\Capabilities\Support\CapabilityResult;
-use Rawphp\Capabilities\Support\CapabilityScope;
-use Rawphp\Capabilities\Support\FixedClock;
-use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
-use Rawphp\Capabilities\Support\StubAuthorizer;
-use Rawphp\Capabilities\Support\SystemActor;
-use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
-use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
-use Rawphp\Capabilities\Tests\Support\SharedFakes;
-use Illuminate\Support\Facades\Facade;
-use DateTimeImmutable;
 
-it("fail: stage json_schema_validate fail on caller agent does not call run [PIPE-002]", function () {
+it('fail: stage json_schema_validate fail on caller agent does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::invalidInput();
     $extra = [];
@@ -31,7 +12,7 @@ it("fail: stage json_schema_validate fail on caller agent does not call run [PIP
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage json_schema_validate fail on caller agent has no domain side effects [PIPE-002]", function () {
+it('fail: stage json_schema_validate fail on caller agent has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::invalidInput();
     $extra = [];
@@ -39,7 +20,7 @@ it("fail: stage json_schema_validate fail on caller agent has no domain side eff
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage json_schema_validate fail on caller agent returns structured error [PIPE-002]", function () {
+it('happy: stage json_schema_validate fail on caller agent returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::invalidInput();
     $extra = [];
@@ -50,7 +31,7 @@ it("happy: stage json_schema_validate fail on caller agent returns structured er
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage json_schema_validate fail on caller mcp does not call run [PIPE-002]", function () {
+it('fail: stage json_schema_validate fail on caller mcp does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::invalidInput();
     $extra = [];
@@ -58,7 +39,7 @@ it("fail: stage json_schema_validate fail on caller mcp does not call run [PIPE-
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage json_schema_validate fail on caller mcp has no domain side effects [PIPE-002]", function () {
+it('fail: stage json_schema_validate fail on caller mcp has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::invalidInput();
     $extra = [];
@@ -66,7 +47,7 @@ it("fail: stage json_schema_validate fail on caller mcp has no domain side effec
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage json_schema_validate fail on caller mcp returns structured error [PIPE-002]", function () {
+it('happy: stage json_schema_validate fail on caller mcp returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::invalidInput();
     $extra = [];
@@ -77,7 +58,7 @@ it("happy: stage json_schema_validate fail on caller mcp returns structured erro
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage json_schema_validate fail on caller http does not call run [PIPE-002]", function () {
+it('fail: stage json_schema_validate fail on caller http does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::invalidInput();
     $extra = [];
@@ -85,7 +66,7 @@ it("fail: stage json_schema_validate fail on caller http does not call run [PIPE
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage json_schema_validate fail on caller http has no domain side effects [PIPE-002]", function () {
+it('fail: stage json_schema_validate fail on caller http has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::invalidInput();
     $extra = [];
@@ -93,7 +74,7 @@ it("fail: stage json_schema_validate fail on caller http has no domain side effe
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage json_schema_validate fail on caller http returns structured error [PIPE-002]", function () {
+it('happy: stage json_schema_validate fail on caller http returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::invalidInput();
     $extra = [];
@@ -104,7 +85,7 @@ it("happy: stage json_schema_validate fail on caller http returns structured err
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage json_schema_validate fail on caller cli does not call run [PIPE-002]", function () {
+it('fail: stage json_schema_validate fail on caller cli does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::invalidInput();
     $extra = [];
@@ -112,7 +93,7 @@ it("fail: stage json_schema_validate fail on caller cli does not call run [PIPE-
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage json_schema_validate fail on caller cli has no domain side effects [PIPE-002]", function () {
+it('fail: stage json_schema_validate fail on caller cli has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::invalidInput();
     $extra = [];
@@ -120,7 +101,7 @@ it("fail: stage json_schema_validate fail on caller cli has no domain side effec
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage json_schema_validate fail on caller cli returns structured error [PIPE-002]", function () {
+it('happy: stage json_schema_validate fail on caller cli returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::invalidInput();
     $extra = [];
@@ -131,7 +112,7 @@ it("happy: stage json_schema_validate fail on caller cli returns structured erro
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage json_schema_validate fail on caller job does not call run [PIPE-002]", function () {
+it('fail: stage json_schema_validate fail on caller job does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::invalidInput();
     $extra = [];
@@ -139,7 +120,7 @@ it("fail: stage json_schema_validate fail on caller job does not call run [PIPE-
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage json_schema_validate fail on caller job has no domain side effects [PIPE-002]", function () {
+it('fail: stage json_schema_validate fail on caller job has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::invalidInput();
     $extra = [];
@@ -147,7 +128,7 @@ it("fail: stage json_schema_validate fail on caller job has no domain side effec
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage json_schema_validate fail on caller job returns structured error [PIPE-002]", function () {
+it('happy: stage json_schema_validate fail on caller job returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::invalidInput();
     $extra = [];
@@ -158,7 +139,7 @@ it("happy: stage json_schema_validate fail on caller job returns structured erro
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage hydrate_dto fail on caller agent does not call run [PIPE-002]", function () {
+it('fail: stage hydrate_dto fail on caller agent does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('hydrate_dto');
     $input = PipelineHelpers::validInput();
@@ -167,7 +148,7 @@ it("fail: stage hydrate_dto fail on caller agent does not call run [PIPE-002]", 
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage hydrate_dto fail on caller agent has no domain side effects [PIPE-002]", function () {
+it('fail: stage hydrate_dto fail on caller agent has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('hydrate_dto');
     $input = PipelineHelpers::validInput();
@@ -176,7 +157,7 @@ it("fail: stage hydrate_dto fail on caller agent has no domain side effects [PIP
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage hydrate_dto fail on caller agent returns structured error [PIPE-002]", function () {
+it('happy: stage hydrate_dto fail on caller agent returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('hydrate_dto');
     $input = PipelineHelpers::validInput();
@@ -188,7 +169,7 @@ it("happy: stage hydrate_dto fail on caller agent returns structured error [PIPE
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage hydrate_dto fail on caller mcp does not call run [PIPE-002]", function () {
+it('fail: stage hydrate_dto fail on caller mcp does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('hydrate_dto');
     $input = PipelineHelpers::validInput();
@@ -197,7 +178,7 @@ it("fail: stage hydrate_dto fail on caller mcp does not call run [PIPE-002]", fu
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage hydrate_dto fail on caller mcp has no domain side effects [PIPE-002]", function () {
+it('fail: stage hydrate_dto fail on caller mcp has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('hydrate_dto');
     $input = PipelineHelpers::validInput();
@@ -206,7 +187,7 @@ it("fail: stage hydrate_dto fail on caller mcp has no domain side effects [PIPE-
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage hydrate_dto fail on caller mcp returns structured error [PIPE-002]", function () {
+it('happy: stage hydrate_dto fail on caller mcp returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('hydrate_dto');
     $input = PipelineHelpers::validInput();
@@ -218,7 +199,7 @@ it("happy: stage hydrate_dto fail on caller mcp returns structured error [PIPE-0
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage hydrate_dto fail on caller http does not call run [PIPE-002]", function () {
+it('fail: stage hydrate_dto fail on caller http does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('hydrate_dto');
     $input = PipelineHelpers::validInput();
@@ -227,7 +208,7 @@ it("fail: stage hydrate_dto fail on caller http does not call run [PIPE-002]", f
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage hydrate_dto fail on caller http has no domain side effects [PIPE-002]", function () {
+it('fail: stage hydrate_dto fail on caller http has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('hydrate_dto');
     $input = PipelineHelpers::validInput();
@@ -236,7 +217,7 @@ it("fail: stage hydrate_dto fail on caller http has no domain side effects [PIPE
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage hydrate_dto fail on caller http returns structured error [PIPE-002]", function () {
+it('happy: stage hydrate_dto fail on caller http returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('hydrate_dto');
     $input = PipelineHelpers::validInput();
@@ -248,7 +229,7 @@ it("happy: stage hydrate_dto fail on caller http returns structured error [PIPE-
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage hydrate_dto fail on caller cli does not call run [PIPE-002]", function () {
+it('fail: stage hydrate_dto fail on caller cli does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('hydrate_dto');
     $input = PipelineHelpers::validInput();
@@ -257,7 +238,7 @@ it("fail: stage hydrate_dto fail on caller cli does not call run [PIPE-002]", fu
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage hydrate_dto fail on caller cli has no domain side effects [PIPE-002]", function () {
+it('fail: stage hydrate_dto fail on caller cli has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('hydrate_dto');
     $input = PipelineHelpers::validInput();
@@ -266,7 +247,7 @@ it("fail: stage hydrate_dto fail on caller cli has no domain side effects [PIPE-
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage hydrate_dto fail on caller cli returns structured error [PIPE-002]", function () {
+it('happy: stage hydrate_dto fail on caller cli returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('hydrate_dto');
     $input = PipelineHelpers::validInput();
@@ -278,7 +259,7 @@ it("happy: stage hydrate_dto fail on caller cli returns structured error [PIPE-0
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage hydrate_dto fail on caller job does not call run [PIPE-002]", function () {
+it('fail: stage hydrate_dto fail on caller job does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('hydrate_dto');
     $input = PipelineHelpers::validInput();
@@ -287,7 +268,7 @@ it("fail: stage hydrate_dto fail on caller job does not call run [PIPE-002]", fu
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage hydrate_dto fail on caller job has no domain side effects [PIPE-002]", function () {
+it('fail: stage hydrate_dto fail on caller job has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('hydrate_dto');
     $input = PipelineHelpers::validInput();
@@ -296,7 +277,7 @@ it("fail: stage hydrate_dto fail on caller job has no domain side effects [PIPE-
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage hydrate_dto fail on caller job returns structured error [PIPE-002]", function () {
+it('happy: stage hydrate_dto fail on caller job returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('hydrate_dto');
     $input = PipelineHelpers::validInput();
@@ -308,7 +289,7 @@ it("happy: stage hydrate_dto fail on caller job returns structured error [PIPE-0
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage server_only_validate fail on caller agent does not call run [PIPE-002]", function () {
+it('fail: stage server_only_validate fail on caller agent does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'server_rules' => 'fail']);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -316,7 +297,7 @@ it("fail: stage server_only_validate fail on caller agent does not call run [PIP
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage server_only_validate fail on caller agent has no domain side effects [PIPE-002]", function () {
+it('fail: stage server_only_validate fail on caller agent has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'server_rules' => 'fail']);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -324,7 +305,7 @@ it("fail: stage server_only_validate fail on caller agent has no domain side eff
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage server_only_validate fail on caller agent returns structured error [PIPE-002]", function () {
+it('happy: stage server_only_validate fail on caller agent returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'server_rules' => 'fail']);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -335,7 +316,7 @@ it("happy: stage server_only_validate fail on caller agent returns structured er
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage server_only_validate fail on caller mcp does not call run [PIPE-002]", function () {
+it('fail: stage server_only_validate fail on caller mcp does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'server_rules' => 'fail']);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -343,7 +324,7 @@ it("fail: stage server_only_validate fail on caller mcp does not call run [PIPE-
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage server_only_validate fail on caller mcp has no domain side effects [PIPE-002]", function () {
+it('fail: stage server_only_validate fail on caller mcp has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'server_rules' => 'fail']);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -351,7 +332,7 @@ it("fail: stage server_only_validate fail on caller mcp has no domain side effec
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage server_only_validate fail on caller mcp returns structured error [PIPE-002]", function () {
+it('happy: stage server_only_validate fail on caller mcp returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'server_rules' => 'fail']);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -362,7 +343,7 @@ it("happy: stage server_only_validate fail on caller mcp returns structured erro
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage server_only_validate fail on caller http does not call run [PIPE-002]", function () {
+it('fail: stage server_only_validate fail on caller http does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'server_rules' => 'fail']);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -370,7 +351,7 @@ it("fail: stage server_only_validate fail on caller http does not call run [PIPE
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage server_only_validate fail on caller http has no domain side effects [PIPE-002]", function () {
+it('fail: stage server_only_validate fail on caller http has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'server_rules' => 'fail']);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -378,7 +359,7 @@ it("fail: stage server_only_validate fail on caller http has no domain side effe
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage server_only_validate fail on caller http returns structured error [PIPE-002]", function () {
+it('happy: stage server_only_validate fail on caller http returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'server_rules' => 'fail']);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -389,7 +370,7 @@ it("happy: stage server_only_validate fail on caller http returns structured err
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage server_only_validate fail on caller cli does not call run [PIPE-002]", function () {
+it('fail: stage server_only_validate fail on caller cli does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'server_rules' => 'fail']);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -397,7 +378,7 @@ it("fail: stage server_only_validate fail on caller cli does not call run [PIPE-
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage server_only_validate fail on caller cli has no domain side effects [PIPE-002]", function () {
+it('fail: stage server_only_validate fail on caller cli has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'server_rules' => 'fail']);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -405,7 +386,7 @@ it("fail: stage server_only_validate fail on caller cli has no domain side effec
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage server_only_validate fail on caller cli returns structured error [PIPE-002]", function () {
+it('happy: stage server_only_validate fail on caller cli returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'server_rules' => 'fail']);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -416,7 +397,7 @@ it("happy: stage server_only_validate fail on caller cli returns structured erro
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage server_only_validate fail on caller job does not call run [PIPE-002]", function () {
+it('fail: stage server_only_validate fail on caller job does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'server_rules' => 'fail']);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -424,7 +405,7 @@ it("fail: stage server_only_validate fail on caller job does not call run [PIPE-
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage server_only_validate fail on caller job has no domain side effects [PIPE-002]", function () {
+it('fail: stage server_only_validate fail on caller job has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'server_rules' => 'fail']);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -432,7 +413,7 @@ it("fail: stage server_only_validate fail on caller job has no domain side effec
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage server_only_validate fail on caller job returns structured error [PIPE-002]", function () {
+it('happy: stage server_only_validate fail on caller job returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'server_rules' => 'fail']);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -443,7 +424,7 @@ it("happy: stage server_only_validate fail on caller job returns structured erro
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage resolve_actor fail on caller agent does not call run [PIPE-002]", function () {
+it('fail: stage resolve_actor fail on caller agent does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['actor' => null];
@@ -451,7 +432,7 @@ it("fail: stage resolve_actor fail on caller agent does not call run [PIPE-002]"
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage resolve_actor fail on caller agent has no domain side effects [PIPE-002]", function () {
+it('fail: stage resolve_actor fail on caller agent has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['actor' => null];
@@ -459,7 +440,7 @@ it("fail: stage resolve_actor fail on caller agent has no domain side effects [P
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage resolve_actor fail on caller agent returns structured error [PIPE-002]", function () {
+it('happy: stage resolve_actor fail on caller agent returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['actor' => null];
@@ -470,7 +451,7 @@ it("happy: stage resolve_actor fail on caller agent returns structured error [PI
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage resolve_actor fail on caller mcp does not call run [PIPE-002]", function () {
+it('fail: stage resolve_actor fail on caller mcp does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['actor' => null];
@@ -478,7 +459,7 @@ it("fail: stage resolve_actor fail on caller mcp does not call run [PIPE-002]", 
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage resolve_actor fail on caller mcp has no domain side effects [PIPE-002]", function () {
+it('fail: stage resolve_actor fail on caller mcp has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['actor' => null];
@@ -486,7 +467,7 @@ it("fail: stage resolve_actor fail on caller mcp has no domain side effects [PIP
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage resolve_actor fail on caller mcp returns structured error [PIPE-002]", function () {
+it('happy: stage resolve_actor fail on caller mcp returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['actor' => null];
@@ -497,7 +478,7 @@ it("happy: stage resolve_actor fail on caller mcp returns structured error [PIPE
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage resolve_actor fail on caller http does not call run [PIPE-002]", function () {
+it('fail: stage resolve_actor fail on caller http does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['actor' => null];
@@ -505,7 +486,7 @@ it("fail: stage resolve_actor fail on caller http does not call run [PIPE-002]",
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage resolve_actor fail on caller http has no domain side effects [PIPE-002]", function () {
+it('fail: stage resolve_actor fail on caller http has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['actor' => null];
@@ -513,7 +494,7 @@ it("fail: stage resolve_actor fail on caller http has no domain side effects [PI
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage resolve_actor fail on caller http returns structured error [PIPE-002]", function () {
+it('happy: stage resolve_actor fail on caller http returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['actor' => null];
@@ -524,7 +505,7 @@ it("happy: stage resolve_actor fail on caller http returns structured error [PIP
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage resolve_actor fail on caller cli does not call run [PIPE-002]", function () {
+it('fail: stage resolve_actor fail on caller cli does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['actor' => null];
@@ -532,7 +513,7 @@ it("fail: stage resolve_actor fail on caller cli does not call run [PIPE-002]", 
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage resolve_actor fail on caller cli has no domain side effects [PIPE-002]", function () {
+it('fail: stage resolve_actor fail on caller cli has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['actor' => null];
@@ -540,7 +521,7 @@ it("fail: stage resolve_actor fail on caller cli has no domain side effects [PIP
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage resolve_actor fail on caller cli returns structured error [PIPE-002]", function () {
+it('happy: stage resolve_actor fail on caller cli returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['actor' => null];
@@ -551,7 +532,7 @@ it("happy: stage resolve_actor fail on caller cli returns structured error [PIPE
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage resolve_actor fail on caller job does not call run [PIPE-002]", function () {
+it('fail: stage resolve_actor fail on caller job does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['actor' => null];
@@ -559,7 +540,7 @@ it("fail: stage resolve_actor fail on caller job does not call run [PIPE-002]", 
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage resolve_actor fail on caller job has no domain side effects [PIPE-002]", function () {
+it('fail: stage resolve_actor fail on caller job has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['actor' => null];
@@ -567,7 +548,7 @@ it("fail: stage resolve_actor fail on caller job has no domain side effects [PIP
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage resolve_actor fail on caller job returns structured error [PIPE-002]", function () {
+it('happy: stage resolve_actor fail on caller job returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['actor' => null];
@@ -578,7 +559,7 @@ it("happy: stage resolve_actor fail on caller job returns structured error [PIPE
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage resolve_scope fail on caller agent does not call run [PIPE-002]", function () {
+it('fail: stage resolve_scope fail on caller agent does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['fail_scope' => true];
@@ -586,7 +567,7 @@ it("fail: stage resolve_scope fail on caller agent does not call run [PIPE-002]"
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage resolve_scope fail on caller agent has no domain side effects [PIPE-002]", function () {
+it('fail: stage resolve_scope fail on caller agent has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['fail_scope' => true];
@@ -594,7 +575,7 @@ it("fail: stage resolve_scope fail on caller agent has no domain side effects [P
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage resolve_scope fail on caller agent returns structured error [PIPE-002]", function () {
+it('happy: stage resolve_scope fail on caller agent returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['fail_scope' => true];
@@ -605,7 +586,7 @@ it("happy: stage resolve_scope fail on caller agent returns structured error [PI
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage resolve_scope fail on caller mcp does not call run [PIPE-002]", function () {
+it('fail: stage resolve_scope fail on caller mcp does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['fail_scope' => true];
@@ -613,7 +594,7 @@ it("fail: stage resolve_scope fail on caller mcp does not call run [PIPE-002]", 
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage resolve_scope fail on caller mcp has no domain side effects [PIPE-002]", function () {
+it('fail: stage resolve_scope fail on caller mcp has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['fail_scope' => true];
@@ -621,7 +602,7 @@ it("fail: stage resolve_scope fail on caller mcp has no domain side effects [PIP
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage resolve_scope fail on caller mcp returns structured error [PIPE-002]", function () {
+it('happy: stage resolve_scope fail on caller mcp returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['fail_scope' => true];
@@ -632,7 +613,7 @@ it("happy: stage resolve_scope fail on caller mcp returns structured error [PIPE
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage resolve_scope fail on caller http does not call run [PIPE-002]", function () {
+it('fail: stage resolve_scope fail on caller http does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['fail_scope' => true];
@@ -640,7 +621,7 @@ it("fail: stage resolve_scope fail on caller http does not call run [PIPE-002]",
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage resolve_scope fail on caller http has no domain side effects [PIPE-002]", function () {
+it('fail: stage resolve_scope fail on caller http has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['fail_scope' => true];
@@ -648,7 +629,7 @@ it("fail: stage resolve_scope fail on caller http has no domain side effects [PI
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage resolve_scope fail on caller http returns structured error [PIPE-002]", function () {
+it('happy: stage resolve_scope fail on caller http returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['fail_scope' => true];
@@ -659,7 +640,7 @@ it("happy: stage resolve_scope fail on caller http returns structured error [PIP
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage resolve_scope fail on caller cli does not call run [PIPE-002]", function () {
+it('fail: stage resolve_scope fail on caller cli does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['fail_scope' => true];
@@ -667,7 +648,7 @@ it("fail: stage resolve_scope fail on caller cli does not call run [PIPE-002]", 
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage resolve_scope fail on caller cli has no domain side effects [PIPE-002]", function () {
+it('fail: stage resolve_scope fail on caller cli has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['fail_scope' => true];
@@ -675,7 +656,7 @@ it("fail: stage resolve_scope fail on caller cli has no domain side effects [PIP
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage resolve_scope fail on caller cli returns structured error [PIPE-002]", function () {
+it('happy: stage resolve_scope fail on caller cli returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['fail_scope' => true];
@@ -686,7 +667,7 @@ it("happy: stage resolve_scope fail on caller cli returns structured error [PIPE
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage resolve_scope fail on caller job does not call run [PIPE-002]", function () {
+it('fail: stage resolve_scope fail on caller job does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['fail_scope' => true];
@@ -694,7 +675,7 @@ it("fail: stage resolve_scope fail on caller job does not call run [PIPE-002]", 
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage resolve_scope fail on caller job has no domain side effects [PIPE-002]", function () {
+it('fail: stage resolve_scope fail on caller job has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['fail_scope' => true];
@@ -702,7 +683,7 @@ it("fail: stage resolve_scope fail on caller job has no domain side effects [PIP
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage resolve_scope fail on caller job returns structured error [PIPE-002]", function () {
+it('happy: stage resolve_scope fail on caller job returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $input = PipelineHelpers::validInput();
     $extra = ['fail_scope' => true];
@@ -713,7 +694,7 @@ it("happy: stage resolve_scope fail on caller job returns structured error [PIPE
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage idempotency_lookup fail on caller agent does not call run [PIPE-002]", function () {
+it('fail: stage idempotency_lookup fail on caller agent does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('idempotency_lookup');
     $input = PipelineHelpers::validInput();
@@ -722,7 +703,7 @@ it("fail: stage idempotency_lookup fail on caller agent does not call run [PIPE-
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage idempotency_lookup fail on caller agent has no domain side effects [PIPE-002]", function () {
+it('fail: stage idempotency_lookup fail on caller agent has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('idempotency_lookup');
     $input = PipelineHelpers::validInput();
@@ -731,7 +712,7 @@ it("fail: stage idempotency_lookup fail on caller agent has no domain side effec
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage idempotency_lookup fail on caller agent returns structured error [PIPE-002]", function () {
+it('happy: stage idempotency_lookup fail on caller agent returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('idempotency_lookup');
     $input = PipelineHelpers::validInput();
@@ -743,7 +724,7 @@ it("happy: stage idempotency_lookup fail on caller agent returns structured erro
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage idempotency_lookup fail on caller mcp does not call run [PIPE-002]", function () {
+it('fail: stage idempotency_lookup fail on caller mcp does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('idempotency_lookup');
     $input = PipelineHelpers::validInput();
@@ -752,7 +733,7 @@ it("fail: stage idempotency_lookup fail on caller mcp does not call run [PIPE-00
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage idempotency_lookup fail on caller mcp has no domain side effects [PIPE-002]", function () {
+it('fail: stage idempotency_lookup fail on caller mcp has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('idempotency_lookup');
     $input = PipelineHelpers::validInput();
@@ -761,7 +742,7 @@ it("fail: stage idempotency_lookup fail on caller mcp has no domain side effects
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage idempotency_lookup fail on caller mcp returns structured error [PIPE-002]", function () {
+it('happy: stage idempotency_lookup fail on caller mcp returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('idempotency_lookup');
     $input = PipelineHelpers::validInput();
@@ -773,7 +754,7 @@ it("happy: stage idempotency_lookup fail on caller mcp returns structured error 
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage idempotency_lookup fail on caller http does not call run [PIPE-002]", function () {
+it('fail: stage idempotency_lookup fail on caller http does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('idempotency_lookup');
     $input = PipelineHelpers::validInput();
@@ -782,7 +763,7 @@ it("fail: stage idempotency_lookup fail on caller http does not call run [PIPE-0
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage idempotency_lookup fail on caller http has no domain side effects [PIPE-002]", function () {
+it('fail: stage idempotency_lookup fail on caller http has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('idempotency_lookup');
     $input = PipelineHelpers::validInput();
@@ -791,7 +772,7 @@ it("fail: stage idempotency_lookup fail on caller http has no domain side effect
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage idempotency_lookup fail on caller http returns structured error [PIPE-002]", function () {
+it('happy: stage idempotency_lookup fail on caller http returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('idempotency_lookup');
     $input = PipelineHelpers::validInput();
@@ -803,7 +784,7 @@ it("happy: stage idempotency_lookup fail on caller http returns structured error
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage idempotency_lookup fail on caller cli does not call run [PIPE-002]", function () {
+it('fail: stage idempotency_lookup fail on caller cli does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('idempotency_lookup');
     $input = PipelineHelpers::validInput();
@@ -812,7 +793,7 @@ it("fail: stage idempotency_lookup fail on caller cli does not call run [PIPE-00
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage idempotency_lookup fail on caller cli has no domain side effects [PIPE-002]", function () {
+it('fail: stage idempotency_lookup fail on caller cli has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('idempotency_lookup');
     $input = PipelineHelpers::validInput();
@@ -821,7 +802,7 @@ it("fail: stage idempotency_lookup fail on caller cli has no domain side effects
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage idempotency_lookup fail on caller cli returns structured error [PIPE-002]", function () {
+it('happy: stage idempotency_lookup fail on caller cli returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('idempotency_lookup');
     $input = PipelineHelpers::validInput();
@@ -833,7 +814,7 @@ it("happy: stage idempotency_lookup fail on caller cli returns structured error 
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage idempotency_lookup fail on caller job does not call run [PIPE-002]", function () {
+it('fail: stage idempotency_lookup fail on caller job does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('idempotency_lookup');
     $input = PipelineHelpers::validInput();
@@ -842,7 +823,7 @@ it("fail: stage idempotency_lookup fail on caller job does not call run [PIPE-00
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage idempotency_lookup fail on caller job has no domain side effects [PIPE-002]", function () {
+it('fail: stage idempotency_lookup fail on caller job has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('idempotency_lookup');
     $input = PipelineHelpers::validInput();
@@ -851,7 +832,7 @@ it("fail: stage idempotency_lookup fail on caller job has no domain side effects
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage idempotency_lookup fail on caller job returns structured error [PIPE-002]", function () {
+it('happy: stage idempotency_lookup fail on caller job returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('idempotency_lookup');
     $input = PipelineHelpers::validInput();
@@ -863,7 +844,7 @@ it("happy: stage idempotency_lookup fail on caller job returns structured error 
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage authorize fail on caller agent does not call run [PIPE-002]", function () {
+it('fail: stage authorize fail on caller agent does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -871,7 +852,7 @@ it("fail: stage authorize fail on caller agent does not call run [PIPE-002]", fu
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage authorize fail on caller agent has no domain side effects [PIPE-002]", function () {
+it('fail: stage authorize fail on caller agent has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -879,7 +860,7 @@ it("fail: stage authorize fail on caller agent has no domain side effects [PIPE-
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage authorize fail on caller agent returns structured error [PIPE-002]", function () {
+it('happy: stage authorize fail on caller agent returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -890,7 +871,7 @@ it("happy: stage authorize fail on caller agent returns structured error [PIPE-0
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage authorize fail on caller mcp does not call run [PIPE-002]", function () {
+it('fail: stage authorize fail on caller mcp does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -898,7 +879,7 @@ it("fail: stage authorize fail on caller mcp does not call run [PIPE-002]", func
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage authorize fail on caller mcp has no domain side effects [PIPE-002]", function () {
+it('fail: stage authorize fail on caller mcp has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -906,7 +887,7 @@ it("fail: stage authorize fail on caller mcp has no domain side effects [PIPE-00
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage authorize fail on caller mcp returns structured error [PIPE-002]", function () {
+it('happy: stage authorize fail on caller mcp returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -917,7 +898,7 @@ it("happy: stage authorize fail on caller mcp returns structured error [PIPE-002
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage authorize fail on caller http does not call run [PIPE-002]", function () {
+it('fail: stage authorize fail on caller http does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -925,7 +906,7 @@ it("fail: stage authorize fail on caller http does not call run [PIPE-002]", fun
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage authorize fail on caller http has no domain side effects [PIPE-002]", function () {
+it('fail: stage authorize fail on caller http has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -933,7 +914,7 @@ it("fail: stage authorize fail on caller http has no domain side effects [PIPE-0
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage authorize fail on caller http returns structured error [PIPE-002]", function () {
+it('happy: stage authorize fail on caller http returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -944,7 +925,7 @@ it("happy: stage authorize fail on caller http returns structured error [PIPE-00
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage authorize fail on caller cli does not call run [PIPE-002]", function () {
+it('fail: stage authorize fail on caller cli does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -952,7 +933,7 @@ it("fail: stage authorize fail on caller cli does not call run [PIPE-002]", func
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage authorize fail on caller cli has no domain side effects [PIPE-002]", function () {
+it('fail: stage authorize fail on caller cli has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -960,7 +941,7 @@ it("fail: stage authorize fail on caller cli has no domain side effects [PIPE-00
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage authorize fail on caller cli returns structured error [PIPE-002]", function () {
+it('happy: stage authorize fail on caller cli returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -971,7 +952,7 @@ it("happy: stage authorize fail on caller cli returns structured error [PIPE-002
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage authorize fail on caller job does not call run [PIPE-002]", function () {
+it('fail: stage authorize fail on caller job does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -979,7 +960,7 @@ it("fail: stage authorize fail on caller job does not call run [PIPE-002]", func
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage authorize fail on caller job has no domain side effects [PIPE-002]", function () {
+it('fail: stage authorize fail on caller job has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -987,7 +968,7 @@ it("fail: stage authorize fail on caller job has no domain side effects [PIPE-00
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage authorize fail on caller job returns structured error [PIPE-002]", function () {
+it('happy: stage authorize fail on caller job returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -998,7 +979,7 @@ it("happy: stage authorize fail on caller job returns structured error [PIPE-002
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage needs_approval fail on caller agent does not call run [PIPE-002]", function () {
+it('fail: stage needs_approval fail on caller agent does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
@@ -1006,7 +987,7 @@ it("fail: stage needs_approval fail on caller agent does not call run [PIPE-002]
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage needs_approval fail on caller agent has no domain side effects [PIPE-002]", function () {
+it('fail: stage needs_approval fail on caller agent has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
@@ -1014,7 +995,7 @@ it("fail: stage needs_approval fail on caller agent has no domain side effects [
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage needs_approval fail on caller agent returns structured error [PIPE-002]", function () {
+it('happy: stage needs_approval fail on caller agent returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
@@ -1025,7 +1006,7 @@ it("happy: stage needs_approval fail on caller agent returns structured error [P
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage needs_approval fail on caller mcp does not call run [PIPE-002]", function () {
+it('fail: stage needs_approval fail on caller mcp does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
@@ -1033,7 +1014,7 @@ it("fail: stage needs_approval fail on caller mcp does not call run [PIPE-002]",
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage needs_approval fail on caller mcp has no domain side effects [PIPE-002]", function () {
+it('fail: stage needs_approval fail on caller mcp has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
@@ -1041,7 +1022,7 @@ it("fail: stage needs_approval fail on caller mcp has no domain side effects [PI
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage needs_approval fail on caller mcp returns structured error [PIPE-002]", function () {
+it('happy: stage needs_approval fail on caller mcp returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
@@ -1052,7 +1033,7 @@ it("happy: stage needs_approval fail on caller mcp returns structured error [PIP
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage needs_approval fail on caller http does not call run [PIPE-002]", function () {
+it('fail: stage needs_approval fail on caller http does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
@@ -1060,7 +1041,7 @@ it("fail: stage needs_approval fail on caller http does not call run [PIPE-002]"
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage needs_approval fail on caller http has no domain side effects [PIPE-002]", function () {
+it('fail: stage needs_approval fail on caller http has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
@@ -1068,7 +1049,7 @@ it("fail: stage needs_approval fail on caller http has no domain side effects [P
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage needs_approval fail on caller http returns structured error [PIPE-002]", function () {
+it('happy: stage needs_approval fail on caller http returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
@@ -1079,7 +1060,7 @@ it("happy: stage needs_approval fail on caller http returns structured error [PI
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage needs_approval fail on caller cli does not call run [PIPE-002]", function () {
+it('fail: stage needs_approval fail on caller cli does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
@@ -1087,7 +1068,7 @@ it("fail: stage needs_approval fail on caller cli does not call run [PIPE-002]",
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage needs_approval fail on caller cli has no domain side effects [PIPE-002]", function () {
+it('fail: stage needs_approval fail on caller cli has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
@@ -1095,7 +1076,7 @@ it("fail: stage needs_approval fail on caller cli has no domain side effects [PI
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage needs_approval fail on caller cli returns structured error [PIPE-002]", function () {
+it('happy: stage needs_approval fail on caller cli returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
@@ -1106,7 +1087,7 @@ it("happy: stage needs_approval fail on caller cli returns structured error [PIP
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage needs_approval fail on caller job does not call run [PIPE-002]", function () {
+it('fail: stage needs_approval fail on caller job does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
@@ -1114,7 +1095,7 @@ it("fail: stage needs_approval fail on caller job does not call run [PIPE-002]",
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage needs_approval fail on caller job has no domain side effects [PIPE-002]", function () {
+it('fail: stage needs_approval fail on caller job has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
@@ -1122,7 +1103,7 @@ it("fail: stage needs_approval fail on caller job has no domain side effects [PI
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage needs_approval fail on caller job returns structured error [PIPE-002]", function () {
+it('happy: stage needs_approval fail on caller job returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
@@ -1133,7 +1114,7 @@ it("happy: stage needs_approval fail on caller job returns structured error [PIP
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage rate_limit fail on caller agent does not call run [PIPE-002]", function () {
+it('fail: stage rate_limit fail on caller agent does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'rateLimit' => ['per_minute' => 0]]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -1141,7 +1122,7 @@ it("fail: stage rate_limit fail on caller agent does not call run [PIPE-002]", f
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage rate_limit fail on caller agent has no domain side effects [PIPE-002]", function () {
+it('fail: stage rate_limit fail on caller agent has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'rateLimit' => ['per_minute' => 0]]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -1149,7 +1130,7 @@ it("fail: stage rate_limit fail on caller agent has no domain side effects [PIPE
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage rate_limit fail on caller agent returns structured error [PIPE-002]", function () {
+it('happy: stage rate_limit fail on caller agent returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'rateLimit' => ['per_minute' => 0]]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -1160,7 +1141,7 @@ it("happy: stage rate_limit fail on caller agent returns structured error [PIPE-
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage rate_limit fail on caller mcp does not call run [PIPE-002]", function () {
+it('fail: stage rate_limit fail on caller mcp does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'rateLimit' => ['per_minute' => 0]]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -1168,7 +1149,7 @@ it("fail: stage rate_limit fail on caller mcp does not call run [PIPE-002]", fun
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage rate_limit fail on caller mcp has no domain side effects [PIPE-002]", function () {
+it('fail: stage rate_limit fail on caller mcp has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'rateLimit' => ['per_minute' => 0]]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -1176,7 +1157,7 @@ it("fail: stage rate_limit fail on caller mcp has no domain side effects [PIPE-0
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage rate_limit fail on caller mcp returns structured error [PIPE-002]", function () {
+it('happy: stage rate_limit fail on caller mcp returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'rateLimit' => ['per_minute' => 0]]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -1187,7 +1168,7 @@ it("happy: stage rate_limit fail on caller mcp returns structured error [PIPE-00
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage rate_limit fail on caller http does not call run [PIPE-002]", function () {
+it('fail: stage rate_limit fail on caller http does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'rateLimit' => ['per_minute' => 0]]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -1195,7 +1176,7 @@ it("fail: stage rate_limit fail on caller http does not call run [PIPE-002]", fu
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage rate_limit fail on caller http has no domain side effects [PIPE-002]", function () {
+it('fail: stage rate_limit fail on caller http has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'rateLimit' => ['per_minute' => 0]]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -1203,7 +1184,7 @@ it("fail: stage rate_limit fail on caller http has no domain side effects [PIPE-
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage rate_limit fail on caller http returns structured error [PIPE-002]", function () {
+it('happy: stage rate_limit fail on caller http returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'rateLimit' => ['per_minute' => 0]]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -1214,7 +1195,7 @@ it("happy: stage rate_limit fail on caller http returns structured error [PIPE-0
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage rate_limit fail on caller cli does not call run [PIPE-002]", function () {
+it('fail: stage rate_limit fail on caller cli does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'rateLimit' => ['per_minute' => 0]]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -1222,7 +1203,7 @@ it("fail: stage rate_limit fail on caller cli does not call run [PIPE-002]", fun
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage rate_limit fail on caller cli has no domain side effects [PIPE-002]", function () {
+it('fail: stage rate_limit fail on caller cli has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'rateLimit' => ['per_minute' => 0]]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -1230,7 +1211,7 @@ it("fail: stage rate_limit fail on caller cli has no domain side effects [PIPE-0
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage rate_limit fail on caller cli returns structured error [PIPE-002]", function () {
+it('happy: stage rate_limit fail on caller cli returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'rateLimit' => ['per_minute' => 0]]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -1241,7 +1222,7 @@ it("happy: stage rate_limit fail on caller cli returns structured error [PIPE-00
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
-it("fail: stage rate_limit fail on caller job does not call run [PIPE-002]", function () {
+it('fail: stage rate_limit fail on caller job does not call run [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'rateLimit' => ['per_minute' => 0]]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -1249,7 +1230,7 @@ it("fail: stage rate_limit fail on caller job does not call run [PIPE-002]", fun
     expect($h['runCount']->value)->toBe(0);
 });
 
-it("fail: stage rate_limit fail on caller job has no domain side effects [PIPE-002]", function () {
+it('fail: stage rate_limit fail on caller job has no domain side effects [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'rateLimit' => ['per_minute' => 0]]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -1257,7 +1238,7 @@ it("fail: stage rate_limit fail on caller job has no domain side effects [PIPE-0
     expect($h['runCount']->sideEffect)->toBeFalse();
 });
 
-it("happy: stage rate_limit fail on caller job returns structured error [PIPE-002]", function () {
+it('happy: stage rate_limit fail on caller job returns structured error [PIPE-002]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'rateLimit' => ['per_minute' => 0]]);
     $input = PipelineHelpers::validInput();
     $extra = [];
@@ -1267,4 +1248,3 @@ it("happy: stage rate_limit fail on caller job returns structured error [PIPE-00
         ->and($result->errorCode())->toBe('rate_limited')
         ->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
-

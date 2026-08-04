@@ -2,13 +2,14 @@
 
 declare(strict_types=1);
 
+use Illuminate\Container\Container;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Container\Container;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Support\AnthropicLlmClient;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
+use Rawphp\CapabilitiesAi\Support\LlmClientDefaults;
 
 it('AnthropicLlmClient implements LlmClient', function () {
     expect(new AnthropicLlmClient('test-key'))->toBeInstanceOf(LlmClient::class);
@@ -41,4 +42,23 @@ it('testing default FakeLlmClient does not hit network', function () {
     $fake = new FakeLlmClient([['content' => 'local']]);
     expect($fake->complete([['role' => 'user', 'content' => 'x']]))->toBe(['content' => 'local'])
         ->and($fake->callCount)->toBe(1);
+});
+
+it('fails closed when messages include role=tool', function () {
+    $client = new AnthropicLlmClient(apiKey: 'test-key');
+    expect(fn () => $client->complete([
+        ['role' => 'user', 'content' => 'hi'],
+        ['role' => 'tool', 'content' => 'result'],
+    ]))->toThrow(RuntimeException::class, 'role=tool');
+});
+
+it('does not advertise multi-round tool support', function () {
+    expect((new AnthropicLlmClient('k'))->supportsToolRounds())->toBeFalse()
+        ->and(class_uses_recursive(AnthropicLlmClient::class))->toContain(
+            LlmClientDefaults::class
+        );
+});
+
+it('FakeLlmClient advertises multi-round tool support', function () {
+    expect((new FakeLlmClient)->supportsToolRounds())->toBeTrue();
 });

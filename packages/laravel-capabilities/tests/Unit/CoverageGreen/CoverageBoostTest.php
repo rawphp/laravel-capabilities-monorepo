@@ -7,6 +7,7 @@ declare(strict_types=1);
  * Unit-only; no DB; pure construction + fakes.
  */
 
+use DateTimeImmutable;
 use Rawphp\Capabilities\Adapters\Mcp\McpAuthException;
 use Rawphp\Capabilities\Adapters\PeerSurfaceStatus;
 use Rawphp\Capabilities\Adapters\ToolSelection;
@@ -18,7 +19,6 @@ use Rawphp\Capabilities\Approval\ResumeApprovedApprovals;
 use Rawphp\Capabilities\Attributes\Field;
 use Rawphp\Capabilities\Boot\CapabilitiesConfig;
 use Rawphp\Capabilities\CapabilitiesServiceProvider;
-use Rawphp\Capabilities\Contracts\SchemaProvider;
 use Rawphp\Capabilities\Discovery\DiscoveryPaths;
 use Rawphp\Capabilities\Events\CapabilityApprovalDecided;
 use Rawphp\Capabilities\Events\CapabilityApprovalExecuted;
@@ -46,6 +46,7 @@ use Rawphp\Capabilities\Support\CallerClaimRejectedException;
 use Rawphp\Capabilities\Support\CapabilityData;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\CapabilityScope;
+use Rawphp\Capabilities\Support\DefaultScopeResolver;
 use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\Capabilities\Support\InMemoryAuditWriter;
@@ -57,7 +58,6 @@ use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Support\UnresolvedScopeException;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
-use DateTimeImmutable;
 
 // ── simple 0% / low-coverage types ──────────────────────────────────────────
 
@@ -656,7 +656,7 @@ it('covers CapabilityRegistry fluent setters, getters, alias collision, forceFai
         ->withApprovalStore(new InMemoryApprovalStore($clock))
         ->withIdempotencyStore(new InMemoryIdempotencyStore($clock))
         ->withRateLimiter(new InMemoryRateLimiter)
-        ->withScopeResolver(new \Rawphp\Capabilities\Support\DefaultScopeResolver)
+        ->withScopeResolver(new DefaultScopeResolver)
         ->withToolSurfaceConfig(['agent' => ['profile' => 'default']])
         ->withSurfaceHealthOverrides(['agent' => 'up'])
         ->withClock($clock)

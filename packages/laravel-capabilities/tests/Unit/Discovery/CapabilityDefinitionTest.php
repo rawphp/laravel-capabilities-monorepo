@@ -5,7 +5,6 @@ declare(strict_types=1);
 use Rawphp\Capabilities\Capability;
 use Rawphp\Capabilities\Discovery\AttributeDiscoverer;
 use Rawphp\Capabilities\Registry\CapabilityDefinition;
-use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\Capabilities\AttributedCreateInvoice;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;

@@ -27,7 +27,7 @@ interface TableGateway
      * Unconditional replace of known id.
      *
      * @param  array<string, mixed>  $row
-     * @return array<string, mixed>|null  null when id missing
+     * @return array<string, mixed>|null null when id missing
      */
     public function replace(string $id, array $row): ?array;
 
@@ -36,7 +36,7 @@ interface TableGateway
      *
      * @param  array<string, mixed>  $where
      * @param  array<string, mixed>  $attributes
-     * @return array<string, mixed>|null  null when no row matched
+     * @return array<string, mixed>|null null when no row matched
      */
     public function updateWhere(array $where, array $attributes): ?array;
 
@@ -49,7 +49,7 @@ interface TableGateway
      *
      * @param  array<string, mixed>  $where
      * @param  array<string, mixed>  $attributes
-     * @return array<string, mixed>|null  null when no row matched or lease still held
+     * @return array<string, mixed>|null null when no row matched or lease still held
      */
     public function updateWhereLeaseFree(
         array $where,

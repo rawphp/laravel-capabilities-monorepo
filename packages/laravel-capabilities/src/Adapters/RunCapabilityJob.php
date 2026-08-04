@@ -19,7 +19,6 @@ final class RunCapabilityJob
 {
     /**
      * @param  array<string, mixed>  $input
-     * @param  int|string|SystemActor|null  $actingAs
      * @param  array<string, mixed>  $meta  teamId, organizationId, idempotencyKey, user_resolver, etc.
      */
     public function __construct(

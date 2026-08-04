@@ -33,7 +33,7 @@ foreach ($stacks as $label => $middleware) {
     });
 }
 
-it("fail: unauthenticated request blocked when auth middleware on [HTTP-001]", function () {
+it('fail: unauthenticated request blocked when auth middleware on [HTTP-001]', function () {
     $routes = HttpHelpers::routes([
         'enabled' => true,
         'middleware' => ['api', 'auth:sanctum'],

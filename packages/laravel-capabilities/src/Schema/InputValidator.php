@@ -30,7 +30,7 @@ final class InputValidator
 
     /**
      * @param  array<string, mixed>  $data
-     * @return object|array  Hydrated DTO or raw array when no input class
+     * @return object|array Hydrated DTO or raw array when no input class
      *
      * @throws SchemaValidationException
      */

@@ -1,5 +1,7 @@
 <?php
 
+use Rawphp\Capabilities\Adapters\PeerSupportMatrix;
+
 /**
  * Scaffold defaults — full shape lives in docs/spec.md.
  *
@@ -202,8 +204,8 @@ return [
     |
     */
     'peers' => [
-        'support' => class_exists(\Rawphp\Capabilities\Adapters\PeerSupportMatrix::class)
-            ? \Rawphp\Capabilities\Adapters\PeerSupportMatrix::constraints()
+        'support' => class_exists(PeerSupportMatrix::class)
+            ? PeerSupportMatrix::constraints()
             : [
                 'laravel/ai' => ['^0.1', '^1.0'],
                 'laravel/mcp' => ['^0.1', '^1.0'],

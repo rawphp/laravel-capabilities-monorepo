@@ -6,7 +6,7 @@ declare(strict_types=1);
 
 use Rawphp\Capabilities\Tests\Fixtures\CatalogHelpers;
 
-it("edge: catalog excludes caps only on disabled surface agent [CAT-001]", function () {
+it('edge: catalog excludes caps only on disabled surface agent [CAT-001]', function () {
     $h = CatalogHelpers::harness([
         'surfaces' => ['agent' => false],
         'cap_surfaces' => ['agent'],
@@ -15,7 +15,7 @@ it("edge: catalog excludes caps only on disabled surface agent [CAT-001]", funct
     expect($h['catalog']->list())->toBeEmpty();
 });
 
-it("happy: catalog still lists caps with other surfaces when agent disabled [CAT-001]", function () {
+it('happy: catalog still lists caps with other surfaces when agent disabled [CAT-001]', function () {
     $h = CatalogHelpers::harness([
         'surfaces' => ['agent' => false],
         'cap_surfaces' => ['agent', 'http'],
@@ -24,7 +24,7 @@ it("happy: catalog still lists caps with other surfaces when agent disabled [CAT
     expect($h['catalog']->list())->not->toBeEmpty();
 });
 
-it("edge: catalog excludes caps only on disabled surface mcp [CAT-001]", function () {
+it('edge: catalog excludes caps only on disabled surface mcp [CAT-001]', function () {
     $h = CatalogHelpers::harness([
         'surfaces' => ['mcp' => false],
         'cap_surfaces' => ['mcp'],
@@ -33,7 +33,7 @@ it("edge: catalog excludes caps only on disabled surface mcp [CAT-001]", functio
     expect($h['catalog']->list())->toBeEmpty();
 });
 
-it("happy: catalog still lists caps with other surfaces when mcp disabled [CAT-001]", function () {
+it('happy: catalog still lists caps with other surfaces when mcp disabled [CAT-001]', function () {
     $h = CatalogHelpers::harness([
         'surfaces' => ['mcp' => false],
         'cap_surfaces' => ['mcp', 'http'],
@@ -42,7 +42,7 @@ it("happy: catalog still lists caps with other surfaces when mcp disabled [CAT-0
     expect($h['catalog']->list())->not->toBeEmpty();
 });
 
-it("edge: catalog excludes caps only on disabled surface http [CAT-001]", function () {
+it('edge: catalog excludes caps only on disabled surface http [CAT-001]', function () {
     $h = CatalogHelpers::harness([
         'surfaces' => ['http' => false],
         'cap_surfaces' => ['http'],
@@ -51,7 +51,7 @@ it("edge: catalog excludes caps only on disabled surface http [CAT-001]", functi
     expect($h['catalog']->list())->toBeEmpty();
 });
 
-it("happy: catalog still lists caps with other surfaces when http disabled [CAT-001]", function () {
+it('happy: catalog still lists caps with other surfaces when http disabled [CAT-001]', function () {
     $h = CatalogHelpers::harness([
         'surfaces' => ['http' => false],
         'cap_surfaces' => ['http', 'cli'],
@@ -60,7 +60,7 @@ it("happy: catalog still lists caps with other surfaces when http disabled [CAT-
     expect($h['catalog']->list())->not->toBeEmpty();
 });
 
-it("edge: catalog excludes caps only on disabled surface cli [CAT-001]", function () {
+it('edge: catalog excludes caps only on disabled surface cli [CAT-001]', function () {
     $h = CatalogHelpers::harness([
         'surfaces' => ['cli' => false],
         'cap_surfaces' => ['cli'],
@@ -69,7 +69,7 @@ it("edge: catalog excludes caps only on disabled surface cli [CAT-001]", functio
     expect($h['catalog']->list())->toBeEmpty();
 });
 
-it("happy: catalog still lists caps with other surfaces when cli disabled [CAT-001]", function () {
+it('happy: catalog still lists caps with other surfaces when cli disabled [CAT-001]', function () {
     $h = CatalogHelpers::harness([
         'surfaces' => ['cli' => false],
         'cap_surfaces' => ['cli', 'http'],
@@ -78,7 +78,7 @@ it("happy: catalog still lists caps with other surfaces when cli disabled [CAT-0
     expect($h['catalog']->list())->not->toBeEmpty();
 });
 
-it("edge: catalog excludes caps only on disabled surface job [CAT-001]", function () {
+it('edge: catalog excludes caps only on disabled surface job [CAT-001]', function () {
     $h = CatalogHelpers::harness([
         'surfaces' => ['job' => false],
         'cap_surfaces' => ['job'],
@@ -87,7 +87,7 @@ it("edge: catalog excludes caps only on disabled surface job [CAT-001]", functio
     expect($h['catalog']->list())->toBeEmpty();
 });
 
-it("happy: catalog still lists caps with other surfaces when job disabled [CAT-001]", function () {
+it('happy: catalog still lists caps with other surfaces when job disabled [CAT-001]', function () {
     $h = CatalogHelpers::harness([
         'surfaces' => ['job' => false],
         'cap_surfaces' => ['job', 'http'],

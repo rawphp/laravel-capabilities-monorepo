@@ -3,26 +3,9 @@
 declare(strict_types=1);
 
 use Rawphp\Capabilities\Contracts\ApprovalNotifier;
-use Rawphp\Capabilities\Support\CapabilityContext;
-use Rawphp\Capabilities\Support\CapabilityResult;
-use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
-use Rawphp\CapabilitiesMessaging\MessagingConfig;
-use Rawphp\CapabilitiesMessaging\MessagingServiceProvider;
-use Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier;
-use Rawphp\CapabilitiesMessaging\Tests\Fixtures\FakeCapabilityBus;
-use Rawphp\CapabilitiesMessaging\Support\FakeQueue;
-use Rawphp\CapabilitiesMessaging\Support\FakeTelegramBotClient;
-use Rawphp\CapabilitiesMessaging\Support\LinkedUser;
-use Rawphp\CapabilitiesMessaging\Telegram\CallbackHandler;
-use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdate;
-use Rawphp\CapabilitiesMessaging\Telegram\TelegramAdapter;
-use Rawphp\CapabilitiesMessaging\Telegram\TelegramCallbackSigner;
-use Rawphp\CapabilitiesMessaging\Telegram\TelegramWebhookController;
-use Rawphp\CapabilitiesMessaging\Threads\ThreadStore;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers as H;
 
-
-it("happy: notifyPending sends message with signed buttons [D-006]", function () {
+it('happy: notifyPending sends message with signed buttons [D-006]', function () {
     $bot = H::bot();
     $n = H::notifier(null, $bot);
     $n->notifyPending([
@@ -37,13 +20,13 @@ it("happy: notifyPending sends message with signed buttons [D-006]", function ()
     expect($bot->calls()[0]['args']['accept_payload']['sig'] ?? null)->not->toBeNull();
 });
 
-it("happy: notifier never executes capability [D-006]", function () {
+it('happy: notifier never executes capability [D-006]', function () {
     $n = H::notifier();
     $n->notifyPending(['id' => 'a', 'messaging' => ['chat_id' => '1']]);
     expect($n->capabilityExecuteCount())->toBe(0);
 });
 
-it("edge: expired approval may edit message to expired [D-006]", function () {
+it('edge: expired approval may edit message to expired [D-006]', function () {
     $bot = H::bot();
     $n = H::notifier(null, $bot);
     $n->editMessage([
@@ -54,20 +37,20 @@ it("edge: expired approval may edit message to expired [D-006]", function () {
     expect($bot->calls()[0]['method'])->toBe('editMessageText');
 });
 
-it("fail: notify with invalid approval id does not execute capability [D-006]", function () {
+it('fail: notify with invalid approval id does not execute capability [D-006]', function () {
     $n = H::notifier();
     $n->notifyPending(['id' => '', 'messaging' => ['chat_id' => '1']]);
     expect($n->capabilityExecuteCount())->toBe(0);
 });
 
-it("happy: notifier routes accept reject only through ApprovalManager [D-006]", function () {
+it('happy: notifier routes accept reject only through ApprovalManager [D-006]', function () {
     $n = H::notifier();
     $n->notifyPending(['id' => 'a1', 'messaging' => ['chat_id' => '1']]);
     expect($n)->toBeInstanceOf(ApprovalNotifier::class);
     expect(method_exists($n, 'accept'))->toBeFalse();
 });
 
-it("fail: notifier does not call domain services [D-007]", function () {
+it('fail: notifier does not call domain services [D-007]', function () {
     $n = H::notifier();
     $n->notifyPending(['id' => 'a1', 'messaging' => ['chat_id' => '1']]);
     expect($n->domainServiceCalls())->toBe(0);

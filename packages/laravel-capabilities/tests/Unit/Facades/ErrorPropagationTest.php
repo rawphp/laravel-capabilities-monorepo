@@ -2,77 +2,60 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Capability;
-use Rawphp\Capabilities\Facades\Capability as CapabilityFacade;
-use Rawphp\Capabilities\Pipeline\IdempotencyGuard;
-use Rawphp\Capabilities\Pipeline\PipelineStages;
-use Rawphp\Capabilities\Pipeline\ResolveActor;
-use Rawphp\Capabilities\Pipeline\ResolveTenantFromCaller;
-use Rawphp\Capabilities\Registry\CapabilityRegistry;
-use Rawphp\Capabilities\Support\CapabilityContext;
-use Rawphp\Capabilities\Support\CapabilityResult;
-use Rawphp\Capabilities\Support\CapabilityScope;
-use Rawphp\Capabilities\Support\FixedClock;
-use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
-use Rawphp\Capabilities\Support\StubAuthorizer;
-use Rawphp\Capabilities\Support\SystemActor;
-use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
-use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
-use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
-use Rawphp\Capabilities\Tests\Support\SharedFakes;
 use Illuminate\Support\Facades\Facade;
-use DateTimeImmutable;
+use Rawphp\Capabilities\Facades\Capability as CapabilityFacade;
+use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
-it("happy: facade invoke surfaces code validation_failed without swallowing [FAC-001]", function () {
-$h = PipelineHelpers::harness(['allowSystemCallers' => true]);
+it('happy: facade invoke surfaces code validation_failed without swallowing [FAC-001]', function () {
+    $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     Facade::clearResolvedInstances();
     CapabilityFacade::swap($h['registry']);
     $result = CapabilityFacade::invoke($h['name'], PipelineHelpers::invalidInput(), PipelineHelpers::options('http'));
     expect($result->errorCode())->toBe('validation_failed');
 });
 
-it("happy: facade invoke surfaces code unauthenticated without swallowing [FAC-001]", function () {
-$h = PipelineHelpers::harness(['allowSystemCallers' => true]);
+it('happy: facade invoke surfaces code unauthenticated without swallowing [FAC-001]', function () {
+    $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     Facade::clearResolvedInstances();
     CapabilityFacade::swap($h['registry']);
     $result = CapabilityFacade::invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http', ['actor' => null]));
     expect($result->errorCode())->toBe('unauthenticated');
 });
 
-it("happy: facade invoke surfaces code forbidden without swallowing [FAC-001]", function () {
-$h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
+it('happy: facade invoke surfaces code forbidden without swallowing [FAC-001]', function () {
+    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'authorize' => false]);
     Facade::clearResolvedInstances();
     CapabilityFacade::swap($h['registry']);
     $result = CapabilityFacade::invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http'));
     expect($result->errorCode())->toBe('forbidden');
 });
 
-it("happy: facade invoke surfaces code approval_required without swallowing [FAC-001]", function () {
-$h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'x']);
+it('happy: facade invoke surfaces code approval_required without swallowing [FAC-001]', function () {
+    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'x']);
     Facade::clearResolvedInstances();
     CapabilityFacade::swap($h['registry']);
     $result = CapabilityFacade::invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http', ['needs_approval' => true]));
     expect($result->errorCode())->toBe('approval_required');
 });
 
-it("happy: facade invoke surfaces code domain_error without swallowing [FAC-001]", function () {
-$h = PipelineHelpers::harness(['allowSystemCallers' => true, 'run_throws' => 'boom']);
+it('happy: facade invoke surfaces code domain_error without swallowing [FAC-001]', function () {
+    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'run_throws' => 'boom']);
     Facade::clearResolvedInstances();
     CapabilityFacade::swap($h['registry']);
     $result = CapabilityFacade::invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http'));
     expect($result->errorCode())->toBe('domain_error');
 });
 
-it("happy: facade invoke surfaces code rate_limited without swallowing [FAC-001]", function () {
-$h = PipelineHelpers::harness(['allowSystemCallers' => true, 'rateLimit' => ['per_minute' => 0]]);
+it('happy: facade invoke surfaces code rate_limited without swallowing [FAC-001]', function () {
+    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'rateLimit' => ['per_minute' => 0]]);
     Facade::clearResolvedInstances();
     CapabilityFacade::swap($h['registry']);
     $result = CapabilityFacade::invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http'));
     expect($result->errorCode())->toBe('rate_limited');
 });
 
-it("happy: facade invoke surfaces code conflict without swallowing [FAC-001]", function () {
-$h = PipelineHelpers::harness(['allowSystemCallers' => true]);
+it('happy: facade invoke surfaces code conflict without swallowing [FAC-001]', function () {
+    $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $h['registry']->forceFailStages('idempotency_lookup');
     Facade::clearResolvedInstances();
     CapabilityFacade::swap($h['registry']);
@@ -80,23 +63,23 @@ $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     expect($result->errorCode())->toBe('conflict');
 });
 
-it("happy: facade invoke surfaces code not_found without swallowing [FAC-001]", function () {
-$h = PipelineHelpers::harness(['allowSystemCallers' => true]);
+it('happy: facade invoke surfaces code not_found without swallowing [FAC-001]', function () {
+    $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     Facade::clearResolvedInstances();
     CapabilityFacade::swap($h['registry']);
     $result = CapabilityFacade::invoke('missing', PipelineHelpers::validInput(), PipelineHelpers::options('http'));
     expect($result->errorCode())->toBe('not_found');
 });
 
-it("happy: facade invoke surfaces code output_invalid without swallowing [FAC-001]", function () {
-$h = PipelineHelpers::harness(['allowSystemCallers' => true, 'run_output' => ['bad' => true]]);
+it('happy: facade invoke surfaces code output_invalid without swallowing [FAC-001]', function () {
+    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'run_output' => ['bad' => true]]);
     Facade::clearResolvedInstances();
     CapabilityFacade::swap($h['registry']);
     $result = CapabilityFacade::invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http'));
     expect($result->errorCode())->toBe('output_invalid');
 });
 
-it("happy: facade invoke surfaces code internal without swallowing [FAC-001]", function () {
+it('happy: facade invoke surfaces code internal without swallowing [FAC-001]', function () {
     $h = PipelineHelpers::harness([
         'allowSystemCallers' => true,
         'authorize_cb' => function () {
@@ -108,4 +91,3 @@ it("happy: facade invoke surfaces code internal without swallowing [FAC-001]", f
     $result = CapabilityFacade::invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http'));
     expect($result->errorCode())->toBe('internal');
 });
-

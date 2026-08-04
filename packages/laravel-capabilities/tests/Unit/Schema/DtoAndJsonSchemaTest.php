@@ -4,19 +4,18 @@ declare(strict_types=1);
 
 use Rawphp\Capabilities\Capability;
 use Rawphp\Capabilities\Contracts\SchemaProvider;
+use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Schema\FailingServerRuleChecker;
 use Rawphp\Capabilities\Schema\InputValidator;
 use Rawphp\Capabilities\Schema\JsonSchemaValidator;
-use Rawphp\Capabilities\Schema\SchemaValidationException;
-use Rawphp\Capabilities\Schema\ToolSchemaExporter;
 use Rawphp\Capabilities\Support\CapabilityData;
 use Rawphp\Capabilities\Tests\Fixtures\ConstrainedInput;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
 use Rawphp\Capabilities\Tests\Fixtures\CustomSchemaType;
 use Rawphp\Capabilities\Tests\Fixtures\DiscoveryHelpers;
-use Rawphp\Capabilities\Tests\Fixtures\LineItemDto;
 use Rawphp\Capabilities\Tests\Fixtures\NestedInput;
+use Spatie\LaravelData\Data;
 
 it('happy: CapabilityData reflects to JSON Schema draft 2020-12 [D-015]', function () {
     $schema = CreateInvoiceInput::jsonSchema();
@@ -64,7 +63,7 @@ it('happy: exists unique server rules run only on server validation pass [D-004]
         ->register($registry);
 
     // Inject via new registry with failing checker
-    $registry2 = new \Rawphp\Capabilities\Registry\CapabilityRegistry(
+    $registry2 = new CapabilityRegistry(
         inputValidator: $validator,
     );
     Capability::define('srv-rules-2')
@@ -105,7 +104,7 @@ it('fail: structural invalid input never reaches hydrate or run [D-004]', functi
 it('fail: server-only validation failure never reaches run [D-004]', function () {
     $ran = false;
     $validator = new InputValidator(serverRules: new FailingServerRuleChecker(['customer_id']));
-    $registry = new \Rawphp\Capabilities\Registry\CapabilityRegistry(inputValidator: $validator);
+    $registry = new CapabilityRegistry(inputValidator: $validator);
     Capability::define('server-fail')
         ->input(CreateInvoiceInput::class)
         ->run(function ($in) use (&$ran) {
@@ -154,7 +153,7 @@ it('happy: SchemaProvider interface supported for custom types [D-015]', functio
 
 it('edge: optional Spatie bridge implements SchemaProvider when installed [D-015]', function () {
     // Spatie is optional — when not installed, package still works; bridge would implement SchemaProvider.
-    $spatieInstalled = class_exists(\Spatie\LaravelData\Data::class);
+    $spatieInstalled = class_exists(Data::class);
     expect(interface_exists(SchemaProvider::class))->toBeTrue();
     if ($spatieInstalled) {
         expect(true)->toBeTrue();
@@ -299,7 +298,7 @@ it('fail: hand-copied second tool schema is not used by MCP adapter [D-004]', fu
 });
 
 it('happy: empty PHP array validates as empty JSON object (json_decode {} trap)', function () {
-    $validator = new JsonSchemaValidator();
+    $validator = new JsonSchemaValidator;
     $schema = [
         'type' => 'object',
         'additionalProperties' => false,
@@ -311,4 +310,17 @@ it('happy: empty PHP array validates as empty JSON object (json_decode {} trap)'
     expect($validator->validate($schema, []))->toBe([])
         ->and($validator->validate($schema, ['resume' => true]))->toBe([])
         ->and($validator->validate($schema, [0 => 'list-item']))->not->toBe([]);
+});
+
+it('fail: empty PHP array still enforces required object properties', function () {
+    $validator = new JsonSchemaValidator;
+    $schema = [
+        'type' => 'object',
+        'required' => ['invoice_id'],
+        'properties' => [
+            'invoice_id' => ['type' => 'integer'],
+        ],
+    ];
+
+    expect($validator->validate($schema, []))->not->toBeEmpty();
 });

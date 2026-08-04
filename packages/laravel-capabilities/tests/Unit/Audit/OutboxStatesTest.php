@@ -11,20 +11,20 @@ use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Support\InMemoryAuditWriter;
 use Rawphp\Capabilities\Tests\Fixtures\AuditHelpers;
 
-it("edge: outbox row status pending handled [D-010]", function () {
+it('edge: outbox row status pending handled [D-010]', function () {
     $o = new AuditOutbox(new FixedClock(new DateTimeImmutable('2026-01-01T00:00:00+00:00')));
     $id = $o->enqueue(['event' => 'capability.invoked']);
     expect($o->find($id)['status'])->toBe(AuditOutbox::STATUS_PENDING);
 });
 
-it("edge: outbox row status processing handled [D-010]", function () {
+it('edge: outbox row status processing handled [D-010]', function () {
     $o = new AuditOutbox(new FixedClock(new DateTimeImmutable('2026-01-01T00:00:00+00:00')));
     $id = $o->enqueue(['event' => 'capability.invoked']);
     $o->markProcessing($id);
     expect($o->find($id)['status'])->toBe(AuditOutbox::STATUS_PROCESSING);
 });
 
-it("edge: outbox row status completed handled [D-010]", function () {
+it('edge: outbox row status completed handled [D-010]', function () {
     $o = new AuditOutbox(new FixedClock(new DateTimeImmutable('2026-01-01T00:00:00+00:00')));
     $id = $o->enqueue(['event' => 'capability.invoked']);
     $o->markProcessing($id);
@@ -32,7 +32,7 @@ it("edge: outbox row status completed handled [D-010]", function () {
     expect($o->find($id)['status'])->toBe(AuditOutbox::STATUS_COMPLETED);
 });
 
-it("edge: outbox row status failed handled [D-010]", function () {
+it('edge: outbox row status failed handled [D-010]', function () {
     $o = new AuditOutbox(new FixedClock(new DateTimeImmutable('2026-01-01T00:00:00+00:00')));
     $id = $o->enqueue(['event' => 'capability.invoked']);
     $o->markProcessing($id);
@@ -41,7 +41,7 @@ it("edge: outbox row status failed handled [D-010]", function () {
         ->and($o->find($id)['error'])->toBe('disk full');
 });
 
-it("happy: WriteAuditJob transitions pending to completed [D-010]", function () {
+it('happy: WriteAuditJob transitions pending to completed [D-010]', function () {
     $clock = new FixedClock(new DateTimeImmutable('2026-01-01T00:00:00+00:00'));
     $o = new AuditOutbox($clock);
     $o->enqueue(['event' => 'capability.invoked', 'name' => 'x']);
@@ -52,7 +52,7 @@ it("happy: WriteAuditJob transitions pending to completed [D-010]", function () 
         ->and($writer->all())->toHaveCount(1);
 });
 
-it("fail: required true never leaves permanent silent drop [D-010]", function () {
+it('fail: required true never leaves permanent silent drop [D-010]', function () {
     $h = AuditHelpers::harness(['required' => true, 'fail_audit' => true]);
     $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
     // even if job fails, intent remains in outbox (pending or failed after drain attempt)

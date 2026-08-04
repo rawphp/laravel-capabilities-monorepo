@@ -7,7 +7,6 @@ declare(strict_types=1);
  * Docs must document real assertSchemaSnapshot / assertParity argument shapes —
  * not empty-arg presence stubs. Unit-only string checks.
  */
-
 function d020MonorepoRoot(): string
 {
     // tests/Unit/TestingHelpers → package root is 3 levels up; monorepo root is packages/..

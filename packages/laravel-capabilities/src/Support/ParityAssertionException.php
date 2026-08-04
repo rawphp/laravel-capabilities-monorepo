@@ -2,10 +2,11 @@
 
 namespace Rawphp\Capabilities\Support;
 
+use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use RuntimeException;
 
 /**
- * Thrown by {@see \Rawphp\Capabilities\Registry\CapabilityRegistry::assertParity}
+ * Thrown by {@see CapabilityRegistry::assertParity}
  * when listed surfaces disagree on success vs deny class (D-020).
  *
  * Messages name the capability, surfaces, and result classes so Pest/PHPUnit

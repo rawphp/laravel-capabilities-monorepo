@@ -2,13 +2,17 @@
 
 namespace Rawphp\Capabilities\Contracts;
 
+use Rawphp\Capabilities\Support\ArrayRateLimitCache;
+use Rawphp\Capabilities\Support\InMemoryRateLimiter;
+use Rawphp\Capabilities\Support\LaravelCacheRateLimiter;
+
 /**
  * Rate-limit attempts keyed by actor + capability + surface (D-013 / L-008).
  *
- * Production multi-worker hosts use {@see \Rawphp\Capabilities\Support\LaravelCacheRateLimiter}
+ * Production multi-worker hosts use {@see LaravelCacheRateLimiter}
  * over a shared {@see RateLimitCache} (Illuminate Cache / Redis). Unit tests inject
- * {@see \Rawphp\Capabilities\Support\InMemoryRateLimiter} or LaravelCacheRateLimiter
- * with {@see \Rawphp\Capabilities\Support\ArrayRateLimitCache} — never live Redis.
+ * {@see InMemoryRateLimiter} or LaravelCacheRateLimiter
+ * with {@see ArrayRateLimitCache} — never live Redis.
  */
 interface RateLimiter
 {

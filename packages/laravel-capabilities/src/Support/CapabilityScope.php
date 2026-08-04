@@ -26,7 +26,7 @@ final class CapabilityScope
      * Start a query constrained to this scope via the app-supplied factory.
      *
      * @param  class-string  $model
-     * @return mixed  Eloquent Builder in production; injectable fake in unit tests
+     * @return mixed Eloquent Builder in production; injectable fake in unit tests
      */
     public function query(string $model): mixed
     {

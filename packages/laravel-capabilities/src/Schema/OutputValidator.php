@@ -17,7 +17,7 @@ final class OutputValidator
     ) {}
 
     /**
-     * @return CapabilityResult|null  failure result, or null when valid / skipped
+     * @return CapabilityResult|null failure result, or null when valid / skipped
      */
     public function validate(CapabilityDefinition $definition, mixed $output): ?CapabilityResult
     {

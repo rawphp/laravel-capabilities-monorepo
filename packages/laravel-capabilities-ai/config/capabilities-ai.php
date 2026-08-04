@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use Rawphp\CapabilitiesAi\Package;
 
 /**
  * rawphp/laravel-capabilities-ai package config.
@@ -50,13 +51,13 @@ return [
         'driver' => $env('CAPABILITIES_AI_LLM_DRIVER', 'fake'),
         'anthropic' => [
             'api_key' => $env('ANTHROPIC_API_KEY'),
-            'model' => $env('CAPABILITIES_AI_ANTHROPIC_MODEL', 'claude-sonnet-4-20250514'),
+            'model' => $env('CAPABILITIES_AI_ANTHROPIC_MODEL', 'claude-sonnet-4-6'),
             'base_url' => $env('CAPABILITIES_AI_ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
         ],
     ],
 
     /** Turn claim TTL seconds (worker heartbeat window). */
-    'claim_ttl' => (int) $env('CAPABILITIES_AI_CLAIM_TTL', 120),
+    'claim_ttl' => (int) $env('CAPABILITIES_AI_CLAIM_TTL', Package::DEFAULT_CLAIM_TTL),
 
     /** Max tool-call rounds per turn before force-complete/fail. */
     'max_tool_rounds' => (int) $env('CAPABILITIES_AI_MAX_TOOL_ROUNDS', 8),

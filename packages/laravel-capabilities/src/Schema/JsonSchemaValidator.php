@@ -12,7 +12,6 @@ final class JsonSchemaValidator
 {
     /**
      * @param  array<string, mixed>  $schema
-     * @param  mixed  $data
      * @return list<array{field: string, message: string}>
      */
     public function validate(array $schema, mixed $data, string $path = ''): array
@@ -95,7 +94,13 @@ final class JsonSchemaValidator
             }
         }
 
-        if (is_array($data) && ! $this->isList($data) && (($schema['type'] ?? null) === 'object' || isset($schema['properties']))) {
+        // Empty [] is both a PHP list and json_decode('{}') — when the schema is an
+        // object (or has properties), still enforce required / additionalProperties.
+        $asObject = is_array($data)
+            && ($data === [] || ! $this->isList($data))
+            && (($schema['type'] ?? null) === 'object' || isset($schema['properties']));
+
+        if ($asObject) {
             $properties = $schema['properties'] ?? [];
             $required = $schema['required'] ?? [];
             $additional = $schema['additionalProperties'] ?? true;
@@ -193,6 +198,7 @@ final class JsonSchemaValidator
             return false;
         }
         $parts = explode('-', $value);
+
         return checkdate((int) $parts[1], (int) $parts[2], (int) $parts[0]);
     }
 }
