@@ -15,7 +15,6 @@ use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\SchemaProvider;
 use Rawphp\Capabilities\Contracts\ScopeResolver;
-use Rawphp\Capabilities\Discovery\AttributeDiscoverer;
 use Rawphp\Capabilities\Events\CapabilityApprovalRequested;
 use Rawphp\Capabilities\Events\CapabilityFailed;
 use Rawphp\Capabilities\Events\CapabilityInvoked;
@@ -58,14 +57,7 @@ use Throwable;
  */
 final class CapabilityRegistry implements CapabilityBus
 {
-    /** @var array<string, CapabilityDefinition> */
-    private array $definitions = [];
-
-    /** @var array<string, string> alias => canonical name */
-    private array $aliases = [];
-
-    /** @var array<string, string> "domain\\0verb" => canonical capability name (CLI-002) */
-    private array $cliRoutes = [];
+    private DefinitionCatalog $definitionCatalog;
 
     /** @var list<object> */
     private array $failedEvents = [];
@@ -269,6 +261,7 @@ final class CapabilityRegistry implements CapabilityBus
         }
         $this->profileSelector = new ProfileSelector;
         $this->clock = $clock ?? new SystemClock;
+        $this->definitionCatalog = new DefinitionCatalog;
     }
 
     public function define(string $name): CapabilityDefinitionBuilder
@@ -278,63 +271,7 @@ final class CapabilityRegistry implements CapabilityBus
 
     public function register(CapabilityDefinition $definition): void
     {
-        if (isset($this->definitions[$definition->name])) {
-            throw new InvalidArgumentException(sprintf(
-                'Duplicate capability name "%s" at registration (D-017).',
-                $definition->name,
-            ));
-        }
-
-        foreach ($definition->aliases as $alias) {
-            if (isset($this->definitions[$alias]) || isset($this->aliases[$alias])) {
-                throw new InvalidArgumentException(sprintf(
-                    'Alias "%s" collides with an existing capability name or alias.',
-                    $alias,
-                ));
-            }
-        }
-
-        $this->assertUniqueCliPair($definition);
-
-        $this->definitions[$definition->name] = $definition;
-
-        foreach ($definition->aliases as $alias) {
-            $this->aliases[$alias] = $definition->name;
-        }
-
-        if ($definition->cliDomain !== null && $definition->cliVerb !== null) {
-            $this->cliRoutes[$this->cliRouteKey($definition->cliDomain, $definition->cliVerb)] = $definition->name;
-        }
-    }
-
-    /**
-     * Reject two definitions claiming the same CLI (domain, verb) pair (server authoritative).
-     *
-     * @throws InvalidArgumentException
-     */
-    private function assertUniqueCliPair(CapabilityDefinition $definition): void
-    {
-        if ($definition->cliDomain === null || $definition->cliVerb === null) {
-            return;
-        }
-
-        $key = $this->cliRouteKey($definition->cliDomain, $definition->cliVerb);
-        if (! isset($this->cliRoutes[$key])) {
-            return;
-        }
-
-        throw new InvalidArgumentException(sprintf(
-            'Duplicate CLI routing pair (domain="%s", verb="%s"): capability "%s" collides with already-registered "%s".',
-            $definition->cliDomain,
-            $definition->cliVerb,
-            $definition->name,
-            $this->cliRoutes[$key],
-        ));
-    }
-
-    private function cliRouteKey(string $domain, string $verb): string
-    {
-        return $domain."\0".$verb;
+        $this->definitionCatalog->register($definition);
     }
 
     /**
@@ -343,39 +280,22 @@ final class CapabilityRegistry implements CapabilityBus
      */
     public function discover(array $paths = [], array $classMap = []): void
     {
-        $paths = $paths !== [] ? $paths : $this->discoveryPaths;
-        $discoverer = new AttributeDiscoverer;
-        $definitions = $classMap !== []
-            ? $discoverer->fromClasses($classMap)
-            : $discoverer->fromPaths($paths);
-
-        foreach ($definitions as $definition) {
-            $this->register($definition);
-        }
+        $this->definitionCatalog->discover($paths, $classMap, $this->discoveryPaths);
     }
 
     public function has(string $nameOrAlias): bool
     {
-        return $this->resolveName($nameOrAlias) !== null;
+        return $this->definitionCatalog->has($nameOrAlias);
     }
 
     public function get(string $nameOrAlias): CapabilityDefinition
     {
-        $name = $this->resolveName($nameOrAlias);
-        if ($name === null) {
-            throw new InvalidArgumentException(sprintf('Unknown capability "%s".', $nameOrAlias));
-        }
-
-        return $this->definitions[$name];
+        return $this->definitionCatalog->get($nameOrAlias);
     }
 
     public function resolveName(string $nameOrAlias): ?string
     {
-        if (isset($this->definitions[$nameOrAlias])) {
-            return $nameOrAlias;
-        }
-
-        return $this->aliases[$nameOrAlias] ?? null;
+        return $this->definitionCatalog->resolveName($nameOrAlias);
     }
 
     /**
@@ -383,7 +303,7 @@ final class CapabilityRegistry implements CapabilityBus
      */
     public function all(): array
     {
-        return $this->definitions;
+        return $this->definitionCatalog->all();
     }
 
     /**
@@ -391,7 +311,7 @@ final class CapabilityRegistry implements CapabilityBus
      */
     public function definitions(): array
     {
-        return array_values($this->definitions);
+        return $this->definitionCatalog->definitions();
     }
 
     /**
@@ -2169,7 +2089,7 @@ final class CapabilityRegistry implements CapabilityBus
         }
 
         $tools = [];
-        foreach ($this->definitions as $definition) {
+        foreach ($this->definitionCatalog->all() as $definition) {
             $effective = $definition->effectiveSurfaces($this->globallyEnabledSurfaces);
             if (! in_array($surface, $effective, true)) {
                 continue;
