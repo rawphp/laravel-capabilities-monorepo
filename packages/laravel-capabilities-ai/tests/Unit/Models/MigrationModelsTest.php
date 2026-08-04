@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Container\Container;
 use Illuminate\Database\Capsule\Manager as Capsule;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Schema;
@@ -74,7 +75,7 @@ it('add last_error migration upgrades table that already exists without the colu
     $table = TableNames::proposals();
 
     // Simulate host that ran create before last_error was added in-place.
-    $schema->create($table, function (\Illuminate\Database\Schema\Blueprint $blueprint): void {
+    $schema->create($table, function (Blueprint $blueprint): void {
         $blueprint->id();
         $blueprint->string('ulid', 26)->unique();
         $blueprint->string('status', 32)->default('pending');
