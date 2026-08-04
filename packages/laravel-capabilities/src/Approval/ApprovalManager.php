@@ -3,7 +3,6 @@
 namespace Rawphp\Capabilities\Approval;
 
 use DateInterval;
-use DateTimeImmutable;
 use Rawphp\Capabilities\Contracts\ApprovalNotifier;
 use Rawphp\Capabilities\Contracts\ApprovalStore;
 use Rawphp\Capabilities\Contracts\AuditWriter;
@@ -22,6 +21,7 @@ use Rawphp\Capabilities\Support\SystemClock;
  * Owns the state machine; channel adapters only notify — never execute.
  * Domain execution after lease claim lives in {@see ApprovalExecutor}.
  * Stuck-row resume lives in {@see ApprovalResumer}.
+ * Pending TTL expiry lives in {@see ApprovalExpiry}.
  */
 final class ApprovalManager
 {
@@ -353,7 +353,7 @@ final class ApprovalManager
             return null;
         }
 
-        return $this->maybeExpire($row);
+        return $this->expiry()->maybeExpire($row);
     }
 
     /**
@@ -538,28 +538,7 @@ final class ApprovalManager
      */
     public function expire(string $id, bool $force = false): ?array
     {
-        $row = $this->store->find($id);
-        if ($row === null) {
-            return null;
-        }
-
-        if ((string) $row['status'] !== ApprovalStateMachine::STATUS_PENDING) {
-            return $row;
-        }
-
-        if (! $force && ! $this->isPastExpiry($row)) {
-            return $row;
-        }
-
-        $updated = $this->store->compareAndUpdate($id, ApprovalStateMachine::STATUS_PENDING, [
-            'status' => ApprovalStateMachine::STATUS_EXPIRED,
-        ]);
-
-        if ($updated !== null) {
-            $this->auditWrite('approval.expired', ['approval_id' => $id]);
-        }
-
-        return $updated ?? $this->store->find($id);
+        return $this->expiry()->expire($id, $force);
     }
 
     /**
@@ -567,17 +546,7 @@ final class ApprovalManager
      */
     public function expirePending(): int
     {
-        $count = 0;
-        foreach ($this->store->findByStatus(ApprovalStateMachine::STATUS_PENDING) as $row) {
-            if ($this->isPastExpiry($row)) {
-                $updated = $this->expire((string) $row['id'], force: true);
-                if ($updated !== null && ($updated['status'] ?? null) === ApprovalStateMachine::STATUS_EXPIRED) {
-                    $count++;
-                }
-            }
-        }
-
-        return $count;
+        return $this->expiry()->expirePending();
     }
 
     /**
@@ -631,6 +600,18 @@ final class ApprovalManager
     }
 
     /**
+     * Collaborator for pending TTL expiry (built per call so with* stays consistent).
+     */
+    private function expiry(): ApprovalExpiry
+    {
+        return new ApprovalExpiry(
+            store: $this->store,
+            clock: $this->clock,
+            audit: $this->audit,
+        );
+    }
+
+    /**
      * @param  array<string, mixed>  $row
      */
     private function executeRow(
@@ -648,41 +629,6 @@ final class ApprovalManager
     private function resultFromRow(array $row, bool $replay): CapabilityResult
     {
         return $this->rowExecutor->resultFromRow($row, $replay);
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     */
-    private function maybeExpire(array $row): array
-    {
-        if ((string) ($row['status'] ?? '') !== ApprovalStateMachine::STATUS_PENDING) {
-            return $row;
-        }
-
-        if (! $this->isPastExpiry($row)) {
-            return $row;
-        }
-
-        return $this->expire((string) $row['id'], force: true) ?? $row;
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     */
-    private function isPastExpiry(array $row): bool
-    {
-        $expires = $row['expires_at'] ?? null;
-        if (! is_string($expires) || $expires === '') {
-            return false;
-        }
-
-        try {
-            $exp = new DateTimeImmutable($expires);
-        } catch (\Exception) {
-            return false;
-        }
-
-        return $this->clock->now() >= $exp;
     }
 
     /**
