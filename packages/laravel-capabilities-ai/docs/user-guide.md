@@ -12,6 +12,15 @@ Package runtime for chat turns on top of the core capability bus:
 
 Path package in monorepo. Host: require `rawphp/laravel-capabilities-ai`, publish config + migrations.
 
+### Upgrade: proposals `last_error` column
+
+If you already ran package migrations **before** `last_error` was added to the create migration, your `capabilities_ai_proposals` table may lack the column. Accept fail/success paths write or clear `last_error` and will SQL-error until you migrate.
+
+1. Pull the package revision that includes `2026_08_04_000001_add_last_error_to_capabilities_ai_proposals_table`.
+2. Run **`php artisan migrate`** (or your host’s package migrate path).
+
+The ALTER is idempotent (no-op if the column already exists). Greenfield installs get `last_error` from the create migration alone.
+
 ## Host bindings
 
 - `ConversationContextProvider`
@@ -49,6 +58,59 @@ Authoritative behaviour: `TurnRunner` + `LlmClient` interface / `LlmClientDefaul
 ## Progress
 
 `ProgressStore` array or Redis — never product MySQL.
+
+### Upgrade for hosts (tool progress + tool messages)
+
+Progress pollers / SSE clients and multi-round tool hosts must not assume always-ok tool outcomes.
+
+#### Progress `kind=tool` events
+
+Each tool invoke appends a progress event:
+
+```json
+{
+  "kind": "tool",
+  "data": {
+    "name": "demo.tool",
+    "payload": { "x": 1 },
+    "ok": false,
+    "error_code": "forbidden"
+  }
+}
+```
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `name` | string | Capability name / alias invoked |
+| `payload` | object | Invoke input (may contain host PII — treat progress as sensitive if streamed) |
+| `ok` | bool | From `CapabilityResult::$ok` — **not** always true |
+| `error_code` | string \| null | From `CapabilityResult::errorCode()`; null when `ok` is true |
+
+**Host action:** branch on `data.ok` / `data.error_code`. Do not treat every `kind=tool` event as success.
+
+#### Tool-role message content
+
+After each bus invoke, TurnRunner appends a message for the next LLM round:
+
+| | Old expectation | Current wire |
+|--|-----------------|--------------|
+| `role` | `tool` | unchanged |
+| `content` | JSON always like `{"ok":true,"name":…}` | JSON of full `CapabilityResult::toArray()` **plus** `name` |
+
+Example failure content (shape illustrative):
+
+```json
+{
+  "ok": false,
+  "error": { "code": "forbidden", "message": "nope" },
+  "meta": {},
+  "name": "demo.tool"
+}
+```
+
+**Host action:** multi-round `LlmClient` implementors and transcript parsers must accept honest failure payloads (not invent success). Prefer `supportsToolRounds() === true` only when the client can continue after such messages.
+
+Authoritative: `TurnRunner` (`progress->append` tool data + `encodeToolResult`). Unit locks in `TurnRunnerTest`.
 
 ## Optional routes
 

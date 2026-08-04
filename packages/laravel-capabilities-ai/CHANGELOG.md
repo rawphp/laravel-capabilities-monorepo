@@ -50,8 +50,31 @@ Accept HTTP (from `AcceptOutcome.httpStatus` when set, else controller kind defa
 
 Honesty rule: return **true** only if the next `complete()` accepts tool-result messages (OpenAI-style `role=tool` or Anthropic `tool_result` blocks). Lying opens bus-then-crash after mutation.
 
+#### Tool progress + tool-role message content
+
+Progress `kind=tool` events and multi-round tool-role message `content` are **honest bus wire** (0.x pre-stable). Hosts that assumed always-ok tool content or a `{name,payload}`-only progress shape must adapt. Full tables: [docs/user-guide.md](docs/user-guide.md#upgrade-for-hosts-tool-progress-and-tool-messages).
+
+**Progress `kind=tool` `data`:**
+
+| Field | Old expectation | Current wire |
+|-------|-----------------|--------------|
+| `name` | capability name | unchanged |
+| `payload` | invoke input array | unchanged |
+| `ok` | often absent / assumed true | **bool** from `CapabilityResult::$ok` |
+| `error_code` | absent | **string\|null** from `CapabilityResult::errorCode()` (null when ok) |
+
+**Tool-role message `content` (JSON string):**
+
+| Shape | Old expectation | Current wire |
+|-------|-----------------|--------------|
+| Success / failure | Always `{"ok":true,"name":…}` (or similar always-ok stub) | Full `CapabilityResult::toArray()` plus `name` (includes `ok`, `data` or `error`, `meta`) |
+| Failure | Masked as ok | Honest `ok: false` + `error` (code/message) |
+
+Authoritative: `TurnRunner` progress append + `encodeToolResult` (see package unit tests).
+
 ### Fixed
 
+- **Proposals `last_error` column (upgrade hosts):** `last_error` was added in-place to the create migration after some hosts had already run it. Hosts whose `capabilities_ai_proposals` table lacks the column will SQL-error on accept fail/success paths that write or clear `last_error`. Run **`php artisan migrate`** so package migration `2026_08_04_000001_add_last_error_to_capabilities_ai_proposals_table` applies (idempotent ALTER; greenfield installs already get the column from the create migration). VCS/path consumers — not Packagist-required yet.
 - **Proposal accept/reject split-brain:** one fail-closed SM that returns typed `AcceptOutcome` for all known accept statuses (rejected/expired → refuse outcomes; no throw-as-API on accept). Atomic CAS claim/reject helpers, D-005 `idempotency_key=proposal:{ulid}`, `isApprovalRequired` then `isHardRefuse` then `isRetryable`, `last_error` on terminal failed, clear on accepted. Reject remains RuntimeException → 409 for non-pending.
 - Proposal accept: live `IdempotencyReadiness` probe (not a frozen constructor stamp / Closure ceremony).
 - Proposal accept: `approval_required` / retryable keep `accepting` (resumeable); hard non-retryable only → terminal `failed` + `last_error`.
