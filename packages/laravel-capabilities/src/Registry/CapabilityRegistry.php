@@ -20,9 +20,8 @@ use Rawphp\Capabilities\Pipeline\InvokePipeline;
 use Rawphp\Capabilities\Pipeline\InvokeState;
 use Rawphp\Capabilities\Pipeline\ResolveActor;
 use Rawphp\Capabilities\Pipeline\ResolveTenantFromCaller;
-use Rawphp\Capabilities\Profiles\ProfileRequiredException;
 use Rawphp\Capabilities\Profiles\ProfileSelector;
-use Rawphp\Capabilities\Profiles\TooManyToolsException;
+use Rawphp\Capabilities\Profiles\ToolSurfaceResolver;
 use Rawphp\Capabilities\RateLimiting\AgentTurnBudget;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Schema\InputValidator;
@@ -69,6 +68,8 @@ final class CapabilityRegistry implements CapabilityBus
     private array $forceFailStages = [];
 
     private ProfileSelector $profileSelector;
+
+    private ToolSurfaceResolver $toolSurfaceResolver;
 
     private Clock $clock;
 
@@ -198,6 +199,13 @@ final class CapabilityRegistry implements CapabilityBus
         $this->clock = $clock ?? new SystemClock;
         $this->definitionCatalog = new DefinitionCatalog;
         $this->observation = new InvokeObservation;
+        $this->toolSurfaceResolver = new ToolSurfaceResolver(
+            definitions: $this->definitionCatalog,
+            profileSelector: $this->profileSelector,
+            observation: $this->observation,
+            globallyEnabledSurfaces: $this->globallyEnabledSurfaces,
+            toolSurfaceConfig: $this->toolSurfaceConfig,
+        );
         $this->pipeline = new InvokePipeline(
             jsonSchema: $jsonSchema,
             serverRuleChecker: $serverRuleChecker,
@@ -278,6 +286,7 @@ final class CapabilityRegistry implements CapabilityBus
     public function withGloballyEnabledSurfaces(array $globallyEnabled): self
     {
         $this->globallyEnabledSurfaces = $globallyEnabled;
+        $this->toolSurfaceResolver->withGloballyEnabledSurfaces($globallyEnabled);
 
         return $this;
     }
@@ -557,6 +566,7 @@ final class CapabilityRegistry implements CapabilityBus
     public function withToolSurfaceConfig(array $config): self
     {
         $this->toolSurfaceConfig = array_replace_recursive($this->toolSurfaceConfig, $config);
+        $this->toolSurfaceResolver->withToolSurfaceConfig($this->toolSurfaceConfig);
 
         return $this;
     }
@@ -1031,70 +1041,7 @@ final class CapabilityRegistry implements CapabilityBus
 
     private function toolsForSurface(string $surface, string|array|null $profile, mixed $actor = null): array
     {
-        $cfg = $this->toolSurfaceConfig[$surface] ?? [
-            'profiles' => [],
-            'require_profile' => true,
-            'max_tools_warn' => 32,
-            'max_tools_hard' => 64,
-        ];
-        $namedProfiles = $cfg['profiles'] ?? [];
-        $requireProfile = (bool) ($cfg['require_profile'] ?? true);
-        $resolved = $this->profileSelector->resolve($profile, $namedProfiles);
-
-        if ($resolved['unscoped']) {
-            if ($requireProfile) {
-                throw ProfileRequiredException::forSurface($surface);
-            }
-            // Loud deprecation path: empty list, not full catalog dump (D-008).
-            $this->observation->logs[] = [
-                'level' => 'warning',
-                'message' => sprintf('Unfiltered %s tools requested; returning empty list (D-008).', $surface),
-                'context' => ['surface' => $surface],
-            ];
-
-            return [];
-        }
-
-        $tools = [];
-        foreach ($this->definitionCatalog->all() as $definition) {
-            $effective = $definition->effectiveSurfaces($this->globallyEnabledSurfaces);
-            if (! in_array($surface, $effective, true)) {
-                continue;
-            }
-            if (! $definition->isDiscoverable($actor)) {
-                continue;
-            }
-            if (! $this->profileSelector->matches($definition, $resolved)) {
-                continue;
-            }
-            $tools[] = [
-                'name' => $definition->name,
-                'description' => $definition->description,
-                'input_schema' => $definition->inputSchema(),
-            ];
-        }
-
-        $count = count($tools);
-        $warn = (int) ($cfg['max_tools_warn'] ?? 32);
-        $hard = (int) ($cfg['max_tools_hard'] ?? 64);
-
-        if ($count > $hard) {
-            throw new TooManyToolsException($count, $hard);
-        }
-        if ($count > $warn) {
-            $this->observation->logs[] = [
-                'level' => 'warning',
-                'message' => sprintf(
-                    'Profile expanded to %d tools (warn threshold %d) for surface %s.',
-                    $count,
-                    $warn,
-                    $surface,
-                ),
-                'context' => ['surface' => $surface, 'count' => $count, 'warn' => $warn],
-            ];
-        }
-
-        return $tools;
+        return $this->toolSurfaceResolver->toolsForSurface($surface, $profile, $actor);
     }
 
     /**
@@ -1103,34 +1050,10 @@ final class CapabilityRegistry implements CapabilityBus
      */
     private function metaToolsForSurface(string $surface, string|array|null $profile): array
     {
-        $cfg = $this->toolSurfaceConfig[$surface] ?? ['require_profile' => true, 'profiles' => []];
-        $requireProfile = (bool) ($cfg['require_profile'] ?? true);
-        $resolved = $this->profileSelector->resolve($profile, $cfg['profiles'] ?? []);
-
-        if ($resolved['unscoped']) {
-            if ($requireProfile) {
-                throw ProfileRequiredException::forSurface($surface);
-            }
-
-            return [];
-        }
-
-        // Meta-tools inherit the same profile — not a full-catalog escape hatch (P2-007).
-        return [
-            [
-                'name' => 'capabilities.list',
-                'description' => 'List capabilities in profile',
-                'profile' => $profile,
-                'surface' => $surface,
-                'allowlist' => $this->listCapabilitiesInProfile($surface, $profile),
-            ],
-            [
-                'name' => 'capabilities.invoke',
-                'description' => 'Invoke a capability by name within profile',
-                'profile' => $profile,
-                'surface' => $surface,
-                'allowlist' => $this->listCapabilitiesInProfile($surface, $profile),
-            ],
-        ];
+        return $this->toolSurfaceResolver->metaToolsForSurface(
+            $surface,
+            $profile,
+            fn (string $s, string|array|null $p) => $this->listCapabilitiesInProfile($s, $p),
+        );
     }
 }
