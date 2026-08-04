@@ -53,6 +53,8 @@ return [
             'api_key' => $env('ANTHROPIC_API_KEY'),
             'model' => $env('CAPABILITIES_AI_ANTHROPIC_MODEL', 'claude-sonnet-4-6'),
             'base_url' => $env('CAPABILITIES_AI_ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
+            /** Host-parity default (was hard-coded 1024; truncated long coach replies). */
+            'max_tokens' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS', 64000),
         ],
     ],
 
