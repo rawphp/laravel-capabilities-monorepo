@@ -51,7 +51,7 @@ final class TurnRunner
         try {
             $conversation = Conversation::query()->findOrFail($turn->conversation_id);
             $messages = $this->context->messagesForTurn($conversation->ulid, $turnUlid);
-            // Do not advertise tools to clients that cannot continue after tool results (e.g. Anthropic today).
+            // Do not advertise tools to clients that cannot continue after tool results.
             $toolDefs = $this->llm->supportsToolRounds()
                 ? $this->tools->toolsForTurn($conversation->ulid, $turnUlid)
                 : [];
@@ -86,20 +86,49 @@ final class TurnRunner
                     );
                 }
 
+                // Normalize ids first so assistant tool_use and role=tool share the same id.
+                $normalizedCalls = [];
                 foreach ($toolCalls as $callIndex => $call) {
                     if (! is_array($call)) {
                         continue;
-                    }
-                    $name = (string) ($call['name'] ?? '');
-                    $payload = $call['arguments'] ?? $call['input'] ?? [];
-                    if (! is_array($payload)) {
-                        $payload = [];
                     }
                     $toolCallId = trim((string) ($call['id'] ?? ''));
                     if ($toolCallId === '') {
                         // Fail closed for correlation: clients must supply id; generate a round-local fallback.
                         $toolCallId = 'tool_call_'.$rounds.'_'.((int) $callIndex + 1);
                     }
+                    $call['id'] = $toolCallId;
+                    $normalizedCalls[] = $call;
+                }
+
+                if ($normalizedCalls === []) {
+                    // tool_calls present but unusable — treat as text-only terminal content.
+                    $content = (string) ($response['content'] ?? '');
+                    Message::query()->create([
+                        'conversation_id' => $conversation->id,
+                        'ulid' => strtoupper(bin2hex(random_bytes(13))),
+                        'role' => 'assistant',
+                        'content' => $content,
+                        'meta' => null,
+                    ]);
+                    $this->maybeCreateProposalsFromFence($conversation->id, $turn->id, $content);
+                    break;
+                }
+
+                // Providers (Anthropic tool_use / OpenAI tool_calls) need the assistant turn in the transcript.
+                $messages[] = [
+                    'role' => 'assistant',
+                    'content' => (string) ($response['content'] ?? ''),
+                    'tool_calls' => $normalizedCalls,
+                ];
+
+                foreach ($normalizedCalls as $call) {
+                    $name = (string) ($call['name'] ?? '');
+                    $payload = $call['arguments'] ?? $call['input'] ?? [];
+                    if (! is_array($payload)) {
+                        $payload = [];
+                    }
+                    $toolCallId = (string) $call['id'];
                     $result = $this->bus->invoke($name, $payload);
                     $toolContent = $this->encodeToolResult($name, $result);
                     $this->progress->append($turnUlid, [
