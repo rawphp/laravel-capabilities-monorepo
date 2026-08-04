@@ -175,6 +175,157 @@ it('tool call path invokes CapabilityBus exactly once with expected name/payload
         ->and($data['error_code'])->toBeNull();
 });
 
+it('FakeLlmClient ensures non-empty id on each tool_calls entry', function () {
+    $llm = new FakeLlmClient([
+        ['tool_calls' => [
+            ['name' => 'demo.tool', 'arguments' => ['x' => 1]],
+            ['id' => 'call_explicit', 'name' => 'other.tool', 'arguments' => []],
+        ]],
+    ]);
+    $out = $llm->complete([['role' => 'user', 'content' => 'hi']]);
+    $calls = $out['tool_calls'] ?? [];
+    expect($calls)->toHaveCount(2);
+    expect((string) ($calls[0]['id'] ?? ''))->not->toBe('');
+    expect((string) ($calls[1]['id'] ?? ''))->toBe('call_explicit');
+});
+
+it('TurnRunner tool-result messages carry matching tool_call_id from tool_calls id', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurn('use tool');
+    $captured = [];
+    $bus = recordingBus();
+    $llm = new class($captured) implements LlmClient
+    {
+        /** @param list<array<string, mixed>> $captured */
+        public function __construct(private array &$captured) {}
+
+        public function supportsToolRounds(): bool
+        {
+            return true;
+        }
+
+        public function complete(array $messages, array $tools = []): array
+        {
+            $this->captured[] = $messages;
+            if (count($this->captured) === 1) {
+                return [
+                    'tool_calls' => [
+                        [
+                            'id' => 'toolu_abc123',
+                            'name' => 'demo.tool',
+                            'arguments' => ['x' => 1],
+                        ],
+                    ],
+                ];
+            }
+
+            return ['content' => 'done after tool'];
+        }
+    };
+    $context = new class implements ConversationContextProvider
+    {
+        public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['role' => 'user', 'content' => 'use tool']];
+        }
+    };
+    $tools = new class implements ToolCatalog
+    {
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['name' => 'demo.tool']];
+        }
+    };
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        bus: $bus,
+        progress: new ArrayProgressStore,
+    );
+    $runner->run($turnUlid);
+    expect(count($captured))->toBe(2);
+    $toolMsgs = array_values(array_filter(
+        $captured[1],
+        static fn (array $m): bool => ($m['role'] ?? null) === 'tool',
+    ));
+    expect($toolMsgs)->toHaveCount(1);
+    $toolMsg = $toolMsgs[0];
+    $matchedId = (string) ($toolMsg['tool_call_id'] ?? $toolMsg['id'] ?? '');
+    expect($matchedId)->toBe('toolu_abc123')
+        ->and($bus->invokes)->toBe(1);
+});
+
+it('FakeLlmClient multi-round fixtures still complete with generated tool call ids', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurn('use tool');
+    $captured = [];
+    $bus = recordingBus();
+    $inner = new FakeLlmClient([
+        ['tool_calls' => [['name' => 'demo.tool', 'arguments' => ['n' => 2]]]],
+        ['content' => 'all good'],
+    ]);
+    $llm = new class($inner, $captured) implements LlmClient
+    {
+        /** @param list<array<string, mixed>> $captured */
+        public function __construct(
+            private FakeLlmClient $inner,
+            private array &$captured,
+        ) {}
+
+        public function supportsToolRounds(): bool
+        {
+            return true;
+        }
+
+        public function complete(array $messages, array $tools = []): array
+        {
+            $this->captured[] = $messages;
+            $out = $this->inner->complete($messages, $tools);
+            if (isset($out['tool_calls']) && is_array($out['tool_calls'])) {
+                foreach ($out['tool_calls'] as $call) {
+                    expect((string) ($call['id'] ?? ''))->not->toBe('');
+                }
+            }
+
+            return $out;
+        }
+    };
+    $context = new class implements ConversationContextProvider
+    {
+        public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['role' => 'user', 'content' => 'use tool']];
+        }
+    };
+    $tools = new class implements ToolCatalog
+    {
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['name' => 'demo.tool']];
+        }
+    };
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        bus: $bus,
+        progress: new ArrayProgressStore,
+    );
+    $turn = $runner->run($turnUlid);
+    expect($turn->status)->toBe(Turn::STATUS_COMPLETED)
+        ->and(count($captured))->toBe(2);
+    $toolMsgs = array_values(array_filter(
+        $captured[1],
+        static fn (array $m): bool => ($m['role'] ?? null) === 'tool',
+    ));
+    expect($toolMsgs)->toHaveCount(1);
+    $toolCallId = (string) ($toolMsgs[0]['tool_call_id'] ?? $toolMsgs[0]['id'] ?? '');
+    expect($toolCallId)->not->toBe('');
+});
+
 it('progress tool events expose ok false and error_code on bus failure', function () {
     bootTurnSqlite();
     $turnUlid = enqueueTurn('use tool');

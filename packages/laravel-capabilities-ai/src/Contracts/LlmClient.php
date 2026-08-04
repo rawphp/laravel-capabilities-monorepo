@@ -13,6 +13,13 @@ use Rawphp\CapabilitiesAi\Support\LlmClientDefaults;
  * (or OpenAI-style role=tool messages) should report supportsToolRounds() = true.
  * TurnRunner refuses bus invokes when false so half-wired clients cannot mutate
  * product state then crash on the follow-up complete() call.
+ *
+ * Tool message contract (when supportsToolRounds() is true):
+ * - Each entry in returned `tool_calls[]` MUST include a non-empty string `id`
+ *   (provider tool_use id or a stable client-generated id).
+ * - TurnRunner appends follow-up messages with `role=tool`, `content` (JSON result),
+ *   and matching `tool_call_id` (+ `id`) for each invoke so providers can correlate
+ *   tool_result blocks with the original tool_use / tool_call.
  */
 interface LlmClient
 {
@@ -26,9 +33,14 @@ interface LlmClient
     public function supportsToolRounds(): bool;
 
     /**
-     * @param  list<array{role: string, content: string}>  $messages
+     * @param  list<array{role: string, content: string, tool_call_id?: string, id?: string}>  $messages
      * @param  list<array<string, mixed>>  $tools
-     * @return array{content?: string, tool_calls?: list<array<string, mixed>>}
+     * @return array{
+     *     content?: string,
+     *     tool_calls?: list<array{id?: string, name?: string, arguments?: mixed, input?: mixed}>
+     * }
+     *         When `tool_calls` is non-empty, each entry SHOULD include non-empty `id`
+     *         (required for multi-round correlation; FakeLlmClient always normalizes it).
      */
     public function complete(array $messages, array $tools = []): array;
 }

@@ -3,7 +3,6 @@
 namespace Rawphp\Capabilities\Approval;
 
 use DateInterval;
-use DateTimeImmutable;
 use Rawphp\Capabilities\Contracts\ApprovalNotifier;
 use Rawphp\Capabilities\Contracts\ApprovalStore;
 use Rawphp\Capabilities\Contracts\AuditWriter;
@@ -21,6 +20,8 @@ use Rawphp\Capabilities\Support\SystemClock;
  *
  * Owns the state machine; channel adapters only notify — never execute.
  * Domain execution after lease claim lives in {@see ApprovalExecutor}.
+ * Stuck-row resume lives in {@see ApprovalResumer}.
+ * Pending TTL expiry lives in {@see ApprovalExpiry}.
  */
 final class ApprovalManager
 {
@@ -352,7 +353,7 @@ final class ApprovalManager
             return null;
         }
 
-        return $this->maybeExpire($row);
+        return $this->expiry()->maybeExpire($row);
     }
 
     /**
@@ -537,28 +538,7 @@ final class ApprovalManager
      */
     public function expire(string $id, bool $force = false): ?array
     {
-        $row = $this->store->find($id);
-        if ($row === null) {
-            return null;
-        }
-
-        if ((string) $row['status'] !== ApprovalStateMachine::STATUS_PENDING) {
-            return $row;
-        }
-
-        if (! $force && ! $this->isPastExpiry($row)) {
-            return $row;
-        }
-
-        $updated = $this->store->compareAndUpdate($id, ApprovalStateMachine::STATUS_PENDING, [
-            'status' => ApprovalStateMachine::STATUS_EXPIRED,
-        ]);
-
-        if ($updated !== null) {
-            $this->auditWrite('approval.expired', ['approval_id' => $id]);
-        }
-
-        return $updated ?? $this->store->find($id);
+        return $this->expiry()->expire($id, $force);
     }
 
     /**
@@ -566,17 +546,7 @@ final class ApprovalManager
      */
     public function expirePending(): int
     {
-        $count = 0;
-        foreach ($this->store->findByStatus(ApprovalStateMachine::STATUS_PENDING) as $row) {
-            if ($this->isPastExpiry($row)) {
-                $updated = $this->expire((string) $row['id'], force: true);
-                if ($updated !== null && ($updated['status'] ?? null) === ApprovalStateMachine::STATUS_EXPIRED) {
-                    $count++;
-                }
-            }
-        }
-
-        return $count;
+        return $this->expiry()->expirePending();
     }
 
     /**
@@ -588,32 +558,7 @@ final class ApprovalManager
      */
     public function resume(?string $id = null, ?object $actor = null, bool $force = false): array
     {
-        if ($this->isAtomic() && $id === null && ! $force) {
-            // Atomic mode: resume job is a no-op when sweeping.
-            return [];
-        }
-
-        $actor ??= SystemActor::named('approval-resume');
-        $results = [];
-
-        if ($id !== null) {
-            $row = $this->store->find($id);
-            if ($row === null) {
-                return [CapabilityResult::failure('not_found', 'Approval not found.')];
-            }
-
-            $results[] = $this->resumeOne($row, $actor, force: $force);
-
-            return $results;
-        }
-
-        foreach ($this->store->findByStatus(ApprovalStateMachine::STATUS_APPROVED) as $row) {
-            $results[] = $this->resumeOne($row, $actor, force: $force);
-        }
-
-        $this->sampleStuckMetric();
-
-        return $results;
+        return $this->resumer()->resume($id, $actor, $force);
     }
 
     /**
@@ -636,96 +581,34 @@ final class ApprovalManager
     }
 
     /**
-     * @param  array<string, mixed>  $row
+     * Collaborator for resume / grace / lease (built per call so with* stays consistent).
      */
-    private function resumeOne(array $row, object $actor, bool $force): CapabilityResult
+    private function resumer(): ApprovalResumer
     {
-        $id = (string) $row['id'];
-        $status = (string) $row['status'];
-
-        if ($status === ApprovalStateMachine::STATUS_EXECUTED) {
-            $this->metrics->increment('approvals_resume_total', 1, ['result' => 'replay']);
-
-            return $this->resultFromRow($row, replay: true);
-        }
-
-        if ($status === ApprovalStateMachine::STATUS_PENDING) {
-            $this->metrics->increment('approvals_resume_total', 1, ['result' => 'skipped_lease']);
-
-            return CapabilityResult::failure('conflict', 'Resume skips pending rows.', ['skipped' => true]);
-        }
-
-        if ($status !== ApprovalStateMachine::STATUS_APPROVED) {
-            $this->metrics->increment('approvals_resume_total', 1, ['result' => 'skipped_lease']);
-
-            return CapabilityResult::failure('conflict', 'Resume only applies to approved rows.', ['skipped' => true]);
-        }
-
-        // Tenant guard when actor is a user.
-        if (! ($actor instanceof SystemActor)) {
-            $tenant = $this->tenantOf($actor);
-            $rowTenant = $row['tenant_id'] ?? null;
-            if ($rowTenant !== null && $tenant !== null && $tenant !== $rowTenant) {
-                return CapabilityResult::failure('forbidden', 'Resume actor tenant mismatch.');
-            }
-            // Random users without role/requester: deny for decision matrix.
-            if (! $this->policy->allows($row, $actor, $tenant) && ResolveActor::actorId($actor) !== (string) ($row['requester_actor_id'] ?? '')) {
-                // Requester may force-resume as repair; role holders too via policy.
-                $isRequester = ResolveActor::actorId($actor) === (string) ($row['requester_actor_id'] ?? '');
-                if (! $isRequester) {
-                    return CapabilityResult::failure('forbidden', 'Resume actor not allowed.');
-                }
-            }
-        }
-
-        if (! $force && ! $this->isPastGrace($row)) {
-            $this->metrics->increment('approvals_resume_total', 1, ['result' => 'skipped_lease']);
-
-            return CapabilityResult::failure('conflict', 'Inside grace; live accept may still be in flight.', [
-                'skipped' => true,
-                'inside_grace' => true,
-            ]);
-        }
-
-        if (! $force && ! $this->leaseIsFreeOrExpired($row)) {
-            $this->metrics->increment('approvals_resume_total', 1, ['result' => 'skipped_lease']);
-
-            return CapabilityResult::failure('conflict', 'Execution lease still held.', [
-                'skipped' => true,
-                'lease_held' => true,
-            ]);
-        }
-
-        $now = $this->clock->now();
-        $leaseUntil = $now->add(new DateInterval('PT'.$this->leaseSeconds().'S'))->format(DATE_ATOM);
-        $attempt = ((int) ($row['execution_attempt'] ?? 0)) + 1;
-
-        $claimed = $this->store->claimLease(
-            $id,
-            ApprovalStateMachine::STATUS_APPROVED,
-            $now->format(DATE_ATOM),
-            [
-                'execution_lease_until' => $leaseUntil,
-                'execution_attempt' => $attempt,
-            ],
+        return new ApprovalResumer(
+            store: $this->store,
+            clock: $this->clock,
+            policy: $this->policy,
+            metrics: $this->metrics,
+            executor: $this->rowExecutor,
+            audit: $this->audit,
+            graceSeconds: $this->graceSeconds(),
+            leaseSeconds: $this->leaseSeconds(),
+            stuckAfterSeconds: $this->stuckAfterSeconds(),
+            atomic: $this->isAtomic(),
         );
+    }
 
-        if ($claimed === null) {
-            $fresh = $this->store->find($id);
-            if ($fresh !== null && ($fresh['status'] ?? null) === ApprovalStateMachine::STATUS_EXECUTED) {
-                return $this->resultFromRow($fresh, replay: true);
-            }
-            $this->metrics->increment('approvals_resume_total', 1, ['result' => 'skipped_lease']);
-
-            return CapabilityResult::failure('conflict', 'Failed to claim resume lease.', ['skipped' => true]);
-        }
-
-        $this->auditWrite('approval.resume', [
-            'approval_id' => $id,
-            'attempt' => $attempt,
-        ]);
-
-        return $this->executeRow($claimed, $actor, via: 'resume', fromStatus: ApprovalStateMachine::STATUS_APPROVED);
+    /**
+     * Collaborator for pending TTL expiry (built per call so with* stays consistent).
+     */
+    private function expiry(): ApprovalExpiry
+    {
+        return new ApprovalExpiry(
+            store: $this->store,
+            clock: $this->clock,
+            audit: $this->audit,
+        );
     }
 
     /**
@@ -746,103 +629,6 @@ final class ApprovalManager
     private function resultFromRow(array $row, bool $replay): CapabilityResult
     {
         return $this->rowExecutor->resultFromRow($row, $replay);
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     */
-    private function maybeExpire(array $row): array
-    {
-        if ((string) ($row['status'] ?? '') !== ApprovalStateMachine::STATUS_PENDING) {
-            return $row;
-        }
-
-        if (! $this->isPastExpiry($row)) {
-            return $row;
-        }
-
-        return $this->expire((string) $row['id'], force: true) ?? $row;
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     */
-    private function isPastExpiry(array $row): bool
-    {
-        $expires = $row['expires_at'] ?? null;
-        if (! is_string($expires) || $expires === '') {
-            return false;
-        }
-
-        try {
-            $exp = new DateTimeImmutable($expires);
-        } catch (\Exception) {
-            return false;
-        }
-
-        return $this->clock->now() >= $exp;
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     */
-    private function isPastGrace(array $row): bool
-    {
-        $approvedAt = $row['approved_at'] ?? $row['decided_at'] ?? null;
-        if (! is_string($approvedAt) || $approvedAt === '') {
-            return true;
-        }
-
-        try {
-            $at = new DateTimeImmutable($approvedAt);
-        } catch (\Exception) {
-            return true;
-        }
-
-        $graceEnd = $at->add(new DateInterval('PT'.$this->graceSeconds().'S'));
-
-        return $this->clock->now() >= $graceEnd;
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     */
-    private function leaseIsFreeOrExpired(array $row): bool
-    {
-        $lease = $row['execution_lease_until'] ?? null;
-        if ($lease === null || $lease === '') {
-            return true;
-        }
-
-        try {
-            $until = new DateTimeImmutable((string) $lease);
-        } catch (\Exception) {
-            return true;
-        }
-
-        return $this->clock->now() >= $until;
-    }
-
-    private function sampleStuckMetric(): void
-    {
-        $stuck = 0;
-        $threshold = $this->stuckAfterSeconds();
-        foreach ($this->store->findByStatus(ApprovalStateMachine::STATUS_APPROVED) as $row) {
-            $approvedAt = $row['approved_at'] ?? $row['decided_at'] ?? null;
-            if (! is_string($approvedAt)) {
-                continue;
-            }
-            try {
-                $at = new DateTimeImmutable($approvedAt);
-            } catch (\Exception) {
-                continue;
-            }
-            $age = $this->clock->now()->getTimestamp() - $at->getTimestamp();
-            if ($age >= $threshold) {
-                $stuck++;
-            }
-        }
-        $this->metrics->set('approvals_stuck_approved_total', $stuck);
     }
 
     /**

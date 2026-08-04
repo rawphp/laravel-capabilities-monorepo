@@ -31,12 +31,15 @@ Empty PHP arrays that represent JSON `{}` (and empty list-shaped `[]` when the s
 
 ### Changed
 
-#### Internal extract — `ApprovalExecutor`, `InvokeAuditStage`, `RegistryAssertions`
+#### Internal extract — approval / pipeline collaborators
 
-Phase-2 peeled focused collaborators out of larger types (additive public classes under PSR-4; not a removal of host APIs):
+Phase-2/3 peeled focused collaborators out of larger types (additive public classes under PSR-4; not a removal of host APIs):
 
 - `ApprovalExecutor` — execution path extracted from `ApprovalManager`
+- `ApprovalResumer` — stuck-row resume / grace / lease extracted from `ApprovalManager` (public `resume()` / `artisanResume()` unchanged)
+- `ApprovalExpiry` — pending TTL expire / lazy expiry on find extracted from `ApprovalManager` (public `expire()` / `expirePending()` / `find()` unchanged)
 - `InvokeAuditStage` — audit stage extracted from `InvokePipeline` (constructor reshape is **Breaking** above; this bullet only names the extract)
+- `InvokeResultFinalizer` — finish / wire / events extracted from `InvokePipeline` (public `finishEarly()` unchanged; no constructor reshape)
 - `RegistryAssertions` — assertion helpers extracted from `CapabilityRegistry`
 
 **Supported host surface is unchanged:** keep using `CapabilityRegistry`, `ApprovalManager`, and the `Capability` facade. New classes are additive for package internals / advanced wiring; they do not require host migration if you already use the registry/manager/facade path.

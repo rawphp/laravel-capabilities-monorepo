@@ -60,7 +60,7 @@ func TestCapabilityHelpHumanWiring(t *testing.T) {
 		Verb:   "create",
 		Name:   "create-invoice",
 		InputSchema: map[string]any{
-			"type": "object",
+			"type":     "object",
 			"required": []any{"customer_id"},
 			"properties": map[string]any{
 				"customer_id": map[string]any{"type": "integer"},

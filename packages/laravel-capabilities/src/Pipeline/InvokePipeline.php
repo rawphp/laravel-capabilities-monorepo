@@ -8,8 +8,6 @@ use Rawphp\Capabilities\Contracts\Authorizer;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\SchemaProvider;
 use Rawphp\Capabilities\Events\CapabilityApprovalRequested;
-use Rawphp\Capabilities\Events\CapabilityFailed;
-use Rawphp\Capabilities\Events\CapabilityInvoked;
 use Rawphp\Capabilities\Idempotency\RequestHash;
 use Rawphp\Capabilities\RateLimiting\AgentTurnBudget;
 use Rawphp\Capabilities\RateLimiting\RateLimitKey;
@@ -30,6 +28,7 @@ use Throwable;
  *
  * Extracted from {@see CapabilityRegistry} so the
  * registry remains a thin bus facade over definition catalog + pipeline.
+ * Finish / wire / event policy lives in {@see InvokeResultFinalizer}.
  */
 final class InvokePipeline
 {
@@ -85,74 +84,74 @@ final class InvokePipeline
             // ── pre-run stages ──────────────────────────────────────────
             $early = $this->stageJsonSchemaValidate($state, $forced);
             if ($early !== null) {
-                return $this->finishFailure($state, $early);
+                return $this->results()->finishFailure($state, $early);
             }
 
             $early = $this->stageHydrateDto($state, $forced);
             if ($early !== null) {
-                return $this->finishFailure($state, $early);
+                return $this->results()->finishFailure($state, $early);
             }
 
             $early = $this->stageServerOnlyValidate($state, $forced);
             if ($early !== null) {
-                return $this->finishFailure($state, $early);
+                return $this->results()->finishFailure($state, $early);
             }
 
             $early = $this->stageResolveActor($state, $forced);
             if ($early !== null) {
-                return $this->finishFailure($state, $early);
+                return $this->results()->finishFailure($state, $early);
             }
 
             $early = $this->stageResolveScope($state, $forced);
             if ($early !== null) {
-                return $this->finishFailure($state, $early);
+                return $this->results()->finishFailure($state, $early);
             }
 
             $early = $this->stageIdempotencyLookup($state, $forced);
             if ($early !== null) {
                 // Replay is success-shaped; conflict/busy are failures.
                 if ($state->idempotentReplay) {
-                    return $this->finishReplay($state, $early);
+                    return $this->results()->finishReplay($state, $early);
                 }
 
-                return $this->finishFailure($state, $early);
+                return $this->results()->finishFailure($state, $early);
             }
 
             $early = $this->stageAuthorize($state, $forced);
             if ($early !== null) {
-                return $this->finishFailure($state, $early, auditDeny: true);
+                return $this->results()->finishFailure($state, $early, auditDeny: true);
             }
 
             $early = $this->stageNeedsApproval($state, $forced);
             if ($early !== null) {
-                return $this->finishApprovalRequired($state, $early);
+                return $this->results()->finishApprovalRequired($state, $early);
             }
 
             $early = $this->stageRateLimit($state, $forced);
             if ($early !== null) {
-                return $this->finishFailure($state, $early);
+                return $this->results()->finishFailure($state, $early);
             }
 
             // ── run ─────────────────────────────────────────────────────
             $early = $this->stageRun($state, $forced);
             if ($early !== null) {
-                return $this->finishFailure($state, $early, afterRun: true);
+                return $this->results()->finishFailure($state, $early, afterRun: true);
             }
 
             // ── post-run ────────────────────────────────────────────────
             $early = $this->stageValidateOutput($state, $forced);
             if ($early !== null) {
-                return $this->finishFailure($state, $early, afterRun: true, outputInvalid: true);
+                return $this->results()->finishFailure($state, $early, afterRun: true, outputInvalid: true);
             }
 
             $this->stageStoreIdempotency($state);
             $auditFailure = $this->stageRecordAudit($state, success: true);
-            $this->stageEmitEvents($state, success: true);
+            $this->results()->emitEvents($state, success: true);
 
             // Strict audit failure after successful domain run: surface error without
             // rolling back domain-owned commits (D-010 footgun when domain already committed).
             if ($auditFailure !== null) {
-                return $this->stageWireResponse($state, $auditFailure);
+                return $this->results()->wireResponse($state, $auditFailure);
             }
 
             $successMeta = [
@@ -173,7 +172,7 @@ final class InvokePipeline
                 }
             }
 
-            return $this->stageWireResponse($state, CapabilityResult::success(
+            return $this->results()->wireResponse($state, CapabilityResult::success(
                 $state->output,
                 $successMeta,
             ));
@@ -181,7 +180,7 @@ final class InvokePipeline
             $state->mark(PipelineStages::WIRE_RESPONSE);
             $this->observation->lastState = $state;
             $this->observation->lastStages = $state->stages;
-            $this->recordFailure($state->definition, $e->getMessage(), $state->caller, 'internal');
+            $this->results()->recordFailure($state->definition, $e->getMessage(), $state->caller, 'internal');
 
             return CapabilityResult::failure(
                 code: 'internal',
@@ -193,10 +192,20 @@ final class InvokePipeline
 
     public function finishEarly(CapabilityResult $result, ?InvokeState $state): CapabilityResult
     {
-        $this->observation->lastStages = $state?->stages ?? [];
-        $this->observation->lastState = $state;
+        return $this->results()->finishEarly($result, $state);
+    }
 
-        return $result;
+    /**
+     * Finish / wire / events collaborator (built per call so config mutations stay consistent).
+     */
+    private function results(): InvokeResultFinalizer
+    {
+        return new InvokeResultFinalizer(
+            observation: $this->observation,
+            auditStage: $this->auditStage,
+            idempotencyGuard: $this->idempotencyGuard,
+            eventsEnabled: $this->eventsEnabled,
+        );
     }
 
     // ── stages ────────────────────────────────────────────────────────────
@@ -789,148 +798,6 @@ final class InvokePipeline
         return $this->auditStage->record($state, $success, $failure);
     }
 
-    private function stageEmitEvents(InvokeState $state, bool $success, ?CapabilityResult $failure = null): void
-    {
-        $state->mark(PipelineStages::EMIT_EVENTS);
-
-        if (! $this->eventsEnabled) {
-            return;
-        }
-
-        // Bus events fire after domain run stage (never before domain commit by default).
-        if ($success) {
-            $event = new CapabilityInvoked(
-                capability: $state->definition->name,
-                caller: $state->caller,
-                data: $state->output,
-                meta: [
-                    'request_id' => $state->requestId,
-                    'stages' => $state->stages,
-                ],
-            );
-            $this->observation->invokedEvents[] = $event;
-        } elseif ($failure !== null) {
-            $this->recordFailure(
-                $state->definition,
-                $failure->error['message'] ?? 'failed',
-                $state->caller,
-                $failure->errorCode() ?? 'internal',
-            );
-        }
-    }
-
-    private function stageWireResponse(InvokeState $state, CapabilityResult $result): CapabilityResult
-    {
-        $state->mark(PipelineStages::WIRE_RESPONSE);
-        $state->result = $result;
-        $this->observation->lastState = $state;
-        $this->observation->lastStages = $state->stages;
-
-        return $result;
-    }
-
-    // ── finish helpers ────────────────────────────────────────────────────
-
-    private function finishFailure(
-        InvokeState $state,
-        CapabilityResult $result,
-        bool $afterRun = false,
-        bool $auditDeny = false,
-        bool $outputInvalid = false,
-    ): CapabilityResult {
-        // Store idempotency failure when key present and after start of processing.
-        if ($state->idempotencyKey && $state->context && $state->hasStage(PipelineStages::IDEMPOTENCY_LOOKUP) && ! $state->idempotentReplay) {
-            $this->idempotencyGuard->storeResult(
-                $state->definition,
-                $state->context,
-                $state->idempotencyKey,
-                (string) $state->requestHash,
-                $result,
-            );
-            if (! $state->hasStage(PipelineStages::STORE_IDEMPOTENCY)) {
-                $state->mark(PipelineStages::STORE_IDEMPOTENCY);
-            }
-        }
-
-        if ($auditDeny || $afterRun || $outputInvalid) {
-            $this->stageRecordAudit($state, success: false, failure: $result);
-            $this->stageEmitEvents($state, success: false, failure: $result);
-        } elseif ($outputInvalid || $afterRun) {
-            // already handled
-        } else {
-            // Pre-run failures still emit CapabilityFailed for observability on validation etc. optional —
-            // StageErrorMapping only requires error envelope; emit for output_invalid and domain always.
-            if (in_array($result->errorCode(), ['domain_error', 'output_invalid', 'internal'], true)) {
-                $this->stageEmitEvents($state, success: false, failure: $result);
-            }
-        }
-
-        if ($outputInvalid) {
-            // Ensure failure event recorded even if stages above skipped
-            if ($this->observation->failedEvents === [] || ! $state->hasStage(PipelineStages::EMIT_EVENTS)) {
-                if (! $state->hasStage(PipelineStages::EMIT_EVENTS)) {
-                    $this->stageEmitEvents($state, success: false, failure: $result);
-                }
-            }
-        }
-
-        return $this->stageWireResponse($state, $result->ok
-            ? $result
-            : CapabilityResult::failure(
-                code: (string) $result->errorCode(),
-                message: (string) ($result->error['message'] ?? 'failed'),
-                extra: array_diff_key($result->error ?? [], array_flip(['code', 'message'])),
-                meta: array_merge($result->meta, [
-                    'request_id' => $state->requestId,
-                    'stages' => $state->stages,
-                ]),
-            ));
-    }
-
-    private function finishApprovalRequired(InvokeState $state, CapabilityResult $result): CapabilityResult
-    {
-        if ($state->idempotencyKey && $state->context) {
-            $this->idempotencyGuard->storeResult(
-                $state->definition,
-                $state->context,
-                $state->idempotencyKey,
-                (string) $state->requestHash,
-                $result,
-                $state->approvalId,
-            );
-            $state->mark(PipelineStages::STORE_IDEMPOTENCY);
-        }
-
-        $this->stageRecordAudit($state, success: false, failure: $result);
-        $state->mark(PipelineStages::EMIT_EVENTS);
-
-        return $this->stageWireResponse($state, $result);
-    }
-
-    private function finishReplay(InvokeState $state, CapabilityResult $result): CapabilityResult
-    {
-        // Idempotent replay may skip full audit or mark replay (D-010).
-        $this->stageRecordAudit($state, success: $result->isOk(), failure: $result->isOk() ? null : $result);
-        $state->mark(PipelineStages::EMIT_EVENTS);
-        $meta = array_merge($result->meta, [
-            'idempotent_replay' => true,
-            'stages' => $state->stages,
-        ]);
-
-        if ($result->isOk()) {
-            $wired = CapabilityResult::success($result->data, $meta);
-        } else {
-            $wired = CapabilityResult::failure(
-                code: (string) $result->errorCode(),
-                message: (string) ($result->error['message'] ?? 'failed'),
-                extra: array_diff_key($result->error ?? [], array_flip(['code', 'message'])),
-                meta: $meta,
-            );
-        }
-
-        return $this->stageWireResponse($state, $wired);
-    }
-
     private function executeRun(CapabilityDefinition $definition, mixed $input, mixed $context = null): mixed
     {
         if (is_callable($definition->run)) {
@@ -959,30 +826,6 @@ final class InvokePipeline
         }
 
         throw new InvalidArgumentException('No run handler.');
-    }
-
-    private function recordFailure(
-        CapabilityDefinition $definition,
-        string $message,
-        string $caller,
-        string $code = 'output_invalid',
-    ): void {
-        $event = new CapabilityFailed(
-            capability: $definition->name,
-            code: $code,
-            message: $message,
-            caller: $caller,
-        );
-        $this->observation->failedEvents[] = $event;
-        $this->observation->logs[] = [
-            'level' => 'error',
-            'message' => $message,
-            'context' => [
-                'capability' => $definition->name,
-                'code' => $code,
-                'caller' => $caller,
-            ],
-        ];
     }
 
     /**

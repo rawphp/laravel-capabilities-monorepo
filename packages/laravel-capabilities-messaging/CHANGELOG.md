@@ -11,6 +11,11 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Changed
+
+- **Internal extract** — `TelegramUpdateParser` peels pure Update field extraction from
+  `ProcessTelegramUpdate` (pipeline behaviour unchanged; MSG-003 handler remains the public entry).
+
 ### Added
 
 - **Laravel 13 / illuminate 13 support** — all `illuminate/*` requirements allow `^11.0|^12.0|^13.0`.

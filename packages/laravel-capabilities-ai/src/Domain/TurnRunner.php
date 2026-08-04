@@ -86,11 +86,19 @@ final class TurnRunner
                     );
                 }
 
-                foreach ($toolCalls as $call) {
+                foreach ($toolCalls as $callIndex => $call) {
+                    if (! is_array($call)) {
+                        continue;
+                    }
                     $name = (string) ($call['name'] ?? '');
                     $payload = $call['arguments'] ?? $call['input'] ?? [];
                     if (! is_array($payload)) {
                         $payload = [];
+                    }
+                    $toolCallId = trim((string) ($call['id'] ?? ''));
+                    if ($toolCallId === '') {
+                        // Fail closed for correlation: clients must supply id; generate a round-local fallback.
+                        $toolCallId = 'tool_call_'.$rounds.'_'.((int) $callIndex + 1);
                     }
                     $result = $this->bus->invoke($name, $payload);
                     $toolContent = $this->encodeToolResult($name, $result);
@@ -101,11 +109,14 @@ final class TurnRunner
                             'payload' => $payload,
                             'ok' => $result->ok,
                             'error_code' => $result->errorCode(),
+                            'tool_call_id' => $toolCallId,
                         ],
                     ]);
                     $messages[] = [
                         'role' => 'tool',
                         'content' => $toolContent,
+                        'tool_call_id' => $toolCallId,
+                        'id' => $toolCallId,
                     ];
                 }
             }
