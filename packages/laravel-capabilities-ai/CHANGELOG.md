@@ -11,6 +11,10 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Added
+
+- **Anthropic multi-round tools (ORI-730):** `AnthropicLlmClient::supportsToolRounds()` is **true**. Package tool defs map to Anthropic `tools` (`name`, `description`, `input_schema`). Responses parse `tool_use` into `tool_calls` **with `id`**. Request encoding maps assistant `tool_calls` → `tool_use` blocks and `role=tool` → user `tool_result` blocks (`tool_use_id`). Empty API key / HTTP errors stay fail-closed. `TurnRunner` now re-appends the assistant `tool_calls` turn into the transcript before `role=tool` results so providers can correlate.
+
 ### Breaking (upgrade for hosts)
 
 #### Proposal accept/reject wire
@@ -46,7 +50,7 @@ Accept HTTP (from `AcceptOutcome.httpStatus` when set, else controller kind defa
 |--------|------------------------|--------|
 | Host custom (no method) | **Break** until implemented | PHP interface missing method |
 | `LlmClientDefaults` trait | **false** | Fail-closed default for hosts |
-| `AnthropicLlmClient` | **false** (trait) | Tools **not** advertised; bus tool path **refused before mutation** |
+| `AnthropicLlmClient` | **true** (override) | Tools advertised; multi-round `tool_result` / `tool_use` supported |
 | `FakeLlmClient` | **true** | Multi-round tool unit tests opt in |
 
 Honesty rule: return **true** only if the next `complete()` accepts tool-result messages (OpenAI-style `role=tool` or Anthropic `tool_result` blocks). Lying opens bus-then-crash after mutation.

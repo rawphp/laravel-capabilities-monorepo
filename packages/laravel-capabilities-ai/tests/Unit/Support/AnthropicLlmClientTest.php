@@ -11,15 +11,23 @@ use Rawphp\CapabilitiesAi\Support\AnthropicLlmClient;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 use Rawphp\CapabilitiesAi\Support\LlmClientDefaults;
 
+/**
+ * @return void
+ */
+function bootAnthropicHttp(): void
+{
+    $app = new Container;
+    Facade::setFacadeApplication($app);
+    $app->singleton('http', fn () => new HttpFactory);
+    Http::swap(new HttpFactory);
+}
+
 it('AnthropicLlmClient implements LlmClient', function () {
     expect(new AnthropicLlmClient('test-key'))->toBeInstanceOf(LlmClient::class);
 });
 
 it('complete success path with Http::fake without network', function () {
-    $app = new Container;
-    Facade::setFacadeApplication($app);
-    $app->singleton('http', fn () => new HttpFactory);
-    Http::swap(new HttpFactory);
+    bootAnthropicHttp();
 
     Http::fake([
         'api.anthropic.com/*' => Http::response([
@@ -44,16 +52,8 @@ it('testing default FakeLlmClient does not hit network', function () {
         ->and($fake->callCount)->toBe(1);
 });
 
-it('fails closed when messages include role=tool', function () {
-    $client = new AnthropicLlmClient(apiKey: 'test-key');
-    expect(fn () => $client->complete([
-        ['role' => 'user', 'content' => 'hi'],
-        ['role' => 'tool', 'content' => 'result'],
-    ]))->toThrow(RuntimeException::class, 'role=tool');
-});
-
-it('does not advertise multi-round tool support', function () {
-    expect((new AnthropicLlmClient('k'))->supportsToolRounds())->toBeFalse()
+it('advertises multi-round tool support', function () {
+    expect((new AnthropicLlmClient('k'))->supportsToolRounds())->toBeTrue()
         ->and(class_uses_recursive(AnthropicLlmClient::class))->toContain(
             LlmClientDefaults::class
         );
@@ -61,4 +61,225 @@ it('does not advertise multi-round tool support', function () {
 
 it('FakeLlmClient advertises multi-round tool support', function () {
     expect((new FakeLlmClient)->supportsToolRounds())->toBeTrue();
+});
+
+it('fails closed on empty API key', function () {
+    $client = new AnthropicLlmClient(apiKey: '');
+    expect(fn () => $client->complete([
+        ['role' => 'user', 'content' => 'hi'],
+    ]))->toThrow(RuntimeException::class, 'ANTHROPIC_API_KEY is empty');
+});
+
+it('fails closed on HTTP error', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'error' => ['message' => 'rate limited'],
+        ], 429),
+    ]);
+
+    $client = new AnthropicLlmClient('test-key');
+    expect(fn () => $client->complete([
+        ['role' => 'user', 'content' => 'hi'],
+    ]))->toThrow(RuntimeException::class, 'Anthropic API error: 429');
+});
+
+it('maps package tool defs to Anthropic tools with input_schema and parses tool_use id', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'content' => [
+                [
+                    'type' => 'tool_use',
+                    'id' => 'toolu_01abc',
+                    'name' => 'get_weather',
+                    'input' => ['city' => 'SF'],
+                ],
+            ],
+        ], 200),
+    ]);
+
+    $client = new AnthropicLlmClient('test-key');
+    $out = $client->complete(
+        [['role' => 'user', 'content' => 'weather?']],
+        [[
+            'name' => 'get_weather',
+            'description' => 'Look up weather',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'city' => ['type' => 'string'],
+                ],
+            ],
+        ]],
+    );
+
+    expect($out['tool_calls'] ?? null)->toBeArray()
+        ->and($out['tool_calls'])->toHaveCount(1)
+        ->and($out['tool_calls'][0]['id'] ?? null)->toBe('toolu_01abc')
+        ->and($out['tool_calls'][0]['name'] ?? null)->toBe('get_weather')
+        ->and($out['tool_calls'][0]['arguments'] ?? null)->toBe(['city' => 'SF']);
+
+    Http::assertSent(function ($request) {
+        $body = $request->data();
+        $tools = $body['tools'] ?? null;
+        if (! is_array($tools) || $tools === []) {
+            return false;
+        }
+        $tool = $tools[0];
+
+        return ($tool['name'] ?? null) === 'get_weather'
+            && ($tool['description'] ?? null) === 'Look up weather'
+            && isset($tool['input_schema'])
+            && is_array($tool['input_schema'])
+            && ($tool['input_schema']['type'] ?? null) === 'object'
+            && ! array_key_exists('parameters', $tool);
+    });
+});
+
+it('multi-round: tools advertised then tool_result then final text', function () {
+    bootAnthropicHttp();
+
+    $sequence = 0;
+    Http::fake(function ($request) use (&$sequence) {
+        $sequence++;
+        $body = $request->data();
+
+        if ($sequence === 1) {
+            $tools = $body['tools'] ?? [];
+            expect($tools)->not->toBeEmpty()
+                ->and($tools[0]['name'] ?? null)->toBe('demo.tool')
+                ->and($tools[0]['input_schema'] ?? null)->not->toBeNull();
+
+            return Http::response([
+                'content' => [
+                    [
+                        'type' => 'tool_use',
+                        'id' => 'toolu_round1',
+                        'name' => 'demo.tool',
+                        'input' => ['x' => 1],
+                    ],
+                ],
+            ], 200);
+        }
+
+        // Second request must include tool_result correlated by tool_use_id.
+        $messages = $body['messages'] ?? [];
+        $encoded = json_encode($messages);
+        expect($encoded)->toContain('tool_result')
+            ->and($encoded)->toContain('toolu_round1')
+            ->and($encoded)->toContain('tool_use');
+
+        $foundToolResult = false;
+        foreach ($messages as $msg) {
+            $content = $msg['content'] ?? null;
+            if (! is_array($content)) {
+                continue;
+            }
+            foreach ($content as $block) {
+                if (! is_array($block)) {
+                    continue;
+                }
+                if (($block['type'] ?? '') === 'tool_result'
+                    && ($block['tool_use_id'] ?? '') === 'toolu_round1'
+                ) {
+                    $foundToolResult = true;
+                    expect((string) ($block['content'] ?? ''))->toContain('ok');
+                }
+            }
+        }
+        expect($foundToolResult)->toBeTrue();
+
+        return Http::response([
+            'content' => [
+                ['type' => 'text', 'text' => 'final after tool'],
+            ],
+        ], 200);
+    });
+
+    $client = new AnthropicLlmClient('test-key');
+    $tools = [[
+        'name' => 'demo.tool',
+        'description' => 'Demo',
+        'parameters' => ['type' => 'object', 'properties' => []],
+    ]];
+
+    $first = $client->complete(
+        [['role' => 'user', 'content' => 'use the tool']],
+        $tools,
+    );
+
+    expect($first['tool_calls'][0]['id'] ?? null)->toBe('toolu_round1');
+
+    $second = $client->complete(
+        [
+            ['role' => 'user', 'content' => 'use the tool'],
+            [
+                'role' => 'assistant',
+                'content' => '',
+                'tool_calls' => [
+                    [
+                        'id' => 'toolu_round1',
+                        'name' => 'demo.tool',
+                        'arguments' => ['x' => 1],
+                    ],
+                ],
+            ],
+            [
+                'role' => 'tool',
+                'content' => '{"ok":true,"name":"demo.tool"}',
+                'tool_call_id' => 'toolu_round1',
+                'id' => 'toolu_round1',
+            ],
+        ],
+        $tools,
+    );
+
+    expect($second['content'] ?? null)->toBe('final after tool')
+        ->and($second)->not->toHaveKey('tool_calls');
+    Http::assertSentCount(2);
+});
+
+it('role=tool maps to tool_result without throwing', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'content' => [
+                ['type' => 'text', 'text' => 'ok'],
+            ],
+        ], 200),
+    ]);
+
+    $client = new AnthropicLlmClient('test-key');
+    $out = $client->complete([
+        ['role' => 'user', 'content' => 'hi'],
+        [
+            'role' => 'assistant',
+            'content' => '',
+            'tool_calls' => [
+                ['id' => 'toolu_x', 'name' => 't', 'arguments' => []],
+            ],
+        ],
+        [
+            'role' => 'tool',
+            'content' => 'result-body',
+            'tool_call_id' => 'toolu_x',
+            'id' => 'toolu_x',
+        ],
+    ]);
+
+    expect($out['content'])->toBe('ok');
+
+    Http::assertSent(function ($request) {
+        $body = json_encode($request->data());
+
+        return is_string($body)
+            && str_contains($body, 'tool_result')
+            && str_contains($body, 'toolu_x')
+            && str_contains($body, 'result-body')
+            && ! str_contains($body, '"role":"tool"');
+    });
 });

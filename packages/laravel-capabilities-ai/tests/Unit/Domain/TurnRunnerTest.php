@@ -246,6 +246,13 @@ it('TurnRunner tool-result messages carry matching tool_call_id from tool_calls 
     );
     $runner->run($turnUlid);
     expect(count($captured))->toBe(2);
+    $assistantMsgs = array_values(array_filter(
+        $captured[1],
+        static fn (array $m): bool => ($m['role'] ?? null) === 'assistant'
+            && isset($m['tool_calls']) && is_array($m['tool_calls']),
+    ));
+    expect($assistantMsgs)->toHaveCount(1);
+    expect($assistantMsgs[0]['tool_calls'][0]['id'] ?? null)->toBe('toolu_abc123');
     $toolMsgs = array_values(array_filter(
         $captured[1],
         static fn (array $m): bool => ($m['role'] ?? null) === 'tool',
