@@ -104,6 +104,27 @@ Wire contract changes on **non-proposal** chat HTTP routes (0.x pre-stable). Onl
 
 Authoritative mapping: `ChatController` (`history`, `showTurn`, `cancelTurn`, `turnEvents`, `destroyConversation`).
 
+#### Manual DI / constructor / job handle
+
+Constructor and job-handle DI tightened for hosts that construct services outside the package service provider (0.x pre-stable). Preferred path remains **`CapabilitiesAiServiceProvider` / `ContainerBindings`** — manual `new` is advanced. Full host upgrade: [docs/user-guide.md](docs/user-guide.md#upgrade-for-hosts-manual-di-constructor-job-handle).
+
+| Site | Old expectation | Current |
+|------|-----------------|--------|
+| **`TurnRunner` ctor** | `?ProgressStore $progress = null` (optional; often last/optional dep) | **`ProgressStore $progress` required** — 3rd ctor arg after `TurnClaim $claim`, `LlmClient $llm` (then optional context / tools / bus / …) |
+| **`ConversationService` ctor** | Silent default / optional progress (e.g. in-ctor `ArrayProgressStore`) | **`ProgressStore $progress` required** (2nd arg after `$dispatch`; no silent array default) |
+| **`RunTurnJob::handle`** | Empty `handle()` / no method injection | **`handle(TurnRunner $runner): void`** — queue workers **must** resolve via container method injection; empty `handle()` is no longer valid |
+| **`ProposalService` ctor** | Accept without readiness dep / frozen stamp | **Requires `IdempotencyReadiness $idempotency`** (2nd arg after `CapabilityBus`). SP default: **`AlwaysReadyIdempotency`**; hosts rebind a **live probe** evaluated at accept time |
+
+**Preferred path:** register `CapabilitiesAiServiceProvider` and resolve services from the container (`ContainerBindings` factories wire ProgressStore, AlwaysReady default, TurnRunner, ConversationService, ProposalService). Do not hand-roll `new TurnRunner(...)` / `new ConversationService(...)` / `new ProposalService(...)` unless you pass every required dep.
+
+**Client impact:**
+
+- Hosts constructing `TurnRunner` or `ConversationService` outside SP without an explicit `ProgressStore` **break** (type / argument count).
+- Queue workers or custom job runners that call `handle()` with no container method injection for `TurnRunner` **break**.
+- Hosts constructing `ProposalService` without `IdempotencyReadiness` **break**. Production hosts that need fail-closed accept must rebind `IdempotencyReadiness` (not rely on AlwaysReady forever).
+
+**Do not** restore nullable ProgressStore or change production DI to soften this — docs only catch hosts up to shipped code.
+
 ### Fixed
 
 - **Proposals `last_error` column (upgrade hosts):** `last_error` was added in-place to the create migration after some hosts had already run it. Hosts whose `capabilities_ai_proposals` table lacks the column will SQL-error on accept fail/success paths that write or clear `last_error`. Run **`php artisan migrate`** so package migration `2026_08_04_000001_add_last_error_to_capabilities_ai_proposals_table` applies (idempotent ALTER; greenfield installs already get the column from the create migration). VCS/path consumers — not Packagist-required yet.
