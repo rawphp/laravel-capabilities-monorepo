@@ -15,6 +15,10 @@ Implements core `ConversationIngress` / `ApprovalNotifier` contracts. **Never** 
 
 Requires [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities). Developed in the monorepo; consumers install **this package repo**.
 
+### Upgrade note (0.x) — CallbackHandler approvals
+
+`Telegram\CallbackHandler` third constructor argument is `?ApprovalGateway` (was `?ApprovalManager`). Runtime still accepts `ApprovalManager` because it implements the gateway; update static analysis / manual type-hints. Pre-accept/reject lookup uses gateway `find()` (lazy pending TTL expiry, aligned with HTTP accept). Full consumer impact: [CHANGELOG.md](CHANGELOG.md) Unreleased **Breaking**.
+
 | Doc | Where |
 |---|---|
 | User guide | [docs/user-guide.md](docs/user-guide.md) |

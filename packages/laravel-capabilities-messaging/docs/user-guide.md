@@ -120,6 +120,8 @@ Without a tight profile, you either fail closed (require_profile) or risk exposi
 
 Core owns approval state and HTTP accept/reject. Messaging supplies conversation-side notification behaviour implementing core’s `ApprovalNotifier` contract so humans can act from chat where wired. Domain execution still resumes through the core approval/registry path — not a second `run()` in messaging.
 
+Telegram approval **callbacks** are routed by `Telegram\CallbackHandler` through core’s `ApprovalGateway` (`find` / `accept` / `reject`) — not the concrete `ApprovalManager` type. Constructor third arg: `?ApprovalGateway`. Lazy pending TTL expiry runs on `find()` before accept/reject, so TTL-stale *pending* rows can return `already_handled` (expired), matching HTTP accept. See package [CHANGELOG](../CHANGELOG.md) Unreleased **Breaking** for the full consumer impact list (type-hint, TTL outcome, exception text).
+
 ## What this package must not do
 
 - Call Eloquent/domain `run()` outside the registry / agent tools
