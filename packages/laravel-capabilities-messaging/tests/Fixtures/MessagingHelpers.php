@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rawphp\CapabilitiesMessaging\Tests\Fixtures;
 
 use Rawphp\Capabilities\Approval\ApprovalManager;
+use Rawphp\Capabilities\Contracts\ApprovalGateway;
 use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
@@ -141,6 +142,10 @@ final class MessagingHelpers
         return new TelegramApprovalNotifier($config, $bot, self::signer($config));
     }
 
+    /**
+     * Concrete manager for tests that seed rows via request/store.
+     * Production messaging depends only on {@see ApprovalGateway}.
+     */
     public static function approvals(): ApprovalManager
     {
         $clock = new FixedClock(new \DateTimeImmutable('2026-01-15T12:00:00Z'));
@@ -151,7 +156,7 @@ final class MessagingHelpers
 
     public static function callbackHandler(
         ?IdentityLinker $identity = null,
-        ?ApprovalManager $approvals = null,
+        ?ApprovalGateway $approvals = null,
         ?TelegramCallbackSigner $signer = null,
     ): CallbackHandler {
         return new CallbackHandler(

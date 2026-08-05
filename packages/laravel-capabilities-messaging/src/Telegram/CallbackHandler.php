@@ -2,22 +2,23 @@
 
 namespace Rawphp\CapabilitiesMessaging\Telegram;
 
-use Rawphp\Capabilities\Approval\ApprovalManager;
+use Rawphp\Capabilities\Contracts\ApprovalGateway;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
 use RuntimeException;
 
 /**
- * Routes signed Telegram approval callbacks through ApprovalManager (D-006).
+ * Routes signed Telegram approval callbacks through {@see ApprovalGateway} (D-006).
  *
- * Never executes domain run() itself — only accept/reject on the shared SM.
+ * Never executes domain run() itself — only accept/reject on the shared SM via
+ * the core port (not concrete ApprovalManager).
  */
 final class CallbackHandler
 {
     public function __construct(
         private readonly TelegramCallbackSigner $signer,
         private readonly IdentityLinker $identity,
-        private readonly ?ApprovalManager $approvals = null,
+        private readonly ?ApprovalGateway $approvals = null,
     ) {}
 
     /**
@@ -53,11 +54,12 @@ final class CallbackHandler
         }
 
         if ($this->approvals === null) {
-            throw new RuntimeException('ApprovalManager is required to process callbacks.');
+            throw new RuntimeException('ApprovalGateway is required to process callbacks.');
         }
 
         $approvalId = (string) $callbackPayload['approval_id'];
-        $row = $this->approvals->store()->find($approvalId);
+        // Use gateway find() so lazy TTL expiry matches HTTP/accept paths (D-006).
+        $row = $this->approvals->find($approvalId);
         if ($row === null) {
             return ['status' => 'not_found', 'message' => 'unknown_approval'];
         }
