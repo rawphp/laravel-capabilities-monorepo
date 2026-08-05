@@ -159,8 +159,14 @@ it('covers CallbackHandler edges', function () {
     expect($handler->handle($p, ['id' => '1'])['status'])->toBe('not_found');
 
     $handlerNoMgr = new CallbackHandler(H::signer(), $identity, null);
-    expect(fn () => $handlerNoMgr->handle(H::signer()->sign('a', 'accept'), ['id' => '1']))
-        ->toThrow(RuntimeException::class);
+    $thrown = null;
+    try {
+        $handlerNoMgr->handle(H::signer()->sign('a', 'accept'), ['id' => '1']);
+    } catch (RuntimeException $e) {
+        $thrown = $e;
+    }
+    expect($thrown)->toBeInstanceOf(RuntimeException::class)
+        ->and($thrown->getMessage())->toMatch('/ApprovalGateway is required/');
 });
 
 it('covers ProcessTelegramUpdate logs tags and profile resolver', function () {
