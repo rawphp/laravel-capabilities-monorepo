@@ -36,7 +36,7 @@ it('edge: missing notifier channel is non-fatal for pending store [D-006]', func
     expect($h['row']['status'])->toBe('pending');
 });
 
-it('happy: deprecated TelegramApprovalNotifier dual-class is recording-only soft-landing [UR-045]', function () {
+it('happy: deprecated TelegramApprovalNotifier dual-class is recording-only soft-landing [UR-045 / ORI-771]', function () {
     expect(class_exists(TelegramApprovalNotifier::class))->toBeTrue();
 
     $n = new TelegramApprovalNotifier;
@@ -49,9 +49,62 @@ it('happy: deprecated TelegramApprovalNotifier dual-class is recording-only soft
     $n->editMessage(['id' => 'legacy-1'], 'expired');
     expect($n->edits())->toBe([['approval' => ['id' => 'legacy-1'], 'text' => 'expired']]);
 
-    $src = (string) file_get_contents((new ReflectionClass(TelegramApprovalNotifier::class))->getFileName());
+    $legacyRef = new ReflectionClass(TelegramApprovalNotifier::class);
+    expect($legacyRef->getParentClass()?->getName())->toBe(RecordingTelegramApprovalNotifier::class);
+
+    // Empty subclass: no methods declared on the soft-landing FQCN itself.
+    $ownMethods = array_values(array_filter(
+        $legacyRef->getMethods(),
+        static fn (ReflectionMethod $m): bool => $m->getDeclaringClass()->getName() === TelegramApprovalNotifier::class
+    ));
+    expect($ownMethods)->toBeEmpty();
+
+    $src = (string) file_get_contents((string) $legacyRef->getFileName());
     expect($src)->toContain('@deprecated')
         ->and($src)->toContain('RecordingTelegramApprovalNotifier')
+        ->and($src)->toMatch('/class\s+TelegramApprovalNotifier\s+extends\s+RecordingTelegramApprovalNotifier\s*\{\s*\}/s')
         ->and($src)->not->toContain('api.telegram.org')
-        ->and($src)->not->toContain('curl_');
+        ->and($src)->not->toContain('TelegramBot')
+        ->and($src)->not->toContain('Http::')
+        ->and($src)->not->toMatch('/\bcurl\b/i');
+
+    // Canonical recording double remains the preferred FQCN (not deprecated).
+    $canonicalSrc = (string) file_get_contents(
+        (string) (new ReflectionClass(RecordingTelegramApprovalNotifier::class))->getFileName()
+    );
+    expect($canonicalSrc)->not->toContain('@deprecated')
+        ->and($canonicalSrc)->not->toContain('api.telegram.org')
+        ->and($canonicalSrc)->not->toContain('TelegramBot')
+        ->and($canonicalSrc)->not->toContain('Http::')
+        ->and($canonicalSrc)->not->toMatch('/\bcurl\b/i');
+});
+
+it('happy: Approval/Notifiers sources have zero Bot API / HTTP client usage [ORI-771]', function () {
+    $dir = dirname((string) (new ReflectionClass(RecordingTelegramApprovalNotifier::class))->getFileName());
+    expect(is_dir($dir))->toBeTrue();
+
+    $hits = [];
+    foreach (glob($dir.'/*.php') ?: [] as $file) {
+        $body = (string) file_get_contents($file);
+        if (preg_match('/TelegramBot|\bcurl\b|Http::|api\.telegram/i', $body) === 1) {
+            $hits[] = basename($file);
+        }
+    }
+
+    expect($hits)->toBe([], 'Notifiers must not ship Bot/HTTP clients (files: '.implode(', ', $hits).')');
+});
+
+it('happy: matrix and metadata tests prefer RecordingTelegramApprovalNotifier FQCN [ORI-771]', function () {
+    $files = [
+        __DIR__.'/NotifierChannelMatrixTest.php',
+        __DIR__.'/MessagingMetadataTest.php',
+    ];
+
+    foreach ($files as $file) {
+        expect(is_file($file))->toBeTrue();
+        $src = (string) file_get_contents($file);
+        expect($src)->toContain('RecordingTelegramApprovalNotifier')
+            ->and($src)->not->toMatch('/new\s+TelegramApprovalNotifier\b/')
+            ->and($src)->not->toMatch('/use\s+Rawphp\\\\Capabilities\\\\Approval\\\\Notifiers\\\\TelegramApprovalNotifier\b/');
+    }
 });
