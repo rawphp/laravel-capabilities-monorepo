@@ -3,16 +3,14 @@
 namespace Rawphp\Capabilities\Approval\Notifiers;
 
 use Rawphp\Capabilities\Contracts\ApprovalNotifier;
-use Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier;
 
 /**
  * In-memory recording stub for Telegram-shaped approval notifications.
  *
  * **Not** a production Bot API client (D-007). Core owns only the
  * {@see ApprovalNotifier} contract and this recording double for unit tests /
- * wiring. The real channel adapter lives in
- * `rawphp/laravel-capabilities-messaging` as
- * {@see TelegramApprovalNotifier}.
+ * wiring. The real channel adapter lives in the sibling package
+ * `rawphp/laravel-capabilities-messaging` (production Telegram approval notifier).
  */
 class RecordingTelegramApprovalNotifier implements ApprovalNotifier
 {
