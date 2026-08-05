@@ -326,3 +326,96 @@ it('constructor max_tokens override is sent in outbound payload', function () {
         return ($body['max_tokens'] ?? null) === 2048;
     });
 });
+
+it('passes multimodal user content blocks through to Messages API (vision)', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'content' => [
+                ['type' => 'text', 'text' => 'I see a meal photo'],
+            ],
+        ], 200),
+    ]);
+
+    $imageBlocks = [
+        ['type' => 'text', 'text' => 'What is this meal?'],
+        [
+            'type' => 'image',
+            'source' => [
+                'type' => 'base64',
+                'media_type' => 'image/jpeg',
+                'data' => 'ZmFrZS1pbWFnZS1ieXRlcw==',
+            ],
+        ],
+    ];
+
+    $client = new AnthropicLlmClient('test-key');
+    $out = $client->complete([
+        ['role' => 'user', 'content' => $imageBlocks],
+    ]);
+
+    expect($out['content'])->toBe('I see a meal photo');
+
+    Http::assertSent(function ($request) use ($imageBlocks) {
+        $body = $request->data();
+        $messages = $body['messages'] ?? null;
+        if (! is_array($messages) || $messages === []) {
+            return false;
+        }
+        $content = $messages[0]['content'] ?? null;
+        if (! is_array($content)) {
+            return false;
+        }
+        // Must not be cast to a string placeholder.
+        if (is_string($content)) {
+            return false;
+        }
+        $hasText = false;
+        $hasImage = false;
+        foreach ($content as $block) {
+            if (! is_array($block)) {
+                continue;
+            }
+            if (($block['type'] ?? '') === 'text' && ($block['text'] ?? '') === 'What is this meal?') {
+                $hasText = true;
+            }
+            if (($block['type'] ?? '') === 'image') {
+                $source = $block['source'] ?? null;
+                if (is_array($source)
+                    && ($source['type'] ?? '') === 'base64'
+                    && ($source['media_type'] ?? '') === 'image/jpeg'
+                    && ($source['data'] ?? '') === 'ZmFrZS1pbWFnZS1ieXRlcw=='
+                ) {
+                    $hasImage = true;
+                }
+            }
+        }
+
+        return $hasText && $hasImage && $content === $imageBlocks;
+    });
+});
+
+it('string-only user content is still sent as a string (no regression)', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'content' => [
+                ['type' => 'text', 'text' => 'ok'],
+            ],
+        ], 200),
+    ]);
+
+    $client = new AnthropicLlmClient('test-key');
+    $client->complete([
+        ['role' => 'user', 'content' => 'plain text turn'],
+    ]);
+
+    Http::assertSent(function ($request) {
+        $body = $request->data();
+        $content = $body['messages'][0]['content'] ?? null;
+
+        return is_string($content) && $content === 'plain text turn';
+    });
+});

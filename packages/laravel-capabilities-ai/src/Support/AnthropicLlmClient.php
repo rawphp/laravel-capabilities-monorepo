@@ -85,9 +85,11 @@ final class AnthropicLlmClient implements LlmClient
                 continue;
             }
 
+            // User (and any non-system/tool/assistant role): pass multimodal block
+            // arrays through for vision; stringify pure text only.
             $chat[] = [
                 'role' => 'user',
-                'content' => (string) ($m['content'] ?? ''),
+                'content' => $this->userContent($m['content'] ?? ''),
             ];
         }
 
@@ -196,6 +198,23 @@ final class AnthropicLlmClient implements LlmClient
         }
 
         return $mapped;
+    }
+
+    /**
+     * Map package user content to Anthropic Messages API content.
+     *
+     * List of blocks (text / image / …) is passed through unchanged so hosts can
+     * send vision payloads. Scalars are stringified for the text-only path.
+     *
+     * @return string|list<array<string, mixed>>
+     */
+    private function userContent(mixed $content): string|array
+    {
+        if (is_array($content)) {
+            return $content;
+        }
+
+        return (string) $content;
     }
 
     /**
