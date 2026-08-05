@@ -31,7 +31,7 @@ Sibling packages and thin adapters should depend only on this **allowlist** — 
 
 **Approval callbacks (messaging):** type-hint `ApprovalGateway` (find / accept / reject). The service provider aliases the same singleton as `ApprovalManager` — hosts may still inject `ApprovalManager` for resume/ops APIs that stay inside core.
 
-**Telegram notifiers:** production Bot API notifier lives in **messaging**. Core ships only `Approval\Notifiers\RecordingTelegramApprovalNotifier` (in-memory double, no network).
+**Telegram notifiers:** production Bot API notifier lives in **messaging**. Core ships `Approval\Notifiers\RecordingTelegramApprovalNotifier` (in-memory double, no network). Deprecated alias: `Approval\Notifiers\TelegramApprovalNotifier` (same recording double).
 
 | Doc | Where |
 |---|---|

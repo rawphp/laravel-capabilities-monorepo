@@ -13,7 +13,7 @@ use Rawphp\Capabilities\Contracts\ApprovalNotifier;
  * `rawphp/laravel-capabilities-messaging` as
  * {@see \Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier}.
  */
-final class RecordingTelegramApprovalNotifier implements ApprovalNotifier
+class RecordingTelegramApprovalNotifier implements ApprovalNotifier
 {
     /** @var list<array<string, mixed>> */
     private array $notified = [];
