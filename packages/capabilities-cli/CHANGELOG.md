@@ -16,11 +16,15 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 - **`auth status --json`** — D-018 envelope with `profile`, `base_url`, `logged_in` (never the token).
 - **`catalog --include-schemas`** — list/JSON with `input_schema` / `output_schema` in one round-trip for agents.
 - **`run --human`** documented in help; short one-line stderr summary (e.g. `ok get_today_meals date=…`) instead of dumping full data.
+- **`run <name> --help`** — schema-first capability help (fields + pass mode), same idea as domain/verb `--help`.
 
 ### Changed
 
 - **MCP `tools/call` errors** — `error.data` uses wire keys (`code`, `message`, `violations`, …) not Go field names (`Code`, `HTTPStatus`); raw HTTP body is not embedded.
-- **`approvals` without action/id** — prints usage and exits **0** (was exit **2**).
+- **`approvals` without action** — prints usage and exits **0**. **`approvals accept|reject` without `<id>`** — clear error exit **2** (no silent full help).
+- **`auth login|logout|status --help`** — help wins before flag requirements or logout side effects (was requiring `--base-url` / logging out).
+- **Local validation stderr** — includes field summary, e.g. `local schema validation failed (date: is required)`.
+- **`describe` not-found** — prints machine error envelope on stdout (parity with domain not_found).
 - **Root command exit code** — bare `capabilities` (no subcommand) prints usage and
   exits **0** (was exit **2** / `validation_failed`). Update scripts that treated a
   bare invoke as failure.

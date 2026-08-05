@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/rawphp/capabilities-cli/internal/api"
@@ -57,11 +58,14 @@ func TestValidateLocalTypesAndArrays(t *testing.T) {
 	if err := ValidateLocal(schema, []byte(`{}`)); err == nil {
 		t.Fatal()
 	}
-	// ValidationError.Error message path
+	// ValidationError.Error message path includes field-level summary for humans.
 	err := ValidateLocal(schema, []byte(`{}`))
 	ve := err.(*ValidationError)
 	if ve.Error() == "" {
 		t.Fatal()
+	}
+	if !strings.Contains(ve.Error(), "is required") || !strings.Contains(ve.Error(), "s:") {
+		t.Fatalf("stderr-facing error should name the field: %q", ve.Error())
 	}
 	ve2 := &ValidationError{}
 	if ve2.Error() != "validation_failed" {

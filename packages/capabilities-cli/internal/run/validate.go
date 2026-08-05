@@ -15,10 +15,26 @@ type ValidationError struct {
 }
 
 func (e *ValidationError) Error() string {
-	if e.Message != "" {
-		return e.Message
+	base := e.Message
+	if base == "" {
+		base = "validation_failed"
 	}
-	return "validation_failed"
+	if len(e.Violations) == 0 {
+		return base
+	}
+	// Surface field-level failures on stderr so humans need not parse the JSON envelope.
+	parts := make([]string, 0, len(e.Violations))
+	for _, v := range e.Violations {
+		if v.Field != "" {
+			parts = append(parts, v.Field+": "+v.Message)
+		} else if v.Message != "" {
+			parts = append(parts, v.Message)
+		}
+	}
+	if len(parts) == 0 {
+		return base
+	}
+	return base + " (" + strings.Join(parts, "; ") + ")"
 }
 
 // ValidateLocal validates input against a portable JSON Schema subset.
@@ -45,7 +61,7 @@ func ValidateLocal(schemaJSON, inputJSON []byte) error {
 	if len(viol) > 0 {
 		return &ValidationError{
 			Message:    "local schema validation failed",
-			Violations: viol,
+			Violations: viol, // Error() appends "field: message" for human stderr
 		}
 	}
 	return nil

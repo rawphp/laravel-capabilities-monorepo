@@ -42,6 +42,12 @@ func cmdDescribe(env Env, args []string) int {
 	entry, _, err := svc.Describe(context.Background(), name)
 	if err != nil {
 		if se, ok := err.(*api.StructuredError); ok {
+			// Match domain not_found: machine envelope on stdout + short stderr line.
+			if len(se.Body) > 0 {
+				fmt.Fprintln(env.Stdout, string(se.Body))
+			} else {
+				writeStructuredErrorStdout(env, se)
+			}
 			fmt.Fprintln(env.Stderr, se.Error())
 			return se.ExitCode
 		}
@@ -61,8 +67,42 @@ func cmdDescribe(env Env, args []string) int {
 	return api.ExitOK
 }
 
+func writeStructuredErrorStdout(env Env, se *api.StructuredError) {
+	envBody := api.ErrorEnvelope{
+		OK: false,
+		Error: &api.ErrorBody{
+			Code:       se.Code,
+			Message:    se.Message,
+			Violations: se.Violations,
+			ApprovalID: se.ApprovalID,
+			Retryable:  se.Retryable,
+			RequestID:  se.RequestID,
+		},
+	}
+	b, _ := json.MarshalIndent(envBody, "", "  ")
+	fmt.Fprintln(env.Stdout, string(b))
+}
+
 func cmdRun(env Env, args []string) int {
+	// Help before network: generic run help, or schema-first help when a name is given
+	// (parity with `capabilities <domain> <verb> --help`).
 	if wantsHelp(args) {
+		profile, base, rest := profileAndBase(args)
+		jsonOut, rest := flagBool(rest, "--json")
+		noCache, rest := flagBool(rest, "--no-cache")
+		rest = stripHelpFlags(rest)
+		// Drop other run flags so the first leftover is the capability name.
+		_, rest = flagValue(rest, "--input")
+		_, rest = flagValue(rest, "--input-file")
+		_, rest = flagValue(rest, "--idempotency-key")
+		_, rest = flagValue(rest, "--tenant")
+		_, rest = flagBool(rest, "--human")
+		_, rest = flagBool(rest, "--retry-last")
+		name, rest := takeFirstPositional(rest)
+		_ = rest
+		if name != "" {
+			return writeCapabilityHelp(env, "", "", name, jsonOut, profile, base, noCache)
+		}
 		fmt.Fprint(env.Stdout, CommandHelp("run"))
 		return api.ExitOK
 	}
