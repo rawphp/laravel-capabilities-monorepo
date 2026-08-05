@@ -29,7 +29,16 @@ Empty PHP arrays that represent JSON `{}` (and empty list-shaped `[]` when the s
 - **Consumer guidance:** Prefer `CapabilityRegistry` / facade audit APIs (`withAuditWriter`, `withAuditConfig`, `throwOnAuditFailure`, `auditMode()`, …). Do **not** construct `InvokePipeline` with legacy audit kwargs or read `$pipeline->auditWriter` (etc.). In-repo only the registry builds the pipeline; sibling packages do not.
 - **Distinct from** the JsonSchema empty-object required-enforcement break above.
 
+### Added
+
+- `Contracts\ApprovalGateway` — sibling-safe port (`find` / `accept` / `reject`). `ApprovalManager` implements it; container plan + service provider alias the same singleton (mirrors `CapabilityBus`).
+- README **Public surface for sibling packages** — Contracts + public DTOs allowlist (`CapabilityResult`, `CapabilityContext`, `CapabilityData`).
+
 ### Changed
+
+#### Telegram recording notifier rename (0.x; production Telegram is messaging)
+
+- Renamed `Approval\Notifiers\TelegramApprovalNotifier` → `RecordingTelegramApprovalNotifier` so core does not present a production Bot API type. Real channel notifier: messaging package `TelegramApprovalNotifier`. No Bot API / network in core.
 
 #### Internal extract — approval / pipeline collaborators
 

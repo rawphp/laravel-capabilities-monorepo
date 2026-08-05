@@ -18,6 +18,21 @@ Define a capability once (schema, authorization, `run`, approval, audit) and exp
 **Siblings (optional):** [messaging](https://github.com/rawphp/laravel-capabilities-messaging) · [AI turns](https://github.com/rawphp/laravel-capabilities-ai) · [product CLI](https://github.com/rawphp/capabilities-cli).  
 **Umbrella:** developed in [laravel-capabilities-monorepo](https://github.com/rawphp/laravel-capabilities-monorepo) — apps install **this repo / Composer package**, not the monorepo.
 
+### Public surface for sibling packages (0.x)
+
+Sibling packages and thin adapters should depend only on this **allowlist** — not on core internals (`Approval\ApprovalManager`, `Pipeline\*`, `Registry\*`, `Persistence\*`, etc.). Architecture unit tests in messaging/AI enforce the same rule.
+
+| Layer | Import | Role |
+|---|---|---|
+| **Contracts** | `Rawphp\Capabilities\Contracts\*` | Ports: `CapabilityBus`, `ApprovalGateway`, conversation ingress/reply/identity, stores, `ApprovalNotifier`, … |
+| **Public DTOs** | `Support\CapabilityResult` | Invoke / accept / reject outcomes |
+| | `Support\CapabilityContext` | Actor, caller, tenant, options for invoke |
+| | `Support\CapabilityData` | Typed capability input/output base (when used) |
+
+**Approval callbacks (messaging):** type-hint `ApprovalGateway` (find / accept / reject). The service provider aliases the same singleton as `ApprovalManager` — hosts may still inject `ApprovalManager` for resume/ops APIs that stay inside core.
+
+**Telegram notifiers:** production Bot API notifier lives in **messaging**. Core ships only `Approval\Notifiers\RecordingTelegramApprovalNotifier` (in-memory double, no network).
+
 | Doc | Where |
 |---|---|
 | User guide (this package) | [docs/user-guide.md](docs/user-guide.md) |
