@@ -210,3 +210,12 @@ it('happy: pending past TTL via ApprovalGateway find returns already_handled [D-
     expect($r['status'])->toBe('already_handled')
         ->and($approvals->find('st-lazy-ttl')['status'])->toBe('expired');
 });
+
+it('fail: null ApprovalGateway throws ApprovalGateway is required [D-006]', function () {
+    $identity = H::identity();
+    $identity->link('42', 'u1');
+    $handler = new CallbackHandler(H::signer(), $identity, null);
+
+    expect(fn () => $handler->handle(H::signer()->sign('st-null-gw', 'accept'), ['id' => '42']))
+        ->toThrow(RuntimeException::class, 'ApprovalGateway is required');
+});
