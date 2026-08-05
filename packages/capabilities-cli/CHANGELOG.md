@@ -13,12 +13,27 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Changed
 
+- **Root command exit code** — bare `capabilities` (no subcommand) prints usage and
+  exits **0** (was exit **2** / `validation_failed`). Update scripts that treated a
+  bare invoke as failure.
+- **MCP stdio bridge** — `tools/list` requests catalog with `include_schemas=1`; tools
+  always include a non-null `inputSchema` object (empty object when the server omits
+  schema). MCP `notifications/*` (e.g. `initialized`) are ignored without a JSON-RPC
+  error reply.
+- **HTTP error messages** — non-JSON/HTML API error bodies are summarized in the
+  user-facing message instead of dumping full HTML (raw body still available on the
+  structured error).
+- **Login profile safety** — failed device/browser login no longer overwrites an
+  existing profile `base_url`; empty-token PAT login no longer writes `base_url` before
+  reject.
 - **Internal split** — CLI command handlers moved from monolithic `cmd/capabilities/cli.go`
   into focused files (`cmd_auth.go`, `cmd_catalog.go`, `cmd_domain.go`, `cmd_run.go`,
-  `cmd_mcp.go`). Public binary behaviour and `Execute` dispatch unchanged.
+  `cmd_mcp.go`).
 
 ### Added
 
+- **Leading global flags** — `--profile=NAME` and `--base-url=URL` may appear before the
+  subcommand (e.g. `capabilities --profile=P catalog`), same effect as trailing flags.
 - Complete user documentation set: `docs/README.md` index, expanded
   `docs/user-guide.md`, `docs/authentication.md` (multi-project **profiles**),
   `docs/agents.md` (envelopes, exit codes, MCP). README links Install + docs.
