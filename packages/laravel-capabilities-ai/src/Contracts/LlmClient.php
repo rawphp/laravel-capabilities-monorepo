@@ -33,7 +33,17 @@ interface LlmClient
     public function supportsToolRounds(): bool;
 
     /**
-     * @param  list<array{role: string, content: string, tool_call_id?: string, id?: string}>  $messages
+     * @param  list<array{
+     *     role: string,
+     *     content: string|list<array<string, mixed>>,
+     *     tool_call_id?: string,
+     *     id?: string,
+     *     tool_calls?: list<array<string, mixed>>
+     * }>  $messages
+     *     User/assistant `content` may be a plain string or a list of provider content
+     *     blocks (e.g. Anthropic text + image base64). Hosts hydrate image bytes into
+     *     context; this package does not store or fetch attachments. Tool messages still
+     *     use string (or JSON-encoded) content with `tool_call_id` / `id` correlation.
      * @param  list<array<string, mixed>>  $tools
      * @return array{
      *     content?: string,
