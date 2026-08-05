@@ -90,3 +90,69 @@ it('src has no Gerber product references', function () {
 it('src has no PrimaryAim product references', function () {
     expect(scanAiSrc('/\bPrimaryAim\b/'))->toBeEmpty();
 });
+
+/**
+ * @return list<string> "FQCN @ relativePath"
+ */
+function aiCoreUseImports(): array
+{
+    $hits = [];
+    $src = aiPackageSrc();
+    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($src));
+    foreach ($it as $file) {
+        if (! $file->isFile() || $file->getExtension() !== 'php') {
+            continue;
+        }
+        $contents = (string) file_get_contents($file->getPathname());
+        if (preg_match_all('/^use\s+(Rawphp\\\\Capabilities\\\\[^;]+);/m', $contents, $m)) {
+            foreach ($m[1] as $fqcn) {
+                $hits[] = $fqcn.' @ '.str_replace($src.'/', '', $file->getPathname());
+            }
+        }
+    }
+
+    return $hits;
+}
+
+function aiCoreImportAllowed(string $fqcn): bool
+{
+    if (str_starts_with($fqcn, 'Rawphp\\Capabilities\\Contracts\\')) {
+        return true;
+    }
+
+    return in_array($fqcn, [
+        'Rawphp\\Capabilities\\Support\\CapabilityResult',
+        'Rawphp\\Capabilities\\Support\\CapabilityContext',
+        'Rawphp\\Capabilities\\Support\\CapabilityData',
+    ], true);
+}
+
+it('happy: AI src core imports are only Contracts and public DTOs [D-007]', function () {
+    $imports = aiCoreUseImports();
+    expect($imports)->not->toBeEmpty();
+
+    $denied = [];
+    foreach ($imports as $entry) {
+        [$fqcn] = explode(' @ ', $entry, 2);
+        if (! aiCoreImportAllowed($fqcn)) {
+            $denied[] = $entry;
+        }
+    }
+
+    expect($denied)->toBeEmpty(
+        'Forbidden core imports in AI src: '.implode('; ', $denied)
+    );
+});
+
+it('fail: AI src must not import concrete Approval Pipeline Registry Persistence [D-007]', function () {
+    $imports = aiCoreUseImports();
+    foreach ($imports as $entry) {
+        $fqcn = explode(' @ ', $entry, 2)[0];
+        expect($fqcn)->not->toStartWith('Rawphp\\Capabilities\\Approval\\')
+            ->and($fqcn)->not->toStartWith('Rawphp\\Capabilities\\Pipeline\\')
+            ->and($fqcn)->not->toStartWith('Rawphp\\Capabilities\\Registry\\')
+            ->and($fqcn)->not->toStartWith('Rawphp\\Capabilities\\Persistence\\')
+            ->and($fqcn)->not->toStartWith('Rawphp\\Capabilities\\Http\\')
+            ->and($fqcn)->not->toStartWith('Rawphp\\Capabilities\\Adapters\\');
+    }
+});
