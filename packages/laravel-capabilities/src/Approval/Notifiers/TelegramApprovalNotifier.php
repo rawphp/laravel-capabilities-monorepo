@@ -12,6 +12,4 @@ namespace Rawphp\Capabilities\Approval\Notifiers;
  * type-compatible with {@see RecordingTelegramApprovalNotifier} but is
  * recording-only — **no** Bot API / network in core (D-007).
  */
-class TelegramApprovalNotifier extends RecordingTelegramApprovalNotifier
-{
-}
+class TelegramApprovalNotifier extends RecordingTelegramApprovalNotifier {}

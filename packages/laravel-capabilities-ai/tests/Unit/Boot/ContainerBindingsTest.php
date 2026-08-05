@@ -6,6 +6,10 @@ declare(strict_types=1);
  * UR-017 / ORI-645: pure ContainerBindings plan (no Laravel app, no DB).
  */
 
+use Illuminate\Container\Container;
+use Illuminate\Http\Client\Factory;
+use Illuminate\Support\Facades\Facade;
+use Illuminate\Support\Facades\Http;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Support\CapabilityResult;
@@ -101,13 +105,13 @@ it('makeLlmClient returns AnthropicLlmClient for anthropic driver', function () 
 });
 
 it('makeLlmClient wires anthropic max_tokens from config into outbound payload', function () {
-    $app = new \Illuminate\Container\Container;
-    \Illuminate\Support\Facades\Facade::setFacadeApplication($app);
-    $app->singleton('http', fn () => new \Illuminate\Http\Client\Factory);
-    \Illuminate\Support\Facades\Http::swap(new \Illuminate\Http\Client\Factory);
+    $app = new Container;
+    Facade::setFacadeApplication($app);
+    $app->singleton('http', fn () => new Factory);
+    Http::swap(new Factory);
 
-    \Illuminate\Support\Facades\Http::fake([
-        'example.test/*' => \Illuminate\Support\Facades\Http::response([
+    Http::fake([
+        'example.test/*' => Http::response([
             'content' => [
                 ['type' => 'text', 'text' => 'ok'],
             ],
@@ -128,7 +132,7 @@ it('makeLlmClient wires anthropic max_tokens from config into outbound payload',
 
     $client->complete([['role' => 'user', 'content' => 'hi']]);
 
-    \Illuminate\Support\Facades\Http::assertSent(function ($request) {
+    Http::assertSent(function ($request) {
         $body = $request->data();
 
         return ($body['max_tokens'] ?? null) === 2048;
@@ -136,13 +140,13 @@ it('makeLlmClient wires anthropic max_tokens from config into outbound payload',
 });
 
 it('makeLlmClient anthropic default max_tokens is 64000 from package config', function () {
-    $app = new \Illuminate\Container\Container;
-    \Illuminate\Support\Facades\Facade::setFacadeApplication($app);
-    $app->singleton('http', fn () => new \Illuminate\Http\Client\Factory);
-    \Illuminate\Support\Facades\Http::swap(new \Illuminate\Http\Client\Factory);
+    $app = new Container;
+    Facade::setFacadeApplication($app);
+    $app->singleton('http', fn () => new Factory);
+    Http::swap(new Factory);
 
-    \Illuminate\Support\Facades\Http::fake([
-        'api.anthropic.com/*' => \Illuminate\Support\Facades\Http::response([
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
             'content' => [
                 ['type' => 'text', 'text' => 'ok'],
             ],
@@ -160,7 +164,7 @@ it('makeLlmClient anthropic default max_tokens is 64000 from package config', fu
 
     $client->complete([['role' => 'user', 'content' => 'hi']]);
 
-    \Illuminate\Support\Facades\Http::assertSent(function ($request) {
+    Http::assertSent(function ($request) {
         $body = $request->data();
 
         return ($body['max_tokens'] ?? null) === 64000;

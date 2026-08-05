@@ -4,7 +4,10 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Approval\Notifiers\RecordingTelegramApprovalNotifier;
+use Rawphp\Capabilities\Contracts\ApprovalNotifier;
 use Rawphp\Capabilities\Tests\Fixtures\ArchitectureHelpers as A;
+use Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier;
 
 it('happy: core has ConversationIngress ConversationReply ConversationIdentity ApprovalNotifier contracts [D-007]', function () {
     A::conversationContractsExist();
@@ -45,20 +48,20 @@ it('fail: core does not require TELEGRAM_BOT_TOKEN [D-021]', function () {
 });
 
 it('happy: core ships recording Telegram notifier stub only; production name lives in messaging [D-007]', function () {
-    expect(class_exists(\Rawphp\Capabilities\Approval\Notifiers\RecordingTelegramApprovalNotifier::class))->toBeTrue();
+    expect(class_exists(RecordingTelegramApprovalNotifier::class))->toBeTrue();
     // Soft-landing dual-class (UR-045 / ORI-752): deprecated alias of the recording double.
-    expect(class_exists(\Rawphp\Capabilities\Approval\Notifiers\TelegramApprovalNotifier::class))->toBeTrue();
-    expect(class_exists(\Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier::class))->toBeTrue();
+    expect(class_exists(Rawphp\Capabilities\Approval\Notifiers\TelegramApprovalNotifier::class))->toBeTrue();
+    expect(class_exists(TelegramApprovalNotifier::class))->toBeTrue();
 
     $coreStub = (string) file_get_contents(
-        (new ReflectionClass(\Rawphp\Capabilities\Approval\Notifiers\RecordingTelegramApprovalNotifier::class))->getFileName()
+        (new ReflectionClass(RecordingTelegramApprovalNotifier::class))->getFileName()
     );
     expect($coreStub)->not->toContain('api.telegram.org')
         ->and($coreStub)->not->toContain('curl_')
         ->and($coreStub)->toContain('recording');
 
     $deprecated = (string) file_get_contents(
-        (new ReflectionClass(\Rawphp\Capabilities\Approval\Notifiers\TelegramApprovalNotifier::class))->getFileName()
+        (new ReflectionClass(Rawphp\Capabilities\Approval\Notifiers\TelegramApprovalNotifier::class))->getFileName()
     );
     expect($deprecated)->toContain('@deprecated')
         ->and($deprecated)->not->toContain('api.telegram.org')
@@ -66,7 +69,7 @@ it('happy: core ships recording Telegram notifier stub only; production name liv
         ->and($deprecated)->not->toContain('Http::')
         ->and($deprecated)->not->toContain('Guzzle');
 
-    $instance = new \Rawphp\Capabilities\Approval\Notifiers\TelegramApprovalNotifier;
-    expect($instance)->toBeInstanceOf(\Rawphp\Capabilities\Approval\Notifiers\RecordingTelegramApprovalNotifier::class)
-        ->and($instance)->toBeInstanceOf(\Rawphp\Capabilities\Contracts\ApprovalNotifier::class);
+    $instance = new Rawphp\Capabilities\Approval\Notifiers\TelegramApprovalNotifier;
+    expect($instance)->toBeInstanceOf(RecordingTelegramApprovalNotifier::class)
+        ->and($instance)->toBeInstanceOf(ApprovalNotifier::class);
 });

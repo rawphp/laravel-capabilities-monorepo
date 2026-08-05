@@ -3,6 +3,7 @@
 namespace Rawphp\Capabilities\Approval\Notifiers;
 
 use Rawphp\Capabilities\Contracts\ApprovalNotifier;
+use Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier;
 
 /**
  * In-memory recording stub for Telegram-shaped approval notifications.
@@ -11,7 +12,7 @@ use Rawphp\Capabilities\Contracts\ApprovalNotifier;
  * {@see ApprovalNotifier} contract and this recording double for unit tests /
  * wiring. The real channel adapter lives in
  * `rawphp/laravel-capabilities-messaging` as
- * {@see \Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier}.
+ * {@see TelegramApprovalNotifier}.
  */
 class RecordingTelegramApprovalNotifier implements ApprovalNotifier
 {

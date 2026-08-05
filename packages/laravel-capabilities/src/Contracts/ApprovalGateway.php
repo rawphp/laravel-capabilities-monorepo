@@ -2,13 +2,14 @@
 
 namespace Rawphp\Capabilities\Contracts;
 
+use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Support\CapabilityResult;
 
 /**
  * Sibling-safe port for approval accept / reject / lookup (D-006).
  *
  * Conversation surfaces (messaging callbacks, etc.) must depend on this
- * contract only — never on concrete {@see \Rawphp\Capabilities\Approval\ApprovalManager}.
+ * contract only — never on concrete {@see ApprovalManager}.
  * Host apps may still type-hint ApprovalManager for resume/ops APIs that
  * stay inside core.
  */

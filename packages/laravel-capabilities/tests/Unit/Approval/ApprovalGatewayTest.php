@@ -65,6 +65,6 @@ it('happy: service provider aliases ApprovalGateway to ApprovalManager singleton
         (new ReflectionClass(CapabilitiesServiceProvider::class))->getFileName()
     );
     expect($src)->toContain('ApprovalGateway::class')
-        ->and($src)->toContain("alias(ApprovalManager::class, ApprovalGateway::class)")
+        ->and($src)->toContain('alias(ApprovalManager::class, ApprovalGateway::class)')
         ->and($src)->toContain("alias(ApprovalManager::class, 'ApprovalGateway')");
 });

@@ -11,9 +11,6 @@ use Rawphp\CapabilitiesAi\Support\AnthropicLlmClient;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 use Rawphp\CapabilitiesAi\Support\LlmClientDefaults;
 
-/**
- * @return void
- */
 function bootAnthropicHttp(): void
 {
     $app = new Container;
