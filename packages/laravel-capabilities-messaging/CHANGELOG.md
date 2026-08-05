@@ -18,9 +18,11 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   because it implements the gateway, but static analysis / manual constructors hard-coding
   `ApprovalManager` as the third parameter type need updating. Pre-accept/reject lookup uses
   `ApprovalGateway::find()` (lazy pending TTL expiry, aligned with HTTP accept) instead of
-  `store()->find()`. **Consumer impact:** Telegram callback outcomes for TTL-stale *pending*
-  rows can change (`already_handled` / expired path vs a prior accept/reject attempt that
-  ignored lazy expiry). Missing-approvals `RuntimeException` message renamed
+  `store()->find()`. **Consumer impact:** (1) type-hint: hosts/static analysis using
+  `ApprovalManager` on the third arg must switch to `ApprovalGateway`; (2) lazy TTL:
+  Telegram callback outcomes for TTL-stale *pending* rows can change (`already_handled` /
+  expired path vs a prior accept/reject attempt that ignored lazy expiry); (3) exception
+  string: missing-approvals `RuntimeException` message renamed
   `ApprovalManager is required…` → `ApprovalGateway is required…` (host tests asserting the
   old string break).
 
