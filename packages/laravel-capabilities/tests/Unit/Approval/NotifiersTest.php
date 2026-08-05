@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use Rawphp\Capabilities\Approval\Notifiers\CliApprovalNotifier;
 use Rawphp\Capabilities\Approval\Notifiers\HttpApprovalNotifier;
-use Rawphp\Capabilities\Approval\Notifiers\TelegramApprovalNotifier;
+use Rawphp\Capabilities\Approval\Notifiers\RecordingTelegramApprovalNotifier;
 use Rawphp\Capabilities\Tests\Fixtures\ApprovalHelpers;
 
 it('happy: HttpApprovalNotifier notifies pending without executing [D-006]', function () {
@@ -22,7 +22,7 @@ it('happy: CliApprovalNotifier notifies pending without executing [D-006]', func
 it('fail: notifiers never call capability run [D-006]', function () {
     $http = new HttpApprovalNotifier;
     $cli = new CliApprovalNotifier;
-    $tg = new TelegramApprovalNotifier;
+    $tg = new RecordingTelegramApprovalNotifier;
     $http->notifyPending(['id' => '1']);
     $cli->notifyPending(['id' => '1']);
     $tg->notifyPending(['id' => '1']);

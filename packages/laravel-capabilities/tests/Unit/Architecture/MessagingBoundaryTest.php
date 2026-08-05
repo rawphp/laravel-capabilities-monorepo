@@ -43,3 +43,16 @@ it('edge: core composer suggest lists messaging optional [D-007]', function () {
 it('fail: core does not require TELEGRAM_BOT_TOKEN [D-021]', function () {
     A::coreDoesNotRequireTelegramToken();
 });
+
+it('happy: core ships recording Telegram notifier stub only; production name lives in messaging [D-007]', function () {
+    expect(class_exists(\Rawphp\Capabilities\Approval\Notifiers\RecordingTelegramApprovalNotifier::class))->toBeTrue();
+    expect(class_exists(\Rawphp\Capabilities\Approval\Notifiers\TelegramApprovalNotifier::class))->toBeFalse();
+    expect(class_exists(\Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier::class))->toBeTrue();
+
+    $coreStub = (string) file_get_contents(
+        (new ReflectionClass(\Rawphp\Capabilities\Approval\Notifiers\RecordingTelegramApprovalNotifier::class))->getFileName()
+    );
+    expect($coreStub)->not->toContain('api.telegram.org')
+        ->and($coreStub)->not->toContain('curl_')
+        ->and($coreStub)->toContain('recording');
+});

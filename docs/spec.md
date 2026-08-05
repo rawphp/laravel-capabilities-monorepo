@@ -2831,7 +2831,7 @@ src/
     ProcessTelegramUpdate.php
   Identity/IdentityLinker.php
   Threads/ThreadStore.php
-  Notifiers/TelegramApprovalNotifier.php
+  Notifiers/RecordingTelegramApprovalNotifier.php  # recording stub; production Telegram notifier is messaging package
   MessagingServiceProvider.php
 config/capabilities-messaging.php
 routes/messaging.php

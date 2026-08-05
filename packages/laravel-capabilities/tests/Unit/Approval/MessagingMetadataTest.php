@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use Rawphp\Capabilities\Approval\Notifiers\TelegramApprovalNotifier;
+use Rawphp\Capabilities\Approval\Notifiers\RecordingTelegramApprovalNotifier;
 use Rawphp\Capabilities\Tests\Fixtures\ApprovalHelpers;
 
 it('edge: approval messaging metadata may include channel [D-006]', function () {
@@ -21,7 +21,7 @@ it('edge: approval messaging metadata may include message_id [D-006]', function 
 });
 
 it('happy: telegram notifier can edit message using message_id [D-006]', function () {
-    $n = new TelegramApprovalNotifier;
+    $n = new RecordingTelegramApprovalNotifier;
     $a = ['id' => 'a1', 'messaging' => ['message_id' => '99', 'chat_id' => '1', 'channel' => 'telegram']];
     $n->notifyPending($a);
     $n->editMessage($a, 'expired');
