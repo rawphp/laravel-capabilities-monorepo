@@ -11,7 +11,7 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
-### Changed
+### Breaking
 
 - **CallbackHandler ApprovalGateway (consumer impact)** — constructor third arg type-hint
   is now `?ApprovalGateway` (was `?ApprovalManager`). Runtime still accepts `ApprovalManager`
@@ -23,6 +23,8 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   ignored lazy expiry). Missing-approvals `RuntimeException` message renamed
   `ApprovalManager is required…` → `ApprovalGateway is required…` (host tests asserting the
   old string break).
+
+### Changed
 
 - **Internal extract** — `TelegramUpdateParser` peels pure Update field extraction from
   `ProcessTelegramUpdate` (pipeline behaviour unchanged; MSG-003 handler remains the public entry).

@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Approval\ApprovalManager;
+use Rawphp\Capabilities\Support\FixedClock;
+use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\CapabilitiesMessaging\Telegram\CallbackHandler;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers as H;
 
@@ -181,4 +184,29 @@ it('happy: callback no-op already handled when action=reject status=executed [D-
     $handler = new CallbackHandler(H::signer(), $identity, $approvals);
     $r = $handler->handle(H::signer()->sign('st-reject-executed', 'reject'), ['id' => '42']);
     expect($r['status'])->toBe('already_handled');
+});
+
+it('happy: pending past TTL via ApprovalGateway find returns already_handled [D-006]', function () {
+    $clock = new FixedClock(new DateTimeImmutable('2026-01-15T12:00:00Z'));
+    $store = new InMemoryApprovalStore($clock);
+    $approvals = new ApprovalManager($store, $clock, ['ttl_hours' => 1]);
+    $approvals->request([
+        'id' => 'st-lazy-ttl',
+        'capability_name' => 'x',
+        'requester_actor_type' => 'user',
+        'requester_actor_id' => 'u1',
+        'original_caller' => 'http',
+        'input_json' => [],
+    ]);
+    // Raw store still pending; only gateway find() applies lazy TTL.
+    expect($store->find('st-lazy-ttl')['status'])->toBe('pending');
+    $clock->advance(new DateInterval('PT2H'));
+
+    $identity = H::identity();
+    $identity->link('42', 'u1');
+    $handler = new CallbackHandler(H::signer(), $identity, $approvals);
+    $r = $handler->handle(H::signer()->sign('st-lazy-ttl', 'accept'), ['id' => '42']);
+
+    expect($r['status'])->toBe('already_handled')
+        ->and($approvals->find('st-lazy-ttl')['status'])->toBe('expired');
 });
