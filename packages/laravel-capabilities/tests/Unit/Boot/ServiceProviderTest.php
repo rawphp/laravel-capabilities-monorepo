@@ -9,6 +9,7 @@ use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Boot\CapabilitiesConfig;
 use Rawphp\Capabilities\Boot\SurfaceNames;
 use Rawphp\Capabilities\CapabilitiesServiceProvider;
+use Rawphp\Capabilities\Contracts\ApprovalGateway;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Persistence\ArrayTableGateway;
@@ -236,6 +237,21 @@ it('REQ-048 memory: registry and ApprovalManager share the same approval store i
         ->and($approval->store())->toBeInstanceOf(InMemoryApprovalStore::class)
         ->and($registry->approvalStore())->toBe($approval->store())
         ->and($registry->approvals()->store())->toBe($approval->store());
+});
+
+it('happy: ApprovalGateway resolves to the same ApprovalManager singleton [BOOT-001]', function () {
+    $app = req048FakeApp(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+    ]));
+
+    $viaClass = $app->make(ApprovalManager::class);
+    $viaGateway = $app->make(ApprovalGateway::class);
+    $viaString = $app->make('ApprovalGateway');
+
+    expect($viaGateway)->toBe($viaClass)
+        ->and($viaString)->toBe($viaClass)
+        ->and($viaGateway)->toBeInstanceOf(ApprovalGateway::class);
 });
 
 it('REQ-048 memory: registry and IdempotencyStore share the same store instance', function () {

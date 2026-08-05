@@ -3,6 +3,7 @@
 namespace Rawphp\Capabilities\Approval;
 
 use DateInterval;
+use Rawphp\Capabilities\Contracts\ApprovalGateway;
 use Rawphp\Capabilities\Contracts\ApprovalNotifier;
 use Rawphp\Capabilities\Contracts\ApprovalStore;
 use Rawphp\Capabilities\Contracts\AuditWriter;
@@ -19,11 +20,12 @@ use Rawphp\Capabilities\Support\SystemClock;
  * High-level approval API: request, accept, reject, expire, resume (D-006 / P2-004).
  *
  * Owns the state machine; channel adapters only notify — never execute.
+ * Implements {@see ApprovalGateway} so sibling packages type-hint the port, not this class.
  * Domain execution after lease claim lives in {@see ApprovalExecutor}.
  * Stuck-row resume lives in {@see ApprovalResumer}.
  * Pending TTL expiry lives in {@see ApprovalExpiry}.
  */
-final class ApprovalManager
+final class ApprovalManager implements ApprovalGateway
 {
     private Clock $clock;
 

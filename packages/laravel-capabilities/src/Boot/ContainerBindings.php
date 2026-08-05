@@ -9,6 +9,7 @@ use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapter;
 use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapterV1;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 use Rawphp\Capabilities\Approval\ApprovalManager;
+use Rawphp\Capabilities\Contracts\ApprovalGateway;
 use Rawphp\Capabilities\Audit\AuditLogger;
 use Rawphp\Capabilities\Contracts\ApprovalStore;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
@@ -156,6 +157,9 @@ final class ContainerBindings
             CapabilityBus::class => CapabilityRegistry::class,
             'ApprovalManager' => ApprovalManager::class,
             ApprovalManager::class => ApprovalManager::class,
+            // Sibling surfaces (messaging callbacks) resolve the port, not the concrete class.
+            ApprovalGateway::class => ApprovalManager::class,
+            'ApprovalGateway' => ApprovalGateway::class,
             'IdempotencyStore' => IdempotencyStore::class,
             IdempotencyStore::class => $idempotency['concrete'],
             // Production: QueryTableGateway per table + connection. Memory-only plans

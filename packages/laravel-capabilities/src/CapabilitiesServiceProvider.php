@@ -25,6 +25,7 @@ use Rawphp\Capabilities\Boot\CapabilitiesConfig;
 use Rawphp\Capabilities\Boot\ContainerBindings;
 use Rawphp\Capabilities\Boot\RegistrationPlan;
 use Rawphp\Capabilities\Boot\SurfaceNames;
+use Rawphp\Capabilities\Contracts\ApprovalGateway;
 use Rawphp\Capabilities\Contracts\AuthTokenIssuer;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
@@ -123,6 +124,9 @@ class CapabilitiesServiceProvider extends ServiceProvider
             );
         });
         $this->app->alias(ApprovalManager::class, 'ApprovalManager');
+        // Sibling surfaces type-hint ApprovalGateway — same singleton, no second SM (D-006 / D-007).
+        $this->app->alias(ApprovalManager::class, ApprovalGateway::class);
+        $this->app->alias(ApprovalManager::class, 'ApprovalGateway');
 
         $this->app->singleton(RateLimiter::class, function ($app) {
             $config = self::configFromApp($app);
