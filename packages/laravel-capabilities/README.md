@@ -31,7 +31,7 @@ Sibling packages and thin adapters should depend only on this **allowlist** — 
 
 **Approval callbacks (messaging):** type-hint `ApprovalGateway` (find / accept / reject). The service provider aliases the same singleton as `ApprovalManager` — hosts may still inject `ApprovalManager` for resume/ops APIs that stay inside core.
 
-**Telegram notifiers:** production Bot API notifier lives in **messaging**. Core ships `Approval\Notifiers\RecordingTelegramApprovalNotifier` (in-memory double, no network). Deprecated alias: `Approval\Notifiers\TelegramApprovalNotifier` (same recording double).
+**Telegram notifiers:** production Bot API delivery is messaging `Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier` (unchanged). Core ships canonical `Approval\Notifiers\RecordingTelegramApprovalNotifier` (in-memory double, **no** Bot API). Deprecated dual-class soft-landing: core `Approval\Notifiers\TelegramApprovalNotifier` remains an empty subclass of the recording double (still loadable; not deleted) until a later removal.
 
 | Doc | Where |
 |---|---|
