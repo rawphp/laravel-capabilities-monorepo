@@ -128,16 +128,49 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte, extra
 		out.Err = ParseErrorEnvelope(out.Envelope, res.StatusCode, raw)
 	} else if res.StatusCode >= 400 && out.Envelope.Error == nil {
 		// Non-envelope HTTP error → internal-ish mapping by status.
+		// Never surface raw HTML/document bodies as the user-facing message.
 		code := codeFromHTTP(res.StatusCode)
 		out.Err = &StructuredError{
 			Code:       code,
-			Message:    string(raw),
+			Message:    humanizeHTTPErrorBody(raw, res.StatusCode),
 			HTTPStatus: res.StatusCode,
 			ExitCode:   ExitCode(code),
 			Body:       raw,
 		}
 	}
 	return out, nil
+}
+
+// humanizeHTTPErrorBody turns non-JSON error payloads (HTML login pages, etc.)
+// into a short, actionable message instead of dumping the whole document.
+func humanizeHTTPErrorBody(raw []byte, status int) string {
+	trim := strings.TrimSpace(string(raw))
+	if trim == "" {
+		return fmt.Sprintf("HTTP %d from capability API", status)
+	}
+	// Prefer a compact JSON message field when present.
+	var probe map[string]any
+	if json.Unmarshal(raw, &probe) == nil {
+		if m, ok := probe["message"].(string); ok && strings.TrimSpace(m) != "" {
+			return strings.TrimSpace(m)
+		}
+		if errObj, ok := probe["error"].(map[string]any); ok {
+			if m, ok := errObj["message"].(string); ok && strings.TrimSpace(m) != "" {
+				return strings.TrimSpace(m)
+			}
+		}
+	}
+	lower := strings.ToLower(trim)
+	if strings.HasPrefix(trim, "<!doctype") || strings.HasPrefix(trim, "<html") ||
+		strings.Contains(lower, "<html") || strings.Contains(lower, "<!doctype") {
+		return fmt.Sprintf("HTTP %d: non-JSON response from server (HTML page). Check --base-url points at the capability API host, not a marketing site.", status)
+	}
+	// Cap length so we never dump multi-KB garbage into the terminal.
+	const max = 200
+	if len(trim) > max {
+		return trim[:max] + "…"
+	}
+	return trim
 }
 
 func codeFromHTTP(status int) string {
@@ -159,9 +192,15 @@ func codeFromHTTP(status int) string {
 	}
 }
 
-// ListCapabilities GET /capabilities
+// ListCapabilities GET /capabilities (compact catalog rows; may omit schemas).
 func (c *Client) ListCapabilities(ctx context.Context) (*Response, error) {
 	return c.do(ctx, http.MethodGet, PathCapabilities, nil, nil)
+}
+
+// ListCapabilitiesWithSchemas GET /capabilities?include_schemas=1
+// Used by the MCP bridge so tools/list can expose JSON Schema to agents.
+func (c *Client) ListCapabilitiesWithSchemas(ctx context.Context) (*Response, error) {
+	return c.do(ctx, http.MethodGet, PathCapabilities+"?include_schemas=1", nil, nil)
 }
 
 // DescribeCapability GET /capabilities/{name}

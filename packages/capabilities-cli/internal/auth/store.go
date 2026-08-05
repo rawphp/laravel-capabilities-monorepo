@@ -104,11 +104,20 @@ func (s *Store) DeleteToken(profile string) error {
 	return nil
 }
 
-// SetBaseURL stores the deployment base URL for a profile.
-func (s *Store) SetBaseURL(profile, baseURL string) error {
+// NormalizeBaseURL validates and normalizes a deployment base URL without writing.
+func NormalizeBaseURL(baseURL string) (string, error) {
 	baseURL = strings.TrimSpace(baseURL)
 	if baseURL == "" || !strings.HasPrefix(baseURL, "http") {
-		return ErrInvalidBaseURL
+		return "", ErrInvalidBaseURL
+	}
+	return strings.TrimRight(baseURL, "/"), nil
+}
+
+// SetBaseURL stores the deployment base URL for a profile.
+func (s *Store) SetBaseURL(profile, baseURL string) error {
+	normalized, err := NormalizeBaseURL(baseURL)
+	if err != nil {
+		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -117,7 +126,7 @@ func (s *Store) SetBaseURL(profile, baseURL string) error {
 		return err
 	}
 	path := filepath.Join(dir, "config.json")
-	cfg := map[string]string{"base_url": strings.TrimRight(baseURL, "/")}
+	cfg := map[string]string{"base_url": normalized}
 	b, _ := json.MarshalIndent(cfg, "", "  ")
 	return os.WriteFile(path, b, 0o600)
 }

@@ -38,6 +38,7 @@ FLAGS (common):
   --profile=NAME     Auth profile (default: default)
   --base-url=URL     Override deployment base URL
   --json             Print D-018 JSON envelopes
+  (globals may appear before or after the command: capabilities --profile=P catalog)
 
 ` + run.DocsExitCodes + `
 ` + `

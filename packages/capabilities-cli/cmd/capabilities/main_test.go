@@ -45,10 +45,14 @@ func TestHelpdocumentsjsonflag(t *testing.T) {
 	}
 }
 
-func TestRootcommandrequiressubcommand(t *testing.T) {
-	code, _, _ := CaptureExecute(nil, t.TempDir(), nil)
-	if code == 0 {
-		t.Fatal("root without subcommand should fail")
+func TestRootWithoutArgsPrintsHelpOK(t *testing.T) {
+	// Bare `capabilities` is help for humans — exit 0, not validation_failed.
+	code, _, errb := CaptureExecute(nil, t.TempDir(), nil)
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	if !strings.Contains(errb, "USAGE:") {
+		t.Fatal(errb)
 	}
 }
 

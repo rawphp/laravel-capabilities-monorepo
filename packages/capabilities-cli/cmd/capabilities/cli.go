@@ -54,9 +54,11 @@ type Env struct {
 // Execute parses args and runs a subcommand. Returns process exit code.
 //
 // Argv dispatch (design):
-//  1. Reserved meta-commands always win (auth catalog describe run mcp approvals version help).
-//  2. Else known domain in catalog synth index → domain help or capability command / --help.
-//  3. Else unknown → not_found envelope + catalog/run hint, exit 5.
+//  1. Leading global flags (--profile / --base-url) may appear before the command
+//     (git/docker style). They are peeled and re-appended so subcommands still see them.
+//  2. Reserved meta-commands always win (auth catalog describe run mcp approvals version help).
+//  3. Else known domain in catalog synth index → domain help or capability command / --help.
+//  4. Else unknown → not_found envelope + catalog/run hint, exit 5.
 func Execute(env Env) int {
 	if env.Stdout == nil {
 		env.Stdout = os.Stdout
@@ -67,10 +69,11 @@ func Execute(env Env) int {
 	if env.Stdin == nil {
 		env.Stdin = os.Stdin
 	}
-	args := env.Args
+	args := peelLeadingGlobalFlags(env.Args)
 	if len(args) == 0 {
+		// No args → root help is success (not a validation failure).
 		fmt.Fprint(env.Stderr, RootHelp())
-		return api.ExitValidation
+		return api.ExitOK
 	}
 	cmd := args[0]
 	rest := args[1:]
@@ -195,6 +198,50 @@ func profileAndBase(args []string) (profile, base string, rest []string) {
 	}
 	base, args = flagValue(args, "--base-url")
 	return profile, base, args
+}
+
+// peelLeadingGlobalFlags moves leading --profile / --base-url to the end of argv
+// so `capabilities --profile=X catalog` works the same as `capabilities catalog --profile=X`.
+// Only peels flags that appear before the first non-flag token (the subcommand/domain).
+func peelLeadingGlobalFlags(args []string) []string {
+	if len(args) == 0 {
+		return args
+	}
+	var profile, base string
+	i := 0
+	for i < len(args) {
+		a := args[i]
+		if a == "--profile" && i+1 < len(args) {
+			profile = args[i+1]
+			i += 2
+			continue
+		}
+		if strings.HasPrefix(a, "--profile=") {
+			profile = strings.TrimPrefix(a, "--profile=")
+			i++
+			continue
+		}
+		if a == "--base-url" && i+1 < len(args) {
+			base = args[i+1]
+			i += 2
+			continue
+		}
+		if strings.HasPrefix(a, "--base-url=") {
+			base = strings.TrimPrefix(a, "--base-url=")
+			i++
+			continue
+		}
+		// Stop at first non-global-flag token (command, domain, or unknown flag for later).
+		break
+	}
+	rest := append([]string{}, args[i:]...)
+	if profile != "" {
+		rest = append(rest, "--profile="+profile)
+	}
+	if base != "" {
+		rest = append(rest, "--base-url="+base)
+	}
+	return rest
 }
 
 // CaptureExecute runs Execute capturing stdout/stderr (tests).

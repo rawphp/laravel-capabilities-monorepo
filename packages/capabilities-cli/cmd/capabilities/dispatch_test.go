@@ -229,3 +229,35 @@ func TestCapabilityInvokeDoesNotNotFound(t *testing.T) {
 		}
 	}
 }
+
+func TestBareArgsPrintsHelpExit0(t *testing.T) {
+	code, _, errb := CaptureExecute(nil, t.TempDir(), nil)
+	if code != api.ExitOK {
+		t.Fatalf("exit %d", code)
+	}
+	if !strings.Contains(errb, "USAGE:") {
+		t.Fatal(errb)
+	}
+}
+
+func TestProfileFlagBeforeCommand(t *testing.T) {
+	// Leading --profile must not be treated as an unknown domain (peel to trailing flags).
+	got := peelLeadingGlobalFlags([]string{"--profile=other", "catalog"})
+	if len(got) < 1 || got[0] != "catalog" {
+		t.Fatalf("%v", got)
+	}
+	if !strings.Contains(strings.Join(got, " "), "--profile=other") {
+		t.Fatal(got)
+	}
+}
+
+func TestPeelLeadingGlobalFlagsBaseURL(t *testing.T) {
+	got := peelLeadingGlobalFlags([]string{"--profile=p", "--base-url=https://x", "catalog", "--json"})
+	if len(got) < 2 || got[0] != "catalog" {
+		t.Fatalf("%v", got)
+	}
+	joined := strings.Join(got, " ")
+	if !strings.Contains(joined, "--profile=p") || !strings.Contains(joined, "--base-url=https://x") {
+		t.Fatal(joined)
+	}
+}

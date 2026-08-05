@@ -83,12 +83,17 @@ func (s *Server) Run(ctx context.Context) error {
 			_ = s.write(rpcResponse{
 				JSONRPC: "2.0",
 				ID:      nil,
-				Error:   &struct {
+				Error: &struct {
 					Code    int    `json:"code"`
 					Message string `json:"message"`
 					Data    any    `json:"data,omitempty"`
 				}{Code: -32700, Message: "parse error"},
 			})
+			continue
+		}
+		// MCP notifications (methods under notifications/*) must not get a
+		// JSON-RPC error response — clients send initialized without expecting a reply.
+		if strings.HasPrefix(req.Method, "notifications/") {
 			continue
 		}
 		resp := s.handle(ctx, req)
@@ -160,7 +165,9 @@ func rpcErr(err error) *struct {
 }
 
 func (s *Server) listTools(ctx context.Context) ([]map[string]any, error) {
-	res, err := s.Client.ListCapabilities(ctx)
+	// Prefer include_schemas=1 so agents get JSON Schema on tools/list.
+	// Compact list responses omit input_schema and leave agents guessing.
+	res, err := s.Client.ListCapabilitiesWithSchemas(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -178,10 +185,16 @@ func (s *Server) listTools(ctx context.Context) ([]map[string]any, error) {
 				if m, ok := c.(map[string]any); ok {
 					name, _ := m["name"].(string)
 					desc, _ := m["description"].(string)
+					schema := m["input_schema"]
+					// MCP clients treat null inputSchema as "no parameters known".
+					// Always emit an object schema (empty when server omitted it).
+					if schema == nil {
+						schema = map[string]any{"type": "object", "properties": map[string]any{}}
+					}
 					tools = append(tools, map[string]any{
 						"name":        name,
 						"description": desc,
-						"inputSchema": m["input_schema"],
+						"inputSchema": schema,
 					})
 				}
 			}
