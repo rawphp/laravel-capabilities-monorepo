@@ -46,8 +46,9 @@ func cmdApprovals(env Env, args []string) int {
 		return api.ExitAuth
 	}
 	if len(args) < 2 {
+		// No action/id → usage (success), same as bare `capabilities` / auth help.
 		fmt.Fprint(env.Stdout, CommandHelp("approvals"))
-		return api.ExitValidation
+		return api.ExitOK
 	}
 	action, id := args[0], args[1]
 	c, err := clientFor(env, st, profile, base)

@@ -109,15 +109,16 @@ type Meta struct {
 
 // StructuredError is a client-side mapped error from an HTTP envelope.
 type StructuredError struct {
-	Code       string
-	Message    string
-	HTTPStatus int
-	ExitCode   int
-	Retryable  bool
-	RequestID  string
-	Violations []Violation
-	ApprovalID *string
-	Body       []byte
+	Code       string      `json:"code"`
+	Message    string      `json:"message"`
+	HTTPStatus int         `json:"http_status,omitempty"`
+	ExitCode   int         `json:"cli_exit,omitempty"`
+	Retryable  bool        `json:"retryable"`
+	RequestID  string      `json:"request_id,omitempty"`
+	Violations []Violation `json:"violations,omitempty"`
+	ApprovalID *string     `json:"approval_id"`
+	// Body is the raw HTTP payload for debugging; omitted from JSON (can be large/binary).
+	Body []byte `json:"-"`
 }
 
 func (e *StructuredError) Error() string {
@@ -128,6 +129,37 @@ func (e *StructuredError) Error() string {
 		return e.Message
 	}
 	return e.Code
+}
+
+// PublicData is a JSON-safe map for agent surfaces (MCP error.data).
+// Uses the same field names as the D-018 wire shape — never Go-exported identifiers.
+func (e *StructuredError) PublicData() map[string]any {
+	if e == nil {
+		return nil
+	}
+	m := map[string]any{
+		"code":       e.Code,
+		"message":    e.Message,
+		"retryable":  e.Retryable,
+		"http_status": e.HTTPStatus,
+		"cli_exit":   e.ExitCode,
+	}
+	if e.RequestID != "" {
+		m["request_id"] = e.RequestID
+	}
+	if e.ApprovalID != nil {
+		m["approval_id"] = *e.ApprovalID
+	} else {
+		m["approval_id"] = nil
+	}
+	if len(e.Violations) > 0 {
+		vs := make([]map[string]string, 0, len(e.Violations))
+		for _, v := range e.Violations {
+			vs = append(vs, map[string]string{"field": v.Field, "message": v.Message})
+		}
+		m["violations"] = vs
+	}
+	return m
 }
 
 // MapErrorCode builds a StructuredError from a D-018 code.

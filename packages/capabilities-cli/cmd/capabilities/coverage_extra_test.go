@@ -76,9 +76,13 @@ func TestApprovalsMissingArgs(t *testing.T) {
 	root := t.TempDir()
 	st := auth.NewStore(root)
 	_, _ = auth.LoginWithToken(st, "default", url, "tok")
-	code, _, _ := CaptureExecute([]string{"approvals"}, root, newClientFactory(srv))
-	if code != api.ExitValidation {
+	code, out, _ := CaptureExecute([]string{"approvals"}, root, newClientFactory(srv))
+	// Bare approvals prints usage and exits 0 (help), not validation_failed.
+	if code != api.ExitOK {
 		t.Fatal(code)
+	}
+	if !strings.Contains(out, "USAGE:") {
+		t.Fatal(out)
 	}
 }
 

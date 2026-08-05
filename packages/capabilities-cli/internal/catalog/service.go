@@ -40,6 +40,9 @@ type CapabilitySummary struct {
 	MappedCommand string `json:"mapped_command,omitempty"`
 	// MappingError is set client-side when synthesis was suppressed (e.g. collision).
 	MappingError string `json:"mapping_error,omitempty"`
+	// InputSchema/OutputSchema present when list was fetched with include_schemas=1.
+	InputSchema  json.RawMessage `json:"input_schema,omitempty"`
+	OutputSchema json.RawMessage `json:"output_schema,omitempty"`
 }
 
 // List fetches GET /capabilities and returns summaries.
@@ -48,6 +51,19 @@ func (s *Service) List(ctx context.Context) ([]CapabilitySummary, *api.Response,
 	if err != nil {
 		return nil, nil, err
 	}
+	return parseCapabilityList(res)
+}
+
+// ListWithSchemas fetches GET /capabilities?include_schemas=1 for agent one-shot discovery.
+func (s *Service) ListWithSchemas(ctx context.Context) ([]CapabilitySummary, *api.Response, error) {
+	res, err := s.Client.ListCapabilitiesWithSchemas(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	return parseCapabilityList(res)
+}
+
+func parseCapabilityList(res *api.Response) ([]CapabilitySummary, *api.Response, error) {
 	if res.Err != nil {
 		return nil, res, res.Err
 	}

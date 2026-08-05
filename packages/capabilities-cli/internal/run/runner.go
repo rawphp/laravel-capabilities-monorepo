@@ -198,19 +198,42 @@ func Run(ctx context.Context, opts Options) *Result {
 	// Agent-first: stdout is always the machine envelope (design CLI I/O).
 	res.Stdout = string(apiRes.Body)
 	if opts.Human {
-		// Optional human summary on stderr only — never strips/replaces stdout.
-		summary := "ok"
-		if apiRes.Envelope.Data != nil {
-			if b, err := json.Marshal(apiRes.Envelope.Data); err == nil {
-				summary = "ok data=" + string(b)
-			}
-		}
+		// Short human summary on stderr only — never dumps full payload (that is stdout).
+		summary := humanSuccessSummary(opts.Capability, apiRes.Body)
 		if res.Stderr != "" && !strings.HasSuffix(res.Stderr, "\n") {
 			res.Stderr += "\n"
 		}
 		res.Stderr += summary + "\n"
 	}
 	return res
+}
+
+// humanSuccessSummary is a one-line stderr cue for --human (stdout keeps the envelope).
+func humanSuccessSummary(capability string, body []byte) string {
+	cap := strings.TrimSpace(capability)
+	if cap == "" {
+		cap = "?"
+	}
+	// Prefer a tiny high-signal peek when data is a small map of scalars.
+	var env struct {
+		OK   bool           `json:"ok"`
+		Data map[string]any `json:"data"`
+	}
+	if json.Unmarshal(body, &env) == nil && env.Data != nil {
+		// Common coach payload shape: data.payload.date
+		if payload, ok := env.Data["payload"].(map[string]any); ok {
+			if d, ok := payload["date"].(string); ok && d != "" {
+				return fmt.Sprintf("ok %s date=%s", cap, d)
+			}
+		}
+		if id, ok := env.Data["id"].(string); ok && id != "" {
+			return fmt.Sprintf("ok %s id=%s", cap, id)
+		}
+		if msg, ok := env.Data["message"].(string); ok && msg != "" {
+			return fmt.Sprintf("ok %s %s", cap, msg)
+		}
+	}
+	return fmt.Sprintf("ok %s", cap)
 }
 
 func loadInput(opts Options) ([]byte, error) {

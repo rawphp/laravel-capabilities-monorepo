@@ -11,8 +11,16 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Added
+
+- **`auth status --json`** — D-018 envelope with `profile`, `base_url`, `logged_in` (never the token).
+- **`catalog --include-schemas`** — list/JSON with `input_schema` / `output_schema` in one round-trip for agents.
+- **`run --human`** documented in help; short one-line stderr summary (e.g. `ok get_today_meals date=…`) instead of dumping full data.
+
 ### Changed
 
+- **MCP `tools/call` errors** — `error.data` uses wire keys (`code`, `message`, `violations`, …) not Go field names (`Code`, `HTTPStatus`); raw HTTP body is not embedded.
+- **`approvals` without action/id** — prints usage and exits **0** (was exit **2**).
 - **Root command exit code** — bare `capabilities` (no subcommand) prints usage and
   exits **0** (was exit **2** / `validation_failed`). Update scripts that treated a
   bare invoke as failure.

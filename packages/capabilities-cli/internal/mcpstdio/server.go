@@ -133,9 +133,10 @@ func (s *Server) handle(ctx context.Context, req rpcRequest) rpcResponse {
 		result, err := s.callTool(ctx, req.Params)
 		if err != nil {
 			resp.Error = rpcErr(err)
-			// Propagate structured server errors / approval_required in data.
+			// Propagate structured server errors / approval_required in data
+			// using wire-shaped keys (not Go field names like "Code").
 			if se, ok := err.(*api.StructuredError); ok {
-				resp.Error.Data = se
+				resp.Error.Data = se.PublicData()
 			}
 		} else {
 			resp.Result = result

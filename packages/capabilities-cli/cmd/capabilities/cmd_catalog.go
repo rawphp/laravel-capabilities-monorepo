@@ -18,6 +18,7 @@ func cmdCatalog(env Env, args []string) int {
 	profile, base, args := profileAndBase(args)
 	jsonOut, args := flagBool(args, "--json")
 	flat, args := flagBool(args, "--flat")
+	includeSchemas, args := flagBool(args, "--include-schemas")
 	noCache, args := flagBool(args, "--no-cache")
 	refresh, args := flagBool(args, "refresh", "--refresh")
 	_ = args
@@ -32,7 +33,10 @@ func cmdCatalog(env Env, args []string) int {
 	}
 	svc := &catalog.Service{Client: c, Cache: catalog.NewCache(st.SchemaCacheDir(profile)), NoCache: noCache}
 	var list []catalog.CapabilitySummary
-	if refresh {
+	// Agent path: --include-schemas (with --json) fetches full rows so tools need no N×describe.
+	if includeSchemas {
+		list, _, err = svc.ListWithSchemas(context.Background())
+	} else if refresh {
 		list, err = svc.Refresh(context.Background())
 	} else {
 		list, _, err = svc.List(context.Background())

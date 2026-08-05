@@ -73,20 +73,22 @@ func CommandHelp(cmd string) string {
 USAGE:
   capabilities auth login --base-url=URL [--token=PAT] [--code=OAUTH] [--profile=NAME]
   capabilities auth logout [--profile=NAME]
-  capabilities auth status [--profile=NAME]
+  capabilities auth status [--profile=NAME] [--json]
 
 Tokens are stored in the OS config/keychain dir — never printed to stdout by default.
+  --json   D-018 envelope {profile, base_url, logged_in} (never includes the token)
 `
 	case "catalog":
 		return `catalog — discover capabilities from GET /capabilities
 
 USAGE:
-  capabilities catalog [--json|--flat] [--no-cache] [--refresh] [--profile=NAME]
+  capabilities catalog [--json|--flat] [--include-schemas] [--no-cache] [--refresh] [--profile=NAME]
 
 MODES:
   (default)   Human domain index — domains + verb counts + next steps
   --flat      Name → domain verb lines (previous human default)
-  --json      Agent machine envelope (full rows + mapped_command)
+  --json      Agent machine envelope (mapped_command; compact unless --include-schemas)
+  --include-schemas  With list/JSON: include input_schema/output_schema (one round-trip for agents)
 
 Unauthenticated or empty synthesis:
   No synthesizable domains yet — use auth status, catalog --json, or run <name>.
@@ -109,7 +111,8 @@ FLAGS:
   --idempotency-key=KEY   manual key (default: new UUID)
   --retry-last            reuse last Idempotency-Key after network failure
   --no-cache              re-fetch schema
-  --json                  print D-018 envelope
+  --json                  print D-018 envelope (stdout always envelope; flag kept for agents)
+  --human                 short ok/fail summary on stderr (stdout stays the envelope)
   --tenant=ID             tenant hint only (not authoritative scope)
   --profile=NAME
   --base-url=URL
