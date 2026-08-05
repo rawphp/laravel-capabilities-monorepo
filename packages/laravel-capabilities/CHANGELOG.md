@@ -29,16 +29,21 @@ Empty PHP arrays that represent JSON `{}` (and empty list-shaped `[]` when the s
 - **Consumer guidance:** Prefer `CapabilityRegistry` / facade audit APIs (`withAuditWriter`, `withAuditConfig`, `throwOnAuditFailure`, `auditMode()`, …). Do **not** construct `InvokePipeline` with legacy audit kwargs or read `$pipeline->auditWriter` (etc.). In-repo only the registry builds the pipeline; sibling packages do not.
 - **Distinct from** the JsonSchema empty-object required-enforcement break above.
 
+#### Telegram recording notifier rename (`TelegramApprovalNotifier` → `RecordingTelegramApprovalNotifier`)
+
+Public class under `Approval\Notifiers\` renamed so core does not present a production Bot API type. No alias left; old FQCN fails autoload by design.
+
+- **Removed FQCN:** `Rawphp\Capabilities\Approval\Notifiers\TelegramApprovalNotifier` — hosts/tests that `use` or instantiate it fail autoload; there is **no** `class_alias` / shim.
+- **Replacement (core):** `Rawphp\Capabilities\Approval\Notifiers\RecordingTelegramApprovalNotifier` — in-memory recording double only; **no** Bot API / network in core.
+- **Production Telegram notifier:** messaging package `Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier` (different package/namespace).
+- **Consumer impact:** update imports to `RecordingTelegramApprovalNotifier` for test/recording doubles; keep using the messaging package class for real channel delivery.
+
 ### Added
 
 - `Contracts\ApprovalGateway` — sibling-safe port (`find` / `accept` / `reject`). `ApprovalManager` implements it; container plan + service provider alias the same singleton (mirrors `CapabilityBus`).
 - README **Public surface for sibling packages** — Contracts + public DTOs allowlist (`CapabilityResult`, `CapabilityContext`, `CapabilityData`).
 
 ### Changed
-
-#### Telegram recording notifier rename (0.x; production Telegram is messaging)
-
-- Renamed `Approval\Notifiers\TelegramApprovalNotifier` → `RecordingTelegramApprovalNotifier` so core does not present a production Bot API type. Real channel notifier: messaging package `TelegramApprovalNotifier`. No Bot API / network in core.
 
 #### Internal extract — approval / pipeline collaborators
 
