@@ -12,6 +12,7 @@ Conversation / turn / proposal runtime for the [Laravel Capabilities](https://gi
 | | |
 |---|---|
 | **Is** | Optional **turn / proposal runtime**: queue a turn, claim it, loop LLM → tools, stream progress (array/Redis); tool side effects **only** via `CapabilityBus::invoke`; host seams for conversation context and tool catalog; thin `LlmClient` (fake + Anthropic) for turns and host completions that must not embed domain rules |
+| **Multimodal** | User message `content` on `ConversationContextProvider` / `LlmClient` may be a **string** or a **list of provider content blocks** (text + base64 image for Anthropic vision). **Hosts hydrate attachment bytes into context** — this package does **not** store, claim, or fetch chat attachment files. End-to-end photo coach flows still need host upload + context hydration. |
 | **Is not** | The capability bus / registry; chat channel bots (use [messaging](https://github.com/rawphp/laravel-capabilities-messaging)); product CLI; a general app-wide LLM SDK replacing `laravel/ai`; domain `run()`; generative UI or agent-native OS |
 
 Requires [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities). Consumers install **this package repo**, not the monorepo.
