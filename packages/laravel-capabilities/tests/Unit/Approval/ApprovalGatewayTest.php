@@ -68,3 +68,12 @@ it('happy: service provider aliases ApprovalGateway to ApprovalManager singleton
         ->and($src)->toContain('alias(ApprovalManager::class, ApprovalGateway::class)')
         ->and($src)->toContain("alias(ApprovalManager::class, 'ApprovalGateway')");
 });
+
+it('happy: ApprovalGateway contract has no concrete ApprovalManager use-import [ORI-766]', function () {
+    $path = (new ReflectionClass(ApprovalGateway::class))->getFileName();
+    expect($path)->not->toBeFalse();
+    $src = (string) file_get_contents((string) $path);
+
+    expect($src)->not->toMatch('/^use\s+Rawphp\\\\Capabilities\\\\Approval\\\\ApprovalManager\s*;/m')
+        ->and($src)->toMatch('/\\\\Rawphp\\\\Capabilities\\\\Approval\\\\ApprovalManager|never on concrete ApprovalManager/');
+});
