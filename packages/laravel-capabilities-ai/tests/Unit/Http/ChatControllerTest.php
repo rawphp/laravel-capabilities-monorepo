@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Container\Container;
 use Illuminate\Database\Capsule\Manager as Capsule;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Events\Dispatcher as EventDispatcher;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Facade;
@@ -19,6 +20,16 @@ use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\AlwaysReadyIdempotency;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
+use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
+
+class ChatControllerTestUser extends Model
+{
+    protected $table = 'users';
+
+    public $timestamps = false;
+
+    protected $guarded = [];
+}
 
 function bootHttpSqlite(): ArrayProgressStore
 {
@@ -36,8 +47,21 @@ function bootHttpSqlite(): ArrayProgressStore
     foreach ($files as $file) {
         (require $file)->up();
     }
+    Schema::create('users', function ($table): void {
+        $table->increments('id');
+        $table->string('name')->nullable();
+    });
 
     return new ArrayProgressStore;
+}
+
+function httpProposalService(CapabilityBus $bus): ProposalService
+{
+    return new ProposalService(
+        $bus,
+        new AlwaysReadyIdempotency,
+        new ResolveConversationActor(ChatControllerTestUser::class),
+    );
 }
 
 it('history returns 200 with messages', function () {
@@ -119,8 +143,9 @@ it('controller source delegates without Eloquent creates', function () {
 
 it('acceptProposal maps accepted / approval / retry / failed / refuse without uncaught exceptions', function () {
     $progress = bootHttpSqlite();
+    $user = ChatControllerTestUser::query()->create(['name' => 'http-user']);
     $conversations = new ConversationService(static fn ($j) => null, $progress);
-    $ids = $conversations->createUserMessage('p');
+    $ids = $conversations->createUserMessage('p', userId: (string) $user->id);
     $turn = Turn::query()->where('ulid', $ids['turn_ulid'])->firstOrFail();
 
     $makeProposal = static function (string $suffix) use ($turn): Proposal {
@@ -151,7 +176,7 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse without un
     $controller = new ChatController;
     $ok = $controller->acceptProposal(
         $makeProposal('ok')->ulid,
-        new ProposalService($busOk, new AlwaysReadyIdempotency),
+        httpProposalService($busOk),
     );
     expect($ok->getStatusCode())->toBe(200)
         ->and($ok->getData(true)['outcome'])->toBe('accepted');
@@ -170,7 +195,7 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse without un
     };
     $apr = $controller->acceptProposal(
         $makeProposal('apr')->ulid,
-        new ProposalService($busApr, new AlwaysReadyIdempotency),
+        httpProposalService($busApr),
     );
     expect($apr->getStatusCode())->toBe(202)
         ->and($apr->getData(true)['outcome'])->toBe('approval_required')
@@ -190,7 +215,7 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse without un
     };
     $retry = $controller->acceptProposal(
         $makeProposal('rty')->ulid,
-        new ProposalService($busRetry, new AlwaysReadyIdempotency),
+        httpProposalService($busRetry),
     );
     expect($retry->getStatusCode())->toBe(429)
         ->and($retry->getData(true)['outcome'])->toBe('retryable');
@@ -209,7 +234,7 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse without un
     };
     $fail = $controller->acceptProposal(
         $makeProposal('fai')->ulid,
-        new ProposalService($busFail, new AlwaysReadyIdempotency),
+        httpProposalService($busFail),
     );
     expect($fail->getStatusCode())->toBe(422)
         ->and($fail->getData(true)['outcome'])->toBe('failed');
@@ -228,7 +253,7 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse without un
     };
     $refuse = $controller->acceptProposal(
         $makeProposal('ref')->ulid,
-        new ProposalService($busRefuse, new AlwaysReadyIdempotency),
+        httpProposalService($busRefuse),
     );
     expect($refuse->getStatusCode())->toBe(403)
         ->and($refuse->getData(true)['outcome'])->toBe('refuse');
@@ -238,14 +263,14 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse without un
     $rejected->save();
     $rej = $controller->acceptProposal(
         $rejected->ulid,
-        new ProposalService($busOk, new AlwaysReadyIdempotency),
+        httpProposalService($busOk),
     );
     expect($rej->getStatusCode())->toBe(409)
         ->and($rej->getData(true)['outcome'])->toBe('refuse');
 
     $missing = $controller->acceptProposal(
         'PROPDOESNOTEXIST0001',
-        new ProposalService($busOk, new AlwaysReadyIdempotency),
+        httpProposalService($busOk),
     );
     expect($missing->getStatusCode())->toBe(404)
         ->and($missing->getData(true)['message'])->toBe('Proposal not found');

@@ -16,6 +16,7 @@ use Rawphp\CapabilitiesAi\Models\Message;
 use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\ProposalFenceExtractor;
+use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
 use RuntimeException;
 
 /**
@@ -33,6 +34,7 @@ final class TurnRunner
         private readonly int $maxToolRounds = 8,
         private readonly string $claimOwner = 'turn-runner',
         private readonly ProposalFenceExtractor $proposalExtractor = new ProposalFenceExtractor,
+        private readonly ResolveConversationActor $actors = new ResolveConversationActor,
     ) {}
 
     public function run(string $turnUlid): Turn
@@ -86,6 +88,11 @@ final class TurnRunner
                     );
                 }
 
+                // Principal once per tool-using round: conversation user as actor + caller=job.
+                // Missing/invalid user_id fails closed (never ResolveActor::defaultUser).
+                $actor = $this->actors->resolve($conversation->user_id);
+                $invokeOptions = $this->actors->invokeOptions($actor);
+
                 // Normalize ids first so assistant tool_use and role=tool share the same id.
                 $normalizedCalls = [];
                 foreach ($toolCalls as $callIndex => $call) {
@@ -129,7 +136,7 @@ final class TurnRunner
                         $payload = [];
                     }
                     $toolCallId = (string) $call['id'];
-                    $result = $this->bus->invoke($name, $payload);
+                    $result = $this->bus->invoke($name, $payload, $invokeOptions);
                     $toolContent = $this->encodeToolResult($name, $result);
                     $this->progress->append($turnUlid, [
                         'kind' => 'tool',

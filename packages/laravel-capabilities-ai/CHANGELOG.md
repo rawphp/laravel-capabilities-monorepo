@@ -11,6 +11,10 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Fixed
+
+- **Bus invoke principal (ORI-775):** `TurnRunner` tool invokes and `ProposalService` accept invokes now pass `caller=job` + conversation User as `actor` (legacy coach / `RunCoachCommandHandler` shape). Missing or unresolvable `conversation.user_id` fails closed (no `ResolveActor::defaultUser()` / silent id=1). Config: `capabilities-ai.user_model` (fallback `auth.providers.users.model`).
+
 ### Added
 
 - **Multimodal (vision) user content (UR-051):** `LlmClient` / `ConversationContextProvider` message `content` may be a **string** or a **list of content blocks** (e.g. Anthropic `{ type: "text" }` + `{ type: "image", source: { type: "base64", media_type, data } }`). `AnthropicLlmClient` passes user block arrays through to the Messages API unchanged and still stringifies pure text turns. **Hosts must supply image bytes** in context (package does not store or fetch attachments).

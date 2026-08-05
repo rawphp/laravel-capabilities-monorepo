@@ -63,4 +63,10 @@ return [
 
     /** Max tool-call rounds per turn before force-complete/fail. */
     'max_tool_rounds' => (int) $env('CAPABILITIES_AI_MAX_TOOL_ROUNDS', 8),
+
+    /**
+     * Eloquent user model used to resolve conversation.user_id → bus actor.
+     * Empty → fall back to auth.providers.users.model. Missing both fails closed.
+     */
+    'user_model' => $env('CAPABILITIES_AI_USER_MODEL', null),
 ];

@@ -188,6 +188,10 @@ final class ContainerBindings
         ?CapabilityBus $bus = null,
     ): TurnRunner {
         $maxRounds = (int) ($config['max_tool_rounds'] ?? 8);
+        $userModel = $config['user_model'] ?? null;
+        $actors = new ResolveConversationActor(
+            is_string($userModel) && $userModel !== '' ? $userModel : null,
+        );
 
         return new TurnRunner(
             claim: $claim,
@@ -197,6 +201,7 @@ final class ContainerBindings
             bus: $bus,
             progress: $progress,
             maxToolRounds: $maxRounds > 0 ? $maxRounds : 8,
+            actors: $actors,
         );
     }
 
@@ -214,8 +219,15 @@ final class ContainerBindings
     public static function makeProposalService(
         CapabilityBus $bus,
         IdempotencyReadiness $idempotency,
+        ?string $userModel = null,
     ): ProposalService {
-        return new ProposalService($bus, $idempotency);
+        return new ProposalService(
+            $bus,
+            $idempotency,
+            new ResolveConversationActor(
+                is_string($userModel) && $userModel !== '' ? $userModel : null,
+            ),
+        );
     }
 
     public static function makeTurnService(ProgressStore $progress): TurnService

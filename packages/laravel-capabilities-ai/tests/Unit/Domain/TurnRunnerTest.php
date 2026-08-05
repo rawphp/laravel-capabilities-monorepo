@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Container\Container;
 use Illuminate\Database\Capsule\Manager as Capsule;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Events\Dispatcher as EventDispatcher;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Facade;
@@ -17,9 +18,23 @@ use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
+use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
+use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
+
+/**
+ * Minimal user model for TurnRunner principal resolution unit tests.
+ */
+class TurnRunnerTestUser extends Model
+{
+    protected $table = 'users';
+
+    public $timestamps = false;
+
+    protected $guarded = [];
+}
 
 function bootTurnSqlite(): void
 {
@@ -42,16 +57,38 @@ function bootTurnSqlite(): void
     foreach ($files as $file) {
         (require $file)->up();
     }
+    Schema::create('users', function ($table): void {
+        $table->increments('id');
+        $table->string('name')->nullable();
+    });
 }
 
-function enqueueTurn(string $content = 'hi'): string
+function enqueueTurn(string $content = 'hi', ?string $userId = null): string
 {
     $service = new ConversationService(static function ($job): void {
         // discard
     }, new ArrayProgressStore);
-    $ids = $service->createUserMessage($content);
+    $ids = $service->createUserMessage($content, userId: $userId);
 
     return $ids['turn_ulid'];
+}
+
+/**
+ * Seed a conversation-owned user and return the turn ulid + actor.
+ *
+ * @return array{turn_ulid: string, user: TurnRunnerTestUser}
+ */
+function enqueueTurnWithUser(string $content = 'hi'): array
+{
+    $user = TurnRunnerTestUser::query()->create(['name' => 'turn-user']);
+    $turnUlid = enqueueTurn($content, (string) $user->id);
+
+    return ['turn_ulid' => $turnUlid, 'user' => $user];
+}
+
+function turnActors(): ResolveConversationActor
+{
+    return new ResolveConversationActor(TurnRunnerTestUser::class);
 }
 
 function recordingBus(): object
@@ -65,11 +102,15 @@ function recordingBus(): object
         /** @var array<string, mixed> */
         public array $lastInput = [];
 
+        /** @var array<string, mixed> */
+        public array $lastOptions = [];
+
         public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
         {
             $this->invokes++;
             $this->lastName = $nameOrAlias;
             $this->lastInput = $input;
+            $this->lastOptions = $options;
 
             return CapabilityResult::ok(['ok' => true]);
         }
@@ -127,7 +168,8 @@ it('FakeLlmClient text-only turn reaches completed with terminal after DB', func
 
 it('tool call path invokes CapabilityBus exactly once with expected name/payload', function () {
     bootTurnSqlite();
-    $turnUlid = enqueueTurn('use tool');
+    $seeded = enqueueTurnWithUser('use tool');
+    $turnUlid = $seeded['turn_ulid'];
     $bus = recordingBus();
     $llm = new FakeLlmClient([
         ['tool_calls' => [['name' => 'demo.tool', 'arguments' => ['x' => 1]]]],
@@ -155,12 +197,16 @@ it('tool call path invokes CapabilityBus exactly once with expected name/payload
         tools: $tools,
         bus: $bus,
         progress: $progress,
+        actors: turnActors(),
     );
     $turn = $runner->run($turnUlid);
     expect($turn->status)->toBe(Turn::STATUS_COMPLETED)
         ->and($bus->invokes)->toBe(1)
         ->and($bus->lastName)->toBe('demo.tool')
-        ->and($bus->lastInput)->toBe(['x' => 1]);
+        ->and($bus->lastInput)->toBe(['x' => 1])
+        ->and($bus->lastOptions['caller'] ?? null)->toBe(ResolveConversationActor::CALLER_JOB)
+        ->and($bus->lastOptions['actor'] ?? null)->toBeInstanceOf(TurnRunnerTestUser::class)
+        ->and((string) ($bus->lastOptions['actor']->id ?? ''))->toBe((string) $seeded['user']->id);
 
     $toolEvents = array_values(array_filter(
         $progress->since($turnUlid),
@@ -173,6 +219,45 @@ it('tool call path invokes CapabilityBus exactly once with expected name/payload
         ->and($data['ok'] ?? null)->toBeTrue()
         ->and(array_key_exists('error_code', $data))->toBeTrue()
         ->and($data['error_code'])->toBeNull();
+});
+
+it('tool call path fails closed when conversation has no user_id', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurn('use tool'); // no userId
+    $bus = recordingBus();
+    $llm = new FakeLlmClient([
+        ['tool_calls' => [['name' => 'demo.tool', 'arguments' => ['x' => 1]]]],
+        ['content' => 'done'],
+    ]);
+    $context = new class implements ConversationContextProvider
+    {
+        public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['role' => 'user', 'content' => 'use tool']];
+        }
+    };
+    $tools = new class implements ToolCatalog
+    {
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['name' => 'demo.tool']];
+        }
+    };
+    $progress = new ArrayProgressStore;
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        bus: $bus,
+        progress: $progress,
+        actors: turnActors(),
+    );
+
+    expect(fn () => $runner->run($turnUlid))->toThrow(RuntimeException::class, 'user_id');
+    expect($bus->invokes)->toBe(0);
+    $turn = Turn::query()->where('ulid', $turnUlid)->firstOrFail();
+    expect($turn->status)->toBe(Turn::STATUS_FAILED);
 });
 
 it('FakeLlmClient ensures non-empty id on each tool_calls entry', function () {
@@ -191,7 +276,7 @@ it('FakeLlmClient ensures non-empty id on each tool_calls entry', function () {
 
 it('TurnRunner tool-result messages carry matching tool_call_id from tool_calls id', function () {
     bootTurnSqlite();
-    $turnUlid = enqueueTurn('use tool');
+    $turnUlid = enqueueTurnWithUser('use tool')['turn_ulid'];
     $captured = [];
     $bus = recordingBus();
     $llm = new class($captured) implements LlmClient
@@ -243,6 +328,7 @@ it('TurnRunner tool-result messages carry matching tool_call_id from tool_calls 
         tools: $tools,
         bus: $bus,
         progress: new ArrayProgressStore,
+        actors: turnActors(),
     );
     $runner->run($turnUlid);
     expect(count($captured))->toBe(2);
@@ -266,7 +352,7 @@ it('TurnRunner tool-result messages carry matching tool_call_id from tool_calls 
 
 it('FakeLlmClient multi-round fixtures still complete with generated tool call ids', function () {
     bootTurnSqlite();
-    $turnUlid = enqueueTurn('use tool');
+    $turnUlid = enqueueTurnWithUser('use tool')['turn_ulid'];
     $captured = [];
     $bus = recordingBus();
     $inner = new FakeLlmClient([
@@ -320,6 +406,7 @@ it('FakeLlmClient multi-round fixtures still complete with generated tool call i
         tools: $tools,
         bus: $bus,
         progress: new ArrayProgressStore,
+        actors: turnActors(),
     );
     $turn = $runner->run($turnUlid);
     expect($turn->status)->toBe(Turn::STATUS_COMPLETED)
@@ -335,7 +422,7 @@ it('FakeLlmClient multi-round fixtures still complete with generated tool call i
 
 it('progress tool events expose ok false and error_code on bus failure', function () {
     bootTurnSqlite();
-    $turnUlid = enqueueTurn('use tool');
+    $turnUlid = enqueueTurnWithUser('use tool')['turn_ulid'];
     $bus = new class implements CapabilityBus
     {
         public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
@@ -374,6 +461,7 @@ it('progress tool events expose ok false and error_code on bus failure', functio
         tools: $tools,
         bus: $bus,
         progress: $progress,
+        actors: turnActors(),
     );
     $runner->run($turnUlid);
 
@@ -482,7 +570,7 @@ it('refuses tool invokes when LlmClient does not support tool rounds (no bus mut
 
 it('feeds real CapabilityResult into tool messages (not invented ok:true)', function () {
     bootTurnSqlite();
-    $turnUlid = enqueueTurn('use tool');
+    $turnUlid = enqueueTurnWithUser('use tool')['turn_ulid'];
     $captured = [];
     $bus = new class implements CapabilityBus
     {
@@ -541,6 +629,7 @@ it('feeds real CapabilityResult into tool messages (not invented ok:true)', func
         tools: $tools,
         bus: $bus,
         progress: new ArrayProgressStore,
+        actors: turnActors(),
     );
     $runner->run($turnUlid);
     expect($bus->invokes)->toBe(1)

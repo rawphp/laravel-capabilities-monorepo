@@ -8,8 +8,10 @@ use Illuminate\Support\Carbon;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
+use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Support\DatabaseConnection;
+use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
 use RuntimeException;
 
 /**
@@ -34,6 +36,7 @@ final class ProposalService
     public function __construct(
         private readonly CapabilityBus $bus,
         private readonly IdempotencyReadiness $idempotency,
+        private readonly ResolveConversationActor $actors = new ResolveConversationActor,
     ) {}
 
     public function accept(string $proposalUlid): AcceptOutcome
@@ -164,9 +167,16 @@ final class ProposalService
         }
 
         $payload = is_array($proposal->payload) ? $proposal->payload : [];
-        $result = $this->bus->invoke($target, $payload, [
-            'idempotency_key' => 'proposal:'.$proposal->ulid,
-        ]);
+        $conversation = Conversation::query()->findOrFail($proposal->conversation_id);
+        // Same principal shape as TurnRunner tool invokes (caller=job + conversation user).
+        $actor = $this->actors->resolve($conversation->user_id);
+        $result = $this->bus->invoke(
+            $target,
+            $payload,
+            $this->actors->invokeOptions($actor, [
+                'idempotency_key' => 'proposal:'.$proposal->ulid,
+            ]),
+        );
 
         return $this->mapBusResult($proposal, $result);
     }

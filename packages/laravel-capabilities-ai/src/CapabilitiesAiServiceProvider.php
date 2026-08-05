@@ -114,9 +114,13 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
                 );
             }
 
+            $config = self::configFromApp($app);
+            $userModel = $config['user_model'] ?? null;
+
             return ContainerBindings::makeProposalService(
                 $app->make(CapabilityBus::class),
                 $app->make(IdempotencyReadiness::class),
+                is_string($userModel) && $userModel !== '' ? $userModel : null,
             );
         });
     }
