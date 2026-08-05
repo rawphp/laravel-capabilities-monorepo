@@ -226,6 +226,8 @@ Maintainer filters: see [package README — Peer support](../README.md#peer-supp
 - **Approval:** definitions may require approval before `run()` finishes. HTTP accept/reject routes are on the capability prefix. Notifier contracts allow CLI/HTTP/Telegram-style prompts; messaging package supplies conversation-side notify implementation.
 - **Idempotency:** when enabled and the definition uses it, repeated keys replay stored outcomes instead of double-applying. CLI always sends a key on `run`.
 
+**Telegram approval notifiers (upgrade):** For in-memory recording doubles (tests/fakes — **no** Bot API in core), use `RecordingTelegramApprovalNotifier` (`Rawphp\Capabilities\Approval\Notifiers\RecordingTelegramApprovalNotifier`). Core still ships a **deprecated soft-landing** empty subclass `TelegramApprovalNotifier` of that recording double (still loadable; recording-only). Production Telegram Bot API delivery is the **messaging** package FQCN `Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier` — a different class, unchanged by this rename. Full consumer impact: package [CHANGELOG](../CHANGELOG.md) Unreleased **Breaking** and [README](../README.md) Telegram notifier / sibling notes. Pre-stable monorepo design surface — not a Packagist-stable API claim; soft-landing remains until a later removal.
+
 Deep state machine detail (monorepo): [spec.md](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/spec.md).
 
 ## Testing helpers (D-020)
