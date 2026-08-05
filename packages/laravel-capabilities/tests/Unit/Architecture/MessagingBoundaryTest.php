@@ -73,3 +73,18 @@ it('happy: core ships recording Telegram notifier stub only; production name liv
     expect($instance)->toBeInstanceOf(RecordingTelegramApprovalNotifier::class)
         ->and($instance)->toBeInstanceOf(ApprovalNotifier::class);
 });
+
+it('fail: core Approval/Notifiers sources do not reference CapabilitiesMessaging [UR-046 / ORI-753]', function () {
+    $dir = A::CORE_SRC.'/Approval/Notifiers';
+    expect(is_dir($dir))->toBeTrue();
+
+    $hits = [];
+    foreach (glob($dir.'/*.php') ?: [] as $file) {
+        $src = (string) file_get_contents($file);
+        if (str_contains($src, 'CapabilitiesMessaging')) {
+            $hits[] = basename($file);
+        }
+    }
+
+    expect($hits)->toBe([], 'Approval/Notifiers must not reference CapabilitiesMessaging (files: '.implode(', ', $hits).')');
+});
