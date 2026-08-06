@@ -151,6 +151,26 @@ When `agent` or `mcp` is enabled and the peer is missing or `supportsInstalledPe
 
 **Never half-register tools.** Partial tool lists on an incompatible peer are refused.
 
+**MCP plan / mid-mount (D-024):**
+
+| Case | Behaviour |
+|------|-----------|
+| Empty plan (`profiles`/`servers` empty or `auto_register` false) | Soft-fail before peer eval (ORI-801) |
+| Non-empty plan + allowlist miss (unknown name / no MCP surface) | Throw (fail closed) when registry is provided |
+| Non-empty plan + adapter mid-mount `Throwable` | Honour `surfaces.mcp.on_register_error`: **`throw`** (default) or **`disable`** (soft-empty; no half-register) |
+
+Env: `CAPABILITIES_MCP_ON_REGISTER_ERROR=throw|disable`.
+
+### Integration health (Artisan ≠ HTTP health)
+
+```bash
+php artisan capabilities:integration-health
+```
+
+Diagnoses **host product readiness** (bindings, AI-chat mode, MCP tools, AI proposals/AlwaysReady safety when `capabilities-ai` config is present). Distinct from **HTTP** `GET …/capabilities/health` (surface catalog / peer status for clients).
+
+AI-chat mode for this command: `capabilities-ai.routes.enabled` **OR** non-empty `capabilities-ai.queue.name`. Details: [docs/user-guide.md](docs/user-guide.md#integration-health-vs-http-health).
+
 ### AdapterApi bump rule
 
 `AdapterApi` versions this package’s bridge shapes (not the peer package version).

@@ -17,6 +17,12 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Added
 
+- **Host integration seams (UR-062 / D-024):** queue-on-default-dispatch, live idempotency readiness, proposals full gate, stale-turn reaper, phase-3 unsafe-driver guards. Greenfield checklist + ProgressStore `extend` order + residual kill-list: [docs/user-guide.md](docs/user-guide.md#host-integration-greenfield). Core companion: `php artisan capabilities:integration-health` (≠ HTTP `/capabilities/health`) and MCP `on_register_error` — see [rawphp/laravel-capabilities CHANGELOG](https://github.com/rawphp/laravel-capabilities/blob/main/CHANGELOG.md).
+  - **`capabilities-ai.queue.{name,connection}`** (`CAPABILITIES_AI_QUEUE_NAME`, `CAPABILITIES_AI_QUEUE_CONNECTION`) — default `RunTurnJob` dispatch sets Laravel public `$queue` / `$connection` when non-empty. No `ConversationService` rebind for queue routing.
+  - **`StoreBoundIdempotencyReadiness`** — production SP default for `IdempotencyReadiness`: live probe of core `IdempotencyStore` when bound; else `isReady()=false`. **`AlwaysReadyIdempotency` is unit-tests only** (not production default).
+  - **`proposals.enabled`** (`CAPABILITIES_AI_PROPOSALS_ENABLED`, Phase-1 BC default **true**; **greenfield: false**) — gates accept/reject routes, TurnRunner fence → proposal extract, and history proposals.
+  - **`capabilities-ai:reap-stale-turns`** + `reaper.stale_queued_minutes` / `reaper.stale_running_grace_seconds` — host schedules the command; package does not auto-schedule. Running threshold uses max(`claim_ttl`, grace). **`claim_ttl` default remains 120**.
+  - **`CAPABILITIES_AI_ALLOW_UNSAFE`** / `allow_unsafe` — outside `APP_ENV=testing`, `progress.driver=array` and `llm.driver=fake` throw unless the escape hatch is set (local demos only).
 - **Multimodal (vision) user content (UR-051):** `LlmClient` / `ConversationContextProvider` message `content` may be a **string** or a **list of content blocks** (e.g. Anthropic `{ type: "text" }` + `{ type: "image", source: { type: "base64", media_type, data } }`). `AnthropicLlmClient` passes user block arrays through to the Messages API unchanged and still stringifies pure text turns. **Hosts must supply image bytes** in context (package does not store or fetch attachments).
 - **Anthropic multi-round tools (ORI-730):** `AnthropicLlmClient::supportsToolRounds()` is **true**. Package tool defs map to Anthropic `tools` (`name`, `description`, `input_schema`). Responses parse `tool_use` into `tool_calls` **with `id`**. Request encoding maps assistant `tool_calls` → `tool_use` blocks and `role=tool` → user `tool_result` blocks (`tool_use_id`). Empty API key / HTTP errors stay fail-closed. `TurnRunner` now re-appends the assistant `tool_calls` turn into the transcript before `role=tool` results so providers can correlate.
 - **Anthropic max_tokens host parity (ORI-739):** `AnthropicLlmClient` no longer hard-codes `max_tokens => 1024`. Constructor default and package config `llm.anthropic.max_tokens` (`CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS`) default to **64000**. `ContainerBindings::makeLlmClient` wires the config value.
@@ -126,15 +132,15 @@ Constructor and job-handle DI tightened for hosts that construct services outsid
 | **`TurnRunner` ctor** | `?ProgressStore $progress = null` (optional; often last/optional dep) | **`ProgressStore $progress` required** — 3rd ctor arg after `TurnClaim $claim`, `LlmClient $llm` (then optional context / tools / bus / …) |
 | **`ConversationService` ctor** | Silent default / optional progress (e.g. in-ctor `ArrayProgressStore`) | **`ProgressStore $progress` required** (2nd arg after `$dispatch`; no silent array default) |
 | **`RunTurnJob::handle`** | Empty `handle()` / no method injection | **`handle(TurnRunner $runner): void`** — queue workers **must** resolve via container method injection; empty `handle()` is no longer valid |
-| **`ProposalService` ctor** | Accept without readiness dep / frozen stamp | **Requires `IdempotencyReadiness $idempotency`** (2nd arg after `CapabilityBus`). SP default: **`AlwaysReadyIdempotency`**; hosts rebind a **live probe** evaluated at accept time |
+| **`ProposalService` ctor** | Accept without readiness dep / frozen stamp | **Requires `IdempotencyReadiness $idempotency`** (2nd arg after `CapabilityBus`). SP default: **`StoreBoundIdempotencyReadiness`** (live core store ping; fail closed when unbound). **`AlwaysReadyIdempotency` is tests-only** |
 
-**Preferred path:** register `CapabilitiesAiServiceProvider` and resolve services from the container (`ContainerBindings` factories wire ProgressStore, AlwaysReady default, TurnRunner, ConversationService, ProposalService). Do not hand-roll `new TurnRunner(...)` / `new ConversationService(...)` / `new ProposalService(...)` unless you pass every required dep.
+**Preferred path:** register `CapabilitiesAiServiceProvider` and resolve services from the container (`ContainerBindings` factories wire ProgressStore, **`StoreBoundIdempotencyReadiness`**, TurnRunner, ConversationService, ProposalService). Do not hand-roll `new TurnRunner(...)` / `new ConversationService(...)` / `new ProposalService(...)` unless you pass every required dep.
 
 **Client impact:**
 
 - Hosts constructing `TurnRunner` or `ConversationService` outside SP without an explicit `ProgressStore` **break** (type / argument count).
 - Queue workers or custom job runners that call `handle()` with no container method injection for `TurnRunner` **break**.
-- Hosts constructing `ProposalService` without `IdempotencyReadiness` **break**. Production hosts that need fail-closed accept must rebind `IdempotencyReadiness` (not rely on AlwaysReady forever).
+- Hosts constructing `ProposalService` without `IdempotencyReadiness` **break**. Production path is **`StoreBoundIdempotencyReadiness`** + core **`IdempotencyStore`** wired; do **not** bind AlwaysReady outside unit tests.
 
 **Do not** restore nullable ProgressStore or change production DI to soften this — docs only catch hosts up to shipped code.
 

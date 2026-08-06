@@ -151,9 +151,26 @@ Optional sibling for model turns that call tools **only** through the capability
 composer update rawphp/laravel-capabilities-ai
 php artisan vendor:publish --tag=capabilities-ai-config
 php artisan vendor:publish --tag=capabilities-ai-migrations
+php artisan migrate
 ```
 
-Bind host seams (`ConversationContextProvider`, `ToolCatalog`, `LlmClient`) before running turns. See [AI package README](../packages/laravel-capabilities-ai/README.md#scope-this-package).
+Bind host seams (`ConversationContextProvider`, `ToolCatalog`, `LlmClient` / real driver) before running turns. See [AI package README](../packages/laravel-capabilities-ai/README.md#scope-this-package) and [AI host integration](../packages/laravel-capabilities-ai/docs/user-guide.md#host-integration-greenfield).
+
+### Greenfield AI-chat checklist (D-024)
+
+Package AI routes are **optional**. Product UX = **host routes** → bus / AI services. Configure — do not rebind — queue and progress.
+
+1. Bind core `Authorizer` + register domain capabilities.
+2. Bind `ConversationContextProvider` + `ToolCatalog`.
+3. Set **`CAPABILITIES_AI_QUEUE_NAME=…`** and run `queue:work --queue=…` (also marks AI-chat for integration-health without package routes). Optional: `CAPABILITIES_AI_QUEUE_CONNECTION`.
+4. Optional: `CAPABILITIES_AI_ROUTES_ENABLED=true` only if you want package chat HTTP.
+5. Production: **`CAPABILITIES_AI_PROGRESS_DRIVER=redis`**. Outside testing, `array` progress / `fake` LLM **throw** unless `CAPABILITIES_AI_ALLOW_UNSAFE=1` (demos only).
+6. Greenfield: **`CAPABILITIES_AI_PROPOSALS_ENABLED=false`** (Phase-1 BC default is still `true` — docs say off for new hosts).
+7. Progress side-effects: `app()->extend(ProgressStore::class, …)` in **`boot()`** — never full `singleton` replace of the package store.
+8. Schedule **`php artisan capabilities-ai:reap-stale-turns`** (host owns schedule; package does not auto-schedule). `claim_ttl` default **120**.
+9. Verify: **`php artisan capabilities:integration-health`** → fail set clean. This is **not** HTTP `GET …/capabilities/health`.
+
+**Forbidden:** `ConversationService` rebind only for queue; `AlwaysReadyIdempotency` in prod; package route surgery for product UX. SP readiness default is **`StoreBoundIdempotencyReadiness`** (wire core `IdempotencyStore` when proposals are on).
 
 ## 6. Optional: product CLI on the user machine
 
@@ -184,6 +201,7 @@ Do **not** run `capabilities mcp` as product MCP (subcommand removed). Use serve
 - Optional: `POST /capabilities/{name}` with auth reaches the same `run()`.
 - Optional: CLI `catalog` lists capabilities after `auth login`.
 - Optional: Telegram webhook route responds when messaging is enabled and secrets are set (secrets are checked on first use, not at boot).
+- Optional AI-chat: `php artisan capabilities:integration-health` fail set clean after queue/progress/proposals config.
 
 ## If something goes wrong
 
@@ -192,9 +210,10 @@ See [Troubleshooting](troubleshooting.md). Common early blockers:
 | Symptom | Where to look |
 |---|---|
 | Packagist / `composer require` fails | Expected until publish — use path or package VCS ([versioning.md](versioning.md)) |
-| Boot exception mentioning `laravel/ai` or `laravel/mcp` | Disable surface or install compatible peer |
+| Boot exception mentioning `laravel/ai` or `laravel/mcp` | Disable surface or install compatible peer; MCP mid-mount → `on_register_error` / profiles ([troubleshooting.md](troubleshooting.md#mcp-register-or-boot-fails-with-non-empty-plan)) |
 | Capability not discovered | Path `app/Capabilities`, provider registration, one define style per name |
 | CLI “missing base URL” / auth exit | `capabilities auth login --base-url=...` |
+| AI-chat integration-health fails | Queue name, redis progress, proposals + readiness ([troubleshooting.md](troubleshooting.md#capabilitiesintegration-health-fails)) |
 
 ## Related
 

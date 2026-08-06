@@ -189,11 +189,12 @@ Publish: `php artisan vendor:publish --tag=capabilities-config`
 | Area | Keys (defaults sketched) | Why you care |
 |---|---|---|
 | Discovery | `path` → `app/Capabilities` | Attribute discovery root |
-| Agent/MCP profiles | `surfaces.*.profiles`, `require_profile`, tool count limits | Never dump full catalog by default |
+| Agent/MCP profiles | `surfaces.*.profiles`, `require_profile`, tool count limits | Never dump full catalog by default (`name => list<string>` for MCP) |
 | Peer mismatch | `on_incompatible` → `fail` \| `disable` | Boot fail vs soft-disable |
+| MCP register errors | `surfaces.mcp.on_register_error` → `throw` (default) \| `disable` | Mid-mount adapter failure policy for non-empty plans |
 | HTTP | `prefix`, `middleware` | Route mount and auth |
 | Approval | `store`, `ttl_hours`, `execution`, `resume.*` | Human-in-the-loop |
-| Idempotency | `enabled`, `driver` (default `database`; use `memory` only for single-process tests), `header` (`Idempotency-Key`) | Safe retries |
+| Idempotency | `enabled`, `driver` (default `database`; use `memory` only for single-process tests), `header` (`Idempotency-Key`) | Safe retries; AI proposal accept readiness pings this store |
 | Audit | `enabled`, `mode` (`best_effort`), `driver` | Observability of invokes |
 | Rate limits | `defaults.per_minute`, per-capability, agent turn max tools | Abuse control |
 | Clients | `token_abilities` (e.g. `capabilities:cli` → `cli`), privilege order | Caller derivation |
@@ -233,14 +234,34 @@ When agent or MCP is enabled and the peer is missing or `supportsInstalledPeer()
 
 With `surfaces.mcp.enabled` and a compatible `laravel/mcp` peer:
 
-1. Define named **profiles** under `surfaces.mcp.profiles` (capability name lists — D-008), or explicit `servers` rows.
+1. Define named **profiles** under `surfaces.mcp.profiles` (capability name lists — D-008 / D-024: **`name => list<string>` capability names only**), or explicit `servers` rows.
 2. Leave **`auto_register` true** (default): production boot builds a **server plan** via `McpServerRegistrar` and may call `McpToolAdapter::register` for each planned profile. That loads profile tools on the adapter and returns planned server definitions (name, profile, planned `path`, tools).
-3. Production `bootMcpServers()` does **not** push those definitions into `laravel/mcp` (there is no peer sink analogous to `HttpRouteRegistrar::registerInto`). Integrators still **host-wire** peer MCP servers themselves (e.g. `Mcp::web` / peer docs) using the planned tools/profiles (or manual `Capability::mcpTools`).
-4. Planned paths use `path_prefix` (default `/mcp`) only as plan metadata (`/mcp/{profile}`). Clients reach whatever routes the **host** actually mounts — not a package live auto-mount at `path_prefix`.
-5. **Multi-profile residual:** sequential `adapter->register` overwrites the adapter’s active profile/tools (**last profile wins**). For multiple live MCP servers, wire each peer server with its own tool set rather than relying on a single shared adapter state after multi-profile boot.
-6. Set `auto_register` false when you want no plan/register loop at boot and will select tools only via your own host wiring.
+3. **Allowlist validation** at register: profile capability names must exist and expose the MCP surface. Unknown or non-MCP names fail closed (throw) when a registry is provided.
+4. **`on_register_error`** (`surfaces.mcp.on_register_error` / `CAPABILITIES_MCP_ON_REGISTER_ERROR`, default **`throw`**): when a **non-empty** plan hits an unexpected mid-mount adapter `Throwable`, rethrow (default) or soft-empty tools when set to **`disable`**. **Empty plan** remains soft-fail without peer evaluation (ORI-801) — distinct from mid-mount failures.
+5. Production `bootMcpServers()` does **not** push those definitions into `laravel/mcp` (there is no peer sink analogous to `HttpRouteRegistrar::registerInto`). Integrators still **host-wire** peer MCP servers themselves (e.g. `Mcp::web` / peer docs) using the planned tools/profiles (or manual `Capability::mcpTools`).
+6. Planned paths use `path_prefix` (default `/mcp`) only as plan metadata (`/mcp/{profile}`). Clients reach whatever routes the **host** actually mounts — not a package live auto-mount at `path_prefix`.
+7. **Multi-profile residual:** sequential `adapter->register` overwrites the adapter’s active profile/tools (**last profile wins**). For multiple live MCP servers, wire each peer server with its own tool set rather than relying on a single shared adapter state after multi-profile boot.
+8. Set `auto_register` false when you want no plan/register loop at boot and will select tools only via your own host wiring.
 
 Maintainer filters: see [package README — Peer support](../README.md#peer-support--d-011-release-gate).
+
+### Integration health vs HTTP health
+
+Two different readiness signals — do not merge:
+
+| Surface | What | Purpose |
+|---------|------|---------|
+| **Artisan** `php artisan capabilities:integration-health` | `IntegrationHealthChecker` / `IntegrationHealthCommand` | Host **product** readiness: bindings, AI-chat mode, MCP tool counts, proposals + AlwaysReady safety, progress/queue ops checks when AI package config is present |
+| **HTTP** `GET /{prefix}/health` (default `/capabilities/health`) | `CatalogHealth` / controller | **Surface/catalog** peer health for HTTP clients (D-011 / D-021) |
+
+**AI-chat mode** (integration-health only): `capabilities-ai.routes.enabled === true` **OR** non-empty `capabilities-ai.queue.name`. Core does not require the AI package to boot; AI rows appear when `capabilities-ai` config is present.
+
+```bash
+php artisan capabilities:integration-health
+# exit 0 when fail set is clean; non-zero when any fail-level check fails
+```
+
+Greenfield AI-chat hosts use this after queue/progress/proposals config — see AI package user guide host-integration section (package repo docs).
 
 ## Approval and idempotency (operator view)
 
@@ -301,6 +322,7 @@ Surface labels include `http`, `cli`, `agent`, `mcp`, `job`, `artisan`, plus ali
 - `invoke` returns `ok` for authorized valid input and denies without calling `run()` when authorize fails.
 - HTTP catalog lists the capability when the http surface and capability surfaces allow it.
 - Schema snapshots stay green in app CI after intentional updates only.
+- `php artisan capabilities:integration-health` reports a clean fail set for your intended mode (bus-only vs AI-chat vs MCP lab).
 
 ## If something goes wrong
 
