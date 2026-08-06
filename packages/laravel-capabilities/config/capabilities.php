@@ -51,8 +51,18 @@ return [
             'enabled' => $env('CAPABILITIES_SURFACE_MCP', true),
             'require_package' => true,
             'on_incompatible' => $env('CAPABILITIES_MCP_ON_INCOMPATIBLE', 'fail'),
+            // D-008: named profiles only — never auto-mount the full catalog.
+            // Each profile key becomes one MCP server when auto_register is true (ORI-790).
             'profiles' => [],
             'require_profile' => true,
+            // Config-driven server auto-registration via McpToolAdapter (ORI-790).
+            // Host enables surface + installs laravel/mcp; package registers servers
+            // from profiles (or explicit servers map) — no hand-wiring every tool.
+            'auto_register' => true,
+            'path_prefix' => '/mcp',
+            // Optional explicit server map (name => profile|config). Empty → derive from profiles keys.
+            // Example: 'ops-billing' => ['profile' => 'billing', 'path' => '/mcp/ops-billing']
+            'servers' => [],
             'auth' => [
                 'default_profile' => 'user_pat',
                 'allow_integration_credentials' => false,

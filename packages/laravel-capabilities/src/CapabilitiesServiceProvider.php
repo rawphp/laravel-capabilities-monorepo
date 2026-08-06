@@ -15,8 +15,10 @@ use Rawphp\Capabilities\Adapters\Http\IlluminateAuthController;
 use Rawphp\Capabilities\Adapters\Http\IlluminateCapabilityController;
 use Rawphp\Capabilities\Adapters\JobSurface;
 use Rawphp\Capabilities\Adapters\Mcp\McpAuthProfileResolver;
+use Rawphp\Capabilities\Adapters\Mcp\McpServerRegistrar;
 use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapter;
 use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapterV1;
+use Rawphp\Capabilities\Adapters\PeerIncompatibleException;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Audit\AuditLogger;
@@ -376,6 +378,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
         $this->bootHttpRoutes();
         $this->bootCapabilityDiscovery();
         $this->bootArtisanCommands();
+        $this->bootMcpServers();
 
         if ($this->app->runningInConsole()) {
             $this->publishes([
@@ -385,6 +388,79 @@ class CapabilitiesServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__.'/../database/migrations' => database_path('migrations'),
             ], 'capabilities-migrations');
+        }
+    }
+
+    /**
+     * Auto-register MCP servers from surfaces.mcp.profiles (ORI-790 / D-008 / D-011).
+     *
+     * Host enables surfaces.mcp + installs laravel/mcp; package mounts one server per
+     * named profile via {@see McpToolAdapter} — no hand-wiring each capability tool.
+     * Disabled surface or fail-closed peer → register nothing (no half-registration).
+     *
+     * Pure entry for unit tests: pass $mcpConfig + $sink explicitly without a full app boot.
+     * Static {@see bootMcpServersWith()} is preferred for unit isolation.
+     *
+     * @param  array<string, mixed>|null  $mcpConfig
+     * @param  callable(array<string, mixed>): void|null  $sink  optional peer facade sink
+     * @return list<string> registered server names (empty when disabled / no profiles)
+     */
+    public function bootMcpServers(?array $mcpConfig = null, ?callable $sink = null): array
+    {
+        $config = $mcpConfig ?? (self::configFromApp($this->app)['surfaces']['mcp'] ?? []);
+        if (! is_array($config)) {
+            $config = [];
+        }
+
+        if (! (bool) ($config['enabled'] ?? true)) {
+            return [];
+        }
+
+        try {
+            /** @var McpToolAdapter $adapter */
+            $adapter = $this->app->make(McpToolAdapter::class);
+        } catch (\Throwable) {
+            return [];
+        }
+
+        try {
+            /** @var PeerVersionProbe $probe */
+            $probe = $this->app->make(PeerVersionProbe::class);
+        } catch (\Throwable) {
+            $probe = null;
+        }
+
+        return self::bootMcpServersWith($config, $adapter, $probe, $sink);
+    }
+
+    /**
+     * Unit-testable MCP auto-register entry (no Illuminate Application required).
+     *
+     * @param  array<string, mixed>  $mcpConfig
+     * @param  callable(array<string, mixed>): void|null  $sink
+     * @return list<string>
+     */
+    public static function bootMcpServersWith(
+        array $mcpConfig,
+        McpToolAdapter $adapter,
+        ?PeerVersionProbe $probe = null,
+        ?callable $sink = null,
+    ): array {
+        if (! (bool) ($mcpConfig['enabled'] ?? true)) {
+            return [];
+        }
+
+        try {
+            if ($sink !== null) {
+                return McpServerRegistrar::registerInto($mcpConfig, $adapter, $sink, $probe);
+            }
+
+            $servers = McpServerRegistrar::register($mcpConfig, $adapter, $probe);
+
+            return array_column($servers, 'name');
+        } catch (PeerIncompatibleException $e) {
+            // Fail-closed: surface enabled + missing/incompatible peer (on_incompatible=fail).
+            throw $e;
         }
     }
 
