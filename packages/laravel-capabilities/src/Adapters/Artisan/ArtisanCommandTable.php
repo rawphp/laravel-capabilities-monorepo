@@ -51,6 +51,14 @@ final class ArtisanCommandTable
                 'role' => self::ROLE,
                 'class' => RunCapabilityCommand::class,
             ],
+            [
+                'key' => 'integration-health',
+                'signature' => 'capabilities:integration-health',
+                'description' => 'Diagnose host product readiness (bindings, AI-chat, MCP tools).',
+                'caller' => self::CALLER,
+                'role' => self::ROLE,
+                'class' => IntegrationHealthCommand::class,
+            ],
         ];
     }
 
