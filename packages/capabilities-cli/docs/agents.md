@@ -9,7 +9,7 @@ Related: [User guide](user-guide.md) · [Authentication & profiles](authenticati
 ## Design rules (do not break these)
 
 1. **HTTP client only** — no domain `run()` on the laptop.
-2. **Server is law** — local JSON Schema validation is UX; the server always re-validates and authorizes.
+2. **Server is law** — local JSON Schema validation is UX (type, required, structure, and a portable string-`format` subset); the server always re-validates and authorizes (D-004). Do not treat local pass as final.
 3. **Caller is server-derived** from credentials — never send spoofed caller headers.
 4. **Stdout is machine; stderr is human** — parse **stdout** envelopes only. Optional `--human` writes a **short one-line** summary to **stderr** (not full JSON). Never parse `--human` stderr for structured data.
 5. **Branch on exit code** — invoke/error codes **1–6** are stable. **Help/usage paths exit 0** (bare `capabilities`, `… --help`, bare `approvals`) — do not treat those as failure.
@@ -66,14 +66,36 @@ Reserved meta-commands always win over domain tokens of the same name:
 |------|---------|--------------|
 | **0** | Success **or help/usage** | Parse stdout envelope when you invoked a real command; bare help is not an error |
 | **1** | Internal error | Retry once; then fail the turn with stderr |
-| **2** | `validation_failed` | Fix input using `--help` / schema; do not retry same body |
+| **2** | `validation_failed` | Fix input using `--help` / schema; do not retry same body. Includes **local** schema failures (no network) |
 | **3** | Unauthenticated / forbidden | Re-auth or wrong profile / host |
 | **4** | `approval_required` | Surface to human; `approvals accept/reject` |
 | **5** | Domain error / conflict / not_found / output_invalid | Read envelope on **stdout**; do not invent alternate paths |
 | **6** | Rate limited | Back off and retry |
 
 **Help/usage (exit 0):** bare `capabilities`, `capabilities help …`, `… --help`, bare `approvals`.  
-**Not help (exit 2):** `approvals accept` / `reject` without `<id>`; invalid flags / local schema failures.
+**Not help (exit 2):** `approvals accept` / `reject` without `<id>`; invalid flags / local schema failures (type, required, structure, **and** string formats).
+
+### Local schema + string formats (exit 2, no network)
+
+Before any HTTP invoke, `ValidateLocal` checks the catalog input schema with a
+portable subset. Failures exit **2** with field-level stderr such as
+`local schema validation failed (date: invalid date format (expected YYYY-MM-DD))`
+— no request is sent.
+
+Enforced string `format` values (aliases in parentheses):
+
+| Format | Expectation (local) |
+|--------|---------------------|
+| `date` | `YYYY-MM-DD` (calendar-valid) |
+| `date-time` (`datetime`) | RFC3339-style (`…T…Z` or offset) |
+| `time` | `HH:MM:SS` (optional fractional seconds) |
+| `email` | simple `local@domain.tld` shape |
+| `uri` (`url`) | contains `://` or starts with `/` |
+| `uuid` | 8-4-4-4-12 hex |
+
+Unknown formats are **not** enforced locally. This subset may **false-reject**
+values the server would accept (loose email/URI/date-time variants); always
+handle server error envelopes as well (D-004).
 
 On failure for `describe` / domain not-found style paths, a D-018 error envelope may appear on **stdout** (same idea as invoke). Always prefer stdout JSON over stderr text.
 
@@ -101,6 +123,7 @@ Rules:
 - Each scalar flag overwrites that key (**flag wins**).
 - Object/array fields are **JSON-only** (no flag).
 - Unknown flags or json-only fields as flags → exit **2**.
+- Local schema failures (missing required, wrong type, **invalid string format**) → exit **2**, no network.
 - Empty invoke with an all-optional schema may POST `{}`.
 - Every run sends an `Idempotency-Key` (UUID unless `--idempotency-key` or `--retry-last`).
 
