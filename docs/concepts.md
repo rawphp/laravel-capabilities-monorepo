@@ -76,6 +76,14 @@ Optional package `rawphp/laravel-capabilities-ai` runs **conversation turns** (L
 
 The **monorepo** is only where these packages are developed together. After split, each public package repo is the install target. Full is/is-not tables: monorepo [README — Scope](../README.md#scope-product-boundary) and each package README.
 
+### Product MCP vs product CLI
+
+| | Product MCP | Product CLI |
+|---|---|---|
+| Where | Server: `laravel/mcp` + core `McpServerRegistrar` auto-register from `surfaces.mcp` profiles | Laptop binary `capabilities` |
+| Protocol | MCP (HTTP/SSE via Laravel MCP) | HTTP capability API only (`auth` / `catalog` / `run`) |
+| Not | The downloadable CLI | An MCP stdio server (`capabilities mcp` was removed) |
+
 ### Product CLI vs Artisan
 
 | | Product CLI | Artisan |

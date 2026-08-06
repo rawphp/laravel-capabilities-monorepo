@@ -26,17 +26,17 @@ One sentence: *Define what the product can do once; let every agent-era channel 
   **Read when:** conversation surfaces
 - `@packages/laravel-capabilities-ai/` — turn / proposal runtime; tools only via bus  
   **Read when:** conversation turns, LLM client seam, progress store
-- `@packages/capabilities-cli/` — Go product CLI (HTTP client; D-016)  
-  **Read when:** CLI auth/catalog/run/MCP stdio
+- `@packages/capabilities-cli/` — Go product CLI (HTTP client only; D-016)  
+  **Read when:** CLI auth/catalog/run (HTTP). Product MCP is server-side (`laravel/mcp` via core auto-register) — not the CLI.
 
 ## Monorepo packages
 
 | Path | Package | Public remote (after split) | Owns |
 |---|---|---|---|
-| `packages/laravel-capabilities` | `rawphp/laravel-capabilities` | `rawphp/laravel-capabilities` | Registry, schema, HTTP API, AI/MCP/job adapters, approval SM, audit, scope, idempotency, **conversation ingress contracts** |
+| `packages/laravel-capabilities` | `rawphp/laravel-capabilities` | `rawphp/laravel-capabilities` | Registry, schema, HTTP API, AI/MCP/job adapters (incl. `McpServerRegistrar` auto-register), approval SM, audit, scope, idempotency, **conversation ingress contracts** |
 | `packages/laravel-capabilities-messaging` | `rawphp/laravel-capabilities-messaging` | `rawphp/laravel-capabilities-messaging` | Telegram first: webhooks, identity, threads, chat approval notifier |
 | `packages/laravel-capabilities-ai` | `rawphp/laravel-capabilities-ai` | `rawphp/laravel-capabilities-ai` | Turn / proposal runtime, pluggable `LlmClient`, progress store; tools only via `CapabilityBus::invoke` |
-| `packages/capabilities-cli` | `rawphp/capabilities-cli` | `rawphp/capabilities-cli` | Downloadable Go client: auth + catalog + run + optional MCP stdio |
+| `packages/capabilities-cli` | `rawphp/capabilities-cli` | `rawphp/capabilities-cli` | Downloadable Go HTTP client: auth + catalog + run only (no MCP stdio) |
 
 Namespaces: `Rawphp\Capabilities\` (core), `Rawphp\CapabilitiesMessaging\` (messaging), `Rawphp\CapabilitiesAi\` (AI).
 

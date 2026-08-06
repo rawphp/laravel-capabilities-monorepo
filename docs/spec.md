@@ -85,7 +85,7 @@ Schemas diverge. One path checks a policy; another forgets. Approvals apply only
 
 5. **Surfaces are optional; defaults are generous.** Global config turns outchannels on or off (MCP yes/no, agent yes/no, CLI yes/no, …). Default: **all enabled** — opt out of what you do not need; do not force every app to rediscover the full map.
 
-6. **The CLI is a client, not a second backend.** No domain logic on the laptop. Auth + catalog + invoke against the same HTTP bus. Optional MCP stdio is a bridge, not a fork.
+6. **The CLI is a client, not a second backend.** No domain logic on the laptop. Auth + catalog + invoke against the same HTTP bus. **Product MCP is server-side** (`laravel/mcp` + capabilities auto-register). The CLI is **HTTP-only** — no local MCP stdio bridge.
 
 7. **Thin framework, fat domain.** Your actions and services stay yours. We refuse to become a second application framework, a chat UI kit, or a template gallery. **Messaging bots are a sibling product**, not core registry weight — see [D-007](#d-007--package-boundary-messaging-vs-thin-core).
 
@@ -170,7 +170,7 @@ The **family** is four split packages developed in one monorepo. Consumers never
 ### Core — Is not
 
 - An LLM client or turn/proposal product (optional sibling `rawphp/laravel-capabilities-ai`)
-- An MCP protocol implementation (use `laravel/mcp` for HTTP/SSE MCP; the CLI may *bridge* to it)
+- An MCP protocol implementation (use `laravel/mcp` for product MCP; capabilities auto-registers servers from config — not the CLI)
 - **Artisan** as the product CLI (Artisan remains optional *in-server* ops; see below)
 - A chat UI, Livewire kit, or cloneable SaaS template gallery
 - **Telegram/Slack/WhatsApp bot runtime in core** — that is `rawphp/laravel-capabilities-messaging` (D-007)
@@ -185,7 +185,7 @@ The **family** is four split packages developed in one monorepo. Consumers never
 |---|---|---|
 | **messaging** | Chat ingress + approval notify; tools via registry | Domain `run()`, bus core |
 | **ai** | Turn / proposal runtime; tools via `CapabilityBus` only | Channel bots, general LLM SDK, domain `run()` |
-| **capabilities-cli** | Laptop HTTP client + optional MCP stdio bridge | Second backend, Artisan, domain on device |
+| **capabilities-cli** | Laptop HTTP client (auth + catalog + run) | Second backend, Artisan, domain on device, MCP stdio server |
 
 ### CLI vs Artisan (important)
 
@@ -195,7 +195,7 @@ The **family** is four split packages developed in one monorepo. Consumers never
 | Where it runs | Local machine | Server / deploy environment |
 | Auth | Login / device code / API token against **production (or staging) app** | App env, typically already trusted |
 | Who calls it | Humans **and local agents** (Claude Code, Cursor, Codex, scripts) | Deploy scripts, ops, rarely end users |
-| Talks to | Remote capability HTTP (and optional local MCP stdio bridge) | In-process registry |
+| Talks to | Remote capability HTTP only | In-process registry |
 
 When this README says **CLI**, it means the **downloadable remote client**, not `php artisan …`.
 
@@ -317,7 +317,7 @@ Developed in a single monorepo; on push to `main` / tags `v*`, CI mirrors each `
 | Artifact | Package | Public remote | Why |
 |---|---|---|---|
 | **Capability bus (core)** | `rawphp/laravel-capabilities` | `rawphp/laravel-capabilities` | Registry, schema, HTTP, AI/MCP/job adapters, approval, audit, scope, idempotency, **ingress contracts** |
-| **Product CLI** | `rawphp/capabilities-cli` | `rawphp/capabilities-cli` | Downloadable client; auth + catalog + run + MCP stdio |
+| **Product CLI** | `rawphp/capabilities-cli` | `rawphp/capabilities-cli` | Downloadable HTTP client; auth + catalog + run only |
 | **Messaging** | `rawphp/laravel-capabilities-messaging` | `rawphp/laravel-capabilities-messaging` | Telegram (then Slack/…); webhooks, identity, threads — **not in core** (D-007) |
 
 Install on the **server** (Packagist residual — use path/package VCS until published):
@@ -428,9 +428,12 @@ return [
         ],
 
         /*
-         * MCP server tools via laravel/mcp (remote hosts + optional CLI bridge).
+         * Product MCP via laravel/mcp (server-side only).
          * When false: no MCP tool registration, no /mcp capability catalog wiring.
          * Always register tools via named profiles (D-008). Principal model: D-023.
+         * auto_register (default true): each profile key becomes one MCP server
+         * (McpServerRegistrar) — host enables surface + installs laravel/mcp.
+         * The product CLI does not speak MCP; agents connect to the app's MCP endpoints.
          */
         'mcp' => [
             'enabled' => env('CAPABILITIES_SURFACE_MCP', true),
@@ -442,6 +445,9 @@ return [
                 'support' => ['list-invoices', 'get-customer'],
             ],
             'require_profile' => true, // mcpTools() without profile is error / loud deprecation
+            'auto_register' => true, // ORI-790: config-driven servers from profiles
+            'path_prefix' => '/mcp',
+            'servers' => [], // optional explicit map; empty → derive from profile keys
             // D-023: how MCP credentials map to actor
             'auth' => [
                 'default_profile' => 'user_pat', // user_pat | integration | user_delegated
@@ -1045,12 +1051,15 @@ return [...Capability::aiTools(profile: 'support')];
 
 The adapter implements the AI SDK tool contract; `handle` validates and invokes the registry.
 
-### 2. MCP (`laravel/mcp`)
+### 2. MCP (`laravel/mcp`) — product MCP is server-side
+
+**Product MCP** is the app’s `laravel/mcp` surface, not the downloadable CLI. When `surfaces.mcp.enabled` is true and the peer is compatible, **`McpServerRegistrar`** (config `auto_register`, default true) registers one MCP server per named profile under `surfaces.mcp.profiles` (or an explicit `servers` map). Hosts enable the surface and install `laravel/mcp`; they do not hand-wire every tool.
 
 Same rule as agents: **do not mount the universe** on one MCP server by default. **Always** pass a named profile — MCP servers are **not** “all capabilities the authenticated user could do in the UI.”
 
 ```php
-// routes/ai.php (Laravel MCP style)
+// Manual registration still works (e.g. custom path / middleware).
+// Prefer auto_register from config when the default path_prefix is enough.
 use Laravel\Mcp\Facades\Mcp;
 use Rawphp\Capabilities\Facades\Capability;
 
@@ -1060,7 +1069,9 @@ Mcp::web('billing', function ($server) {
 });
 ```
 
-External clients (Claude Code, Cursor, ChatGPT MCP, etc.) call the same `run()` as the in-app agent. Use separate MCP servers or profiles for separate product areas; optional **compact catalog + `invoke` meta-tools** for large products still **bound to the same profile** ([D-008 progressive disclosure / P2-007](#progressive-disclosure-advanced-large-products--p2-007)) — not a full-catalog escape hatch.
+External clients (Claude Code, Cursor, ChatGPT MCP, etc.) connect to the **app’s** MCP endpoints and call the same `run()` as the in-app agent. Use separate MCP servers or profiles for separate product areas; optional **compact catalog + `invoke` meta-tools** for large products still **bound to the same profile** ([D-008 progressive disclosure / P2-007](#progressive-disclosure-advanced-large-products--p2-007)) — not a full-catalog escape hatch.
+
+**Not the product CLI:** agents must not run `capabilities mcp` — that subcommand and any local MCP stdio bridge were **removed**. Shell agents use `capabilities catalog` / `run` over HTTP; MCP hosts use the server product MCP above.
 
 **Principal is not “token user” only.** Hosts use different credential shapes (user PAT, integration client credentials, user-delegated OAuth). The bus maps each to an explicit actor + audit metadata — see **[D-023 — MCP principal model](#d-023--mcp-principal-model-and-auth-profiles)**.
 
@@ -1114,7 +1125,7 @@ $result = Capability::invoke('create-invoice', [
 
 ### 4. Product CLI (downloadable — not Artisan)
 
-End users install a small client on their computer. It authenticates to **their** deployment, then calls the **same** HTTP capability API as any other client. **Local coding agents** shell out to the CLI (or its MCP stdio mode). There is **no** `CliApiController` invoke pipeline on the server.
+End users install a small client on their computer. It authenticates to **their** deployment, then calls the **same** HTTP capability API as any other client. **Local coding agents** shell out to the CLI (`catalog` / `run` / domain verbs). There is **no** `CliApiController` invoke pipeline on the server, and **no** CLI MCP stdio mode (removed — product MCP is server-side via `laravel/mcp`).
 
 #### Auth
 
@@ -1148,17 +1159,10 @@ echo $?   # stable exit codes: 0 ok, 2 validation, 3 auth, 4 approval_required, 
 
 #### Local agents
 
-Two integration modes (both hit the **same** server `run()`):
-
 | Mode | How local agents use it |
 |---|---|
-| **Shell tool** | Agent runs `capabilities run …` / `capabilities catalog` as a subprocess |
-| **MCP stdio bridge** | `capabilities mcp` speaks MCP on stdio; Cursor/Claude Desktop connect to the local process, which proxies to the remote app with the stored token |
-
-```bash
-# Example: register with a local MCP host
-capabilities mcp --base-url=https://app.example.com
-```
+| **Shell tool (this CLI)** | Agent runs `capabilities run …` / `capabilities catalog` / domain verbs as a subprocess over HTTP |
+| **Product MCP (server)** | MCP hosts (Cursor, Claude Desktop, …) connect to the **app’s** `laravel/mcp` endpoints (auto-registered from `surfaces.mcp` profiles). Do **not** run `capabilities mcp` — that path was removed. |
 
 Server-side, CLI traffic is **the same** `POST /capabilities/{name}` with:
 
@@ -1176,7 +1180,8 @@ Capabilities opt in with `surfaces: […, 'cli']` for **policy/catalog visibilit
 - Not `php artisan` inside the app repo  
 - Not a second copy of your domain logic on the laptop  
 - Not unauthenticated public access — **auth first**, then invoke  
-- **Not a second HTTP controller tree** for invoke/catalog (D-009)
+- **Not a second HTTP controller tree** for invoke/catalog (D-009)  
+- **Not product MCP** — no MCP stdio bridge; token `mcp` stays reserved forever as a domain name but is not a runnable command
 
 Optional **in-server** Artisan helpers (`php artisan capability:run`) may still exist for operators who have the codebase; they call `Capability::invoke` in-process and must not be confused with the product CLI.
 
@@ -2838,15 +2843,15 @@ routes/messaging.php
 database/migrations/...          # telegram_user_links, message threads
 tests/
 
-# 3) Client — rawphp/capabilities-cli (Go — D-016)
+# 3) Client — rawphp/capabilities-cli (Go — D-016; HTTP only)
 cmd/capabilities/
   main.go
 internal/
   auth/          # keychain token store
   catalog/
   run/
-  mcpstdio/
   api/           # HTTP client → single capability API (D-009)
+  # mcpstdio/  — removed (ORI-791); product MCP is server laravel/mcp
 dist/            # goreleaser binaries + install.sh + brew formula
 ```
 
@@ -3016,8 +3021,8 @@ v1 docs and generators use **only** package-native examples. Spatie is documente
 |---|---|
 | Single static binary | brew / curl install without Node/PHP on user machines |
 | Keychain / libsecret | Mature patterns for token storage |
-| MCP stdio | Straightforward long-running process |
 | Cross-compile | darwin/linux/windows amd64/arm64 |
+| HTTP client UX | Simple long-lived auth + catalog + run without embedding domain logic |
 
 | Later (not v0.2 blockers) | |
 |---|---|
@@ -3367,7 +3372,7 @@ Run on **every PR** that touches `Adapters/` or peer matrix config. Optional **c
 | **v0.1** | **core** | Registry, package-native DTOs (D-015), single HTTP API (D-009), **D-022** caller derivation, D-002/D-003, D-012 names, D-014 output validation, D-017 discovery, conversation contracts | largely covered | path or package-repo VCS; no Packagist |
 | **v0.2** | **core + cli (Go)** | Product CLI as HTTP client (D-016); CLI tokens map to `caller: cli` (D-022); schema validate; auto idempotency; error envelope (D-018) | largely covered | CLI binary releases not published |
 | **v0.3** | **core** | `laravel/ai` + `laravel/mcp` adapters; **D-005** / **D-008**; **D-023** MCP auth profiles; **D-011** support matrix + adapter contract CI | unit matrix + fixtures green | **live peer CI residual** (consumer-app path) |
-| **v0.4** | **core** | D-006 approval SM + **P2-004 resume/atomic crash recovery**; jobs; CLI MCP stdio; D-010 audit/events; D-013 rate limits; D-019 metrics/OTel (`approvals_stuck_approved_total`); D-020 parity helpers | largely covered; **D-020 helpers done** (`assertSchemaSnapshot` + `assertParity` unit-path) | not multi-surface live HTTP feature suite; no Packagist |
+| **v0.4** | **core** | D-006 approval SM + **P2-004 resume/atomic crash recovery**; jobs; D-010 audit/events; D-013 rate limits; D-019 metrics/OTel (`approvals_stuck_approved_total`); D-020 parity helpers. *(CLI MCP stdio was planned then **removed** — product MCP is server-side only.)* | largely covered; **D-020 helpers done** (`assertSchemaSnapshot` + `assertParity` unit-path) | not multi-surface live HTTP feature suite; no Packagist |
 | **v0.5** | **messaging** (new package) | Telegram webhooks, identity, threads, signed callbacks, chat approvals via contracts | package unit-covered (mocked Bot API) | messaging defaults off; no Packagist |
 | **v0.6** | **messaging** | Harden Telegram; schema snapshots; docs | partial / residual | first-capability tutorial **done** (monorepo docs); messaging harden residual |
 | **Later** | **messaging** / core | Slack / WhatsApp / email adapters; Livewire helpers; OpenAPI; soft A2A | not started | future |

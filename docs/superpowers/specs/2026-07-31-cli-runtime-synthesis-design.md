@@ -39,7 +39,7 @@ This is **runtime synthesis**, not codegen and not Artisan. No domain `run()` on
 - Embedding application domain logic in Go.
 - Inventing `create-invoice` → `invoices create` via English/NLP pluralization.
 - Dotted/indexed flags for nested objects and arrays.
-- Replacing MCP stdio (it remains an alternate agent surface).
+- ~~Replacing MCP stdio (it remains an alternate agent surface).~~ **Superseded (ORI-791/792):** CLI MCP stdio was hard-removed; product MCP is server-side `laravel/mcp` only.
 - Dumping full schemas for every capability at root help.
 
 ### Success criteria
@@ -385,7 +385,7 @@ internal/
   helpfmt/                  # human tables + capability_help envelopes
   flagschema/               # schema → flags; merge; scalar vs json-only
   run/                      # existing validate → idempotency → POST
-  api/, auth/, mcpstdio/    # unchanged roles
+  api/, auth/               # HTTP client roles (mcpstdio/ removed — historical)
 ```
 
 ### Component responsibilities

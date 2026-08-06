@@ -12,8 +12,8 @@ Define a capability once (schema, authorization, `run`, approval, audit) and exp
 
 | | |
 |---|---|
-| **Is** | Capability registry; typed DTO → schema; authorize / approval / audit / scope / idempotency / rate limits; thin adapters for agent, MCP, HTTP, jobs, optional Artisan ops; HTTP capability API used by the product CLI; conversation **contracts** for sibling packages; unit-path D-020 parity helpers |
-| **Is not** | LLM client or turn/proposal engine; MCP protocol implementation; Telegram/Slack/WhatsApp bots; downloadable `capabilities` binary; chat UI / Livewire kit / template gallery; A2A multi-app mesh; domain services or Form Request replacement; Artisan-as-the-product-CLI |
+| **Is** | Capability registry; typed DTO → schema; authorize / approval / audit / scope / idempotency / rate limits; thin adapters for agent, **server product MCP** (`laravel/mcp` + `McpServerRegistrar` auto-register), HTTP, jobs, optional Artisan ops; HTTP capability API used by the product CLI; conversation **contracts** for sibling packages; unit-path D-020 parity helpers |
+| **Is not** | LLM client or turn/proposal engine; MCP wire protocol (use `laravel/mcp`); Telegram/Slack/WhatsApp bots; downloadable `capabilities` binary / CLI MCP stdio; chat UI / Livewire kit / template gallery; A2A multi-app mesh; domain services or Form Request replacement; Artisan-as-the-product-CLI |
 
 **Siblings (optional):** [messaging](https://github.com/rawphp/laravel-capabilities-messaging) · [AI turns](https://github.com/rawphp/laravel-capabilities-ai) · [product CLI](https://github.com/rawphp/capabilities-cli).  
 **Umbrella:** developed in [laravel-capabilities-monorepo](https://github.com/rawphp/laravel-capabilities-monorepo) — apps install **this repo / Composer package**, not the monorepo.
@@ -96,7 +96,7 @@ Full monorepo install policy, branch-alias, and Packagist checklist: monorepo [`
 
 ## Peer support / D-011 release gate
 
-This package composes `laravel/ai` and `laravel/mcp` as optional peers. Release honesty is **matrix + unit contract fixtures**, not live SDKs in default package CI.
+This package composes `laravel/ai` and `laravel/mcp` as optional peers. **Product MCP** is the server surface: with `surfaces.mcp` enabled, **`McpServerRegistrar`** auto-registers one MCP server per config profile (`auto_register`, default true). The downloadable CLI is a separate HTTP client only — not an MCP stdio host. Release honesty is **matrix + unit contract fixtures**, not live SDKs in default package CI.
 
 ### Matrix location (source of truth)
 

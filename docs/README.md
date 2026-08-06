@@ -27,7 +27,7 @@ On push to monorepo `main` / tags `v*`, each `packages/*` tree is mirrored to it
 | [Core package](../packages/laravel-capabilities/docs/user-guide.md) | Define, invoke, surfaces, config, peers, D-020 helpers |
 | [Messaging package](../packages/laravel-capabilities-messaging/docs/user-guide.md) | Telegram sibling: webhooks, identity, agent profile |
 | [AI package](../packages/laravel-capabilities-ai/README.md) | Optional turn / proposal runtime (bus-only tools) |
-| [Product CLI](../packages/capabilities-cli/docs/user-guide.md) | Build `capabilities`, auth, catalog, run, MCP stdio |
+| [Product CLI](../packages/capabilities-cli/docs/user-guide.md) | Build `capabilities`, auth, catalog, run (HTTP only; product MCP is server-side) |
 | [Troubleshooting](troubleshooting.md) | Boot, peers, auth, CLI, messaging failures |
 
 ## Tutorials
