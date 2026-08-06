@@ -49,6 +49,13 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   error reply.
 - **`auth login|logout|status --help`** — help wins before flag requirements or logout side effects (was requiring `--base-url` / logging out).
 - **Local validation stderr** — includes field summary, e.g. `local schema validation failed (date: is required)`.
+- **Local `ValidateLocal` string formats** — portable JSON Schema `format` checks
+  run fail-closed **before network** (exit **2**): `date`, `date-time`/`datetime`,
+  `time`, `email`, `uri`/`url`, `uuid`. Field-level stderr messages (e.g.
+  `invalid date format (expected YYYY-MM-DD)`). Local validation is type, required,
+  structure, **and** this format subset — not type/required only. Unknown formats
+  are not enforced locally. The subset may false-reject values the server would
+  accept; the server still re-validates (D-004).
 - **HTTP error messages** — non-JSON/HTML API error bodies are summarized in the
   user-facing message instead of dumping full HTML (raw body still available on the
   structured error).

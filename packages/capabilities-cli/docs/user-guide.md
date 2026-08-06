@@ -129,7 +129,8 @@ capabilities catalog --json
 
 - HTTP client only; `caller: cli` is **server-derived** from credentials.
 - Never spoof client-claimed caller headers (e.g. `X-Capabilities-Caller`).
-- Local JSON Schema validation is UX; **server is law**.
+- Local JSON Schema validation is UX (type, required, structure, and portable
+  string formats); **server is law** and always re-validates (D-004).
 - Every `run` sends `Idempotency-Key` (UUID unless `--idempotency-key` / `--retry-last`).
 - Binary name is `capabilities` — not Artisan.
 - No multi-language CLI matrix in v0.2 (Go only).
@@ -350,11 +351,18 @@ capabilities run <name> \
 4. Unknown flags or json-only fields as flags → exit **2**.
 5. All-optional schema may POST `{}`.
 6. Missing required fields → exit **2** (use `--help` for schema).
+7. Invalid string formats (when the schema declares `format`) → exit **2** before
+   network. Portable formats: `date`, `date-time`/`datetime`, `time`, `email`,
+   `uri`/`url`, `uuid`. Example stderr:
+   `local schema validation failed (date: invalid date format (expected YYYY-MM-DD))`.
+   Unknown formats are not enforced locally. The local subset may reject values
+   the server would accept; the server still re-validates (D-004).
 
 ### Flow (single path)
 
-merge → load schema → local JSON Schema validate → ensure Idempotency-Key →
-`POST /capabilities/{canonicalName}`.
+merge → load schema → local JSON Schema validate (type / required / structure /
+string formats) → ensure Idempotency-Key → `POST /capabilities/{canonicalName}`.
+Local validation failures exit **2** with no network call.
 
 ### Examples (placeholders)
 
