@@ -85,7 +85,7 @@ Schemas diverge. One path checks a policy; another forgets. Approvals apply only
 
 5. **Surfaces are optional; defaults are generous.** Global config turns outchannels on or off (MCP yes/no, agent yes/no, CLI yes/no, …). Default: **all enabled** — opt out of what you do not need; do not force every app to rediscover the full map.
 
-6. **The CLI is a client, not a second backend.** No domain logic on the laptop. Auth + catalog + invoke against the same HTTP bus. **Product MCP is server-side** (`laravel/mcp` + capabilities auto-register). The CLI is **HTTP-only** — no local MCP stdio bridge.
+6. **The CLI is a client, not a second backend.** No domain logic on the laptop. Auth + catalog + invoke against the same HTTP bus. **Product MCP is server-side** (`laravel/mcp` + capabilities plan/adapter auto-register; host still wires peer MCP routes). The CLI is **HTTP-only** — no local MCP stdio bridge.
 
 7. **Thin framework, fat domain.** Your actions and services stay yours. We refuse to become a second application framework, a chat UI kit, or a template gallery. **Messaging bots are a sibling product**, not core registry weight — see [D-007](#d-007--package-boundary-messaging-vs-thin-core).
 
@@ -170,7 +170,7 @@ The **family** is four split packages developed in one monorepo. Consumers never
 ### Core — Is not
 
 - An LLM client or turn/proposal product (optional sibling `rawphp/laravel-capabilities-ai`)
-- An MCP protocol implementation (use `laravel/mcp` for product MCP; capabilities auto-registers servers from config — not the CLI)
+- An MCP protocol implementation (use `laravel/mcp` for product MCP; capabilities plans servers from config and may register profile tools on the adapter — host still wires peer routes; not the CLI)
 - **Artisan** as the product CLI (Artisan remains optional *in-server* ops; see below)
 - A chat UI, Livewire kit, or cloneable SaaS template gallery
 - **Telegram/Slack/WhatsApp bot runtime in core** — that is `rawphp/laravel-capabilities-messaging` (D-007)
@@ -429,11 +429,14 @@ return [
 
         /*
          * Product MCP via laravel/mcp (server-side only).
-         * When false: no MCP tool registration, no /mcp capability catalog wiring.
-         * Always register tools via named profiles (D-008). Principal model: D-023.
-         * auto_register (default true): each profile key becomes one MCP server
-         * (McpServerRegistrar) — host enables surface + installs laravel/mcp.
-         * The product CLI does not speak MCP; agents connect to the app's MCP endpoints.
+         * When false: no MCP tool registration / plan, no MCP capability catalog wiring.
+         * Always expose tools via named profiles (D-008). Principal model: D-023.
+         * auto_register (default true): McpServerRegistrar builds a server plan from
+         * profile keys (or servers map) and may call McpToolAdapter::register per profile.
+         * Production boot does not mount live laravel/mcp HTTP routes under path_prefix —
+         * hosts still wire peer MCP servers (e.g. Mcp::web / peer docs). Multi-profile
+         * sequential register overwrites adapter tools (last profile wins).
+         * The product CLI does not speak MCP; agents connect to host-mounted MCP endpoints.
          */
         'mcp' => [
             'enabled' => env('CAPABILITIES_SURFACE_MCP', true),
@@ -445,8 +448,8 @@ return [
                 'support' => ['list-invoices', 'get-customer'],
             ],
             'require_profile' => true, // mcpTools() without profile is error / loud deprecation
-            'auto_register' => true, // ORI-790: config-driven servers from profiles
-            'path_prefix' => '/mcp',
+            'auto_register' => true, // ORI-790: plan + adapter register from profiles (not live peer mount)
+            'path_prefix' => '/mcp', // plan metadata only (`/mcp/{profile}`); host mounts real routes
             'servers' => [], // optional explicit map; empty → derive from profile keys
             // D-023: how MCP credentials map to actor
             'auth' => [
@@ -1053,13 +1056,13 @@ The adapter implements the AI SDK tool contract; `handle` validates and invokes 
 
 ### 2. MCP (`laravel/mcp`) — product MCP is server-side
 
-**Product MCP** is the app’s `laravel/mcp` surface, not the downloadable CLI. When `surfaces.mcp.enabled` is true and the peer is compatible, **`McpServerRegistrar`** (config `auto_register`, default true) registers one MCP server per named profile under `surfaces.mcp.profiles` (or an explicit `servers` map). Hosts enable the surface and install `laravel/mcp`; they do not hand-wire every tool.
+**Product MCP** is the app’s `laravel/mcp` surface, not the downloadable CLI. When `surfaces.mcp.enabled` is true and the peer is compatible, **`McpServerRegistrar`** (config `auto_register`, default true) builds a **server plan** from named profiles under `surfaces.mcp.profiles` (or an explicit `servers` map) and may call `McpToolAdapter::register` for each planned profile (loads profile tools on the adapter; returns planned name / profile / path / tools). Production `bootMcpServers()` does **not** push those definitions into `laravel/mcp` — there is no production peer sink analogous to HTTP `HttpRouteRegistrar::registerInto`. Hosts still **wire** peer MCP servers themselves (e.g. `Mcp::web` / peer docs) using the planned tools/profiles or manual `Capability::mcpTools`. Planned `path_prefix` (default `/mcp`) is **plan metadata only** (`/mcp/{profile}`), not a live package auto-mount. **Multi-profile residual:** sequential `adapter->register` overwrites the adapter’s active profile/tools (**last profile wins**); for multiple live MCP servers, wire each peer server with its own tool set rather than relying on a single shared adapter state after multi-profile boot.
 
 Same rule as agents: **do not mount the universe** on one MCP server by default. **Always** pass a named profile — MCP servers are **not** “all capabilities the authenticated user could do in the UI.”
 
 ```php
-// Manual registration still works (e.g. custom path / middleware).
-// Prefer auto_register from config when the default path_prefix is enough.
+// Host wiring is required for live laravel/mcp routes (plan alone does not mount).
+// auto_register still plans servers and may load tools onto McpToolAdapter.
 use Laravel\Mcp\Facades\Mcp;
 use Rawphp\Capabilities\Facades\Capability;
 
@@ -1069,7 +1072,7 @@ Mcp::web('billing', function ($server) {
 });
 ```
 
-External clients (Claude Code, Cursor, ChatGPT MCP, etc.) connect to the **app’s** MCP endpoints and call the same `run()` as the in-app agent. Use separate MCP servers or profiles for separate product areas; optional **compact catalog + `invoke` meta-tools** for large products still **bound to the same profile** ([D-008 progressive disclosure / P2-007](#progressive-disclosure-advanced-large-products--p2-007)) — not a full-catalog escape hatch.
+External clients (Claude Code, Cursor, ChatGPT MCP, etc.) connect to the **app’s** host-mounted MCP endpoints and call the same `run()` as the in-app agent. Use separate MCP servers or profiles for separate product areas; optional **compact catalog + `invoke` meta-tools** for large products still **bound to the same profile** ([D-008 progressive disclosure / P2-007](#progressive-disclosure-advanced-large-products--p2-007)) — not a full-catalog escape hatch.
 
 **Not the product CLI:** agents must not run `capabilities mcp` — that subcommand and any local MCP stdio bridge were **removed**. Shell agents use `capabilities catalog` / `run` over HTTP; MCP hosts use the server product MCP above.
 
@@ -1162,7 +1165,7 @@ echo $?   # stable exit codes: 0 ok, 2 validation, 3 auth, 4 approval_required, 
 | Mode | How local agents use it |
 |---|---|
 | **Shell tool (this CLI)** | Agent runs `capabilities run …` / `capabilities catalog` / domain verbs as a subprocess over HTTP |
-| **Product MCP (server)** | MCP hosts (Cursor, Claude Desktop, …) connect to the **app’s** `laravel/mcp` endpoints (auto-registered from `surfaces.mcp` profiles). Do **not** run `capabilities mcp` — that path was removed. |
+| **Product MCP (server)** | MCP hosts (Cursor, Claude Desktop, …) connect to the **app’s** `laravel/mcp` endpoints the **host** mounts (boot plans `surfaces.mcp` profiles and may `McpToolAdapter::register` — not a package live auto-mount). Do **not** run `capabilities mcp` — that path was removed. |
 
 Server-side, CLI traffic is **the same** `POST /capabilities/{name}` with:
 
