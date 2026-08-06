@@ -21,7 +21,6 @@ use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
-use Rawphp\CapabilitiesAi\Support\AlwaysReadyIdempotency;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 
@@ -128,11 +127,46 @@ it('resolves ProposalService with CapabilityBus', function () {
     expect($service)->toBeInstanceOf(ProposalService::class);
 });
 
-it('defaults IdempotencyReadiness to AlwaysReadyIdempotency', function () {
+it('defaults IdempotencyReadiness to fail-closed StoreBound when store unbound', function () {
     $app = bootAiProviderContainer();
 
-    expect($app->make(IdempotencyReadiness::class))->toBeInstanceOf(AlwaysReadyIdempotency::class)
-        ->and($app->make(IdempotencyReadiness::class)->isReady())->toBeTrue();
+    $ready = $app->make(IdempotencyReadiness::class);
+    expect($ready)->toBeInstanceOf(\Rawphp\CapabilitiesAi\Support\StoreBoundIdempotencyReadiness::class)
+        ->and($ready->isReady())->toBeFalse();
+});
+
+it('defaults IdempotencyReadiness ready when core IdempotencyStore is bound', function () {
+    $app = new class extends Container
+    {
+        public function runningInConsole(): bool
+        {
+            return true;
+        }
+    };
+    $base = require dirname(__DIR__, 3).'/config/capabilities-ai.php';
+    $app->instance('config', aiConfigRepo(['capabilities-ai' => $base]));
+    $app->instance(CapabilityBus::class, aiFakeBus());
+    $app->instance(\Rawphp\Capabilities\Contracts\IdempotencyStore::class, new class implements \Rawphp\Capabilities\Contracts\IdempotencyStore
+    {
+        public function find(?string $tenantId, string $actorType, string $actorId, string $capabilityName, string $key): ?array
+        {
+            return null;
+        }
+
+        public function put(array $record): array
+        {
+            return $record;
+        }
+
+        public function update(?string $tenantId, string $actorType, string $actorId, string $capabilityName, string $key, array $attributes): ?array
+        {
+            return null;
+        }
+    });
+
+    (new CapabilitiesAiServiceProvider($app))->register();
+
+    expect($app->make(IdempotencyReadiness::class)->isReady())->toBeTrue();
 });
 
 it('does not overwrite host-prebound IdempotencyReadiness', function () {

@@ -7,7 +7,8 @@ namespace Rawphp\CapabilitiesAi\Support;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 
 /**
- * Package default: readiness proven ready (host may rebind a live probe).
+ * Always-ready probe for **unit tests only**.
+ * Production SP default is {@see StoreBoundIdempotencyReadiness} (fail closed when store unbound).
  */
 final class AlwaysReadyIdempotency implements IdempotencyReadiness
 {
