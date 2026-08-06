@@ -37,6 +37,9 @@ return [
     /**
      * Progress store: array (tests/default) | redis
      * Never store progress events in product MySQL tables.
+     *
+     * Outside APP_ENV=testing, progress.driver=array throws unless
+     * CAPABILITIES_AI_ALLOW_UNSAFE=1 (local demos only — not production).
      */
     'progress' => [
         'driver' => $env('CAPABILITIES_AI_PROGRESS_DRIVER', 'array'),
@@ -46,6 +49,9 @@ return [
 
     /**
      * LLM driver: fake (testing) | anthropic | (host custom binding)
+     *
+     * Outside APP_ENV=testing, llm.driver=fake throws unless
+     * CAPABILITIES_AI_ALLOW_UNSAFE=1 (local demos only — not production).
      */
     'llm' => [
         'driver' => $env('CAPABILITIES_AI_LLM_DRIVER', 'fake'),
@@ -57,6 +63,13 @@ return [
             'max_tokens' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS', 64000),
         ],
     ],
+
+    /**
+     * Escape hatch: allow progress.driver=array and llm.driver=fake outside testing.
+     * CAPABILITIES_AI_ALLOW_UNSAFE=1 for local demos only. Default closed (false).
+     * Prefer redis progress + real LlmClient (or host binding) in any real deploy.
+     */
+    'allow_unsafe' => (bool) $env('CAPABILITIES_AI_ALLOW_UNSAFE', false),
 
     /** Turn claim TTL seconds (worker heartbeat window). */
     'claim_ttl' => (int) $env('CAPABILITIES_AI_CLAIM_TTL', Package::DEFAULT_CLAIM_TTL),

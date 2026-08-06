@@ -78,6 +78,36 @@ final class ContainerBindings
     }
 
     /**
+     * Fail closed on array progress / fake LLM outside testing unless allowUnsafe.
+     *
+     * Host-prebound LlmClient / ProgressStore skip this (SP only calls before make*).
+     * Local demos: CAPABILITIES_AI_ALLOW_UNSAFE=1 (never production happy path).
+     *
+     * @param  array<string, mixed>  $config  capabilities-ai config slice
+     */
+    public static function assertSafeDrivers(array $config, bool $isTesting, bool $allowUnsafe): void
+    {
+        if ($isTesting || $allowUnsafe) {
+            return;
+        }
+
+        $progress = strtolower((string) (($config['progress']['driver'] ?? null) ?: 'array'));
+        $llm = strtolower((string) (($config['llm']['driver'] ?? null) ?: 'fake'));
+
+        if ($progress === 'array') {
+            throw new RuntimeException(
+                'progress.driver=array is not allowed outside testing; set CAPABILITIES_AI_PROGRESS_DRIVER=redis or CAPABILITIES_AI_ALLOW_UNSAFE=1'
+            );
+        }
+
+        if ($llm === 'fake') {
+            throw new RuntimeException(
+                'llm.driver=fake is not allowed outside testing; bind a real LlmClient or set CAPABILITIES_AI_ALLOW_UNSAFE=1'
+            );
+        }
+    }
+
+    /**
      * @param  array<string, mixed>  $config
      */
     public static function makeLlmClient(array $config): LlmClient

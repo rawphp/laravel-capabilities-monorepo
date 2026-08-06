@@ -172,9 +172,9 @@ final class IntegrationHealthChecker
         $progressDriver = (string) ($ai['progress']['driver'] ?? 'array');
         if ($progressDriver === 'array') {
             $out[] = [
-                'level' => 'warn',
+                'level' => 'fail',
                 'code' => 'ai_progress_array',
-                'message' => 'progress.driver is array (Phase 1 warn; prefer redis in production).',
+                'message' => 'progress.driver is array (not allowed for AI-chat production; set redis or CAPABILITIES_AI_ALLOW_UNSAFE for demos).',
             ];
         } else {
             $out[] = [
@@ -187,12 +187,12 @@ final class IntegrationHealthChecker
         $routesOn = (bool) ($ai['routes']['enabled'] ?? false);
         $queueName = $ai['queue']['name'] ?? null;
         $queueEmpty = ! is_string($queueName) || $queueName === '';
-        // Warn only when AI-chat entered via routes only and queue.name empty.
+        // Fail when AI-chat entered via routes only and queue.name empty (ops label required).
         if ($routesOn && $queueEmpty) {
             $out[] = [
-                'level' => 'warn',
+                'level' => 'fail',
                 'code' => 'ai_queue_name_empty',
-                'message' => 'AI-chat via routes only; queue.name empty (ops label for workers).',
+                'message' => 'AI-chat via routes only; queue.name empty (set CAPABILITIES_AI_QUEUE_NAME for workers).',
             ];
         } else {
             $out[] = [

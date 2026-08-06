@@ -144,7 +144,7 @@ it('AI-chat via queue.name requires Context and ToolCatalog bound', function () 
         ->and(ihLevel($ok, 'ai_claim_ttl'))->toBe('ok');
 });
 
-it('AI-chat via routes only with empty queue warns ai_queue_name_empty', function () {
+it('AI-chat via routes only with empty queue fails ai_queue_name_empty', function () {
     $report = (new IntegrationHealthChecker)->check(
         ihCapabilities(),
         ihAi([
@@ -159,9 +159,9 @@ it('AI-chat via routes only with empty queue warns ai_queue_name_empty', functio
     );
 
     expect($report->mode)->toBe('ai-chat')
-        ->and(ihLevel($report, 'ai_queue_name_empty'))->toBe('warn')
-        ->and($report->failed())->toBeFalse()
-        ->and($report->exitCode())->toBe(0);
+        ->and(ihLevel($report, 'ai_queue_name_empty'))->toBe('fail')
+        ->and($report->failed())->toBeTrue()
+        ->and($report->exitCode())->toBe(1);
 });
 
 it('AlwaysReady fails only when proposals enabled; skipped when proposals off', function () {
@@ -277,7 +277,7 @@ it('MCP empty plan skips mcp_tools', function () {
     expect(ihLevel($report, 'mcp_tools'))->toBe('skip');
 });
 
-it('AI-chat warns on array progress driver', function () {
+it('AI-chat fails on array progress driver', function () {
     $report = (new IntegrationHealthChecker)->check(
         ihCapabilities(),
         ihAi([
@@ -291,8 +291,8 @@ it('AI-chat warns on array progress driver', function () {
         ]),
     );
 
-    expect(ihLevel($report, 'ai_progress_array'))->toBe('warn')
-        ->and($report->failed())->toBeFalse();
+    expect(ihLevel($report, 'ai_progress_array'))->toBe('fail')
+        ->and($report->failed())->toBeTrue();
 });
 
 it('AI-chat fails when claim_ttl is not positive', function () {
