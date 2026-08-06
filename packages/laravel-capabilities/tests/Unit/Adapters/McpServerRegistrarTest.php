@@ -256,6 +256,54 @@ it('fail: plan throws when peer missing and on_incompatible=fail [D-011] [ORI-79
     ))->toThrow(PeerIncompatibleException::class);
 });
 
+it('edge: empty profiles+servers skips peer eval — plan [] no throw when peer missing + fail [ORI-801]', function () {
+    $plan = McpServerRegistrar::plan(
+        mcpRegistrarConfig([
+            'auto_register' => true,
+            'profiles' => [],
+            'servers' => [],
+            'on_incompatible' => 'fail',
+        ]),
+        BootHelpers::probe(mcp: false),
+    );
+
+    expect($plan)->toBeEmpty();
+});
+
+it('edge: auto_register false skips peer eval — plan [] no throw when peer missing [ORI-801]', function () {
+    $plan = McpServerRegistrar::plan(
+        mcpRegistrarConfig([
+            'auto_register' => false,
+            'on_incompatible' => 'fail',
+        ]),
+        BootHelpers::probe(mcp: false),
+    );
+
+    expect($plan)->toBeEmpty();
+});
+
+it('fail: non-empty profiles still throw when peer missing + on_incompatible=fail [ORI-801]', function () {
+    expect(fn () => McpServerRegistrar::plan(
+        mcpRegistrarConfig([
+            'profiles' => ['billing' => ['create-invoice']],
+            'on_incompatible' => 'fail',
+        ]),
+        BootHelpers::probe(mcp: false),
+    ))->toThrow(PeerIncompatibleException::class);
+});
+
+it('edge: non-empty profiles + peer missing + disable → plan [] [ORI-801]', function () {
+    $plan = McpServerRegistrar::plan(
+        mcpRegistrarConfig([
+            'profiles' => ['billing' => ['create-invoice']],
+            'on_incompatible' => 'disable',
+        ]),
+        BootHelpers::probe(mcp: false),
+    );
+
+    expect($plan)->toBeEmpty();
+});
+
 it('edge: auto_register false skips server registration even when profiles present [ORI-790]', function () {
     $h = AdapterHelpers::harness();
     $servers = McpServerRegistrar::register(
@@ -290,6 +338,21 @@ it('fail: bootMcpServersWith with surface disabled registers nothing [ORI-790]',
         mcpRegistrarConfig(['enabled' => false]),
         $h['mcp'],
         BootHelpers::probe(mcp: true),
+    );
+
+    expect($names)->toBeEmpty();
+});
+
+it('edge: bootMcpServersWith empty profiles + missing peer → [] no throw [ORI-801]', function () {
+    $h = AdapterHelpers::harness();
+    $names = \Rawphp\Capabilities\CapabilitiesServiceProvider::bootMcpServersWith(
+        mcpRegistrarConfig([
+            'profiles' => [],
+            'servers' => [],
+            'on_incompatible' => 'fail',
+        ]),
+        $h['mcp'],
+        BootHelpers::probe(mcp: false),
     );
 
     expect($names)->toBeEmpty();
