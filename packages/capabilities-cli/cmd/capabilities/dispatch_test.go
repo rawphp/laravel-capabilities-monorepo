@@ -33,10 +33,13 @@ func captureDispatch(t *testing.T, args []string, idx *synth.Index, summaries []
 
 func TestRootHelpListsReservedAndDiscoveryPointer(t *testing.T) {
 	h := RootHelp()
-	for _, cmd := range []string{"auth", "catalog", "describe", "run", "mcp", "approvals", "version", "help"} {
+	for _, cmd := range []string{"auth", "catalog", "describe", "run", "approvals", "version", "help"} {
 		if !strings.Contains(h, cmd) {
 			t.Fatalf("root help missing reserved %q:\n%s", cmd, h)
 		}
+	}
+	if strings.Contains(h, "MCP stdio") {
+		t.Fatalf("root help must not list MCP stdio:\n%s", h)
 	}
 	if !strings.Contains(h, "<domain>") && !strings.Contains(strings.ToLower(h), "domain") {
 		t.Fatalf("expected domain/verb discovery pointer:\n%s", h)

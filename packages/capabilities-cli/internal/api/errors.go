@@ -131,7 +131,7 @@ func (e *StructuredError) Error() string {
 	return e.Code
 }
 
-// PublicData is a JSON-safe map for agent surfaces (MCP error.data).
+// PublicData is a JSON-safe map for agent surfaces (D-018 error payloads).
 // Uses the same field names as the D-018 wire shape — never Go-exported identifiers.
 func (e *StructuredError) PublicData() map[string]any {
 	if e == nil {

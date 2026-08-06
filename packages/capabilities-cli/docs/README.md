@@ -13,7 +13,7 @@ business logic on your laptop.
 |-----|----------|----------------|
 | [**User guide**](user-guide.md) | Everyone | Full manual — install through troubleshooting (start here) |
 | [Authentication & profiles](authentication.md) | Multi-app users, agents | Login modes, **multi-project profiles**, storage layout, aliases |
-| [Agents & MCP](agents.md) | Local agents, IDE bridges | Machine envelopes, exit codes, MCP stdio, discovery loop |
+| [Agents](agents.md) | Local agents, automation | Machine envelopes, exit codes, HTTP discovery loop (no CLI MCP) |
 | [Installation](../README.md#install) | First-time install | One-liner + manual (also in user guide) |
 | [Release path](release-path.md) | Maintainers | Tag → split → GitHub Release |
 | [Release signing](release-signing.md) | Maintainers | Apple / Windows secrets |

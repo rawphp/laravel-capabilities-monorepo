@@ -56,7 +56,8 @@ type Env struct {
 // Argv dispatch (design):
 //  1. Leading global flags (--profile / --base-url) may appear before the command
 //     (git/docker style). They are peeled and re-appended so subcommands still see them.
-//  2. Reserved meta-commands always win (auth catalog describe run mcp approvals version help).
+//  2. Reserved meta-commands always win (auth catalog describe run approvals version help).
+//     Token "mcp" remains reserved forever (cannot be a synthesis domain) but is not a command.
 //  3. Else known domain in catalog synth index → domain help or capability command / --help.
 //  4. Else unknown → not_found envelope + catalog/run hint, exit 5.
 func Execute(env Env) int {
@@ -98,12 +99,10 @@ func Execute(env Env) int {
 		return cmdDescribe(env, rest)
 	case "run":
 		return cmdRun(env, rest)
-	case "mcp":
-		return cmdMcp(env, rest)
 	case "approvals":
 		return cmdApprovals(env, rest)
 	default:
-		// 2/3) Domain/verb synthesis or unknown.
+		// 2/3) Domain/verb synthesis or unknown (includes bare "mcp" — not a command).
 		return cmdDomainOrUnknown(env, cmd, rest)
 	}
 }

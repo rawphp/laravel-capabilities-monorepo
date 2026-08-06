@@ -198,7 +198,7 @@ func (c *Client) ListCapabilities(ctx context.Context) (*Response, error) {
 }
 
 // ListCapabilitiesWithSchemas GET /capabilities?include_schemas=1
-// Used by the MCP bridge so tools/list can expose JSON Schema to agents.
+// Used by catalog --include-schemas and agent one-shot discovery.
 func (c *Client) ListCapabilitiesWithSchemas(ctx context.Context) (*Response, error) {
 	return c.do(ctx, http.MethodGet, PathCapabilities+"?include_schemas=1", nil, nil)
 }

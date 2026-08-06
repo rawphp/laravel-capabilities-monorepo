@@ -46,16 +46,14 @@ func TestDescribefailswithexit3whennotoken(t *testing.T) {
 	}
 }
 
-func TestMcprequiresauth(t *testing.T) {
-	if !RequiresAuth("mcp") {
-		t.Fatal()
+func TestMcpDoesNotRequireAuthAsCommand(t *testing.T) {
+	// mcp is not a runnable command; GuardAuth should not treat it as auth-gated meta.
+	if RequiresAuth("mcp") {
+		t.Fatal("mcp must not be in CommandsRequiringAuth")
 	}
-}
-
-func TestMcpfailswithexit3whennotoken(t *testing.T) {
 	st := tempStore(t)
-	if ExitCodeForAuthError(GuardAuth(st, "default", "mcp")) != api.ExitAuth {
-		t.Fatal()
+	if err := GuardAuth(st, "default", "mcp"); err != nil {
+		t.Fatalf("unexpected: %v", err)
 	}
 }
 

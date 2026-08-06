@@ -5,7 +5,8 @@
 
 Downloadable client for **humans and local agents**. Authenticates to a Laravel
 deployment, lists the capability catalog, validates input locally, and invokes
-capabilities over the app’s **same** HTTP API. Optional MCP stdio bridge.
+capabilities over the app’s **same** HTTP API. Product MCP is server-side
+(`laravel/mcp`); this CLI does **not** speak MCP stdio.
 
 **No domain `run()` on the laptop.** The server always re-validates and authorizes.
 
@@ -25,7 +26,7 @@ Docs index: [docs/README.md](README.md) · Deep dives: [authentication.md](authe
 8. [Commands](#commands)
 9. [Discovery (catalog & domain/verb)](#discovery-catalog--domainverb)
 10. [Invoking capabilities](#invoking-capabilities)
-11. [Agents & MCP](#agents--mcp)
+11. [Agents](#agents)
 12. [Exit codes](#exit-codes)
 13. [Troubleshooting](#troubleshooting)
 14. [Security](#security)
@@ -207,7 +208,7 @@ capabilities catalog --profile=yardpilot
 capabilities <domain> <verb> --profile=yardpilot --flag=value
 ```
 
-`--profile` works on auth, catalog, describe, run, domain/verb invoke, mcp, and
+`--profile` works on auth, catalog, describe, run, domain/verb invoke, and
 approvals. Default when omitted: **`default`**.
 
 ### Shell aliases
@@ -280,15 +281,6 @@ capabilities <domain> <verb> [flags]
 
 See [Invoking capabilities](#invoking-capabilities).
 
-### `mcp`
-
-```bash
-capabilities mcp [--profile=NAME] [--base-url=URL]
-```
-
-MCP **stdio** bridge: proxies `tools/list` and `tools/call` to the remote API
-using the stored CLI token. No local domain authorize/run.
-
 ### `approvals`
 
 ```bash
@@ -313,7 +305,9 @@ capabilities run <name> --help                      # schema-first capability he
 Bare `capabilities` and `--help` paths exit **0** (success).
 
 Reserved meta-commands always win over domain tokens of the same name:
-`auth` · `catalog` · `describe` · `run` · `mcp` · `approvals` · `version` · `help`.
+`auth` · `catalog` · `describe` · `run` · `approvals` · `version` · `help`.
+The token **`mcp` remains reserved forever** (cannot be a synthesis domain) but
+is **not** a runnable command — product MCP is server-side / HTTP only.
 
 ---
 
@@ -381,14 +375,14 @@ stdout remains the machine envelope. Do not parse `--human` stderr for full payl
 
 ---
 
-## Agents & MCP
+## Agents
 
 Summary:
 
 1. Always pass `--profile=` when more than one product is configured.
 2. Discover with `catalog --json` (add `--include-schemas` for one-shot schemas); invoke with `run` or mapped domain/verb.
 3. Parse **stdout**; branch on **exit code**. Help/usage exits **0**.
-4. MCP: `capabilities mcp --profile=…` as a stdio subprocess; `error.data` uses D-018 wire keys (`code`, `message`, …) not Go names.
+4. Do **not** run `capabilities mcp` — CLI MCP stdio is removed. Use the server’s product MCP (`laravel/mcp`) or this HTTP CLI (`catalog` / `run` / `--json`).
 
 Full guide: **[agents.md](agents.md)**.
 
@@ -434,7 +428,7 @@ Monorepo troubleshooting (broader product):
 - Never put PATs in agent prompts, git, or chat logs.
 - Prefer device/OAuth flows where available for interactive use.
 - Treat `~/.config/capabilities/profiles/` as secret material.
-- MCP inherits the profile token — scope profiles tightly per product.
+- Agents inherit the same profile token — scope profiles tightly per product.
 
 ---
 

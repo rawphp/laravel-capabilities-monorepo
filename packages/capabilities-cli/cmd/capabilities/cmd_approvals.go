@@ -7,33 +7,7 @@ import (
 
 	"github.com/rawphp/capabilities-cli/internal/api"
 	"github.com/rawphp/capabilities-cli/internal/auth"
-	"github.com/rawphp/capabilities-cli/internal/mcpstdio"
 )
-
-func cmdMcp(env Env, args []string) int {
-	if wantsHelp(args) {
-		fmt.Fprint(env.Stdout, CommandHelp("mcp"))
-		return api.ExitOK
-	}
-	st := store(env)
-	profile, base, _ := profileAndBase(args)
-	if err := auth.GuardAuth(st, profile, "mcp"); err != nil {
-		fmt.Fprintln(env.Stderr, err.Error())
-		return api.ExitAuth
-	}
-	c, err := clientFor(env, st, profile, base)
-	if err != nil {
-		fmt.Fprintln(env.Stderr, err.Error())
-		return api.ExitAuth
-	}
-	tok, _ := st.GetToken(profile)
-	srv := mcpstdio.New(c, tok, env.Stdin, env.Stdout)
-	if err := srv.Run(context.Background()); err != nil {
-		fmt.Fprintln(env.Stderr, err.Error())
-		return api.ExitInternal
-	}
-	return api.ExitOK
-}
 
 func cmdApprovals(env Env, args []string) int {
 	if wantsHelp(args) {

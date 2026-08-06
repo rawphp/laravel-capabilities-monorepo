@@ -121,7 +121,7 @@ func Logout(store *Store, profile string) error {
 }
 
 // CommandsRequiringAuth lists subcommands that must have a token.
-var CommandsRequiringAuth = []string{"run", "catalog", "describe", "mcp", "approvals"}
+var CommandsRequiringAuth = []string{"run", "catalog", "describe", "approvals"}
 
 // RequiresAuth reports whether command needs a stored token.
 func RequiresAuth(command string) bool {

@@ -11,6 +11,17 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Breaking (0.x)
+
+- **CLI MCP stdio removed** — the `capabilities mcp` subcommand and
+  `internal/mcpstdio` bridge are gone. Bare `mcp` is not a runnable command
+  (non-zero exit / unknown path). Product MCP lives on the **server**
+  (`laravel/mcp` adapter / HTTP capability API). This Go binary remains an
+  **HTTP-only** client: `auth` · `catalog` · `describe` · `run` · domain/verb ·
+  `approvals`. The token **`mcp` stays reserved forever** and cannot be a
+  synthesis domain. Use server product MCP or the HTTP CLI (`catalog` /
+  `run` / `--json`) instead of `capabilities mcp`.
+
 ### Added
 
 - **`auth status --json`** — D-018 envelope with `profile`, `base_url`, `logged_in` (never the token).

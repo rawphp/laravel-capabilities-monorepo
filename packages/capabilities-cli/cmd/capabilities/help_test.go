@@ -29,9 +29,10 @@ func TestHelprun(t *testing.T) {
 		t.Fatal(h)
 	}
 }
-func TestHelpmcp(t *testing.T) {
-	if !strings.Contains(CommandHelp("mcp"), "stdio") {
-		t.Fatal()
+func TestHelpmcpNotStdioBridge(t *testing.T) {
+	// CLI MCP stdio hard-removed (ORI-791); help must not advertise a working bridge.
+	if strings.Contains(CommandHelp("mcp"), "stdio") {
+		t.Fatal(CommandHelp("mcp"))
 	}
 }
 func TestHelpapprovals(t *testing.T) {

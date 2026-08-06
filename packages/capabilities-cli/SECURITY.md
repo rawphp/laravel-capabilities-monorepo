@@ -33,6 +33,6 @@ Include:
 
 ### Scope notes
 
-This CLI is a remote HTTP client for auth, catalog, run, and optional MCP stdio. Reports involving credential handling, token leakage, or client-side privilege confusion (noting the server remains the authorization authority) are especially welcome.
+This CLI is a remote HTTP client for auth, catalog, and run (no local MCP stdio). Reports involving credential handling, token leakage, or client-side privilege confusion (noting the server remains the authorization authority) are especially welcome.
 
 Thank you for helping keep consumers safe.

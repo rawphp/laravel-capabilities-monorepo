@@ -13,12 +13,16 @@ func TestBinarynameiscapabilities(t *testing.T) {
 	}
 }
 
-func TestHelplistsauthcatalogrunmcpapprovals(t *testing.T) {
+func TestHelplistsauthcatalogrunapprovals(t *testing.T) {
 	h := RootHelp()
-	for _, c := range []string{"auth", "catalog", "run", "mcp", "approvals"} {
+	for _, c := range []string{"auth", "catalog", "run", "approvals"} {
 		if !strings.Contains(h, c) {
 			t.Fatalf("missing %s", c)
 		}
+	}
+	// mcp is reserved forever as a domain token but not a runnable command / not in root help.
+	if strings.Contains(h, "MCP stdio") {
+		t.Fatal("root help must not advertise MCP stdio")
 	}
 }
 
