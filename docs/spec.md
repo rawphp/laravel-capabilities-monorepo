@@ -1813,7 +1813,7 @@ When `needsApproval` returns `true`:
 4. A human accepts/rejects via HTTP, UI, product CLI, or **Telegram** (signed short-lived callbacks).
 5. On accept: **re-validate** input, check approver policy, transition to `executed` **once**, then `run` under the original caller + scope + idempotency key (D-005). Concurrent/double accept does not double-`run`. Crash between decision and execution is recovered — see [Crash recovery (P2-004)](#crash-recovery-p2-004).
 
-`ApprovalManager` owns the state machine and notifiers (`http`, `cli`, `telegram`) — channel adapters never execute capabilities themselves.
+`ApprovalManager` owns the state machine and notifiers (`http`, `cli`, `telegram`) — channel adapters never execute capabilities themselves. Sibling packages (messaging callbacks, etc.) type-hint the **`ApprovalGateway`** contract (`find` / `accept` / `reject`); the service provider aliases `ApprovalManager` as that gateway. Do not import the concrete manager from siblings.
 
 ```bash
 # On the user's machine (product CLI)
@@ -2797,6 +2797,7 @@ src/
       McpToolAdapter.php
       McpToolAdapterV1.php
       McpAuthProfileResolver.php   # D-023: PAT | integration | delegated → actor
+      McpServerRegistrar.php       # plan + optional adapter register; host wires peer routes
     Http/
       CapabilityController.php      # ONE invoke/catalog API (D-009)
       AuthController.php             # token + device-code (shared by CLI & API)
@@ -2805,13 +2806,17 @@ src/
   Http/
     DetectsCaller.php                # D-022: credential class → caller; header telemetry/downgrade only
     CliJsonEnvelope.php              # optional Accept: vnd.capabilities.cli+json
+  Contracts/
+    ApprovalGateway.php            # sibling port (find/accept/reject); ApprovalManager implements
   Approval/
-    ApprovalManager.php
+    ApprovalManager.php            # implements ApprovalGateway
     ApprovalStateMachine.php
     ApprovalPolicy.php
     ResumeApprovedApprovals.php      # D-006 / P2-004: sweep stuck approved → executed
     Notifiers/HttpApprovalNotifier.php
     Notifiers/CliApprovalNotifier.php
+    Notifiers/RecordingTelegramApprovalNotifier.php  # recording double for tests
+    Notifiers/TelegramApprovalNotifier.php           # deprecated empty subclass (soft-landing)
   Audit/
     AuditLogger.php
     AuditOutbox.php
@@ -2839,7 +2844,8 @@ src/
     ProcessTelegramUpdate.php
   Identity/IdentityLinker.php
   Threads/ThreadStore.php
-  Notifiers/RecordingTelegramApprovalNotifier.php  # recording stub; production Telegram notifier is messaging package
+  Notifiers/TelegramApprovalNotifier.php  # production Bot API; core RecordingTelegram* is test double
+  Telegram/CallbackHandler.php            # host-wired; type-hints ApprovalGateway (not auto-bound on webhook yet)
   MessagingServiceProvider.php
 config/capabilities-messaging.php
 routes/messaging.php

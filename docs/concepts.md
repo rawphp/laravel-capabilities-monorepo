@@ -80,9 +80,9 @@ The **monorepo** is only where these packages are developed together. After spli
 
 | | Product MCP | Product CLI |
 |---|---|---|
-| Where | Server: `laravel/mcp` + core `McpServerRegistrar` auto-register from `surfaces.mcp` profiles | Laptop binary `capabilities` |
-| Protocol | MCP (HTTP/SSE via Laravel MCP) | HTTP capability API only (`auth` / `catalog` / `run`) |
-| Not | The downloadable CLI | An MCP stdio server (`capabilities mcp` was removed) |
+| Where | Server: `laravel/mcp` + core `McpServerRegistrar` plan/adapter load from `surfaces.mcp` profiles; **host wires** peer routes | Laptop binary `capabilities` |
+| Protocol | MCP via Laravel MCP (host-mounted routes; `path_prefix` is plan metadata, not a live package auto-mount) | HTTP capability API only (`auth` / `catalog` / `run`) |
+| Not | The downloadable CLI; zero hand-wiring of peer routes | An MCP stdio server (`capabilities mcp` was removed) |
 
 ### Product CLI vs Artisan
 

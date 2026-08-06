@@ -144,11 +144,19 @@ cap-meso run some.capability --input='{}'
 
 ### Inspecting stored profiles
 
-There is no `auth list` command yet. Profiles are directories:
+```bash
+capabilities auth list [--json]
+# alias:
+capabilities auth profiles [--json]
+```
+
+Lists profile name, base URL, and logged-in status (**never tokens**). Profiles are also directories under `~/.config/capabilities/profiles/` if you need filesystem inspection:
 
 ```bash
 ls ~/.config/capabilities/profiles/
 ```
+
+`auth status [--json]` reports the active profile (`profile`, `base_url`, `logged_in` — never the token).
 
 ---
 
@@ -156,7 +164,7 @@ ls ~/.config/capabilities/profiles/
 
 - Treat profile directories like secrets. Back up carefully; do not commit them.
 - Prefer short-lived tokens or device/OAuth flows in shared environments.
-- `auth status` is safe to share in screenshots (no token).
+- `auth status` / `auth list` are safe to share in screenshots (no token).
 - Agents inherit the **same** profile token via this HTTP CLI — pick the profile deliberately.
 
 ---
@@ -165,9 +173,8 @@ ls ~/.config/capabilities/profiles/
 
 Optional polish not in the current binary:
 
-1. `auth list` (list profile names)
-2. `CAPABILITIES_PROFILE` environment default
-3. Project-local default file (e.g. `.capabilities-profile` in a repo)
+1. `CAPABILITIES_PROFILE` environment default
+2. Project-local default file (e.g. `.capabilities-profile` in a repo)
 
 Until those exist, pass `--profile=` or use aliases.
 

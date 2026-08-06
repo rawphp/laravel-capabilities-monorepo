@@ -45,19 +45,15 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 - **`approvals` without action** — prints usage and exits **0** (was exit **2**); does
   **not** require auth. **`approvals accept|reject` without `<id>`** — clear error exit
   **2** (no silent full help).
-- **MCP `tools/call` errors** — `error.data` uses D-018 **wire keys** (`code`, `message`,
-  `violations`, `http_status`, `cli_exit`, `approval_id`, `retryable`, `request_id`) —
-  not Go field names (`Code`, `HTTPStatus`). Raw HTTP body is **not** embedded. Agents
-  must parse snake_case keys only.
+- **HTTP / machine error envelopes** — structured errors use D-018 **wire keys**
+  (`code`, `message`, `violations`, `http_status`, `cli_exit`, `approval_id`,
+  `retryable`, `request_id`) — not Go field names. Raw HTTP body is **not**
+  embedded as the primary message. Agents must parse snake_case keys only.
 - **`run --human` stderr** — short one-line summary (e.g. `ok get_today_meals date=…`).
   **Breaking for anyone parsing `--human` stderr for full `data=` JSON** — machine path
   remains stdout envelope only; do not parse human stderr.
 - **`describe` not-found** — machine error envelope on **stdout** (parity with domain
   not_found) plus short stderr line.
-- **MCP stdio bridge** — `tools/list` requests catalog with `include_schemas=1`; tools
-  always include a non-null `inputSchema` object (empty object when the server omits
-  schema). MCP `notifications/*` (e.g. `initialized`) are ignored without a JSON-RPC
-  error reply.
 - **`auth login|logout|status --help`** — help wins before flag requirements or logout side effects (was requiring `--base-url` / logging out).
 - **Local validation stderr** — includes field summary, e.g. `local schema validation failed (date: is required)`.
 - **Local `ValidateLocal` string formats** — portable JSON Schema `format` checks
@@ -75,18 +71,19 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   reject.
 - **Internal split** — CLI command handlers moved from monolithic `cmd/capabilities/cli.go`
   into focused files (`cmd_auth.go`, `cmd_catalog.go`, `cmd_domain.go`, `cmd_run.go`,
-  `cmd_mcp.go`).
+  `cmd_approvals.go`).
 
 ### Added (docs / install / release path)
 
 - Complete user documentation set: `docs/README.md` index, expanded
   `docs/user-guide.md`, `docs/authentication.md` (multi-project **profiles**),
-  `docs/agents.md` (envelopes, exit codes, MCP). README links Install + docs.
+  `docs/agents.md` (envelopes, exit codes, HTTP-only agent loop). README links Install + docs.
 - User-global install: `scripts/install.sh` + README / user-guide one-liner
   (`curl … | bash`) installs the latest (or `VERSION=`) GitHub Release binary into
   `~/.local/bin` (override with `CAPABILITIES_INSTALL_DIR`); no sudo.
 - Downloadable Go product CLI: auth, catalog, local JSON Schema validation (UX only),
-  invoke via the server’s single HTTP capability API, optional MCP stdio bridge (D-016 / D-009).
+  invoke via the server’s single HTTP capability API (D-016 / D-009). **HTTP-only** —
+  no MCP stdio bridge (removed; product MCP is server `laravel/mcp`).
 - No embedded domain logic; server re-validates and derives `caller: cli` from credentials.
 - Package-root `.goreleaser.yml` (GoReleaser v2): multi-arch `capabilities` binary
   (darwin/linux/windows × amd64/arm64), `-X main.Version={{.Version}}` (strip `v` from

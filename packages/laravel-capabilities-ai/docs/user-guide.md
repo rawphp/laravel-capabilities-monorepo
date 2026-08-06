@@ -23,9 +23,14 @@ The ALTER is idempotent (no-op if the column already exists). Greenfield install
 
 ## Host bindings
 
-- `ConversationContextProvider`
+- `ConversationContextProvider` — messages for the model (`content` may be a **string** or a **list of provider content blocks** for multimodal / vision; hosts hydrate attachment bytes — this package does not store or fetch files)
 - `ToolCatalog`
-- `LlmClient` (Fake in tests, Anthropic in prod)
+- `LlmClient` (config default `llm.driver=fake`; set `CAPABILITIES_AI_LLM_DRIVER=anthropic` or bind a client for production)
+- `user_model` / `CAPABILITIES_AI_USER_MODEL` — Eloquent user class for resolving the conversation principal (falls back to `auth.providers.users.model`)
+
+### Bus principal (job + conversation user)
+
+`TurnRunner` (tool invokes) and `ProposalService` (accept) resolve the conversation’s Laravel user and pass **`caller=job`** plus that user as **`actor`** on every `CapabilityBus::invoke`. Missing or unresolvable `conversation.user_id` fails closed. Tool invokes still omit `idempotency_key` (only proposal accept sets `proposal:{ulid}`).
 
 ### Upgrade for hosts (manual DI / constructor / job handle)
 
@@ -93,7 +98,8 @@ Each tool invoke appends a progress event:
     "name": "demo.tool",
     "payload": { "x": 1 },
     "ok": false,
-    "error_code": "forbidden"
+    "error_code": "forbidden",
+    "tool_call_id": "toolu_01ABC"
   }
 }
 ```
@@ -104,6 +110,7 @@ Each tool invoke appends a progress event:
 | `payload` | object | Invoke input (may contain host PII — treat progress as sensitive if streamed) |
 | `ok` | bool | From `CapabilityResult::$ok` — **not** always true |
 | `error_code` | string \| null | From `CapabilityResult::errorCode()`; null when `ok` is true |
+| `tool_call_id` | string | Correlates to the model `tool_calls[].id` for this round (multi-round tools) |
 
 **Host action:** branch on `data.ok` / `data.error_code`. Do not treat every `kind=tool` event as success.
 
@@ -111,10 +118,14 @@ Each tool invoke appends a progress event:
 
 After each bus invoke, TurnRunner appends a message for the next LLM round:
 
-| | Old expectation | Current wire |
-|--|-----------------|--------------|
-| `role` | `tool` | unchanged |
-| `content` | JSON always like `{"ok":true,"name":…}` | JSON of full `CapabilityResult::toArray()` **plus** `name` |
+| Field | Current wire |
+|-------|--------------|
+| `role` | `tool` |
+| `content` | JSON of full `CapabilityResult::toArray()` **plus** `name` (honest failures, not always `ok: true`) |
+| `tool_call_id` | Same id as the model tool call |
+| `id` | Same as `tool_call_id` (required correlation for multi-round clients / Anthropic `tool_result.tool_use_id`) |
+
+Empty model-supplied ids get a round-local fallback so multi-round clients still receive non-empty correlation fields.
 
 Example failure content (shape illustrative):
 
@@ -127,9 +138,9 @@ Example failure content (shape illustrative):
 }
 ```
 
-**Host action:** multi-round `LlmClient` implementors and transcript parsers must accept honest failure payloads (not invent success). Prefer `supportsToolRounds() === true` only when the client can continue after such messages.
+**Host action:** multi-round `LlmClient` implementors and transcript parsers must accept honest failure payloads (not invent success) and pass through `tool_call_id` / `id`. Prefer `supportsToolRounds() === true` only when the client can continue after such messages.
 
-Authoritative: `TurnRunner` (`progress->append` tool data + `encodeToolResult`). Unit locks in `TurnRunnerTest`.
+Authoritative: `TurnRunner` (`progress->append` tool data + tool-role append). Unit locks in `TurnRunnerTest`.
 
 ## Optional routes
 
@@ -163,6 +174,8 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 - Body: `{ "turn_ulid": "<ulid>", "events": [ … ] }` from `TurnService::events`
 
 **Host action:** if you enable routes, stop assuming always-**200** empty bodies. Handle **404** for missing conversation/turn and **409** for cancel/destroy conflicts. Leave `routes.enabled` false until clients are ready.
+
+**Cooperative cancel (mid-run):** `TurnService::cancel` CAS-marks the turn cancelled and emits a terminal progress event. If `TurnRunner` observes `cancelled` mid-loop, it does **not** overwrite status with completed/failed and does **not** emit a failed terminal progress event — the cancelled terminal stands.
 
 Authoritative: `ChatController` + conversation/turn services (see package unit tests). CHANGELOG: [Unreleased Breaking — Chat HTTP non-proposal routes](../CHANGELOG.md).
 

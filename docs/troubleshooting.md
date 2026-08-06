@@ -139,8 +139,8 @@ Matrix source: `packages/laravel-capabilities/src/Adapters/PeerSupportMatrix.php
 
 ### Built binary works but MCP client sees no tools
 
-**Cause:** Product MCP is **server-side** (`laravel/mcp` + capabilities auto-register), not the CLI. Common gaps: `surfaces.mcp` disabled; peer missing/incompatible; empty `profiles` / `auto_register` false; host pointed at a local `capabilities mcp` process that no longer exists.  
-**Fix:** Enable `surfaces.mcp`, install compatible `laravel/mcp`, define named profiles (and leave `auto_register` true or register servers manually). Point the MCP host at the **app** MCP URL (default path prefix `/mcp`). For shell agents, use HTTP CLI `catalog` / `run` with a working auth profile — do **not** run `capabilities mcp`.
+**Cause:** Product MCP is **server-side** (`laravel/mcp` + capabilities plan/adapter via `McpServerRegistrar`), not the CLI. Common gaps: `surfaces.mcp` disabled; peer missing/incompatible; empty `profiles` / `auto_register` false; **host never wired peer routes** (package does not live-mount under `path_prefix`); host pointed at a local `capabilities mcp` process that no longer exists.  
+**Fix:** Enable `surfaces.mcp`, install compatible `laravel/mcp`, define named profiles (and leave `auto_register` true or register tools manually). **Wire** peer MCP servers in the app (e.g. `Mcp::web` / peer docs) using the planned profile tools — `path_prefix` is plan metadata only. For shell agents, use HTTP CLI `catalog` / `run` with a working auth profile — do **not** run `capabilities mcp`.
 
 ## Messaging (Telegram)
 

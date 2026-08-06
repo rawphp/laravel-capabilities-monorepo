@@ -100,12 +100,12 @@ Agent and MCP surfaces compose `laravel/ai` and `laravel/mcp`. They are **option
 - Supported version constraints live in `PeerSupportMatrix` (mirrored under `peers.support`).
 - If a surface is enabled and the peer is missing or incompatible: **fail** boot (default) or **soft-disable** with CRITICAL log, per `on_incompatible`. Never half-register tools.
 
-**Product MCP is server-side.** With `surfaces.mcp.enabled` and `laravel/mcp` installed, core **auto-registers** one MCP server per named profile (`surfaces.mcp.auto_register`, default true — `McpServerRegistrar`). MCP hosts (Cursor, Claude Desktop, …) connect to the **app** endpoints under `path_prefix` (default `/mcp`), not to the downloadable CLI.
+**Product MCP is server-side.** With `surfaces.mcp.enabled` and `laravel/mcp` installed, core **`McpServerRegistrar`** (`surfaces.mcp.auto_register`, default true) builds a **server plan** from named profiles / `servers` and may call `McpToolAdapter::register` for planned profiles. Production boot does **not** mount live peer MCP HTTP routes under `path_prefix` — that path is **plan metadata** only (default `/mcp/{profile}`). **Hosts still wire** peer MCP servers (e.g. `Mcp::web` / peer docs) or use manual `Capability::mcpTools`. Multi-profile sequential register **overwrites** the shared adapter’s active tools (last profile wins). MCP hosts connect to whatever routes **your app** mounts — not to the downloadable CLI.
 
 ```bash
 composer require laravel/mcp
 # config: surfaces.mcp.enabled=true, profiles defined, auto_register=true
-# → one server per profile key; tools go through Capability::mcpTools / registry invoke
+# → plan + optional adapter tool load; host wires peer routes; tools invoke via registry
 ```
 
 Details: [Core package guide](../packages/laravel-capabilities/docs/user-guide.md#peers-laravelai--laravelmcp) and [core package README](../packages/laravel-capabilities/README.md#peer-support--d-011-release-gate).

@@ -67,7 +67,7 @@ Install policy: monorepo [`docs/versioning.md`](https://github.com/rawphp/larave
 
 ## Production bindings (L-004)
 
-When Telegram is enabled, `MessagingServiceProvider::register` binds:
+`MessagingServiceProvider::register` **always** binds drivers and services (not gated on `telegram.enabled`). Only **webhook routes** load when `telegram.enabled` is true.
 
 | Abstract | Production concrete | Testing / `driver=fake` |
 |---|---|---|
@@ -76,13 +76,16 @@ When Telegram is enabled, `MessagingServiceProvider::register` binds:
 | `TelegramBotClient` | `HttpTelegramBotClient` | `FakeTelegramBotClient` |
 | `ProcessTelegramUpdate` | handler | same |
 | `TelegramWebhookController` | injects bound `UpdateQueue` (no FakeQueue default) | inject `FakeQueue` in unit tests |
+| `TelegramApprovalNotifier` | `Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier` (Bot API) | unit tests may inject fakes |
 
 Drivers (`config/capabilities-messaging.php`):
 
 - `queue_driver`: `auto` \| `laravel` \| `fake` — `auto` → fake when `APP_ENV=testing`, otherwise Laravel bus
 - `bot_driver`: `auto` \| `http` \| `fake` — `auto` → fake when testing, otherwise HTTP
 
-Unit tests never call the live Telegram network; inject a transport on `HttpTelegramBotClient` or use `bot_driver=fake`.
+Fake\* classes bind only when the matching driver is `fake`, or `auto` with `APP_ENV=testing`. Unit tests never call the live Telegram network; inject a transport on `HttpTelegramBotClient` or use `bot_driver=fake`.
+
+**Notifier FQCN:** production is messaging `…Notifiers\TelegramApprovalNotifier`. Core’s `RecordingTelegramApprovalNotifier` is the test recording double; core’s deprecated empty `…Approval\Notifiers\TelegramApprovalNotifier` is a soft-landing alias only — do not use it in hosts.
 
 ## Residual: durable identity / threads (L-006)
 

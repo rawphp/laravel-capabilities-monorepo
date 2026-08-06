@@ -161,7 +161,9 @@ Tokens are **not** printed by `auth status`.
 ```bash
 capabilities auth login --base-url=URL [--token=PAT] [--code=OAUTH] [--profile=NAME]
 capabilities auth logout [--profile=NAME]
-capabilities auth status [--profile=NAME]
+capabilities auth status [--json] [--profile=NAME]
+capabilities auth list [--json]
+capabilities auth profiles [--json]
 ```
 
 | Login style | How |
@@ -219,13 +221,15 @@ alias cap-yard='capabilities --profile=yardpilot'
 cap-meso catalog
 ```
 
-### List profiles (today)
-
-There is no `auth list` yet:
+### List profiles
 
 ```bash
-ls ~/.config/capabilities/profiles/
+capabilities auth list [--json]
+# alias:
+capabilities auth profiles [--json]
 ```
+
+Human output lists profile name, base URL, and logged-in status (**never tokens**). `--json` returns a machine envelope with a `profiles` array. You can still inspect directories under `~/.config/capabilities/profiles/` if needed.
 
 Deep dive: **[authentication.md](authentication.md#multiple-projects--multi-deployment-profiles)**.
 
@@ -245,15 +249,26 @@ capabilities <domain> <verb> [flags]
 | `--profile=NAME` | Auth profile (default `default`) |
 | `--base-url=URL` | Override deployment base URL for this invocation |
 | `--json` | Machine / structured envelopes where applicable |
+| `--human` | Short human summary on stderr for successful `run` (stdout stays machine envelope when combined with `--json`) |
+
+Leading globals: `--profile`, `--base-url`, and presentation flags (`--json`, `--human`, `--flat`, `--include-schemas`, `--no-cache`, `--refresh`) may appear **before** the subcommand (e.g. `capabilities --profile=P --json catalog`).
 
 ### `auth`
+
+```bash
+capabilities auth login --base-url=URL (--token=TOKEN | device/browser flow) [--profile=NAME]
+capabilities auth logout [--profile=NAME]
+capabilities auth status [--json] [--profile=NAME]
+capabilities auth list [--json]
+capabilities auth profiles [--json]   # alias of list
+```
 
 See [Authentication](#authentication) and [authentication.md](authentication.md).
 
 ### `catalog`
 
 ```bash
-capabilities catalog [--json|--flat] [--no-cache] [--refresh] [--profile=NAME]
+capabilities catalog [--json|--flat] [--include-schemas] [--no-cache] [--refresh] [--profile=NAME]
 ```
 
 Fetches from `GET /capabilities` via the HTTP client.
@@ -263,6 +278,7 @@ Fetches from `GET /capabilities` via the HTTP client.
 | *(default)* | Humans | Domain index — domains + verb counts + next steps |
 | `--flat` | Humans | Flat `name → domain verb` lines |
 | `--json` | Agents | Machine envelope; may include `cli.domain` / `cli.verb`, `mapped_command`, `mapping_error` |
+| `--include-schemas` | Agents | With list/JSON: include `input_schema` / `output_schema` in one round-trip |
 
 ### `describe`
 

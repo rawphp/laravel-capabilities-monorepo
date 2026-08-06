@@ -12,7 +12,7 @@ Peer matrix, durable persistence, and D-020 detail live in the [package README](
 ## Before you start
 
 - Install via package VCS or monorepo path — see [README install](../README.md#install)
-- PHP ^8.2, Laravel 11/12 illuminate components as declared in package `composer.json`
+- PHP ^8.2, Laravel 11/12/13 illuminate components as declared in package `composer.json` (Laravel 13 apps need PHP ^8.3 per framework)
 - Optional peers: `laravel/ai`, `laravel/mcp` when agent/MCP surfaces are enabled
 
 ## Define a capability
@@ -193,7 +193,7 @@ Publish: `php artisan vendor:publish --tag=capabilities-config`
 | Peer mismatch | `on_incompatible` → `fail` \| `disable` | Boot fail vs soft-disable |
 | HTTP | `prefix`, `middleware` | Route mount and auth |
 | Approval | `store`, `ttl_hours`, `execution`, `resume.*` | Human-in-the-loop |
-| Idempotency | `enabled`, `driver` (default `memory`), `header` (`Idempotency-Key`) | Safe retries |
+| Idempotency | `enabled`, `driver` (default `database`; use `memory` only for single-process tests), `header` (`Idempotency-Key`) | Safe retries |
 | Audit | `enabled`, `mode` (`best_effort`), `driver` | Observability of invokes |
 | Rate limits | `defaults.per_minute`, per-capability, agent turn max tools | Abuse control |
 | Clients | `token_abilities` (e.g. `capabilities:cli` → `cli`), privilege order | Caller derivation |

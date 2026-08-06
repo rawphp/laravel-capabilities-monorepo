@@ -74,15 +74,17 @@ Progress `kind=tool` events and multi-round tool-role message `content` are **ho
 | `payload` | invoke input array | unchanged |
 | `ok` | often absent / assumed true | **bool** from `CapabilityResult::$ok` |
 | `error_code` | absent | **string\|null** from `CapabilityResult::errorCode()` (null when ok) |
+| `tool_call_id` | absent | **string** correlating to model `tool_calls[].id` |
 
-**Tool-role message `content` (JSON string):**
+**Tool-role message (multi-round transcript):**
 
 | Shape | Old expectation | Current wire |
 |-------|-----------------|--------------|
-| Success / failure | Always `{"ok":true,"name":…}` (or similar always-ok stub) | Full `CapabilityResult::toArray()` plus `name` (includes `ok`, `data` or `error`, `meta`) |
-| Failure | Masked as ok | Honest `ok: false` + `error` (code/message) |
+| `content` (JSON string) | Always `{"ok":true,"name":…}` (or similar always-ok stub) | Full `CapabilityResult::toArray()` plus `name` (includes `ok`, `data` or `error`, `meta`) |
+| Failure content | Masked as ok | Honest `ok: false` + `error` (code/message) |
+| Correlation fields | content-only | Message also carries `tool_call_id` and `id` (same id; empty model ids get a round-local fallback) |
 
-Authoritative: `TurnRunner` progress append + `encodeToolResult` (see package unit tests).
+Authoritative: `TurnRunner` progress append + tool-role append (see package unit tests).
 
 #### Anthropic default model ID
 

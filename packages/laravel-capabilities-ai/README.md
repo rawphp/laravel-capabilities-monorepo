@@ -55,12 +55,17 @@ Key defaults (`config/capabilities-ai.php`):
 |-----|---------|
 | `table_prefix` | `capabilities_ai_` |
 | `progress.driver` | `array` (or `redis`) |
-| `llm.driver` | `fake` in tests / `anthropic` in prod |
+| `llm.driver` | `fake` (set `CAPABILITIES_AI_LLM_DRIVER=anthropic` or bind `LlmClient` for production) |
+| `llm.anthropic.model` | `claude-sonnet-4-6` (`CAPABILITIES_AI_ANTHROPIC_MODEL`) |
+| `llm.anthropic.max_tokens` | `64000` (`CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS`) |
+| `user_model` | null → falls back to `auth.providers.users.model` (`CAPABILITIES_AI_USER_MODEL`) |
 | `claim_ttl` | `120` |
 | `max_tool_rounds` | `8` |
 | `routes.enabled` | `false` |
 
 Progress events live in array/Redis — **not** MySQL product tables.
+
+**Bus principal (tool + accept invokes):** `TurnRunner` and `ProposalService` resolve the conversation’s Laravel user via `user_model` / auth provider and pass `caller=job` plus that user as `actor` on `CapabilityBus::invoke`. Missing/unresolvable `conversation.user_id` fails closed (no silent default user). README “bare” tool invokes means **no `idempotency_key`** — not “no invoke options.”
 
 ## Host seams
 
@@ -93,7 +98,7 @@ $app->bind(LlmClient::class, fn () => new AnthropicLlmClient(
 
 - **Accept:** atomic CAS `pending → accepting`, then bus invoke with `idempotency_key=proposal:{ulid}` (D-005). Live `IdempotencyReadiness` probe (fail closed) — not a constructor stamp. Branch `isApprovalRequired()` then `isHardRefuse()` then `isRetryable()`; approval/retry leave status `accepting` for host re-drive. Hard non-retryable → `failed` + `last_error`. Success → atomic `accepting → accepted`, clear `last_error`. Returns typed `AcceptOutcome` (`accepted` | `approval_required` | `retryable` | `failed` | `refuse`).
 - **Reject:** atomic CAS `pending → rejected` only; already-rejected is idempotent; accepting/accepted/failed/expired refuse (HTTP 409).
-- **Recovery:** stuck `accepting` is intentional (approval / retry / crash mid-accept). Package does **not** TTL-expire or reclaim; host re-drives accept under the same D-005 key (`proposal:{ulid}`). Hosts must wire core **`IdempotencyStore`** (not an AI-package store) so the bus actually dedupes; readiness not ready → 503 without invoke. Conversation/tool bus invokes stay bare — only accept sets the proposal key.
+- **Recovery:** stuck `accepting` is intentional (approval / retry / crash mid-accept). Package does **not** TTL-expire or reclaim; host re-drives accept under the same D-005 key (`proposal:{ulid}`). Hosts must wire core **`IdempotencyStore`** (not an AI-package store) so the bus actually dedupes; readiness not ready → 503 without invoke. Conversation/tool bus invokes stay without an `idempotency_key` — only accept sets the proposal key. Both tool and accept invokes still carry the job+user principal (above).
 
 Env: `ANTHROPIC_API_KEY` (never required in CI — tests use `Http::fake` / `FakeLlmClient`).
 
