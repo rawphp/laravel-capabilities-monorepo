@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -55,7 +56,7 @@ func TestAuthrequiredbeforerun(t *testing.T) {
 		t.Fatal("run requires auth")
 	}
 	st := tempStore(t)
-	if err := GuardAuth(st, "default", "run"); err != ErrNoToken {
+	if err := GuardAuth(st, "default", "run"); !errors.Is(err, ErrNoToken) {
 		t.Fatalf("%v", err)
 	}
 }

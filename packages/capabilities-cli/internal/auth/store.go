@@ -14,7 +14,8 @@ import (
 )
 
 // ErrNoToken is returned when a profile has no stored token.
-var ErrNoToken = errors.New("not authenticated: run `capabilities auth login`")
+// Prefer RequireToken / GuardAuth for user-facing errors (they name the profile).
+var ErrNoToken = errors.New("not authenticated")
 
 // ErrInvalidBaseURL is returned for empty/malformed base URLs.
 var ErrInvalidBaseURL = errors.New("invalid base URL")
@@ -186,9 +187,17 @@ func (s *Store) ListProfiles() []Profile {
 	return out
 }
 
-// RequireToken returns the token or ErrNoToken (exit 3 path for commands).
+// RequireToken returns the token or a profile-named ErrNoToken (exit 3 path).
 func (s *Store) RequireToken(profile string) (string, error) {
-	return s.GetToken(profile)
+	tok, err := s.GetToken(profile)
+	if err != nil {
+		if errors.Is(err, ErrNoToken) {
+			p := sanitizeProfile(profile)
+			return "", fmt.Errorf("%w for profile %q: run `capabilities auth login --profile=%s`", ErrNoToken, p, p)
+		}
+		return "", err
+	}
+	return tok, nil
 }
 
 // HasToken reports whether a non-empty token is stored.

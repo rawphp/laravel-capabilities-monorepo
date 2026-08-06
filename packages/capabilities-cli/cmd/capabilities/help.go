@@ -61,7 +61,7 @@ EXAMPLES:
   capabilities describe <name>
   capabilities run <name> --input='{...}' --json
   capabilities <domain> <verb> --human       # one-line success on stderr
-  capabilities mcp
+  capabilities mcp --profile=NAME            # MCP stdio for hosts (after auth login)
 `
 }
 
@@ -122,13 +122,49 @@ FLAGS:
 
 ` + run.DocsExitCodes
 	case "mcp":
-		return `mcp — MCP stdio bridge
+		return `mcp — MCP stdio bridge for IDE / agent hosts
 
 USAGE:
   capabilities mcp [--profile=NAME] [--base-url=URL]
 
-Proxies tools/list and tools/call to the remote HTTP capability API using the
-stored CLI token. No local domain run or authorize.
+WHAT IT IS:
+  A JSON-RPC MCP server on stdin/stdout. Proxies tools/list and tools/call to
+  the remote HTTP capability API with the stored CLI token for the profile.
+  No local domain run or authorize — the server remains law.
+
+PREREQUISITES:
+  1. Install this CLI and put it on PATH
+  2. Log in once:  capabilities auth login --profile=NAME --base-url=URL --token=…
+  3. Check:        capabilities auth status --profile=NAME
+  4. Point your MCP host at this process (stdio), not at a URL
+
+NOT AN INTERACTIVE SHELL:
+  Running "capabilities mcp" alone waits for JSON-RPC on stdin. Wire a host
+  (Cursor, Claude Desktop, Claude Code, …) instead of typing commands here.
+
+HOST CONFIG (examples — adjust path/profile):
+
+  Cursor (~/.cursor/mcp.json) / Claude Desktop:
+  {
+    "mcpServers": {
+      "capabilities": {
+        "command": "capabilities",
+        "args": ["mcp", "--profile=NAME"]
+      }
+    }
+  }
+
+  Wrapper (when the host cannot pass args cleanly):
+    #!/usr/bin/env bash
+    exec capabilities mcp --profile=NAME
+
+VERIFY BRIDGE:
+  printf '%s\n' \
+    '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+    '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+    | capabilities mcp --profile=NAME
+
+Docs: package docs/agents.md (Agents & MCP).
 `
 	case "approvals":
 		return `approvals — accept or reject pending approvals via HTTP

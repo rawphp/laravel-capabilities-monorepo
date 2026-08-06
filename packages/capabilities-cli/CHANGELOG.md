@@ -24,6 +24,11 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Changed (0.x agent/script contract)
 
+- **MCP host UX** — `help mcp` documents Cursor/Claude Desktop `mcpServers` wiring,
+  auth prerequisites, and a stdio smoke-test; TTY runs print a stderr hint (pipes unchanged);
+  auth failures name the profile (`--profile=…`); `initialize` `serverInfo.version` matches
+  the CLI version; empty tool schemas with array `properties` normalize to MCP-safe objects.
+  Docs: `docs/agents.md`, `docs/user-guide.md`.
 - **Unauthenticated domain/unknown argv** — exit **3** with `not authenticated` (was exit **5**
   “unknown domain”, which hid the need to login). Authenticated unknown domain remains exit **5**.
 - **Domain catalog load uses active `--profile`** (no longer always loads with `default`).

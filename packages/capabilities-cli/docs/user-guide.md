@@ -286,8 +286,26 @@ See [Invoking capabilities](#invoking-capabilities).
 capabilities mcp [--profile=NAME] [--base-url=URL]
 ```
 
-MCP **stdio** bridge: proxies `tools/list` and `tools/call` to the remote API
-using the stored CLI token. No local domain authorize/run.
+MCP **stdio** bridge for IDE/agent hosts (Cursor, Claude Desktop, …). Proxies
+`tools/list` and `tools/call` to the remote API using the stored CLI token.
+No local domain authorize/run.
+
+**Not interactive** — hosts speak JSON-RPC on stdin/stdout. Log in first, then
+register the process in the host’s MCP config:
+
+```json
+{
+  "mcpServers": {
+    "capabilities": {
+      "command": "capabilities",
+      "args": ["mcp", "--profile=NAME"]
+    }
+  }
+}
+```
+
+Full wiring, smoke-test, and error-data keys: [agents.md](agents.md#mcp-stdio-bridge).
+In-CLI: `capabilities help mcp`.
 
 ### `approvals`
 
@@ -388,7 +406,7 @@ Summary:
 1. Always pass `--profile=` when more than one product is configured.
 2. Discover with `catalog --json` (add `--include-schemas` for one-shot schemas); invoke with `run` or mapped domain/verb.
 3. Parse **stdout**; branch on **exit code**. Help/usage exits **0**.
-4. MCP: `capabilities mcp --profile=…` as a stdio subprocess; `error.data` uses D-018 wire keys (`code`, `message`, …) not Go names.
+4. MCP: log in, then run `capabilities mcp --profile=…` as a **stdio** subprocess from the host config (see [agents.md](agents.md#mcp-stdio-bridge)); `error.data` uses D-018 wire keys (`code`, `message`, …) not Go names.
 
 Full guide: **[agents.md](agents.md)**.
 

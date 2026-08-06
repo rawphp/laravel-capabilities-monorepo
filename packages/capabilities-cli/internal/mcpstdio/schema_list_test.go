@@ -66,6 +66,58 @@ func TestToolsListNullSchemaBecomesEmptyObject(t *testing.T) {
 	}
 }
 
+func TestToolsListNormalizesArrayPropertiesAndVersion(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Empty-DTO style: properties as [] and multi type — confuses MCP hosts.
+		w.Write([]byte(`{"ok":true,"data":{"capabilities":[{
+			"name":"get_today_meals",
+			"description":"read",
+			"input_schema":{"type":["object","array"],"properties":[],"additionalProperties":false}
+		}]}}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := api.NewClient(srv.URL, "t")
+	c.HTTP = srv.Client()
+	in := bytes.NewBufferString(strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`,
+	}, "\n") + "\n")
+	var out bytes.Buffer
+	s := New(c, "t", in, &out)
+	s.Version = "9.9.9-test"
+	if err := s.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("lines=%d out=%s", len(lines), out.String())
+	}
+	var init map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &init); err != nil {
+		t.Fatal(err)
+	}
+	info := init["result"].(map[string]any)["serverInfo"].(map[string]any)
+	if info["version"] != "9.9.9-test" {
+		t.Fatalf("serverInfo.version=%v", info["version"])
+	}
+	var list map[string]any
+	if err := json.Unmarshal([]byte(lines[1]), &list); err != nil {
+		t.Fatal(err)
+	}
+	tool := list["result"].(map[string]any)["tools"].([]any)[0].(map[string]any)
+	schema := tool["inputSchema"].(map[string]any)
+	props, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("properties not object: %T %v", schema["properties"], schema["properties"])
+	}
+	if len(props) != 0 {
+		t.Fatalf("expected empty properties object, got %v", props)
+	}
+	if schema["type"] != "object" {
+		t.Fatalf("type=%v want object", schema["type"])
+	}
+}
+
 func TestNotificationsInitializedSilent(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"ok":true,"data":{"capabilities":[]}}`))

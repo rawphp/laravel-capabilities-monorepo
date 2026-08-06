@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/rawphp/capabilities-cli/internal/api"
@@ -9,29 +11,34 @@ import (
 
 func TestRunwithoutauthfails(t *testing.T) {
 	st := tempStore(t)
-	if err := GuardAuth(st, "default", "run"); err != ErrNoToken {
+	if err := GuardAuth(st, "default", "run"); !errors.Is(err, ErrNoToken) {
 		t.Fatal(err)
 	}
 }
 
 func TestCatalogwithoutauthfails(t *testing.T) {
 	st := tempStore(t)
-	if err := GuardAuth(st, "default", "catalog"); err != ErrNoToken {
+	if err := GuardAuth(st, "default", "catalog"); !errors.Is(err, ErrNoToken) {
 		t.Fatal(err)
 	}
 }
 
 func TestDescribewithoutauthfails(t *testing.T) {
 	st := tempStore(t)
-	if err := GuardAuth(st, "default", "describe"); err != ErrNoToken {
+	if err := GuardAuth(st, "default", "describe"); !errors.Is(err, ErrNoToken) {
 		t.Fatal(err)
 	}
 }
 
 func TestMcpwithoutauthfails(t *testing.T) {
 	st := tempStore(t)
-	if err := GuardAuth(st, "default", "mcp"); err != ErrNoToken {
+	err := GuardAuth(st, "does-not-exist", "mcp")
+	if !errors.Is(err, ErrNoToken) {
 		t.Fatal(err)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "does-not-exist") || !strings.Contains(msg, "--profile=does-not-exist") {
+		t.Fatalf("auth error must name profile and login flag: %q", msg)
 	}
 }
 

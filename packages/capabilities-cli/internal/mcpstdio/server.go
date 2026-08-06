@@ -21,6 +21,9 @@ type Server struct {
 	Token string
 	In    io.Reader
 	Out   io.Writer
+	// Version is the CLI/binary version reported in initialize serverInfo.
+	// Empty falls back to a stable placeholder for tests.
+	Version string
 	// RejectHostActor when true (default) strips host-injected actor fields.
 	RejectHostActor bool
 }
@@ -117,10 +120,14 @@ func (s *Server) handle(ctx context.Context, req rpcRequest) rpcResponse {
 	resp := rpcResponse{JSONRPC: "2.0", ID: req.ID}
 	switch req.Method {
 	case "initialize":
+		ver := strings.TrimSpace(s.Version)
+		if ver == "" {
+			ver = "dev"
+		}
 		resp.Result = map[string]any{
 			"protocolVersion": "2024-11-05",
 			"capabilities":    map[string]any{"tools": map[string]any{}},
-			"serverInfo":      map[string]any{"name": "capabilities", "version": "0.2.0"},
+			"serverInfo":      map[string]any{"name": "capabilities", "version": ver},
 		}
 	case "tools/list":
 		tools, err := s.listTools(ctx)
@@ -186,12 +193,7 @@ func (s *Server) listTools(ctx context.Context) ([]map[string]any, error) {
 				if m, ok := c.(map[string]any); ok {
 					name, _ := m["name"].(string)
 					desc, _ := m["description"].(string)
-					schema := m["input_schema"]
-					// MCP clients treat null inputSchema as "no parameters known".
-					// Always emit an object schema (empty when server omitted it).
-					if schema == nil {
-						schema = map[string]any{"type": "object", "properties": map[string]any{}}
-					}
+					schema := normalizeInputSchema(m["input_schema"])
 					tools = append(tools, map[string]any{
 						"name":        name,
 						"description": desc,
@@ -202,6 +204,49 @@ func (s *Server) listTools(ctx context.Context) ([]map[string]any, error) {
 		}
 	}
 	return tools, nil
+}
+
+// normalizeInputSchema makes catalog schemas safe for MCP hosts.
+// MCP clients treat null inputSchema as "unknown parameters"; JSON Schema
+// requires properties to be an object (some servers emit [] for empty).
+func normalizeInputSchema(schema any) any {
+	empty := map[string]any{"type": "object", "properties": map[string]any{}}
+	if schema == nil {
+		return empty
+	}
+	m, ok := schema.(map[string]any)
+	if !ok {
+		return empty
+	}
+	// Clone shallowly so we do not mutate parsed catalog maps unexpectedly.
+	out := make(map[string]any, len(m)+2)
+	for k, v := range m {
+		out[k] = v
+	}
+	switch props := out["properties"].(type) {
+	case nil:
+		out["properties"] = map[string]any{}
+	case map[string]any:
+		// already object
+		_ = props
+	case []any:
+		// Empty (or non-object) array → empty object for MCP tool callers.
+		out["properties"] = map[string]any{}
+	default:
+		out["properties"] = map[string]any{}
+	}
+	// Prefer a plain object type when the schema is "no parameters".
+	if props, ok := out["properties"].(map[string]any); ok && len(props) == 0 {
+		if t, ok := out["type"].([]any); ok {
+			// e.g. ["object","array"] from empty DTO schemas — MCP args are objects.
+			out["type"] = "object"
+			_ = t
+		}
+	}
+	if _, ok := out["type"]; !ok {
+		out["type"] = "object"
+	}
+	return out
 }
 
 func (s *Server) callTool(ctx context.Context, params json.RawMessage) (any, error) {

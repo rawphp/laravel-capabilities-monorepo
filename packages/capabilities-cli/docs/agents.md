@@ -132,15 +132,56 @@ Rules:
 ## MCP stdio bridge
 
 ```bash
+# After: capabilities auth login --profile=mesoprep --base-url=… --token=…
 capabilities mcp --profile=mesoprep
 ```
 
-- Speaks MCP over **stdio**.
+- Speaks MCP over **stdio** (JSON-RPC). **Not** an interactive shell — hosts drive it.
 - Proxies `tools/list` and `tools/call` to the **same** remote HTTP capability API.
-- `tools/list` requests `include_schemas=1`; each tool has a non-null `inputSchema` object (empty object if the server omitted schema).
+- `tools/list` requests `include_schemas=1`; each tool has a non-null `inputSchema` object (empty object if the server omitted schema; array `properties` normalized to `{}`).
 - Uses the stored profile token — no separate MCP auth store.
 - **No** local domain authorize/run.
 - MCP `notifications/*` (e.g. `initialized`) are ignored (no JSON-RPC error reply).
+- `initialize` → `serverInfo.version` matches the CLI version (`capabilities version`).
+
+### Wire a host (Cursor / Claude Desktop / Claude Code)
+
+1. `capabilities auth login --profile=NAME --base-url=URL --token=…`
+2. `capabilities auth status --profile=NAME` → `logged_in=true`
+3. Register a **stdio** MCP server that runs this binary:
+
+```json
+{
+  "mcpServers": {
+    "capabilities": {
+      "command": "capabilities",
+      "args": ["mcp", "--profile=NAME"]
+    }
+  }
+}
+```
+
+Use the full path to `capabilities` if the host’s PATH does not include `~/.local/bin`.
+
+Wrapper when the host cannot pass args cleanly:
+
+```bash
+#!/usr/bin/env bash
+exec capabilities mcp --profile=mesoprep
+```
+
+Smoke-test without a host:
+
+```bash
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+  | capabilities mcp --profile=NAME
+```
+
+Typing `capabilities mcp` in a terminal alone will wait on stdin (with a short stderr hint on a TTY). That is expected — wire a host.
+
+CLI help: `capabilities help mcp`.
 
 ### `tools/call` error.data (wire keys only)
 
@@ -158,16 +199,6 @@ On tool failure, MCP `error.data` is a D-018-shaped map. **Snake_case wire keys 
 | `request_id` | Optional |
 
 Raw HTTP bodies are **not** embedded in `error.data`.
-
-Wire your agent runtime’s MCP client to this process with the correct profile
-(or a wrapper script that injects `--profile=`).
-
-Example wrapper:
-
-```bash
-#!/usr/bin/env bash
-exec capabilities mcp --profile=mesoprep
-```
 
 ---
 

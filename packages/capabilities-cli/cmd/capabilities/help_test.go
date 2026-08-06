@@ -30,8 +30,15 @@ func TestHelprun(t *testing.T) {
 	}
 }
 func TestHelpmcp(t *testing.T) {
-	if !strings.Contains(CommandHelp("mcp"), "stdio") {
-		t.Fatal()
+	h := CommandHelp("mcp")
+	if !strings.Contains(h, "stdio") {
+		t.Fatal(h)
+	}
+	// Host wiring + auth prerequisite — primary MCP UX (avoid silent hang discovery).
+	for _, need := range []string{"mcpServers", "auth login", "NOT AN INTERACTIVE", "tools/list", "--profile=NAME"} {
+		if !strings.Contains(h, need) {
+			t.Fatalf("mcp help missing %q\n%s", need, h)
+		}
 	}
 }
 func TestHelpapprovals(t *testing.T) {

@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 
 	"github.com/rawphp/capabilities-cli/internal/api"
@@ -26,13 +28,36 @@ func cmdMcp(env Env, args []string) int {
 		fmt.Fprintln(env.Stderr, err.Error())
 		return api.ExitAuth
 	}
+	// Humans who type `capabilities mcp` in a terminal get silence + a hang.
+	// MCP hosts use pipes; only hint when stdin is a real TTY (never refuse —
+	// some wrappers allocate a PTY).
+	if stdinIsInteractive(env.Stdin) {
+		fmt.Fprintln(env.Stderr, "capabilities mcp speaks JSON-RPC over stdio for MCP hosts — not an interactive shell.")
+		fmt.Fprintf(env.Stderr, "Waiting for host input. Wire Cursor/Claude/etc. to: capabilities mcp --profile=%s\n", profile)
+		fmt.Fprintln(env.Stderr, "Help: capabilities help mcp")
+	}
 	tok, _ := st.GetToken(profile)
 	srv := mcpstdio.New(c, tok, env.Stdin, env.Stdout)
+	srv.Version = Version
 	if err := srv.Run(context.Background()); err != nil {
 		fmt.Fprintln(env.Stderr, err.Error())
 		return api.ExitInternal
 	}
 	return api.ExitOK
+}
+
+// stdinIsInteractive is true when the reader is a character device (TTY).
+// Pipes and buffers used by MCP hosts and tests return false.
+func stdinIsInteractive(r io.Reader) bool {
+	f, ok := r.(*os.File)
+	if !ok {
+		return false
+	}
+	fi, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
 }
 
 func cmdApprovals(env Env, args []string) int {
