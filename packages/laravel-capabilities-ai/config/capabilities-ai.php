@@ -78,6 +78,15 @@ return [
         'enabled' => (bool) $env('CAPABILITIES_AI_PROPOSALS_ENABLED', true),
     ],
 
+    /**
+     * Stale-turn reaper thresholds for capabilities-ai:reap-stale-turns.
+     * Host schedules the command — package does not auto-schedule (D-024).
+     */
+    'reaper' => [
+        'stale_queued_minutes' => (int) $env('CAPABILITIES_AI_REAPER_STALE_QUEUED', 30),
+        'stale_running_grace_seconds' => (int) $env('CAPABILITIES_AI_REAPER_RUNNING_GRACE', 60),
+    ],
+
     /** Max tool-call rounds per turn before force-complete/fail. */
     'max_tool_rounds' => (int) $env('CAPABILITIES_AI_MAX_TOOL_ROUNDS', 8),
 
