@@ -5,6 +5,7 @@ namespace Rawphp\Capabilities\Boot;
 use Rawphp\Capabilities\Adapters\Artisan\ArtisanCommandTable;
 use Rawphp\Capabilities\Adapters\Http\AuthController;
 use Rawphp\Capabilities\Adapters\JobSurface;
+use Rawphp\Capabilities\Adapters\Mcp\McpServerRegistrar;
 use Rawphp\Capabilities\Adapters\PeerSurfaceBootstrap;
 use Rawphp\Capabilities\Adapters\PeerSurfaceStatus;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
@@ -129,7 +130,23 @@ final class SurfaceRegistrar
             return [];
         }
 
-        return ['mcp.tools', 'mcp.tool_handle', 'laravel/mcp'];
+        // Base peer surface artifacts always when mcp is up (adapter bind + handle path).
+        $base = ['mcp.tools', 'mcp.tool_handle', 'laravel/mcp'];
+
+        // Config-driven servers (ORI-790): one artifact key per auto-registered server.
+        // plan() re-checks peer + require_profile; empty profiles → no full-catalog dump.
+        try {
+            $serverKeys = McpServerRegistrar::artifactKeys($mcpConfig, $probe);
+        } catch (\Throwable) {
+            return $base;
+        }
+
+        if ($serverKeys === []) {
+            return $base;
+        }
+
+        // artifactKeys already includes base keys + mcp.servers + per-server keys.
+        return $serverKeys;
     }
 
     /**
