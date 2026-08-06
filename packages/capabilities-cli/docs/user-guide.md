@@ -291,9 +291,12 @@ using the stored CLI token. No local domain authorize/run.
 ### `approvals`
 
 ```bash
+capabilities approvals                              # usage; exit 0 (no auth)
 capabilities approvals accept <id> [--profile=NAME]
 capabilities approvals reject <id> [--profile=NAME]
 ```
+
+Missing `<id>` on accept/reject → exit **2** with a short usage line (not full help dump).
 
 ### `version` / `help`
 
@@ -303,7 +306,10 @@ capabilities help
 capabilities help run
 capabilities <domain> --help
 capabilities <domain> <verb> --help [--json]
+capabilities run <name> --help                      # schema-first capability help
 ```
+
+Bare `capabilities` and `--help` paths exit **0** (success).
 
 Reserved meta-commands always win over domain tokens of the same name:
 `auth` · `catalog` · `describe` · `run` · `mcp` · `approvals` · `version` · `help`.
@@ -362,7 +368,8 @@ capabilities run <name> --input-file=./payload.json --retry-last
 
 `--tenant=ID` is a **hint only** — not authoritative scope (server decides).
 
-`--human` writes a short summary to **stderr**; stdout remains the machine path.
+`--human` writes a **short one-line** summary to **stderr** (e.g. `ok get_today_meals date=…`);
+stdout remains the machine envelope. Do not parse `--human` stderr for full payload data.
 
 ---
 
@@ -371,9 +378,9 @@ capabilities run <name> --input-file=./payload.json --retry-last
 Summary:
 
 1. Always pass `--profile=` when more than one product is configured.
-2. Discover with `catalog --json`; invoke with `run` or mapped domain/verb.
-3. Parse **stdout**; branch on **exit code**.
-4. MCP: `capabilities mcp --profile=…` as a stdio subprocess.
+2. Discover with `catalog --json` (add `--include-schemas` for one-shot schemas); invoke with `run` or mapped domain/verb.
+3. Parse **stdout**; branch on **exit code**. Help/usage exits **0**.
+4. MCP: `capabilities mcp --profile=…` as a stdio subprocess; `error.data` uses D-018 wire keys (`code`, `message`, …) not Go names.
 
 Full guide: **[agents.md](agents.md)**.
 
@@ -383,9 +390,9 @@ Full guide: **[agents.md](agents.md)**.
 
 | Code | Meaning |
 |------|---------|
-| 0 | Success |
+| 0 | Success **or help/usage** (bare binary, `--help`, bare `approvals`) |
 | 1 | Internal error |
-| 2 | `validation_failed` |
+| 2 | `validation_failed` (also incomplete `approvals accept\|reject`) |
 | 3 | Unauthenticated / forbidden |
 | 4 | `approval_required` |
 | 5 | Domain error / conflict / not_found / output_invalid |

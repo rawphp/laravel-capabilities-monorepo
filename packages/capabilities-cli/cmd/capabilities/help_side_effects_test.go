@@ -77,3 +77,17 @@ func TestApprovalsAcceptRequiresID(t *testing.T) {
 		t.Fatal(errb)
 	}
 }
+
+func TestApprovalsBareUsageWithoutAuth(t *testing.T) {
+	// No token: bare `approvals` must still print usage and exit 0 (help, not auth failure).
+	code, out, errb := CaptureExecute([]string{"approvals"}, t.TempDir(), nil)
+	if code != api.ExitOK {
+		t.Fatalf("exit %d stderr=%s stdout=%s", code, errb, out)
+	}
+	if !strings.Contains(out, "USAGE:") {
+		t.Fatal(out)
+	}
+	if strings.Contains(errb, "not logged in") || strings.Contains(strings.ToLower(errb), "token") {
+		t.Fatalf("bare approvals must not require auth: stderr=%s", errb)
+	}
+}

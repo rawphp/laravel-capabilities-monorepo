@@ -15,23 +15,33 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 - **`auth status --json`** — D-018 envelope with `profile`, `base_url`, `logged_in` (never the token).
 - **`catalog --include-schemas`** — list/JSON with `input_schema` / `output_schema` in one round-trip for agents.
-- **`run --human`** documented in help; short one-line stderr summary (e.g. `ok get_today_meals date=…`) instead of dumping full data.
 - **`run <name> --help`** — schema-first capability help (fields + pass mode), same idea as domain/verb `--help`.
+- **Leading global flags** — `--profile=NAME` and `--base-url=URL` may appear before the
+  subcommand (e.g. `capabilities --profile=P catalog`), same effect as trailing flags.
 
-### Changed
+### Changed (0.x agent/script contract)
 
-- **MCP `tools/call` errors** — `error.data` uses wire keys (`code`, `message`, `violations`, …) not Go field names (`Code`, `HTTPStatus`); raw HTTP body is not embedded.
-- **`approvals` without action** — prints usage and exits **0**. **`approvals accept|reject` without `<id>`** — clear error exit **2** (no silent full help).
-- **`auth login|logout|status --help`** — help wins before flag requirements or logout side effects (was requiring `--base-url` / logging out).
-- **Local validation stderr** — includes field summary, e.g. `local schema validation failed (date: is required)`.
-- **`describe` not-found** — prints machine error envelope on stdout (parity with domain not_found).
 - **Root command exit code** — bare `capabilities` (no subcommand) prints usage and
   exits **0** (was exit **2** / `validation_failed`). Update scripts that treated a
-  bare invoke as failure.
+  bare invoke as failure. **Help/usage paths are success.**
+- **`approvals` without action** — prints usage and exits **0** (was exit **2**); does
+  **not** require auth. **`approvals accept|reject` without `<id>`** — clear error exit
+  **2** (no silent full help).
+- **MCP `tools/call` errors** — `error.data` uses D-018 **wire keys** (`code`, `message`,
+  `violations`, `http_status`, `cli_exit`, `approval_id`, `retryable`, `request_id`) —
+  not Go field names (`Code`, `HTTPStatus`). Raw HTTP body is **not** embedded. Agents
+  must parse snake_case keys only.
+- **`run --human` stderr** — short one-line summary (e.g. `ok get_today_meals date=…`).
+  **Breaking for anyone parsing `--human` stderr for full `data=` JSON** — machine path
+  remains stdout envelope only; do not parse human stderr.
+- **`describe` not-found** — machine error envelope on **stdout** (parity with domain
+  not_found) plus short stderr line.
 - **MCP stdio bridge** — `tools/list` requests catalog with `include_schemas=1`; tools
   always include a non-null `inputSchema` object (empty object when the server omits
   schema). MCP `notifications/*` (e.g. `initialized`) are ignored without a JSON-RPC
   error reply.
+- **`auth login|logout|status --help`** — help wins before flag requirements or logout side effects (was requiring `--base-url` / logging out).
+- **Local validation stderr** — includes field summary, e.g. `local schema validation failed (date: is required)`.
 - **HTTP error messages** — non-JSON/HTML API error bodies are summarized in the
   user-facing message instead of dumping full HTML (raw body still available on the
   structured error).
@@ -42,10 +52,8 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   into focused files (`cmd_auth.go`, `cmd_catalog.go`, `cmd_domain.go`, `cmd_run.go`,
   `cmd_mcp.go`).
 
-### Added
+### Added (docs / install / release path)
 
-- **Leading global flags** — `--profile=NAME` and `--base-url=URL` may appear before the
-  subcommand (e.g. `capabilities --profile=P catalog`), same effect as trailing flags.
 - Complete user documentation set: `docs/README.md` index, expanded
   `docs/user-guide.md`, `docs/authentication.md` (multi-project **profiles**),
   `docs/agents.md` (envelopes, exit codes, MCP). README links Install + docs.

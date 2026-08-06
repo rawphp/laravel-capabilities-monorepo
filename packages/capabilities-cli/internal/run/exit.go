@@ -44,7 +44,7 @@ var ExitCodeTable = map[string]struct {
 
 // DocsExitCodes is human-readable exit code documentation (help text source).
 const DocsExitCodes = `Exit codes (stable):
-  0  success
+  0  success (also help/usage: bare binary, --help, bare approvals)
   1  internal error
   2  validation_failed
   3  unauthenticated / forbidden

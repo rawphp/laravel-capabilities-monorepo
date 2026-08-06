@@ -42,14 +42,14 @@ func cmdApprovals(env Env, args []string) int {
 	}
 	st := store(env)
 	profile, base, args := profileAndBase(args)
+	// Usage before auth: bare `approvals` is help, not a failed invoke.
+	if len(args) == 0 {
+		fmt.Fprint(env.Stdout, CommandHelp("approvals"))
+		return api.ExitOK
+	}
 	if err := auth.GuardAuth(st, profile, "approvals"); err != nil {
 		fmt.Fprintln(env.Stderr, err.Error())
 		return api.ExitAuth
-	}
-	if len(args) == 0 {
-		// No action → usage (success), same as bare `capabilities` / auth help.
-		fmt.Fprint(env.Stdout, CommandHelp("approvals"))
-		return api.ExitOK
 	}
 	action := args[0]
 	if action != "accept" && action != "reject" {
