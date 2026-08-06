@@ -28,6 +28,9 @@ func TestFormatHumanDomainIndex_listsDomains(t *testing.T) {
 	if !strings.Contains(text, "catalog --flat") {
 		t.Fatalf("missing next steps: %s", text)
 	}
+	if !strings.Contains(text, "--human") {
+		t.Fatalf("catalog next should surface --human for humans: %s", text)
+	}
 	// Must not dump flat capability names as the primary list
 	if strings.Contains(text, "program_update →") {
 		t.Fatalf("default should not be flat list: %s", text)

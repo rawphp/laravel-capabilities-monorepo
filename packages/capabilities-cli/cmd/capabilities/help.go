@@ -38,6 +38,7 @@ FLAGS (common):
   --profile=NAME     Auth profile (default: default)
   --base-url=URL     Override deployment base URL
   --json             Print D-018 JSON envelopes
+  --human            Short ok/fail summary on stderr (stdout stays the envelope)
   (globals may appear before or after the command: capabilities --profile=P --json catalog)
 
 ` + run.DocsExitCodes + `
@@ -59,6 +60,7 @@ EXAMPLES:
   capabilities <domain> <verb> --help
   capabilities describe <name>
   capabilities run <name> --input='{...}' --json
+  capabilities <domain> <verb> --human       # one-line success on stderr
   capabilities mcp
 `
 }

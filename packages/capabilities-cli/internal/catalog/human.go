@@ -64,6 +64,7 @@ func FormatHumanDomainIndex(list []CapabilitySummary) string {
 	b.WriteString("Next:\n")
 	b.WriteString("  capabilities <domain> --help          list verbs\n")
 	b.WriteString("  capabilities <domain> <verb> --help    schema + how to pass fields\n")
+	b.WriteString("  capabilities <domain> <verb> --human   invoke with one-line summary on stderr\n")
 	b.WriteString("  capabilities catalog --flat            name → domain verb list\n")
 	b.WriteString("  capabilities catalog --json            agent machine map\n")
 	return b.String()

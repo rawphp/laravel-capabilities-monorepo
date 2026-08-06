@@ -193,6 +193,11 @@ func FormatHumanCapability(h CapabilityHelp) string {
 	fmt.Fprintf(&b, "SEE ALSO:\n")
 	fmt.Fprintf(&b, "  capabilities describe %s\n", h.Name)
 	fmt.Fprintf(&b, "  capabilities run %s --input=JSON\n", h.Name)
+	if h.Domain != nil && h.Verb != nil {
+		fmt.Fprintf(&b, "  capabilities %s %s --human     # one-line success on stderr\n", *h.Domain, *h.Verb)
+	} else {
+		fmt.Fprintf(&b, "  capabilities run %s --human     # one-line success on stderr\n", h.Name)
+	}
 	fmt.Fprintf(&b, "  capabilities help\n")
 	return b.String()
 }
@@ -290,6 +295,23 @@ func exampleValue(f Field) any {
 	if enum, ok := f.Constraints["enum"].([]any); ok && len(enum) > 0 {
 		return enum[0]
 	}
+	if v, ok := f.Constraints["const"]; ok {
+		return v
+	}
+	if v, ok := f.Constraints["default"]; ok {
+		return v
+	}
+	// Structured types first — never stringify as "example" (invalid JSON Schema shape).
+	if strings.Contains(f.Type, "array") {
+		if min, ok := asFloat(f.Constraints["minItems"]); ok && min >= 1 {
+			// minItems≥1: one empty object placeholder so paste isn't an empty-array fail.
+			return []any{map[string]any{}}
+		}
+		return []any{}
+	}
+	if strings.Contains(f.Type, "object") {
+		return map[string]any{}
+	}
 	switch {
 	case strings.Contains(f.Type, "integer"):
 		if min, ok := asFloat(f.Constraints["minimum"]); ok {
@@ -301,10 +323,40 @@ func exampleValue(f Field) any {
 	case strings.Contains(f.Type, "boolean"):
 		return true
 	case strings.Contains(f.Type, "string"):
-		return "example"
+		return exampleString(f)
 	default:
 		return "example"
 	}
+}
+
+// exampleString picks a paste-safe placeholder that respects format / common date names.
+// Help used to emit date=example, which always failed format="date" validation.
+func exampleString(f Field) string {
+	if fmtName, ok := f.Constraints["format"].(string); ok {
+		switch strings.ToLower(strings.TrimSpace(fmtName)) {
+		case "date":
+			return "2026-01-15"
+		case "date-time", "datetime":
+			return "2026-01-15T12:00:00Z"
+		case "time":
+			return "12:00:00"
+		case "email":
+			return "user@example.com"
+		case "uri", "url":
+			return "https://example.com"
+		case "uuid":
+			return "00000000-0000-4000-8000-000000000001"
+		}
+	}
+	// Common property names when the server omitted format but means a calendar date.
+	switch strings.ToLower(strings.TrimSpace(f.Name)) {
+	case "date", "new_date", "from", "to", "start_date", "end_date", "on":
+		return "2026-01-15"
+	}
+	if strings.HasSuffix(strings.ToLower(f.Name), "_date") {
+		return "2026-01-15"
+	}
+	return "example"
 }
 
 func asFloat(v any) (float64, bool) {

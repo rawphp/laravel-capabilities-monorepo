@@ -73,6 +73,32 @@ func TestValidateLocalTypesAndArrays(t *testing.T) {
 	}
 }
 
+func TestValidateLocalFormatDate(t *testing.T) {
+	schema := []byte(`{
+		"type":"object",
+		"required":["date"],
+		"properties":{"date":{"type":"string","format":"date"}}
+	}`)
+	if err := ValidateLocal(schema, []byte(`{"date":"2026-01-15"}`)); err != nil {
+		t.Fatal(err)
+	}
+	err := ValidateLocal(schema, []byte(`{"date":"example"}`))
+	if err == nil {
+		t.Fatal("expected format fail for date=example")
+	}
+	ve := err.(*ValidationError)
+	if !strings.Contains(ve.Error(), "date") || !strings.Contains(strings.ToLower(ve.Error()), "date") {
+		t.Fatalf("expected date field in error: %q", ve.Error())
+	}
+	if !strings.Contains(ve.Error(), "invalid date format") {
+		t.Fatalf("expected format message: %q", ve.Error())
+	}
+	// No network implication: invalid format fails closed locally.
+	if err := ValidateLocal(schema, []byte(`{"date":"2026-13-40"}`)); err == nil {
+		t.Fatal("expected calendar validation fail")
+	}
+}
+
 func TestEnsureIdempotencyKey(t *testing.T) {
 	if EnsureIdempotencyKey("m") != "m" {
 		t.Fatal()

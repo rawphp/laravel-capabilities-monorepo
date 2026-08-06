@@ -200,3 +200,63 @@ func TestFormatHumanCapability_constraintsShown(t *testing.T) {
 		}
 	}
 }
+
+func TestExampleValue_dateFormatNotLiteralExample(t *testing.T) {
+	h := BuildCapabilityHelp(CapabilityInfo{
+		Domain: "meal",
+		Verb:   "skip",
+		Name:   "skip_meal",
+		InputSchema: parseSchema(t, `{
+			"type": "object",
+			"required": ["date", "meal_index", "food", "line_items"],
+			"properties": {
+				"date": {"type": "string", "format": "date"},
+				"meal_index": {"type": "integer", "minimum": 0},
+				"food": {"type": "object"},
+				"line_items": {"type": "array", "minItems": 1}
+			}
+		}`),
+	})
+	if !strings.Contains(h.Examples.Flags, "--date=2026-01-15") {
+		t.Fatalf("date format example must be YYYY-MM-DD, got flags: %q", h.Examples.Flags)
+	}
+	if strings.Contains(h.Examples.Flags, "--date=example") || strings.Contains(h.Examples.JSON, `"date":"example"`) {
+		t.Fatalf("must not teach date=example:\nflags=%q\njson=%q", h.Examples.Flags, h.Examples.JSON)
+	}
+	// Object/array required fields must not stringify as "example"
+	if strings.Contains(h.Examples.JSON, `"food":"example"`) {
+		t.Fatalf("object field must not be string example: %q", h.Examples.JSON)
+	}
+	if strings.Contains(h.Examples.JSON, `"line_items":"example"`) {
+		t.Fatalf("array field must not be string example: %q", h.Examples.JSON)
+	}
+	if !strings.Contains(h.Examples.JSON, `"food":{}`) {
+		t.Fatalf("expected empty object for food: %q", h.Examples.JSON)
+	}
+	if !strings.Contains(h.Examples.JSON, `"line_items":[{`) {
+		t.Fatalf("expected minItems array placeholder: %q", h.Examples.JSON)
+	}
+	text := FormatHumanCapability(h)
+	if !strings.Contains(text, "meal skip --human") {
+		t.Fatalf("capability help should surface --human:\n%s", text)
+	}
+}
+
+func TestExampleValue_fromToNamesAsDates(t *testing.T) {
+	h := BuildCapabilityHelp(CapabilityInfo{
+		Domain: "steps",
+		Verb:   "list",
+		Name:   "get_steps_range",
+		InputSchema: parseSchema(t, `{
+			"type": "object",
+			"required": ["from", "to"],
+			"properties": {
+				"from": {"type": "string"},
+				"to": {"type": "string"}
+			}
+		}`),
+	})
+	if !strings.Contains(h.Examples.Flags, "--from=2026-01-15") || !strings.Contains(h.Examples.Flags, "--to=2026-01-15") {
+		t.Fatalf("from/to should use date placeholders: %q", h.Examples.Flags)
+	}
+}

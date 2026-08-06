@@ -3,9 +3,20 @@ package run
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/rawphp/capabilities-cli/internal/api"
+)
+
+// Portable format checks (subset). Server still re-validates (D-004).
+var (
+	reDate     = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+	reDateTime = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$`)
+	reTime     = regexp.MustCompile(`^\d{2}:\d{2}:\d{2}(?:\.\d+)?$`)
+	reEmail    = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
+	reUUID     = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 )
 
 // ValidationError is a local schema failure (exit 2, no network).
@@ -38,7 +49,8 @@ func (e *ValidationError) Error() string {
 }
 
 // ValidateLocal validates input against a portable JSON Schema subset.
-// Supports: type object/array/string/number/integer/boolean/null, required, properties, items.
+// Supports: type object/array/string/number/integer/boolean/null, required, properties,
+// items, and common string formats (date, date-time, time, email, uri, uuid).
 // This is UX-only — server re-validates (D-004).
 func ValidateLocal(schemaJSON, inputJSON []byte) error {
 	if len(schemaJSON) == 0 {
@@ -75,6 +87,14 @@ func validateNode(path string, schema map[string]any, value any, viol *[]api.Vio
 		if !typeMatches(t, value) {
 			*viol = append(*viol, api.Violation{Field: path, Message: "must be " + t})
 			return
+		}
+	}
+	// format on strings (after type matches)
+	if s, ok := value.(string); ok {
+		if fmtName, ok := schema["format"].(string); ok && fmtName != "" {
+			if msg := formatViolation(fmtName, s); msg != "" {
+				*viol = append(*viol, api.Violation{Field: path, Message: msg})
+			}
 		}
 	}
 	switch schema["type"] {
@@ -123,6 +143,40 @@ func validateNode(path string, schema map[string]any, value any, viol *[]api.Vio
 			}
 		}
 	}
+}
+
+// formatViolation returns a human message when s fails a known format, else "".
+func formatViolation(format, s string) string {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "date":
+		if !reDate.MatchString(s) {
+			return "invalid date format (expected YYYY-MM-DD)"
+		}
+		if _, err := time.Parse("2006-01-02", s); err != nil {
+			return "invalid date format (expected YYYY-MM-DD)"
+		}
+	case "date-time", "datetime":
+		if !reDateTime.MatchString(s) {
+			return "invalid date-time format (expected RFC3339)"
+		}
+	case "time":
+		if !reTime.MatchString(s) {
+			return "invalid time format (expected HH:MM:SS)"
+		}
+	case "email":
+		if !reEmail.MatchString(s) {
+			return "invalid email format"
+		}
+	case "uri", "url":
+		if !strings.Contains(s, "://") && !strings.HasPrefix(s, "/") {
+			return "invalid uri format"
+		}
+	case "uuid":
+		if !reUUID.MatchString(s) {
+			return "invalid uuid format"
+		}
+	}
+	return ""
 }
 
 func typeMatches(t string, v any) bool {

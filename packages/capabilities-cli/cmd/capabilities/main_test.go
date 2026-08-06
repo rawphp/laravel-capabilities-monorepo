@@ -45,6 +45,13 @@ func TestHelpdocumentsjsonflag(t *testing.T) {
 	}
 }
 
+func TestHelpDocumentsHumanFlag(t *testing.T) {
+	h := RootHelp()
+	if !strings.Contains(h, "--human") {
+		t.Fatal("root help must surface --human for interactive users")
+	}
+}
+
 func TestRootWithoutArgsPrintsHelpOK(t *testing.T) {
 	// Bare `capabilities` is help for humans — exit 0, not validation_failed.
 	code, _, errb := CaptureExecute(nil, t.TempDir(), nil)
