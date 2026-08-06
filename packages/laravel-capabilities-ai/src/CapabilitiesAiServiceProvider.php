@@ -113,6 +113,7 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
                 self::makeDispatchCallable($app),
                 $app->make(ProgressStore::class),
                 ContainerBindings::claimTtlFromConfig($config),
+                $config,
             );
         });
 
@@ -240,16 +241,34 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
 
     private function bootRoutes(): void
     {
-        $config = $this->app->make('config')->get('capabilities-ai.routes', []);
-        if (! ($config['enabled'] ?? false)) {
+        $full = $this->app->make('config')->get('capabilities-ai', []);
+        $full = is_array($full) ? $full : [];
+        $routes = $full['routes'] ?? [];
+        if (! is_array($routes) || ! ($routes['enabled'] ?? false)) {
             return;
         }
 
-        $prefix = (string) ($config['prefix'] ?? 'capabilities-ai/chat');
-        $middleware = $config['middleware'] ?? ['api', 'auth:sanctum'];
+        $prefix = (string) ($routes['prefix'] ?? 'capabilities-ai/chat');
+        $middleware = $routes['middleware'] ?? ['api', 'auth:sanctum'];
+        $proposalsOn = self::proposalsEnabled($full);
 
         Route::middleware($middleware)
             ->prefix($prefix)
-            ->group(__DIR__.'/../routes/capabilities-ai.php');
+            ->group(function () use ($proposalsOn): void {
+                require __DIR__.'/../routes/capabilities-ai.php';
+                if ($proposalsOn) {
+                    require __DIR__.'/../routes/capabilities-ai-proposals.php';
+                }
+            });
+    }
+
+    /**
+     * Single gate for proposal routes, TurnRunner fence, and history (D-024).
+     *
+     * @param  array<string, mixed>  $config  capabilities-ai config slice
+     */
+    public static function proposalsEnabled(array $config): bool
+    {
+        return (bool) ($config['proposals']['enabled'] ?? true);
     }
 }

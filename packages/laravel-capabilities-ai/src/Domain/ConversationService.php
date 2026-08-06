@@ -8,6 +8,7 @@ use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Jobs\RunTurnJob;
 use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Message;
+use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Package;
 
@@ -23,6 +24,7 @@ final class ConversationService
         private readonly mixed $dispatch,
         private readonly ProgressStore $progress,
         private readonly int $claimTtl = Package::DEFAULT_CLAIM_TTL,
+        private readonly bool $proposalsEnabled = true,
     ) {
         if (! is_callable($this->dispatch)) {
             throw new \InvalidArgumentException('dispatch must be callable');
@@ -86,7 +88,11 @@ final class ConversationService
     /**
      * Ordered messages for a conversation (HTTP history).
      *
-     * @return array{conversation_ulid: string, messages: list<array{ulid: string, role: string, content: ?string, created_at: ?string}>}
+     * @return array{
+     *     conversation_ulid: string,
+     *     messages: list<array{ulid: string, role: string, content: ?string, created_at: ?string}>,
+     *     proposals: list<array{ulid: string, status: string, type: string, target_capability: ?string}>
+     * }
      */
     public function history(string $conversationUlid): array
     {
@@ -105,10 +111,27 @@ final class ConversationService
             ])
             ->all();
 
-        return [
+        $payload = [
             'conversation_ulid' => $conversation->ulid,
             'messages' => $messages,
+            'proposals' => [],
         ];
+
+        if ($this->proposalsEnabled) {
+            $payload['proposals'] = Proposal::query()
+                ->where('conversation_id', $conversation->id)
+                ->orderBy('id')
+                ->get()
+                ->map(static fn (Proposal $p): array => [
+                    'ulid' => $p->ulid,
+                    'status' => (string) $p->status,
+                    'type' => (string) $p->type,
+                    'target_capability' => $p->target_capability,
+                ])
+                ->all();
+        }
+
+        return $payload;
     }
 
     /**

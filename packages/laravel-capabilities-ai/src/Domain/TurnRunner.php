@@ -35,6 +35,7 @@ final class TurnRunner
         private readonly string $claimOwner = 'turn-runner',
         private readonly ProposalFenceExtractor $proposalExtractor = new ProposalFenceExtractor,
         private readonly ResolveConversationActor $actors = new ResolveConversationActor,
+        private readonly bool $proposalsEnabled = true,
     ) {}
 
     public function run(string $turnUlid): Turn
@@ -207,6 +208,10 @@ final class TurnRunner
 
     private function maybeCreateProposalsFromFence(int $conversationId, int $turnId, string $content): void
     {
+        if (! $this->proposalsEnabled) {
+            return;
+        }
+
         $data = $this->proposalExtractor->extract($content);
         if ($data === null) {
             return;

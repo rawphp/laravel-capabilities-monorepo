@@ -202,18 +202,26 @@ final class ContainerBindings
             progress: $progress,
             maxToolRounds: $maxRounds > 0 ? $maxRounds : 8,
             actors: $actors,
+            proposalsEnabled: (bool) ($config['proposals']['enabled'] ?? true),
         );
     }
 
     /**
      * @param  callable(object): mixed  $dispatch
+     * @param  array<string, mixed>  $config  capabilities-ai config slice (optional proposals.enabled)
      */
     public static function makeConversationService(
         callable $dispatch,
         ProgressStore $progress,
         int $claimTtl = Package::DEFAULT_CLAIM_TTL,
+        array $config = [],
     ): ConversationService {
-        return new ConversationService($dispatch, $progress, $claimTtl);
+        return new ConversationService(
+            $dispatch,
+            $progress,
+            $claimTtl,
+            proposalsEnabled: (bool) ($config['proposals']['enabled'] ?? true),
+        );
     }
 
     public static function makeProposalService(
