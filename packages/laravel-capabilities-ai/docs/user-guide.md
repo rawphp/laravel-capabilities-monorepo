@@ -41,7 +41,7 @@ Hosts that construct AI runtime services with `new` (or jobs without container m
 | `TurnRunner` | `ProgressStore $progress` | Required 3rd ctor arg (`TurnClaim`, `LlmClient`, **`ProgressStore`**, then optional context/tools/bus…). Was optional `?ProgressStore = null`. |
 | `ConversationService` | `ProgressStore $progress` | Required 2nd ctor arg after `$dispatch`. **No** silent `ArrayProgressStore` default in ctor. |
 | `RunTurnJob::handle` | `handle(TurnRunner $runner)` | Workers resolve `TurnRunner` via **container method injection**. Empty `handle()` is invalid. |
-| `ProposalService` | `IdempotencyReadiness $idempotency` | Required 2nd ctor arg after `CapabilityBus`. SP default **`AlwaysReadyIdempotency`**; rebind a live probe for production fail-closed accept. |
+| `ProposalService` | `IdempotencyReadiness $idempotency` | Required 2nd ctor arg after `CapabilityBus`. SP default **`StoreBoundIdempotencyReadiness`** (live core store ping; fail closed when unbound). **`AlwaysReadyIdempotency` is unit-tests only** — do not bind in production. |
 
 **Host impact:** constructing outside SP without these deps, or dispatching `RunTurnJob` without container injection, breaks at construct / handle time.
 
@@ -81,7 +81,7 @@ Package default Anthropic model ID is now **`claude-sonnet-4-6`** (was `claude-s
 
 ## Progress
 
-`ProgressStore` array or Redis — never product MySQL.
+`ProgressStore` array or Redis — never product MySQL. Package binds the store in `register()` when unbound. For host side-effects (TTS, metrics), **`extend` in `boot()`** — never replace with a full `singleton` rebind (see [Host integration](#host-integration-greenfield)).
 
 ### Upgrade for hosts (tool progress + tool messages)
 
@@ -146,7 +146,9 @@ Authoritative: `TurnRunner` (`progress->append` tool data + tool-role append). U
 
 Set `CAPABILITIES_AI_ROUTES_ENABLED=true` (config `capabilities-ai.routes.enabled`; **default false**). Prefix default `capabilities-ai/chat`.
 
-When enabled, `ChatController` exposes history, message create, turn show/cancel/events, proposal accept/reject, and conversation destroy. Domain logic stays in services; the controller only maps exceptions to HTTP.
+When enabled, `ChatController` exposes history, message create, turn show/cancel/events, and conversation destroy. **Proposal accept/reject routes register only when `proposals.enabled` is true** (see below). Domain logic stays in services; the controller only maps exceptions to HTTP.
+
+**Product UX:** prefer **host routes** → `CapabilityBus` / AI services. Package AI routes are optional lab/default chat HTTP — do not surgically rewrite package route files for product UX.
 
 ### Upgrade for hosts (chat HTTP non-proposal routes)
 
@@ -179,9 +181,20 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 
 Authoritative: `ChatController` + conversation/turn services (see package unit tests). CHANGELOG: [Unreleased Breaking — Chat HTTP non-proposal routes](../CHANGELOG.md).
 
+## Proposals gate (`proposals.enabled`)
+
+Single flag: config `capabilities-ai.proposals.enabled` / env `CAPABILITIES_AI_PROPOSALS_ENABLED`.
+
+| Value | Behaviour |
+|-------|-----------|
+| **`true`** (Phase-1 BC default) | Accept/reject routes (when package routes enabled), TurnRunner fence → proposal extract, history may include proposals |
+| **`false`** (**greenfield recommended**) | No accept/reject route registration; TurnRunner **skips** fence extract; history omits/empties proposals |
+
+Leaving proposals **on** without a live core `IdempotencyStore` fails closed on accept (readiness not ready → 503). Core `capabilities:integration-health` **fails** when proposals are on and readiness resolves to AlwaysReady.
+
 ## Proposal accept / reject (one model)
 
-Fail-closed state machine + typed `AcceptOutcome` for HTTP. Atomic CAS claims; D-005 resume key on every accept invoke.
+Requires `proposals.enabled=true`. Fail-closed state machine + typed `AcceptOutcome` for HTTP. Atomic CAS claims; D-005 resume key on every accept invoke.
 
 ### Upgrade for hosts (accept/reject wire)
 
@@ -252,4 +265,98 @@ Stuck `accepting` is intentional limbo. Package does **not** TTL-expire or recla
 | already `rejected` | Idempotent success |
 | `accepting` / `accepted` / `failed` / `expired` | Refuse (RuntimeException → HTTP 409) |
 | missing | HTTP 404 |
+
+## Host integration (greenfield)
+
+Package seams for AI-chat hosts (D-024). Core owns product diagnostics (`capabilities:integration-health`); this package owns queue-on-dispatch, live readiness, proposals gate, reaper, and phase-3 unsafe-driver guards.
+
+### Greenfield AI-chat checklist
+
+```bash
+composer require rawphp/laravel-capabilities rawphp/laravel-capabilities-ai
+php artisan vendor:publish --tag=capabilities-config --tag=capabilities-ai-config
+php artisan vendor:publish --tag=capabilities-ai-migrations
+php artisan migrate
+```
+
+1. Bind core `Authorizer` (and domain capabilities).
+2. Bind `ConversationContextProvider` + `ToolCatalog`.
+3. Set **`CAPABILITIES_AI_QUEUE_NAME=…`** and run `queue:work --queue=…` (non-empty queue name also marks AI-chat for integration-health **without** package routes).
+4. Optional: `CAPABILITIES_AI_ROUTES_ENABLED=true` only if you want package chat HTTP.
+5. Production progress: **`CAPABILITIES_AI_PROGRESS_DRIVER=redis`**. Outside testing, `progress.driver=array` and `llm.driver=fake` **throw** unless `CAPABILITIES_AI_ALLOW_UNSAFE=1` (local demos only — keep out of production happy path).
+6. Greenfield: **`CAPABILITIES_AI_PROPOSALS_ENABLED=false`**. If left on, SP readiness is live store-bound (not AlwaysReady); health **fails** if AlwaysReady is still bound while proposals are on.
+7. Side-effects: `extend(ProgressStore::class, …)` in **`boot()`** (after package bind).
+8. Product UX: **host routes** → bus / AI services (not package route surgery).
+9. Schedule **`php artisan capabilities-ai:reap-stale-turns`** (package does not auto-schedule).
+10. **`php artisan capabilities:integration-health`** → **fail** set clean. That Artisan command is **not** HTTP `GET …/capabilities/health` (surface catalog health).
+
+`claim_ttl` default is **120** seconds (`CAPABILITIES_AI_CLAIM_TTL`).
+
+### ProgressStore extend order
+
+```php
+// Host AppServiceProvider::boot — package already bound ProgressStore in register()
+use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
+
+$this->app->extend(ProgressStore::class, function (ProgressStore $inner, $app) {
+    return new TtsDispatchingProgressStore($inner, $app->make(TtsService::class));
+});
+```
+
+### Queue on default dispatch
+
+Config `capabilities-ai.queue.{name,connection}` is applied to `RunTurnJob` **before** default dispatch (no `ConversationService` rebind required). Empty/null → Laravel default queue/connection. Custom host dispatch callables remain rare and host-owned.
+
+### Idempotency readiness
+
+| Class | Role |
+|-------|------|
+| **`StoreBoundIdempotencyReadiness`** | **Production SP default** — if core `IdempotencyStore` is bound, readiness pings it; else `isReady()=false` |
+| **`AlwaysReadyIdempotency`** | **Unit tests only** — never production default or host prod bind |
+
+### Stale-turn reaper
+
+```bash
+php artisan capabilities-ai:reap-stale-turns
+```
+
+| Config | Default | Rule |
+|--------|---------|------|
+| `reaper.stale_queued_minutes` | 30 | Queued turns older than threshold → reaped |
+| `reaper.stale_running_grace_seconds` | 60 | Running turns: age(`claimed_at`) > max(`claim_ttl`, grace) |
+
+Host schedules the command (cron / scheduler). No package auto-schedule config.
+
+### Forbidden (do not)
+
+| Anti-pattern | Prefer |
+|--------------|--------|
+| Full `ConversationService` rebind only for queue name | `CAPABILITIES_AI_QUEUE_NAME` / `queue.connection` |
+| `singleton(ProgressStore::class, …)` replacing package store | `extend(ProgressStore::class, …)` in boot |
+| `AlwaysReadyIdempotency` in production | `StoreBoundIdempotencyReadiness` + wire core `IdempotencyStore` |
+| Package route surgery for product chat UX | Host routes → bus / AI services |
+| `CAPABILITIES_AI_ALLOW_UNSAFE=1` in production | redis progress + real `LlmClient` |
+| Dual host turn/proposal tables without a kill date | Package reaper + residual kill list (below) |
+
+### Host residual kill-list template
+
+After cutting over to package AI-chat, track and delete host leftovers:
+
+| Residual | Action | Kill date |
+|----------|--------|-----------|
+| Dual chat / turn tables (`chat_*` vs `capabilities_ai_*`) | Migrate readers; drop legacy tables | _YYYY-MM-DD_ |
+| Host reaper jobs on wrong tables | Point at package tables or delete | _YYYY-MM-DD_ |
+| Host turn runner / dual invoke paths | Delete — tools only via bus | _YYYY-MM-DD_ |
+| Package route hijacks / host middleware rewriting package chat routes for product UX | Host product routes instead | _YYYY-MM-DD_ |
+| AlwaysReady or null-user acceptance paths | Live readiness + real principal | _YYYY-MM-DD_ |
+| ConversationService rebind for queue only | Config queue keys | _YYYY-MM-DD_ |
+
+### Diagnostics vs HTTP health
+
+| Command / endpoint | Package | Purpose |
+|--------------------|---------|---------|
+| `php artisan capabilities:integration-health` | **core** | Host product readiness (bindings, AI-chat mode, MCP tools, AlwaysReady when proposals on) |
+| `GET /{prefix}/health` (default `/capabilities/health`) | **core** | Surface/catalog peer health for HTTP clients |
+
+Do not merge them. AI-chat mode for integration-health = `capabilities-ai.routes.enabled === true` **OR** non-empty `capabilities-ai.queue.name`.
 

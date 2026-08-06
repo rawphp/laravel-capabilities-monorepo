@@ -51,6 +51,46 @@ Matrix source: `packages/laravel-capabilities/src/Adapters/PeerSupportMatrix.php
 **Cause:** Should not happen — package refuses half-register.  
 **Fix:** Treat any partial list as a bug; upgrade package or disable surface. Do not paper over with docs-only workarounds.
 
+### MCP register or boot fails with non-empty plan
+
+**Cause (common):**
+
+1. Profile lists a capability that does not exist or does not expose the **MCP** surface (allowlist validation).
+2. Mid-mount adapter `Throwable` while `surfaces.mcp.on_register_error` is **`throw`** (default).
+3. Peer missing/incompatible with `on_incompatible=fail` on a **non-empty** plan.
+
+**Fix:**
+
+- Correct `surfaces.mcp.profiles` to **registered** capability names that include MCP on their surfaces.
+- Install a compatible `laravel/mcp` peer for planned servers.
+- For temporary soft-empty on unexpected mid-mount failures only: `CAPABILITIES_MCP_ON_REGISTER_ERROR=disable` (still no half-register). Prefer fixing the root cause.
+- Empty plan (`profiles`/`servers` empty or `auto_register` false) soft-fails without requiring the peer (ORI-801) — that is not a mid-mount error.
+
+### `capabilities:integration-health` fails
+
+**What it is:** Artisan **product** readiness (`php artisan capabilities:integration-health`). **Not** HTTP `GET …/capabilities/health` (catalog/surface peer status).
+
+**Common fail reasons when AI package is installed:**
+
+| Signal | Typical fix |
+|--------|-------------|
+| AlwaysReady while `proposals.enabled` | Do **not** bind `AlwaysReadyIdempotency` in prod; leave SP **`StoreBoundIdempotencyReadiness`** and wire core `IdempotencyStore`. Or set `CAPABILITIES_AI_PROPOSALS_ENABLED=false` on greenfield |
+| `progress.driver=array` under AI-chat | `CAPABILITIES_AI_PROGRESS_DRIVER=redis` (do not set `CAPABILITIES_AI_ALLOW_UNSAFE` in production) |
+| AI-chat via routes only, empty `queue.name` | Set `CAPABILITIES_AI_QUEUE_NAME` for workers |
+| `claim_ttl` ≤ 0 | Restore default **120** (`CAPABILITIES_AI_CLAIM_TTL`) |
+
+AI-chat mode for this command: `capabilities-ai.routes.enabled` **OR** non-empty `capabilities-ai.queue.name`.
+
+### AI progress / LLM throws outside testing
+
+**Cause:** Phase-3 guards — `progress.driver=array` or `llm.driver=fake` outside `APP_ENV=testing` without escape hatch.  
+**Fix:** Production: redis progress + real `LlmClient` / `CAPABILITIES_AI_LLM_DRIVER=anthropic` (or host bind). Local demos only: `CAPABILITIES_AI_ALLOW_UNSAFE=1`.
+
+### Host rebind broke queue or progress
+
+**Cause:** Full `ConversationService` rebind for queue, or `singleton(ProgressStore::class)` replacing package redis/array.  
+**Fix:** Use `CAPABILITIES_AI_QUEUE_NAME` / `CAPABILITIES_AI_QUEUE_CONNECTION` on default dispatch. Side-effects: `app()->extend(ProgressStore::class, …)` in **`boot()`** after package bind. See AI package [host integration](../packages/laravel-capabilities-ai/docs/user-guide.md#host-integration-greenfield).
+
 ## Capability definition and discovery
 
 ### Capability missing from catalog / registry

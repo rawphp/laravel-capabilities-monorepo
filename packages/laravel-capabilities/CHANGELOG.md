@@ -61,6 +61,15 @@ Documentation honesty (monorepo `docs/spec.md` + package user-guide alignment): 
 
 ### Added
 
+#### Host integration diagnostics + MCP fail policy (UR-062 / D-024)
+
+Package seams for host product readiness (companion AI package owns queue/reaper/proposals/readiness defaults):
+
+- **`php artisan capabilities:integration-health`** (`IntegrationHealthCommand` / `IntegrationHealthChecker` / `IntegrationHealthReport`) — Artisan product-readiness diagnostic. **Not** HTTP `GET …/capabilities/health` (catalog/surface peer health). AI-chat mode = `capabilities-ai.routes.enabled` **OR** non-empty `capabilities-ai.queue.name`. Fails closed on AlwaysReady when `proposals.enabled` is true; ops checks for array progress / empty queue when AI-chat via routes only.
+- **MCP allowlist validation** (`McpProfileValidator`) — at register, profile capability names must exist and expose the MCP surface (profiles remain `name => list<string>` only).
+- **`surfaces.mcp.on_register_error`** (`CAPABILITIES_MCP_ON_REGISTER_ERROR`, default **`throw`**) — non-empty plan + mid-mount adapter failure: rethrow (default) or soft-empty when `disable`. Empty plan soft-fail unchanged (ORI-801).
+- Docs: integration-health vs HTTP health, MCP validation / `on_register_error` in package user guide + README.
+
 #### MCP auto-register public surface (`McpServerRegistrar` / boot helpers)
 
 Config-driven product MCP **server plan** + adapter registration for 0.x consumers (ORI-790):
