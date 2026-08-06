@@ -13,8 +13,10 @@ use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
+use Rawphp\CapabilitiesAi\Console\ReapStaleTurnsCommand;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
+use Rawphp\CapabilitiesAi\Domain\StaleTurnReaper;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
@@ -46,6 +48,8 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
         $this->bootRoutes();
 
         if ($this->app->runningInConsole()) {
+            $this->commands([ReapStaleTurnsCommand::class]);
+
             $this->publishes([
                 __DIR__.'/../config/capabilities-ai.php' => config_path('capabilities-ai.php'),
             ], 'capabilities-ai-config');
@@ -74,6 +78,8 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
         }
 
         $this->app->singleton(TurnClaim::class, static fn () => new TurnClaim);
+
+        $this->app->singleton(StaleTurnReaper::class, static fn () => new StaleTurnReaper);
 
         $this->app->singleton(TurnService::class, function (Container $app) {
             return ContainerBindings::makeTurnService($app->make(ProgressStore::class));
