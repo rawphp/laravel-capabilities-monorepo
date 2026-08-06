@@ -18,8 +18,9 @@ use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
-use Rawphp\CapabilitiesAi\Support\AlwaysReadyIdempotency;
+use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\CapabilitiesAi\Support\ContainerBindings;
+use Rawphp\CapabilitiesAi\Support\StoreBoundIdempotencyReadiness;
 use RuntimeException;
 
 /**
@@ -93,8 +94,16 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
         });
 
         if (! $this->app->bound(IdempotencyReadiness::class)) {
-            // Default proven-ready; host rebinds a live probe that is evaluated at accept time.
-            $this->app->singleton(IdempotencyReadiness::class, static fn () => new AlwaysReadyIdempotency);
+            // Live probe of core IdempotencyStore; fail closed when unbound. AlwaysReady is tests-only.
+            $this->app->singleton(IdempotencyReadiness::class, function (Container $app) {
+                if ($app->bound(IdempotencyStore::class)) {
+                    return StoreBoundIdempotencyReadiness::forStore(
+                        $app->make(IdempotencyStore::class)
+                    );
+                }
+
+                return StoreBoundIdempotencyReadiness::unbound();
+            });
         }
 
         $this->app->singleton(ConversationService::class, function (Container $app) {
