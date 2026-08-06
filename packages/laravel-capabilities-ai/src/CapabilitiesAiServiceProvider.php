@@ -130,16 +130,35 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
      */
     private static function makeDispatchCallable(Container $app): callable
     {
+        $config = self::configFromApp($app);
+        $queueName = $config['queue']['name'] ?? null;
+        $queueConnection = $config['queue']['connection'] ?? null;
+        $queueName = is_string($queueName) && $queueName !== '' ? $queueName : null;
+        $queueConnection = is_string($queueConnection) && $queueConnection !== '' ? $queueConnection : null;
+
+        $applyQueue = static function (object $job) use ($queueName, $queueConnection): void {
+            if ($queueName !== null && property_exists($job, 'queue')) {
+                $job->queue = $queueName;
+            }
+            if ($queueConnection !== null && property_exists($job, 'connection')) {
+                $job->connection = $queueConnection;
+            }
+        };
+
         if ($app->bound('Illuminate\Contracts\Bus\Dispatcher')) {
             $bus = $app->make('Illuminate\Contracts\Bus\Dispatcher');
 
-            return static function (object $job) use ($bus): mixed {
+            return static function (object $job) use ($bus, $applyQueue): mixed {
+                $applyQueue($job);
+
                 return $bus->dispatch($job);
             };
         }
 
         if (function_exists('dispatch')) {
-            return static function (object $job): mixed {
+            return static function (object $job) use ($applyQueue): mixed {
+                $applyQueue($job);
+
                 return dispatch($job);
             };
         }
