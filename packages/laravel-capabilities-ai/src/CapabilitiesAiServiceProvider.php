@@ -64,13 +64,27 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
     {
         if (! $this->app->bound(LlmClient::class)) {
             $this->app->singleton(LlmClient::class, function (Container $app) {
-                return ContainerBindings::makeLlmClient(self::configFromApp($app));
+                $config = self::configFromApp($app);
+                // Host-prebound LlmClient skips this factory entirely (bound() guard above).
+                ContainerBindings::assertSafeDrivers(
+                    $config,
+                    self::isTestingEnvironment($app),
+                    self::allowUnsafeDrivers($config),
+                );
+
+                return ContainerBindings::makeLlmClient($config);
             });
         }
 
         if (! $this->app->bound(ProgressStore::class)) {
             $this->app->singleton(ProgressStore::class, function (Container $app) {
                 $config = self::configFromApp($app);
+                // Host-prebound ProgressStore skips this factory entirely (bound() guard above).
+                ContainerBindings::assertSafeDrivers(
+                    $config,
+                    self::isTestingEnvironment($app),
+                    self::allowUnsafeDrivers($config),
+                );
                 $redis = self::resolveRedisClientOrNull($app, $config);
 
                 return ContainerBindings::makeProgressStore($config, $redis);
@@ -243,6 +257,49 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
         }
 
         return require __DIR__.'/../config/capabilities-ai.php';
+    }
+
+    /**
+     * Detect testing: app()->environment('testing') when available; else APP_ENV.
+     */
+    private static function isTestingEnvironment(Container $app): bool
+    {
+        if (method_exists($app, 'environment')) {
+            /** @var string|bool $result */
+            $result = $app->environment('testing');
+
+            return $result === true || $result === 'testing';
+        }
+
+        $env = $_ENV['APP_ENV'] ?? $_SERVER['APP_ENV'] ?? getenv('APP_ENV');
+
+        return $env === 'testing';
+    }
+
+    /**
+     * Escape hatch for local demos: CAPABILITIES_AI_ALLOW_UNSAFE=1.
+     * Default closed — never the production happy path.
+     *
+     * @param  array<string, mixed>  $config  capabilities-ai config slice
+     */
+    private static function allowUnsafeDrivers(array $config): bool
+    {
+        if (! empty($config['allow_unsafe'])) {
+            return true;
+        }
+
+        $value = $_ENV['CAPABILITIES_AI_ALLOW_UNSAFE']
+            ?? $_SERVER['CAPABILITIES_AI_ALLOW_UNSAFE']
+            ?? getenv('CAPABILITIES_AI_ALLOW_UNSAFE');
+
+        if ($value === false || $value === null || $value === '') {
+            return false;
+        }
+
+        return match (strtolower((string) $value)) {
+            '1', 'true', '(true)', 'yes', 'on' => true,
+            default => false,
+        };
     }
 
     private function bootRoutes(): void
