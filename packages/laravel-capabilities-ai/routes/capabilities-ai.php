@@ -20,9 +20,5 @@ Route::post('turns/{turnUlid}/cancel', [ChatController::class, 'cancelTurn'])
     ->name('capabilities-ai.turns.cancel');
 Route::get('turns/{turnUlid}/events', [ChatController::class, 'turnEvents'])
     ->name('capabilities-ai.turns.events');
-Route::post('proposals/{proposalUlid}/accept', [ChatController::class, 'acceptProposal'])
-    ->name('capabilities-ai.proposals.accept');
-Route::post('proposals/{proposalUlid}/reject', [ChatController::class, 'rejectProposal'])
-    ->name('capabilities-ai.proposals.reject');
 Route::delete('conversations/{conversationUlid}', [ChatController::class, 'destroyConversation'])
     ->name('capabilities-ai.conversations.destroy');

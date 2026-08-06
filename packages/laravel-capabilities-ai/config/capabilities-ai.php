@@ -70,6 +70,14 @@ return [
         'name' => $env('CAPABILITIES_AI_QUEUE_NAME'),
     ],
 
+    /**
+     * Single gate for proposal accept/reject routes, TurnRunner fence extract, and history.
+     * Phase 1 BC default true; greenfield docs: CAPABILITIES_AI_PROPOSALS_ENABLED=false.
+     */
+    'proposals' => [
+        'enabled' => (bool) $env('CAPABILITIES_AI_PROPOSALS_ENABLED', true),
+    ],
+
     /** Max tool-call rounds per turn before force-complete/fail. */
     'max_tool_rounds' => (int) $env('CAPABILITIES_AI_MAX_TOOL_ROUNDS', 8),
 
