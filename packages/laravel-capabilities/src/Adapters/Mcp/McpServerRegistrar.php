@@ -7,13 +7,17 @@ use Rawphp\Capabilities\Adapters\PeerSurfaceStatus;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 
 /**
- * Config-driven auto-registration of laravel/mcp servers (ORI-790 / D-008 / D-011).
+ * Config-driven MCP **server plan** + adapter tool register (ORI-790 / D-008 / D-011 / ORI-803).
  *
- * Each named profile under surfaces.mcp.profiles becomes one MCP server exposing
- * tools from {@see McpToolAdapter} — host enables the surface + installs the peer;
- * no hand-wiring every capability tool.
+ * Each named profile under surfaces.mcp.profiles (or explicit servers) becomes one **planned**
+ * server row with tools from {@see McpToolAdapter::register}. Production boot does **not**
+ * mount laravel/mcp HTTP routes under path_prefix; hosts still wire peer MCP servers
+ * themselves. Optional {@see registerInto} sink is for tests/host glue only — not a live
+ * peer facade mount in package boot.
  *
- * Pure / unit-testable: peer facade wiring is an optional sink; never requires live laravel/mcp.
+ * Multi-profile: sequential adapter register overwrites active profile/tools (last profile wins).
+ *
+ * Pure / unit-testable: never requires live laravel/mcp.
  */
 final class McpServerRegistrar
 {
@@ -66,7 +70,10 @@ final class McpServerRegistrar
     }
 
     /**
-     * Register profile tools via the adapter and return full server definitions.
+     * Plan servers, register profile tools via the adapter, return full definitions.
+     *
+     * Does not push into laravel/mcp. Multi-profile sequential register overwrites the
+     * adapter's active profile/tools (last profile wins).
      *
      * @param  array<string, mixed>  $mcpConfig
      * @return list<array{
@@ -102,11 +109,14 @@ final class McpServerRegistrar
     }
 
     /**
-     * Register and push each server definition into a sink (peer facade / host glue).
+     * Register and push each planned server definition into a callable sink (tests / host glue).
+     *
+     * Not used by production {@see \Rawphp\Capabilities\CapabilitiesServiceProvider::bootMcpServers}
+     * (no peer sink). Callers that pass a sink still own mounting laravel/mcp.
      *
      * @param  array<string, mixed>  $mcpConfig
      * @param  callable(array<string, mixed>): void  $sink
-     * @return list<string> registered server names
+     * @return list<string> planned server names
      */
     public static function registerInto(
         array $mcpConfig,

@@ -392,11 +392,15 @@ class CapabilitiesServiceProvider extends ServiceProvider
     }
 
     /**
-     * Auto-register MCP servers from surfaces.mcp.profiles (ORI-790 / D-008 / D-011 / ORI-801).
+     * Plan MCP servers from surfaces.mcp.profiles and register profile tools on the adapter
+     * (ORI-790 / D-008 / D-011 / ORI-801 / ORI-803).
      *
-     * Host enables surfaces.mcp + installs laravel/mcp; package mounts one server per
-     * named profile via {@see McpToolAdapter} — no hand-wiring each capability tool.
-     * Disabled surface, empty profiles/servers, or soft-disabled peer → register nothing
+     * Production boot (no $sink) builds a server plan and may call {@see McpToolAdapter::register}
+     * for each planned profile. It does **not** push definitions into laravel/mcp — there is no
+     * peer sink like {@see HttpRouteRegistrar::registerInto}. Hosts still wire peer MCP servers
+     * (e.g. Mcp::web / peer docs). Multi-profile sequential register overwrites adapter active
+     * profile/tools (last profile wins). Optional $sink is for tests/host glue only.
+     * Disabled surface, empty profiles/servers, or soft-disabled peer → plan nothing
      * (no half-registration). PeerIncompatibleException only when the plan is non-empty
      * and the peer is missing/incompatible with on_incompatible=fail.
      *
@@ -404,8 +408,8 @@ class CapabilitiesServiceProvider extends ServiceProvider
      * Static {@see bootMcpServersWith()} is preferred for unit isolation.
      *
      * @param  array<string, mixed>|null  $mcpConfig
-     * @param  callable(array<string, mixed>): void|null  $sink  optional peer facade sink
-     * @return list<string> registered server names (empty when disabled / no profiles)
+     * @param  callable(array<string, mixed>): void|null  $sink  optional peer facade sink (not used in production boot)
+     * @return list<string> planned server names (empty when disabled / no profiles)
      */
     public function bootMcpServers(?array $mcpConfig = null, ?callable $sink = null): array
     {
@@ -436,8 +440,10 @@ class CapabilitiesServiceProvider extends ServiceProvider
     }
 
     /**
-     * Unit-testable MCP auto-register entry (no Illuminate Application required).
+     * Unit-testable MCP plan/register entry (no Illuminate Application required).
      *
+     * Without $sink: {@see McpServerRegistrar::register} (plan + adapter tools only — no peer mount).
+     * With $sink: {@see McpServerRegistrar::registerInto} for test/host glue that receives planned rows.
      * Empty plan (no profiles/servers, auto_register off, surface disabled) → [] with no
      * peer evaluation. PeerIncompatibleException is rethrown only when real servers would
      * register and the peer is missing/incompatible under on_incompatible=fail (ORI-801).
