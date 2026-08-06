@@ -22,6 +22,10 @@ final class McpServerRegistrar
     /**
      * Server plan without resolving tools (boot tables / diagnostics).
      *
+     * Order (ORI-801): shouldRegister → serverRows; empty rows return [] without peer
+     * evaluation. Peer status (and PeerIncompatibleException under on_incompatible=fail)
+     * is evaluated only when there are servers that would actually register.
+     *
      * @param  array{
      *     enabled?: bool,
      *     require_package?: bool,
@@ -46,12 +50,19 @@ final class McpServerRegistrar
             return [];
         }
 
+        // Empty plan short-circuits before peer evaluation (ORI-801): no servers to
+        // mount means missing laravel/mcp must not hard-fail boot.
+        $rows = self::serverRows($mcpConfig);
+        if ($rows === []) {
+            return [];
+        }
+
         $status = self::peerStatus($mcpConfig, $probe);
         if (! $status->registersTools) {
             return [];
         }
 
-        return self::serverRows($mcpConfig);
+        return $rows;
     }
 
     /**

@@ -392,11 +392,13 @@ class CapabilitiesServiceProvider extends ServiceProvider
     }
 
     /**
-     * Auto-register MCP servers from surfaces.mcp.profiles (ORI-790 / D-008 / D-011).
+     * Auto-register MCP servers from surfaces.mcp.profiles (ORI-790 / D-008 / D-011 / ORI-801).
      *
      * Host enables surfaces.mcp + installs laravel/mcp; package mounts one server per
      * named profile via {@see McpToolAdapter} — no hand-wiring each capability tool.
-     * Disabled surface or fail-closed peer → register nothing (no half-registration).
+     * Disabled surface, empty profiles/servers, or soft-disabled peer → register nothing
+     * (no half-registration). PeerIncompatibleException only when the plan is non-empty
+     * and the peer is missing/incompatible with on_incompatible=fail.
      *
      * Pure entry for unit tests: pass $mcpConfig + $sink explicitly without a full app boot.
      * Static {@see bootMcpServersWith()} is preferred for unit isolation.
@@ -436,6 +438,10 @@ class CapabilitiesServiceProvider extends ServiceProvider
     /**
      * Unit-testable MCP auto-register entry (no Illuminate Application required).
      *
+     * Empty plan (no profiles/servers, auto_register off, surface disabled) → [] with no
+     * peer evaluation. PeerIncompatibleException is rethrown only when real servers would
+     * register and the peer is missing/incompatible under on_incompatible=fail (ORI-801).
+     *
      * @param  array<string, mixed>  $mcpConfig
      * @param  callable(array<string, mixed>): void|null  $sink
      * @return list<string>
@@ -459,7 +465,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
 
             return array_column($servers, 'name');
         } catch (PeerIncompatibleException $e) {
-            // Fail-closed: surface enabled + missing/incompatible peer (on_incompatible=fail).
+            // Fail-closed only when plan would register servers (empty plan never reaches peer eval).
             throw $e;
         }
     }
