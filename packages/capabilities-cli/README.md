@@ -6,14 +6,14 @@
 > **Status:** 0.x pre-stable — install from [GitHub Releases](https://github.com/rawphp/capabilities-cli/releases) on tagged builds; source build still supported  
 > **Repo:** [github.com/rawphp/capabilities-cli](https://github.com/rawphp/capabilities-cli) (mirrored from the monorepo on push)
 
-Downloadable client for end users and local agents. Auth + catalog + run + optional MCP stdio against a remote Laravel app’s **same** HTTP capability API (D-009). **No domain `run()` on the laptop.**
+Downloadable client for end users and local agents. Auth + catalog + run against a remote Laravel app’s **same** HTTP capability API (D-009). **No domain `run()` on the laptop.** Product MCP is server-side (`laravel/mcp`); this CLI is HTTP-only.
 
 ## Scope (this package)
 
 | | |
 |---|---|
-| **Is** | Go binary `capabilities`: multi-profile auth, catalog, run, client-side schema checks, auto idempotency keys, optional MCP stdio **bridge** to the remote HTTP capability API |
-| **Is not** | A second backend or domain runtime; Artisan / in-server ops CLI; PHP Composer package; the MCP server of record (bridge only); chat bots or AI turn engine |
+| **Is** | Go binary `capabilities`: multi-profile auth, catalog, run, client-side schema checks, auto idempotency keys — HTTP client for the remote capability API |
+| **Is not** | A second backend or domain runtime; Artisan / in-server ops CLI; PHP Composer package; an MCP stdio server (use server product MCP); chat bots or AI turn engine |
 
 Server-side install is [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities) (and optional siblings). This repo is the **laptop client** only.
 
@@ -81,7 +81,7 @@ Windows binaries are currently **unsigned** (Authenticode optional). Source buil
 | **[User guide](docs/user-guide.md)** | Full manual — install, auth, multi-profile, commands, invoke, exit codes |
 | **[Docs index](docs/README.md)** | Map of all package docs |
 | [Authentication & profiles](docs/authentication.md) | Multi-project login (`--profile`), storage, aliases |
-| [Agents & MCP](docs/agents.md) | Machine envelopes, exit codes, MCP stdio loop |
+| [Agents](docs/agents.md) | Machine envelopes, exit codes, HTTP discovery loop |
 | [Changelog](CHANGELOG.md) | Release notes |
 
 ### Multiple projects (profiles)
@@ -118,7 +118,7 @@ Cross-compile / local matrix notes: [`docs/build-matrix.md`](docs/build-matrix.m
 | User docs (index) | [docs/README.md](docs/README.md) |
 | User guide | [docs/user-guide.md](docs/user-guide.md) |
 | Auth & multi-profile | [docs/authentication.md](docs/authentication.md) |
-| Agents & MCP | [docs/agents.md](docs/agents.md) |
+| Agents (HTTP) | [docs/agents.md](docs/agents.md) |
 | Release path (tag → GitHub Release) | [docs/release-path.md](docs/release-path.md) |
 | Release signing (secret-gated) | [docs/release-signing.md](docs/release-signing.md) |
 | Changelog | [CHANGELOG.md](CHANGELOG.md) |
@@ -133,7 +133,6 @@ internal/
   auth/             # keychain / config-dir token store
   catalog/          # fetch + cache JSON Schema
   run/              # validate locally → POST invoke
-  mcpstdio/         # optional MCP stdio bridge
   api/              # HTTP client
 docs/build-matrix.md # cross-compile / ldflags; CI uses GoReleaser (see Releases)
 ```

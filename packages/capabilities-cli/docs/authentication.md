@@ -114,7 +114,7 @@ capabilities jobs schedule --profile=yardpilot --flag=value
 
 The same flag works on:
 
-`auth` · `catalog` · `describe` · `run` · synthesized `<domain> <verb>` · `mcp` · `approvals`
+`auth` · `catalog` · `describe` · `run` · synthesized `<domain> <verb>` · `approvals`
 
 ### Base URL override
 
@@ -157,7 +157,7 @@ ls ~/.config/capabilities/profiles/
 - Treat profile directories like secrets. Back up carefully; do not commit them.
 - Prefer short-lived tokens or device/OAuth flows in shared environments.
 - `auth status` is safe to share in screenshots (no token).
-- MCP and agents inherit the **same** profile token — pick the profile deliberately.
+- Agents inherit the **same** profile token via this HTTP CLI — pick the profile deliberately.
 
 ---
 

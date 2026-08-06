@@ -300,10 +300,11 @@ func TestExecuteDescribeMissingName(t *testing.T) {
 	}
 }
 
-func TestExecuteMcpRequiresAuth(t *testing.T) {
+func TestExecuteMcpIsUnknownNotBridge(t *testing.T) {
+	// Bare mcp is not a command: non-zero (auth when unauthenticated catalog load, or not_found).
 	code, _, _ := CaptureExecute([]string{"mcp"}, t.TempDir(), nil)
-	if code != api.ExitAuth {
-		t.Fatal(code)
+	if code == api.ExitOK {
+		t.Fatal("bare mcp must exit non-zero")
 	}
 }
 
@@ -329,17 +330,13 @@ func TestExecuteRunServerErrorMapping(t *testing.T) {
 func TestExecuteSubcommandHelpFlags(t *testing.T) {
 	// Help must win before auth/network for every top-level command that used to ignore trailing --help.
 	cases := []struct {
-		args     []string
-		needle   string
-		emptyCfg bool
+		args   []string
+		needle string
 	}{
-		{[]string{"mcp", "--help"}, "MCP stdio", true},
-		{[]string{"mcp", "-h"}, "MCP stdio", true},
-		{[]string{"mcp", "--profile=default", "--help"}, "capabilities mcp", true},
-		{[]string{"catalog", "--help"}, "catalog", true},
-		{[]string{"describe", "--help"}, "Schema", true},
-		{[]string{"run", "--help"}, "Idempotency", true},
-		{[]string{"approvals", "--help"}, "accept", true},
+		{[]string{"catalog", "--help"}, "catalog"},
+		{[]string{"describe", "--help"}, "Schema"},
+		{[]string{"run", "--help"}, "Idempotency"},
+		{[]string{"approvals", "--help"}, "accept"},
 	}
 	for _, tc := range cases {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
@@ -351,26 +348,9 @@ func TestExecuteSubcommandHelpFlags(t *testing.T) {
 			if !strings.Contains(out, tc.needle) {
 				t.Fatalf("stdout missing %q: %q", tc.needle, out)
 			}
-			if strings.Contains(errb, "not authenticated") || strings.Contains(errb, "auth") {
+			if strings.Contains(errb, "not authenticated") {
 				t.Fatalf("help required auth: %q", errb)
 			}
 		})
-	}
-
-	// Logged-in config must still print help and must not start the MCP bridge (empty success path).
-	root := t.TempDir()
-	st := auth.NewStore(root)
-	if _, err := auth.LoginWithToken(st, "default", "http://127.0.0.1:9", "tok"); err != nil {
-		t.Fatal(err)
-	}
-	code, out, errb := CaptureExecute([]string{"mcp", "--help"}, root, nil)
-	if code != api.ExitOK {
-		t.Fatalf("logged-in mcp --help exit %d stderr=%q", code, errb)
-	}
-	if !strings.Contains(out, "MCP stdio") && !strings.Contains(out, "capabilities mcp") {
-		t.Fatalf("logged-in mcp --help missing help text: %q", out)
-	}
-	if out == "" {
-		t.Fatal("logged-in mcp --help must not exit with empty stdout (MCP bridge false-success)")
 	}
 }

@@ -1,8 +1,13 @@
-# Agents & MCP
+# Agents
 
-How local agents, IDE tools, and automation should use `capabilities`.
+How local agents, IDE tools, and automation should use `capabilities` over **HTTP**.
 
 Related: [User guide](user-guide.md) · [Authentication & profiles](authentication.md)
+
+> **No CLI MCP.** `capabilities mcp` and the stdio bridge were hard-removed.
+> Product MCP is server-side (`laravel/mcp` adapter). Agents should use this
+> binary as an HTTP client (`catalog` / `run` / domain-verb / `--json`) or
+> connect to the app’s product MCP endpoint — not `capabilities mcp`.
 
 ---
 
@@ -56,7 +61,10 @@ Unmapped capabilities stay available via `run` / `describe` only.
 
 Reserved meta-commands always win over domain tokens of the same name:
 
-`auth` · `catalog` · `describe` · `run` · `mcp` · `approvals` · `version` · `help`
+`auth` · `catalog` · `describe` · `run` · `approvals` · `version` · `help`
+
+The token **`mcp` is reserved forever** (cannot be a synthesis domain) but is
+**not** a runnable command.
 
 ---
 
@@ -129,44 +137,19 @@ Rules:
 
 ---
 
-## MCP stdio bridge
+## Product MCP (server) vs this CLI
+
+| Surface | Where | How agents use it |
+|---------|--------|-------------------|
+| **Product MCP** | Server (`laravel/mcp` adapter) | MCP clients talk to the **app**, not this binary |
+| **HTTP CLI** | This `capabilities` binary | `catalog --json`, `run`, domain/verb, D-018 envelopes |
+
+Do **not** configure agents with `capabilities mcp` as an MCP stdio server —
+that subcommand no longer exists (non-zero / unknown). Prefer:
 
 ```bash
-capabilities mcp --profile=mesoprep
-```
-
-- Speaks MCP over **stdio**.
-- Proxies `tools/list` and `tools/call` to the **same** remote HTTP capability API.
-- `tools/list` requests `include_schemas=1`; each tool has a non-null `inputSchema` object (empty object if the server omitted schema).
-- Uses the stored profile token — no separate MCP auth store.
-- **No** local domain authorize/run.
-- MCP `notifications/*` (e.g. `initialized`) are ignored (no JSON-RPC error reply).
-
-### `tools/call` error.data (wire keys only)
-
-On tool failure, MCP `error.data` is a D-018-shaped map. **Snake_case wire keys only** — never Go field names:
-
-| Key | Meaning |
-|-----|---------|
-| `code` | D-018 error code (e.g. `validation_failed`) |
-| `message` | Human message |
-| `violations` | Optional `[{field, message}, …]` |
-| `approval_id` | Present for `approval_required` (may be null) |
-| `retryable` | bool |
-| `http_status` | HTTP status from the capability API |
-| `cli_exit` | Process exit code this CLI would use for the same error |
-| `request_id` | Optional |
-
-Raw HTTP bodies are **not** embedded in `error.data`.
-
-Wire your agent runtime’s MCP client to this process with the correct profile
-(or a wrapper script that injects `--profile=`).
-
-Example wrapper:
-
-```bash
-#!/usr/bin/env bash
-exec capabilities mcp --profile=mesoprep
+capabilities catalog --json --include-schemas --profile="$PROFILE"
+capabilities run <name> --profile="$PROFILE" --input='{...}' --json
 ```
 
 ---
@@ -193,7 +176,8 @@ capabilities approvals reject <id> --profile=P
 | Hard-code product capability names in generic agents | Discover via `catalog --json` (add `--include-schemas` when needed) |
 | Share one `default` profile across products | Named profiles per product |
 | Parse human catalog text or `--human` stderr | Use stdout `--json` / default envelopes |
-| Parse MCP `error.data.Code` / `HTTPStatus` | Use wire keys `code`, `http_status`, … |
+| Run `capabilities mcp` as product MCP | Use server product MCP or HTTP CLI (`catalog` / `run`) |
+| Parse D-018 envelopes with Go field names | Use wire keys `code`, `http_status`, … |
 | Treat bare CLI / help exit 0 as “nothing ran” failure | Help exits 0 by design |
 | Put tokens in prompts or logs | Use `auth login` store; never echo tokens |
 | Treat local validation as final | Always handle server error envelopes |

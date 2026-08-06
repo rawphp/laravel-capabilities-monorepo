@@ -11,7 +11,8 @@ import (
 	"github.com/rawphp/capabilities-cli/internal/auth"
 )
 
-func TestCmdMcpHappyPath(t *testing.T) {
+func TestCmdMcpGoneNotHappyPath(t *testing.T) {
+	// MCP stdio hard-removed (ORI-791): bare mcp never starts a bridge success path.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"ok":true,"data":{"capabilities":[{"name":"t1"}]}}`))
 	}))
@@ -33,11 +34,11 @@ func TestCmdMcpHappyPath(t *testing.T) {
 			return c
 		},
 	})
-	if code != 0 {
-		t.Fatal(code, errb.String())
+	if code == 0 {
+		t.Fatal("mcp must not succeed as stdio bridge")
 	}
-	if !strings.Contains(out.String(), "t1") {
-		t.Fatal(out.String())
+	if strings.Contains(out.String(), `"tools"`) || strings.Contains(out.String(), "t1") {
+		t.Fatalf("must not return MCP tools/list payload: %s", out.String())
 	}
 }
 

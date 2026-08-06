@@ -21,7 +21,6 @@ RESERVED COMMANDS:
   catalog     List capabilities from the remote HTTP API
   describe    Show JSON Schema for a capability
   run         Validate locally, send Idempotency-Key, POST invoke
-  mcp         MCP stdio bridge (proxies to remote API)
   approvals   Accept or reject pending approvals
   version     Print version
   help        Show help
@@ -61,7 +60,6 @@ EXAMPLES:
   capabilities describe <name>
   capabilities run <name> --input='{...}' --json
   capabilities <domain> <verb> --human       # one-line success on stderr
-  capabilities mcp
 `
 }
 
@@ -121,15 +119,6 @@ FLAGS:
   --base-url=URL
 
 ` + run.DocsExitCodes
-	case "mcp":
-		return `mcp — MCP stdio bridge
-
-USAGE:
-  capabilities mcp [--profile=NAME] [--base-url=URL]
-
-Proxies tools/list and tools/call to the remote HTTP capability API using the
-stored CLI token. No local domain run or authorize.
-`
 	case "approvals":
 		return `approvals — accept or reject pending approvals via HTTP
 
@@ -151,9 +140,11 @@ USAGE:
 }
 
 // KnownCommands lists first-class commands for discovery tests.
+// Note: "mcp" is a reserved synth domain token forever but is not a runnable command
+// (CLI MCP stdio was hard-removed; product MCP is server-side via laravel/mcp).
 var KnownCommands = []string{
 	"auth", "auth login", "auth logout", "auth status",
-	"catalog", "describe", "run", "mcp", "approvals", "version", "help",
+	"catalog", "describe", "run", "approvals", "version", "help",
 }
 
 // CommandExists reports whether a command is registered.
@@ -165,7 +156,7 @@ func CommandExists(name string) bool {
 	}
 	// Also accept top-level only.
 	switch name {
-	case "auth", "catalog", "describe", "run", "mcp", "approvals", "version", "help":
+	case "auth", "catalog", "describe", "run", "approvals", "version", "help":
 		return true
 	}
 	return false

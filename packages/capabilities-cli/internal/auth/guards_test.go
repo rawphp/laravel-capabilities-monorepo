@@ -28,9 +28,10 @@ func TestDescribewithoutauthfails(t *testing.T) {
 	}
 }
 
-func TestMcpwithoutauthfails(t *testing.T) {
+func TestMcpwithoutauthNotCommandGuard(t *testing.T) {
+	// mcp is not auth-gated meta (not a command); reserved domain token only.
 	st := tempStore(t)
-	if err := GuardAuth(st, "default", "mcp"); err != ErrNoToken {
+	if err := GuardAuth(st, "default", "mcp"); err != nil {
 		t.Fatal(err)
 	}
 }

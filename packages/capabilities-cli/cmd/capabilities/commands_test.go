@@ -65,14 +65,16 @@ func TestCommandhelpRun(t *testing.T) {
 		t.Fatal()
 	}
 }
-func TestCommandexistsMcp(t *testing.T) {
-	if !CommandExists("mcp") {
-		t.Fatal()
+func TestCommandexistsMcpFalse(t *testing.T) {
+	// mcp is reserved as a domain token forever, but not a runnable command (ORI-791).
+	if CommandExists("mcp") {
+		t.Fatal("mcp must not be a registered command")
 	}
 }
-func TestCommandhelpMcp(t *testing.T) {
-	if !strings.Contains(CommandHelp("mcp"), "mcp") {
-		t.Fatal()
+func TestCommandhelpMcpNotStdioBridge(t *testing.T) {
+	h := CommandHelp("mcp")
+	if strings.Contains(h, "MCP stdio") || strings.Contains(h, "tools/list") {
+		t.Fatal(h)
 	}
 }
 func TestCommandexistsVersion(t *testing.T) {

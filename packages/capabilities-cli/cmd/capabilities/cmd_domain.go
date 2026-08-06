@@ -113,7 +113,8 @@ func suggestReservedOrDomain(token string, idx *synth.Index) string {
 			candidates = append(candidates, d)
 		}
 	}
-	candidates = append(candidates, "auth", "catalog", "describe", "run", "mcp", "approvals", "version", "help")
+	// Runnable reserved meta only (mcp is reserved forever as a domain token but not a command).
+	candidates = append(candidates, "auth", "catalog", "describe", "run", "approvals", "version", "help")
 	best, bestDist, bestPrefix := "", 3, -1 // only suggest distance 1–2
 	for _, c := range candidates {
 		cl := strings.ToLower(c)
