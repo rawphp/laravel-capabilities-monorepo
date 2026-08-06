@@ -10,7 +10,6 @@ use Rawphp\Capabilities\Support\MissingJobTenantException;
 use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\ScopeCallerJobHelpers as H;
-use RuntimeException;
 
 it('fail: job fails closed at missing_actingAs without silent superuser [D-002]', function () {
     expect(fn () => RunCapabilityJob::dispatch(['name' => 'x', 'input' => []]))

@@ -4,8 +4,6 @@
 
 declare(strict_types=1);
 
-use DateInterval;
-use DateTimeImmutable;
 use Rawphp\Capabilities\Idempotency\IdempotencyConfig;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Tests\Fixtures\IdempotencyHelpers;

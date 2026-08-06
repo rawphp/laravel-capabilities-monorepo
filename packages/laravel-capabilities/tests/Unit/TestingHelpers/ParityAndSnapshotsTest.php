@@ -4,7 +4,6 @@
 
 declare(strict_types=1);
 
-use InvalidArgumentException;
 use Rawphp\Capabilities\Support\ParityAssertionException;
 use Rawphp\Capabilities\Support\SchemaSnapshotException;
 use Rawphp\Capabilities\Support\SystemActor;

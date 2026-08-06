@@ -7,7 +7,6 @@ declare(strict_types=1);
  * approval manager branches, HTTP controller edges, service provider register/boot.
  */
 
-use DateTimeImmutable;
 use Rawphp\Capabilities\Adapters\Http\CapabilityController;
 use Rawphp\Capabilities\Adapters\StructuredToolResponse;
 use Rawphp\Capabilities\Approval\ApprovalManager;

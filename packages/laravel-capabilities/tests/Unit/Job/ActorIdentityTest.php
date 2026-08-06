@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use InvalidArgumentException;
 use Rawphp\Capabilities\Adapters\RunCapabilityJob;
 use Rawphp\Capabilities\Pipeline\PipelineStages;
 use Rawphp\Capabilities\Pipeline\ResolveActor;
@@ -14,7 +13,6 @@ use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\ScopeCallerJobHelpers as H;
-use RuntimeException;
 
 it('happy: dispatch with actingAs user id loads User and sets caller job [D-002]', function () {
     $h = H::scopeHarness();

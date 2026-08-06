@@ -7,7 +7,6 @@ declare(strict_types=1);
  * Unit-only; no DB; pure construction + fakes.
  */
 
-use DateTimeImmutable;
 use Rawphp\Capabilities\Adapters\Mcp\McpAuthException;
 use Rawphp\Capabilities\Adapters\PeerSurfaceStatus;
 use Rawphp\Capabilities\Adapters\ToolSelection;

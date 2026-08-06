@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use InvalidArgumentException;
 use Rawphp\Capabilities\Pipeline\PipelineStages;
 use Rawphp\Capabilities\Pipeline\ResolveTenantFromCaller;
 use Rawphp\Capabilities\Support\CapabilityContext;

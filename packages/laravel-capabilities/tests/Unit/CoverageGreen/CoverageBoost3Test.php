@@ -7,7 +7,6 @@ declare(strict_types=1);
  * SM helpers, peer probe, surface registrar, caller deriver, schema edges.
  */
 
-use DateTimeImmutable;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Approval\ApprovalPolicy;

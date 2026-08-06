@@ -5,7 +5,6 @@
 declare(strict_types=1);
 
 use Rawphp\Capabilities\Tests\Fixtures\CatalogHelpers;
-use stdClass;
 
 it('happy: invoke by alias resolves to canonical and runs once under canonical [D-012]', function () {
     $h = CatalogHelpers::harness(['aliases' => ['invoice.create'], 'name' => 'create-invoice']);

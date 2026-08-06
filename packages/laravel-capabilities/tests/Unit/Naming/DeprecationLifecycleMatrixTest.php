@@ -5,7 +5,6 @@
 declare(strict_types=1);
 
 use Rawphp\Capabilities\Tests\Fixtures\CatalogHelpers;
-use stdClass;
 
 it('happy: canonical invoke in phase active resolves and runs once [D-012]', function () {
     $h = CatalogHelpers::harness(['deprecated' => true, 'sunset_at' => '2099-01-01']);
