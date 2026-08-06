@@ -53,6 +53,7 @@ return [
             'on_incompatible' => $env('CAPABILITIES_MCP_ON_INCOMPATIBLE', 'fail'),
             // D-008: named profiles only — never auto-mount the full catalog.
             // Each profile key becomes one MCP server when auto_register is true (ORI-790).
+            // Profiles: name => list of capability names only (D-024 / ORI-842).
             'profiles' => [],
             'require_profile' => true,
             // Config-driven server auto-registration via McpToolAdapter (ORI-790).
@@ -63,6 +64,9 @@ return [
             // Optional explicit server map (name => profile|config). Empty → derive from profiles keys.
             // Example: 'ops-billing' => ['profile' => 'billing', 'path' => '/mcp/ops-billing']
             'servers' => [],
+            // Mid-mount adapter failure for a non-empty plan: throw (default) or soft-empty (disable).
+            // Empty plan remains soft-fail without peer eval (ORI-801). Allowlist miss always throws when registry is provided.
+            'on_register_error' => $env('CAPABILITIES_MCP_ON_REGISTER_ERROR', 'throw'),
             'auth' => [
                 'default_profile' => 'user_pat',
                 'allow_integration_credentials' => false,

@@ -436,7 +436,14 @@ class CapabilitiesServiceProvider extends ServiceProvider
             $probe = null;
         }
 
-        return self::bootMcpServersWith($config, $adapter, $probe, $sink);
+        try {
+            /** @var CapabilityRegistry $registry */
+            $registry = $this->app->make(CapabilityRegistry::class);
+        } catch (\Throwable) {
+            $registry = null;
+        }
+
+        return self::bootMcpServersWith($config, $adapter, $probe, $sink, $registry);
     }
 
     /**
@@ -447,6 +454,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
      * Empty plan (no profiles/servers, auto_register off, surface disabled) → [] with no
      * peer evaluation. PeerIncompatibleException is rethrown only when real servers would
      * register and the peer is missing/incompatible under on_incompatible=fail (ORI-801).
+     * Optional $registry enables MCP profile allowlist validation (ORI-842 / D-024).
      *
      * @param  array<string, mixed>  $mcpConfig
      * @param  callable(array<string, mixed>): void|null  $sink
@@ -457,6 +465,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
         McpToolAdapter $adapter,
         ?PeerVersionProbe $probe = null,
         ?callable $sink = null,
+        ?CapabilityRegistry $registry = null,
     ): array {
         if (! (bool) ($mcpConfig['enabled'] ?? true)) {
             return [];
@@ -464,10 +473,10 @@ class CapabilitiesServiceProvider extends ServiceProvider
 
         try {
             if ($sink !== null) {
-                return McpServerRegistrar::registerInto($mcpConfig, $adapter, $sink, $probe);
+                return McpServerRegistrar::registerInto($mcpConfig, $adapter, $sink, $probe, $registry);
             }
 
-            $servers = McpServerRegistrar::register($mcpConfig, $adapter, $probe);
+            $servers = McpServerRegistrar::register($mcpConfig, $adapter, $probe, $registry);
 
             return array_column($servers, 'name');
         } catch (PeerIncompatibleException $e) {

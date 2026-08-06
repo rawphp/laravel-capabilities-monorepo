@@ -6,9 +6,11 @@ use Rawphp\Capabilities\Adapters\PeerSurfaceBootstrap;
 use Rawphp\Capabilities\Adapters\PeerSurfaceStatus;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 use Rawphp\Capabilities\CapabilitiesServiceProvider;
+use Rawphp\Capabilities\Registry\CapabilityRegistry;
+use Throwable;
 
 /**
- * Config-driven MCP **server plan** + adapter tool register (ORI-790 / D-008 / D-011 / ORI-803).
+ * Config-driven MCP **server plan** + adapter tool register (ORI-790 / D-008 / D-011 / ORI-803 / ORI-842).
  *
  * Each named profile under surfaces.mcp.profiles (or explicit servers) becomes one **planned**
  * server row with tools from {@see McpToolAdapter::register}. Production boot does **not**
@@ -17,6 +19,8 @@ use Rawphp\Capabilities\CapabilitiesServiceProvider;
  * peer facade mount in package boot.
  *
  * Multi-profile: sequential adapter register overwrites active profile/tools (last profile wins).
+ * Optional registry validates profile allowlists before adapter register (D-024).
+ * {@see on_register_error}: throw (default) or disable (soft-empty) on mid-mount adapter failure.
  *
  * Pure / unit-testable: never requires live laravel/mcp.
  */
@@ -35,6 +39,7 @@ final class McpServerRegistrar
      *     enabled?: bool,
      *     require_package?: bool,
      *     on_incompatible?: string,
+     *     on_register_error?: string,
      *     require_profile?: bool,
      *     auto_register?: bool,
      *     path_prefix?: string,
@@ -76,6 +81,11 @@ final class McpServerRegistrar
      * Does not push into laravel/mcp. Multi-profile sequential register overwrites the
      * adapter's active profile/tools (last profile wins).
      *
+     * When {@see $registry} is non-null, each profile allowlist is validated (existence +
+     * mcp surface) before {@see McpToolAdapter::register}. Null skips validation (BC for
+     * pure adapter fakes). Adapter {@see Throwable}s honour {@code on_register_error}
+     * (`throw` default | `disable` → fail-closed empty, no partial multi-profile output).
+     *
      * @param  array<string, mixed>  $mcpConfig
      * @return list<array{
      *     name: string,
@@ -91,6 +101,7 @@ final class McpServerRegistrar
         array $mcpConfig,
         McpToolAdapter $adapter,
         ?PeerVersionProbe $probe = null,
+        ?CapabilityRegistry $registry = null,
     ): array {
         $rows = self::plan($mcpConfig, $probe);
         if ($rows === []) {
@@ -99,7 +110,22 @@ final class McpServerRegistrar
 
         $out = [];
         foreach ($rows as $row) {
-            $tools = $adapter->register($row['profile']);
+            if ($registry !== null) {
+                $names = self::allowlistForProfile($mcpConfig, $row['profile']);
+                McpProfileValidator::assertAllowlist($registry, $row['profile'], $names);
+            }
+
+            try {
+                $tools = $adapter->register($row['profile']);
+            } catch (Throwable $e) {
+                // Non-empty plan + mid-mount failure: throw (default) or soft-empty.
+                if (($mcpConfig['on_register_error'] ?? 'throw') === 'disable') {
+                    return [];
+                }
+
+                throw $e;
+            }
+
             $out[] = array_merge($row, [
                 'tools' => $tools,
                 'adapter_api' => $adapter->adapterApiVersion(),
@@ -124,12 +150,43 @@ final class McpServerRegistrar
         McpToolAdapter $adapter,
         callable $sink,
         ?PeerVersionProbe $probe = null,
+        ?CapabilityRegistry $registry = null,
     ): array {
-        $servers = self::register($mcpConfig, $adapter, $probe);
+        $servers = self::register($mcpConfig, $adapter, $probe, $registry);
         $names = [];
         foreach ($servers as $server) {
             $sink($server);
             $names[] = (string) $server['name'];
+        }
+
+        return $names;
+    }
+
+    /**
+     * Capability names listed for a profile under surfaces.mcp.profiles (name => list only).
+     *
+     * @param  array<string, mixed>  $mcpConfig
+     * @return list<string>
+     */
+    public static function allowlistForProfile(array $mcpConfig, string $profile): array
+    {
+        $profiles = $mcpConfig['profiles'] ?? [];
+        if (! is_array($profiles)) {
+            return [];
+        }
+
+        $def = $profiles[$profile] ?? null;
+        if (! is_array($def)) {
+            return [];
+        }
+
+        // Profiles are name => list<string> capability names (D-008 / D-024).
+        // Associative nested DSL is out of scope — list values cast to string names.
+        $names = [];
+        foreach ($def as $key => $value) {
+            if (is_int($key)) {
+                $names[] = (string) $value;
+            }
         }
 
         return $names;
