@@ -14,12 +14,19 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 ### Added
 
 - **`auth status --json`** — D-018 envelope with `profile`, `base_url`, `logged_in` (never the token).
+- **`auth list` / `auth profiles`** — list stored profiles (name, base_url, logged_in; never tokens); `--json` envelope.
 - **`catalog --include-schemas`** — list/JSON with `input_schema` / `output_schema` in one round-trip for agents.
 - **`run <name> --help`** — schema-first capability help (fields + pass mode), same idea as domain/verb `--help`.
-- **Leading global flags** — `--profile=NAME` and `--base-url=URL` may appear before the
-  subcommand (e.g. `capabilities --profile=P catalog`), same effect as trailing flags.
+- **Leading global flags** — `--profile`, `--base-url`, and presentation flags (`--json`, `--human`,
+  `--flat`, `--include-schemas`, `--no-cache`, `--refresh`) may appear before the subcommand
+  (e.g. `capabilities --profile=P --json catalog`).
+- **Typo hints** on unknown domain/command (e.g. `catalg` → `did you mean: catalog`).
 
 ### Changed (0.x agent/script contract)
+
+- **Unauthenticated domain/unknown argv** — exit **3** with `not authenticated` (was exit **5**
+  “unknown domain”, which hid the need to login). Authenticated unknown domain remains exit **5**.
+- **Domain catalog load uses active `--profile`** (no longer always loads with `default`).
 
 - **Root command exit code** — bare `capabilities` (no subcommand) prints usage and
   exits **0** (was exit **2** / `validation_failed`). Update scripts that treated a

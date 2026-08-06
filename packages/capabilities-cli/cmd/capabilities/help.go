@@ -38,7 +38,7 @@ FLAGS (common):
   --profile=NAME     Auth profile (default: default)
   --base-url=URL     Override deployment base URL
   --json             Print D-018 JSON envelopes
-  (globals may appear before or after the command: capabilities --profile=P catalog)
+  (globals may appear before or after the command: capabilities --profile=P --json catalog)
 
 ` + run.DocsExitCodes + `
 ` + `
@@ -74,9 +74,10 @@ USAGE:
   capabilities auth login --base-url=URL [--token=PAT] [--code=OAUTH] [--profile=NAME]
   capabilities auth logout [--profile=NAME]
   capabilities auth status [--profile=NAME] [--json]
+  capabilities auth list [--json]            list profiles (never prints tokens)
 
 Tokens are stored in the OS config/keychain dir — never printed to stdout by default.
-  --json   D-018 envelope {profile, base_url, logged_in} (never includes the token)
+  --json   D-018 envelope (status: one profile; list: {profiles:[…]}) — never includes tokens
 `
 	case "catalog":
 		return `catalog — discover capabilities from GET /capabilities

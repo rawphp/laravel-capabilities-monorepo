@@ -91,6 +91,35 @@ func cmdAuth(env Env, args []string) int {
 		}
 		fmt.Fprintf(env.Stdout, "profile=%s base_url=%s logged_in=%v\n", p.Name, p.BaseURL, p.LoggedIn)
 		return api.ExitOK
+	case "list", "profiles":
+		jsonOut, rest := flagBool(rest, "--json")
+		_ = rest
+		profiles := st.ListProfiles()
+		// Never print tokens.
+		if jsonOut {
+			rows := make([]map[string]any, 0, len(profiles))
+			for _, p := range profiles {
+				rows = append(rows, map[string]any{
+					"profile":   p.Name,
+					"base_url":  p.BaseURL,
+					"logged_in": p.LoggedIn,
+				})
+			}
+			payload := map[string]any{"ok": true, "data": map[string]any{"profiles": rows}}
+			b, _ := json.MarshalIndent(payload, "", "  ")
+			fmt.Fprintln(env.Stdout, string(b))
+			return api.ExitOK
+		}
+		if len(profiles) == 0 {
+			fmt.Fprintln(env.Stdout, "No auth profiles yet. Run: capabilities auth login --base-url=URL")
+			return api.ExitOK
+		}
+		fmt.Fprintln(env.Stdout, "PROFILES:")
+		for _, p := range profiles {
+			fmt.Fprintf(env.Stdout, "  %-16s  base_url=%-40s  logged_in=%v\n", p.Name, p.BaseURL, p.LoggedIn)
+		}
+		fmt.Fprintln(env.Stdout, "Next: capabilities auth status --profile=NAME")
+		return api.ExitOK
 	default:
 		fmt.Fprintf(env.Stderr, "unknown auth subcommand %q\n", sub)
 		return api.ExitValidation

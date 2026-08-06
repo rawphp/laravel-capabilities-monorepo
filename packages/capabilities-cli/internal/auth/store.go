@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -157,6 +158,32 @@ func (s *Store) Status(profile string) Profile {
 		p.LoggedIn = true
 	}
 	return p
+}
+
+// ListProfiles returns non-secret status for every profile directory under the store.
+// Never includes tokens. Empty slice when none exist (not an error).
+func (s *Store) ListProfiles() []Profile {
+	s.mu.Lock()
+	root := filepath.Join(s.Root, "profiles")
+	s.mu.Unlock()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	out := make([]Profile, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if name == "" || name == "." || name == ".." {
+			continue
+		}
+		out = append(out, s.Status(name))
+	}
+	// Stable order for humans and tests.
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 // RequireToken returns the token or ErrNoToken (exit 3 path for commands).

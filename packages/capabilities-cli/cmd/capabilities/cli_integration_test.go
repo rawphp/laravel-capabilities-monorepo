@@ -241,9 +241,25 @@ func TestExecuteHelpSubcommands(t *testing.T) {
 	}
 }
 
-func TestExecuteUnknownCommand(t *testing.T) {
+func TestExecuteUnknownCommandUnauthenticated(t *testing.T) {
+	// Without a token, domain/unknown paths fail closed as unauthenticated (exit 3),
+	// not "unknown domain" — empty catalog must not look like missing product domains.
 	code, out, errb := CaptureExecute([]string{"nope"}, t.TempDir(), nil)
-	// Unknown domain/command → exit 5 not_found envelope (ORI-173).
+	if code != api.ExitAuth {
+		t.Fatalf("exit=%d want %d stderr=%s stdout=%s", code, api.ExitAuth, errb, out)
+	}
+	if !strings.Contains(errb, "not authenticated") && !strings.Contains(errb, "auth login") {
+		t.Fatal(code, errb, out)
+	}
+}
+
+func TestExecuteUnknownCommandAuthenticated(t *testing.T) {
+	srv, url := testAPI(t)
+	root := t.TempDir()
+	st := auth.NewStore(root)
+	_, _ = auth.LoginWithToken(st, "default", url, "tok")
+	// Authenticated with empty catalog → unknown domain is exit 5 not_found.
+	code, out, errb := CaptureExecute([]string{"nope"}, root, newClientFactory(srv))
 	if code != api.ExitDomain {
 		t.Fatalf("exit=%d want %d stderr=%s stdout=%s", code, api.ExitDomain, errb, out)
 	}

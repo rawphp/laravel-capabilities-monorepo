@@ -200,14 +200,15 @@ func profileAndBase(args []string) (profile, base string, rest []string) {
 	return profile, base, args
 }
 
-// peelLeadingGlobalFlags moves leading --profile / --base-url to the end of argv
-// so `capabilities --profile=X catalog` works the same as `capabilities catalog --profile=X`.
+// peelLeadingGlobalFlags moves leading globals to the end of argv so
+// `capabilities --profile=X --json catalog` works like trailing flags.
 // Only peels flags that appear before the first non-flag token (the subcommand/domain).
 func peelLeadingGlobalFlags(args []string) []string {
 	if len(args) == 0 {
 		return args
 	}
 	var profile, base string
+	var boolFlags []string
 	i := 0
 	for i < len(args) {
 		a := args[i]
@@ -231,10 +232,18 @@ func peelLeadingGlobalFlags(args []string) []string {
 			i++
 			continue
 		}
+		// Common presentation / catalog flags used as "globals" before the command.
+		switch a {
+		case "--json", "--human", "--flat", "--include-schemas", "--no-cache", "--refresh":
+			boolFlags = append(boolFlags, a)
+			i++
+			continue
+		}
 		// Stop at first non-global-flag token (command, domain, or unknown flag for later).
 		break
 	}
 	rest := append([]string{}, args[i:]...)
+	rest = append(rest, boolFlags...)
 	if profile != "" {
 		rest = append(rest, "--profile="+profile)
 	}
