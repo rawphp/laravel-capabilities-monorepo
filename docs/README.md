@@ -43,6 +43,7 @@ On push to monorepo `main` / tags `v*`, each `packages/*` tree is mirrored to it
 | [spec.md](spec.md) | Design oracle: philosophy, pipeline, decisions D-002–D-023, layout, roadmap |
 | [versioning.md](versioning.md) | 0.x policy, path/VCS, split remotes, branch-alias, Packagist checklist (human) |
 | [requirements-inventory.md](requirements-inventory.md) | Contract checklist (happy / fail / edge) for package unit tests |
+| [proposals/2026-08-06-host-integration-rearchitecture.md](proposals/2026-08-06-host-integration-rearchitecture.md) | **Build-ready (rev 4):** minimal package seams; AI-chat = routes OR queue.name; host extend + host routes |
 
 ## Packages (code + package-shipped docs)
 

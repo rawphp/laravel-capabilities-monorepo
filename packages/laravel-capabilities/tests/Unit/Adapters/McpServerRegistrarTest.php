@@ -8,7 +8,7 @@ declare(strict_types=1);
 use Rawphp\Capabilities\Adapters\Mcp\McpCredential;
 use Rawphp\Capabilities\Adapters\Mcp\McpServerRegistrar;
 use Rawphp\Capabilities\Adapters\PeerIncompatibleException;
-use Rawphp\Capabilities\Adapters\PeerVersionProbe;
+use Rawphp\Capabilities\CapabilitiesServiceProvider;
 use Rawphp\Capabilities\Tests\Fixtures\AdapterHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\BootHelpers;
 
@@ -41,6 +41,7 @@ function mcpRegistrarConfig(array $overrides = []): array
     foreach ($overrides as $key => $value) {
         if ($key === 'auth' && is_array($value)) {
             $base['auth'] = array_merge($base['auth'], $value);
+
             continue;
         }
         $base[$key] = $value;
@@ -319,7 +320,7 @@ it('edge: auto_register false skips server registration even when profiles prese
 it('happy: bootMcpServersWith registers from config via service provider entry [ORI-790]', function () {
     $h = AdapterHelpers::harness();
     $seen = [];
-    $names = \Rawphp\Capabilities\CapabilitiesServiceProvider::bootMcpServersWith(
+    $names = CapabilitiesServiceProvider::bootMcpServersWith(
         mcpRegistrarConfig(),
         $h['mcp'],
         BootHelpers::probe(mcp: true),
@@ -334,7 +335,7 @@ it('happy: bootMcpServersWith registers from config via service provider entry [
 
 it('fail: bootMcpServersWith with surface disabled registers nothing [ORI-790]', function () {
     $h = AdapterHelpers::harness(['mcp_enabled' => false]);
-    $names = \Rawphp\Capabilities\CapabilitiesServiceProvider::bootMcpServersWith(
+    $names = CapabilitiesServiceProvider::bootMcpServersWith(
         mcpRegistrarConfig(['enabled' => false]),
         $h['mcp'],
         BootHelpers::probe(mcp: true),
@@ -345,7 +346,7 @@ it('fail: bootMcpServersWith with surface disabled registers nothing [ORI-790]',
 
 it('edge: bootMcpServersWith empty profiles + missing peer → [] no throw [ORI-801]', function () {
     $h = AdapterHelpers::harness();
-    $names = \Rawphp\Capabilities\CapabilitiesServiceProvider::bootMcpServersWith(
+    $names = CapabilitiesServiceProvider::bootMcpServersWith(
         mcpRegistrarConfig([
             'profiles' => [],
             'servers' => [],

@@ -5,6 +5,7 @@ namespace Rawphp\Capabilities\Adapters\Mcp;
 use Rawphp\Capabilities\Adapters\PeerSurfaceBootstrap;
 use Rawphp\Capabilities\Adapters\PeerSurfaceStatus;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
+use Rawphp\Capabilities\CapabilitiesServiceProvider;
 
 /**
  * Config-driven MCP **server plan** + adapter tool register (ORI-790 / D-008 / D-011 / ORI-803).
@@ -111,7 +112,7 @@ final class McpServerRegistrar
     /**
      * Register and push each planned server definition into a callable sink (tests / host glue).
      *
-     * Not used by production {@see \Rawphp\Capabilities\CapabilitiesServiceProvider::bootMcpServers}
+     * Not used by production {@see CapabilitiesServiceProvider::bootMcpServers}
      * (no peer sink). Callers that pass a sink still own mounting laravel/mcp.
      *
      * @param  array<string, mixed>  $mcpConfig

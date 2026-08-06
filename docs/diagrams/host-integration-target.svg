@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1480" height="1020" viewBox="0 0 1480 1020" role="img" aria-label="Desired architecture: host integration after migration">
+  <defs>
+    <style>
+      text { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .t { font-size: 24px; font-weight: 700; fill: #0f172a; }
+      .s { font-size: 13px; font-weight: 400; fill: #475569; }
+      .lane { font-size: 13px; font-weight: 700; fill: #0f172a; letter-spacing: 0.02em; }
+      .ph { font-size: 13px; font-weight: 700; fill: #f8fafc; }
+      .ps { font-size: 11px; font-weight: 400; fill: #cbd5e1; }
+      .bt { font-size: 12px; font-weight: 650; fill: #0f172a; }
+      .bb { font-size: 11px; font-weight: 400; fill: #334155; }
+      .nt { font-size: 12px; font-weight: 650; fill: #047857; }
+      .nb { font-size: 11px; font-weight: 400; fill: #047857; }
+      .ft { font-size: 12px; font-weight: 650; fill: #9f1239; }
+      .fb { font-size: 11px; font-weight: 400; fill: #9f1239; }
+      .lg { font-size: 11px; font-weight: 400; fill: #334155; }
+      .badge { font-size: 11px; font-weight: 700; fill: #047857; }
+    </style>
+  </defs>
+
+  <rect width="1480" height="1020" fill="#ffffff"/>
+
+  <rect x="40" y="22" width="64" height="24" rx="4" fill="#d1fae5" stroke="#059669" stroke-width="1"/>
+  <text x="72" y="39" text-anchor="middle" class="badge">AFTER</text>
+  <text x="120" y="42" class="t">Desired architecture</text>
+  <text x="40" y="68" class="s">Same four packages. Host configures + extends. Packages own runtime defaults and fail closed. No fifth package.</text>
+
+  <!-- ========== HOST ========== -->
+  <rect x="40" y="88" width="1400" height="200" rx="12" fill="#ecfdf5" stroke="#059669" stroke-width="2"/>
+  <text x="56" y="112" class="lane">HOST APP  ·  domain + product UX  ·  happy path = binds + config + optional extend  ·  schedule reaper</text>
+
+  <rect x="56" y="128" width="340" height="58" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.25"/>
+  <text x="72" y="150" class="bt">Domain capabilities + Authorizer</text>
+  <text x="72" y="168" class="bb">Unchanged · host still owns product domain</text>
+
+  <rect x="412" y="128" width="340" height="58" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.25"/>
+  <text x="428" y="150" class="bt">Product HTTP = host routes</text>
+  <text x="428" y="168" class="bb">→ CapabilityBus / AI services (not package UX)</text>
+
+  <rect x="768" y="128" width="340" height="58" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.25"/>
+  <text x="784" y="150" class="bt">AI-chat host binds</text>
+  <text x="784" y="168" class="bb">Context + ToolCatalog · queue worker</text>
+
+  <rect x="1124" y="128" width="296" height="58" rx="6" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+  <text x="1140" y="150" class="nt">extend(ProgressStore)</text>
+  <text x="1140" y="168" class="nb">In boot · wrap package store · TTS etc.</text>
+
+  <rect x="56" y="202" width="340" height="68" rx="6" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+  <text x="72" y="224" class="nt">Config only (no rebind)</text>
+  <text x="72" y="242" class="nb">queue.name / connection</text>
+  <text x="72" y="258" class="nb">proposals.enabled · progress=redis</text>
+
+  <rect x="412" y="202" width="340" height="68" rx="6" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+  <text x="428" y="224" class="nt">Schedule package reaper</text>
+  <text x="428" y="242" class="nb">capabilities-ai:reap-stale-turns</text>
+  <text x="428" y="258" class="nb">Host owns schedule · package owns logic</text>
+
+  <rect x="768" y="202" width="340" height="68" rx="6" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+  <text x="784" y="224" class="nt">MCP profile allowlists</text>
+  <text x="784" y="242" class="nb">name → list of capability names</text>
+  <text x="784" y="258" class="nb">No full-catalog dump (D-008)</text>
+
+  <rect x="1124" y="202" width="296" height="68" rx="6" fill="#fff1f2" stroke="#e11d48" stroke-width="1.5"/>
+  <text x="1140" y="224" class="ft">Forbidden host patterns</text>
+  <text x="1140" y="242" class="fb">No ConversationService rebind</text>
+  <text x="1140" y="258" class="fb">No route surgery · no dual chat</text>
+
+  <!-- ========== PACKAGES ========== -->
+  <rect x="40" y="312" width="1400" height="628" rx="12" fill="#f8fafc" stroke="#64748b" stroke-width="2"/>
+  <text x="56" y="336" class="lane">PACKAGES  ·  same four products  ·  new seams only where hosts rebounded or silent-failed</text>
+
+  <!-- CORE -->
+  <g>
+    <rect x="56" y="352" width="330" height="430" rx="8" fill="#ffffff" stroke="#1e3a5f" stroke-width="2"/>
+    <path d="M56,352 h330 a8,8 0 0 1 8,8 v36 h-346 v-36 a8,8 0 0 1 8,-8 z" fill="#1e3a5f"/>
+    <text x="72" y="376" class="ph">laravel-capabilities</text>
+    <text x="72" y="392" class="ps">Core bus · registry · surfaces</text>
+
+    <rect x="72" y="416" width="298" height="52" rx="5" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+    <text x="84" y="436" class="bt">CapabilityBus + Registry</text>
+    <text x="84" y="454" class="bb">Unchanged choke point</text>
+
+    <rect x="72" y="480" width="298" height="52" rx="5" fill="#ffffff" stroke="#94a3b8" stroke-width="1.25"/>
+    <text x="84" y="500" class="bt">Surfaces unchanged</text>
+    <text x="84" y="518" class="bb">HTTP · MCP · agent · job · artisan · cli</text>
+
+    <rect x="72" y="544" width="298" height="84" rx="5" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+    <text x="84" y="564" class="nt">NEW · MCP fail-closed</text>
+    <text x="84" y="582" class="nb">Validate allowlist names + mcp surface</text>
+    <text x="84" y="598" class="nb">on_register_error = throw (default)</text>
+    <text x="84" y="614" class="nb">Empty plan still soft-fail (ORI-801)</text>
+
+    <rect x="72" y="640" width="298" height="52" rx="5" fill="#ffffff" stroke="#94a3b8" stroke-width="1.25"/>
+    <text x="84" y="660" class="bt">HTTP …/capabilities/health</text>
+    <text x="84" y="678" class="bb">Still surface/peer only · keep separate</text>
+
+    <rect x="72" y="704" width="298" height="52" rx="5" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+    <text x="84" y="724" class="nt">NEW · integration-health</text>
+    <text x="84" y="742" class="nb">Artisan · product-ready diagnostic</text>
+  </g>
+
+  <!-- AI -->
+  <g>
+    <rect x="406" y="352" width="330" height="430" rx="8" fill="#ffffff" stroke="#3b1f5e" stroke-width="2"/>
+    <path d="M406,352 h330 a8,8 0 0 1 8,8 v36 h-346 v-36 a8,8 0 0 1 8,-8 z" fill="#3b1f5e"/>
+    <text x="422" y="376" class="ph">laravel-capabilities-ai</text>
+    <text x="422" y="392" class="ps">Turn · conversation · proposals</text>
+
+    <rect x="422" y="416" width="298" height="44" rx="5" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+    <text x="434" y="436" class="bt">SP owns wiring (unchanged)</text>
+    <text x="434" y="450" class="bb">Host does not re-construct services</text>
+
+    <rect x="422" y="472" width="298" height="60" rx="5" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+    <text x="434" y="492" class="nt">NEW · queue on default dispatch</text>
+    <text x="434" y="510" class="nb">Sets RunTurnJob queue + connection</text>
+    <text x="434" y="524" class="nb">from config before dispatch</text>
+
+    <rect x="422" y="544" width="298" height="60" rx="5" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+    <text x="434" y="564" class="nt">NEW · live readiness default</text>
+    <text x="434" y="582" class="nb">Store bound + ping · else not ready</text>
+    <text x="434" y="596" class="nb">AlwaysReady = unit tests only</text>
+
+    <rect x="422" y="616" width="298" height="60" rx="5" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+    <text x="434" y="636" class="nt">NEW · proposals.enabled</text>
+    <text x="434" y="654" class="nb">Gates accept/reject routes</text>
+    <text x="434" y="668" class="nb">TurnRunner fence · history empty</text>
+
+    <rect x="422" y="688" width="298" height="68" rx="5" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+    <text x="434" y="708" class="nt">NEW · reaper + prod guards</text>
+    <text x="434" y="726" class="nb">reap-stale-turns + thresholds</text>
+    <text x="434" y="742" class="nb">Phase 3: array/fake throw outside test</text>
+  </g>
+
+  <!-- MESSAGING -->
+  <g>
+    <rect x="756" y="352" width="330" height="430" rx="8" fill="#ffffff" stroke="#14532d" stroke-width="2"/>
+    <path d="M756,352 h330 a8,8 0 0 1 8,8 v36 h-346 v-36 a8,8 0 0 1 8,-8 z" fill="#14532d"/>
+    <text x="772" y="376" class="ph">laravel-capabilities-messaging</text>
+    <text x="772" y="392" class="ps">Optional channel sibling</text>
+
+    <rect x="772" y="416" width="298" height="68" rx="5" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+    <text x="784" y="436" class="bt">Unchanged role</text>
+    <text x="784" y="454" class="bb">Telegram · identity · threads</text>
+    <text x="784" y="470" class="bb">→ bus contracts only</text>
+
+    <rect x="772" y="500" width="298" height="84" rx="5" fill="#ffffff" stroke="#94a3b8" stroke-width="1.25"/>
+    <text x="784" y="524" class="bt">Still forbidden</text>
+    <text x="784" y="542" class="bb">No second conversation runtime</text>
+    <text x="784" y="558" class="bb">No AI service rebinds for</text>
+    <text x="784" y="574" class="bb">channel identity</text>
+
+    <rect x="772" y="600" width="298" height="68" rx="5" fill="#ffffff" stroke="#94a3b8" stroke-width="1.25"/>
+    <text x="784" y="624" class="bt">Not a host-integration seam</text>
+    <text x="784" y="642" class="bb">No new APIs in this work</text>
+    <text x="784" y="658" class="bb">Optional sibling only</text>
+
+    <rect x="772" y="684" width="298" height="72" rx="5" fill="#ffffff" stroke="#94a3b8" stroke-width="1.25"/>
+    <text x="784" y="708" class="bt">Defaults off</text>
+    <text x="784" y="726" class="bb">Until installed + surface enabled</text>
+    <text x="784" y="742" class="bb">Same as today</text>
+  </g>
+
+  <!-- CLI -->
+  <g>
+    <rect x="1106" y="352" width="314" height="430" rx="8" fill="#ffffff" stroke="#713f12" stroke-width="2"/>
+    <path d="M1106,352 h314 a8,8 0 0 1 8,8 v36 h-330 v-36 a8,8 0 0 1 8,-8 z" fill="#713f12"/>
+    <text x="1122" y="376" class="ph">capabilities-cli (Go)</text>
+    <text x="1122" y="392" class="ps">Product CLI · not Artisan</text>
+
+    <rect x="1122" y="416" width="282" height="68" rx="5" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+    <text x="1134" y="436" class="bt">HTTP client only</text>
+    <text x="1134" y="454" class="bb">auth · catalog · run</text>
+    <text x="1134" y="470" class="bb">Unchanged by this work</text>
+
+    <rect x="1122" y="500" width="282" height="68" rx="5" fill="#ffffff" stroke="#94a3b8" stroke-width="1.25"/>
+    <text x="1134" y="520" class="bt">Still one HTTP API</text>
+    <text x="1134" y="538" class="bb">No second invoke tree</text>
+    <text x="1134" y="554" class="bb">Server remains the law</text>
+
+    <rect x="1122" y="584" width="282" height="68" rx="5" fill="#ffffff" stroke="#94a3b8" stroke-width="1.25"/>
+    <text x="1134" y="604" class="bt">Host mints PATs</text>
+    <text x="1134" y="622" class="bb">Package does not mint tokens</text>
+    <text x="1134" y="638" class="bb">caller derived server-side</text>
+
+    <rect x="1122" y="668" width="282" height="88" rx="5" fill="#ffffff" stroke="#94a3b8" stroke-width="1.25"/>
+    <text x="1134" y="692" class="bt">Deliberately not added</text>
+    <text x="1134" y="710" class="bb">No decorator DSL</text>
+    <text x="1134" y="726" class="bb">No HTTP controller map</text>
+    <text x="1134" y="742" class="bb">No skeleton fifth package</text>
+  </g>
+
+  <!-- Bottom strip -->
+  <rect x="56" y="800" width="1364" height="118" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1.25"/>
+  <text x="72" y="822" class="bt">AI-chat (health only) = routes.enabled OR non-empty queue.name</text>
+  <text x="72" y="844" class="bb">Package AI routes optional · host product routes preferred · diagnose with: php artisan capabilities:integration-health</text>
+  <text x="72" y="874" class="nt">New package surface only</text>
+  <text x="72" y="894" class="nb">queue on dispatch · reaper · live readiness · proposals.enabled · integration-health · MCP validation + on_register_error · Phase 3 unsafe-driver guards</text>
+
+  <!-- Legend -->
+  <rect x="40" y="960" width="1400" height="40" rx="8" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/>
+  <rect x="56" y="972" width="16" height="16" rx="3" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+  <text x="80" y="984" class="lg">Unchanged solid</text>
+  <rect x="200" y="972" width="16" height="16" rx="3" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+  <text x="224" y="984" class="lg">NEW package / host seam</text>
+  <rect x="400" y="972" width="16" height="16" rx="3" fill="#ffffff" stroke="#94a3b8" stroke-width="1.25"/>
+  <text x="424" y="984" class="lg">Present · clarified</text>
+  <rect x="560" y="972" width="16" height="16" rx="3" fill="#fff1f2" stroke="#e11d48" stroke-width="1.5"/>
+  <text x="584" y="984" class="lg">Forbidden host pattern</text>
+  <text x="780" y="984" class="lg">Green frame = host happy path  ·  Same four columns as BEFORE for easy compare</text>
+</svg>
