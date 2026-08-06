@@ -58,8 +58,8 @@ Hard invariants shared across packages:
 
 | | |
 |---|---|
-| **Is** | Downloadable Go HTTP client for humans and local agents: auth profiles, catalog, run, schema validate-before-send, auto idempotency, optional MCP stdio **bridge** against the same remote HTTP capability API |
-| **Is not** | A second backend or domain runtime; Artisan; in-server ops CLI; Packagist PHP package; MCP protocol server of record (bridge only) |
+| **Is** | Downloadable Go HTTP client for humans and local agents: auth profiles, catalog, run, schema validate-before-send, auto idempotency against the same remote HTTP capability API |
+| **Is not** | A second backend or domain runtime; Artisan; in-server ops CLI; Packagist PHP package; product MCP / MCP stdio server (use server `laravel/mcp` via core auto-register) |
 
 ### Family is not (umbrella non-goals)
 

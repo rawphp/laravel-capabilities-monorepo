@@ -5508,14 +5508,14 @@ Extend the catalog in the generator and re-run; do not hand-edit pure stubs.
 - [x] TestCatalogjsonoutputenvelope [CLI-CAT]
 - [x] TestSunsetcapabilitywarnedorblocked [CLI-CAT]
 
-### `internal/mcpstdio/mcpstdio_test.go` (6)
+### `internal/mcpstdio/mcpstdio_test.go` (6) — **removed** (ORI-791; CLI MCP stdio hard-removed; historical inventory only)
 
-- [x] TestMcpstdioproxiestoremotehttpwithstoredtoken [CLI-MCP]
-- [x] TestMcpstdionolocaldomainrun [CLI-MCP]
-- [x] TestMcpstdiousessameauthascli [CLI-MCP]
-- [x] TestMcpstdiodoesnotbypassserverauthorization [CLI-MCP]
-- [x] TestMcpstdioprofiletoolscomefromserver [CLI-MCP]
-- [x] TestMcpstdioforwardsidempotencykeys [CLI-MCP]
+- [x] ~~TestMcpstdioproxiestoremotehttpwithstoredtoken~~ [CLI-MCP] — removed with package
+- [x] ~~TestMcpstdionolocaldomainrun~~ [CLI-MCP] — removed with package
+- [x] ~~TestMcpstdiousessameauthascli~~ [CLI-MCP] — removed with package
+- [x] ~~TestMcpstdiodoesnotbypassserverauthorization~~ [CLI-MCP] — removed with package
+- [x] ~~TestMcpstdioprofiletoolscomefromserver~~ [CLI-MCP] — removed with package
+- [x] ~~TestMcpstdioforwardsidempotencykeys~~ [CLI-MCP] — removed with package
 
 ### `internal/run/run_test.go` (24)
 
@@ -5688,15 +5688,15 @@ Extend the catalog in the generator and re-run; do not hand-edit pure stubs.
 - [x] TestNomultilanguageclimatrixinv02 [D-016]
 - [x] TestProductclinotartisan [D-016]
 
-### `internal/mcpstdio/security_test.go` (7)
+### `internal/mcpstdio/security_test.go` (7) — **removed** (ORI-791; CLI MCP stdio hard-removed; historical inventory only)
 
-- [x] TestNolocalauthorize [CLI-MCP]
-- [x] TestNolocalrun [CLI-MCP]
-- [x] TestUsesstoredtokenonly [CLI-MCP]
-- [x] TestDoesnotaccepthostinjectedactor [CLI-MCP]
-- [x] TestDoesnotbypassserverprofile [CLI-MCP]
-- [x] TestPropagatesservererrors [CLI-MCP]
-- [x] TestPropagatesapprovalrequired [CLI-MCP]
+- [x] ~~TestNolocalauthorize~~ [CLI-MCP] — removed with package
+- [x] ~~TestNolocalrun~~ [CLI-MCP] — removed with package
+- [x] ~~TestUsesstoredtokenonly~~ [CLI-MCP] — removed with package
+- [x] ~~TestDoesnotaccepthostinjectedactor~~ [CLI-MCP] — removed with package
+- [x] ~~TestDoesnotbypassserverprofile~~ [CLI-MCP] — removed with package
+- [x] ~~TestPropagatesservererrors~~ [CLI-MCP] — removed with package
+- [x] ~~TestPropagatesapprovalrequired~~ [CLI-MCP] — removed with package
 
 ### `internal/run/failure_chain_test.go` (12)
 

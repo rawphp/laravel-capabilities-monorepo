@@ -100,6 +100,14 @@ Agent and MCP surfaces compose `laravel/ai` and `laravel/mcp`. They are **option
 - Supported version constraints live in `PeerSupportMatrix` (mirrored under `peers.support`).
 - If a surface is enabled and the peer is missing or incompatible: **fail** boot (default) or **soft-disable** with CRITICAL log, per `on_incompatible`. Never half-register tools.
 
+**Product MCP is server-side.** With `surfaces.mcp.enabled` and `laravel/mcp` installed, core **auto-registers** one MCP server per named profile (`surfaces.mcp.auto_register`, default true — `McpServerRegistrar`). MCP hosts (Cursor, Claude Desktop, …) connect to the **app** endpoints under `path_prefix` (default `/mcp`), not to the downloadable CLI.
+
+```bash
+composer require laravel/mcp
+# config: surfaces.mcp.enabled=true, profiles defined, auto_register=true
+# → one server per profile key; tools go through Capability::mcpTools / registry invoke
+```
+
 Details: [Core package guide](../packages/laravel-capabilities/docs/user-guide.md#peers-laravelai--laravelmcp) and [core package README](../packages/laravel-capabilities/README.md#peer-support--d-011-release-gate).
 
 ## 4. Optional: messaging (Telegram)
@@ -149,7 +157,7 @@ Bind host seams (`ConversationContextProvider`, `ToolCatalog`, `LlmClient`) befo
 
 ## 6. Optional: product CLI on the user machine
 
-The product CLI is a **downloadable Go HTTP client** (`capabilities`), not Artisan. It talks to the app’s same capability HTTP API.
+The product CLI is a **downloadable Go HTTP client** (`capabilities`), not Artisan. It talks to the app’s same capability HTTP API (**auth + catalog + run only**). It does **not** speak MCP — product MCP is the server path in §3.
 
 ```bash
 # monorepo
@@ -164,6 +172,8 @@ go build -o capabilities ./cmd/capabilities
 ./capabilities catalog
 ./capabilities run create-invoice --input='{"customer_id":1,"amount_cents":2500,"currency":"USD"}' --json
 ```
+
+Do **not** run `capabilities mcp` as product MCP (subcommand removed). Use server product MCP or this HTTP CLI.
 
 → [CLI package guide](../packages/capabilities-cli/docs/user-guide.md)
 

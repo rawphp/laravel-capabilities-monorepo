@@ -131,14 +131,23 @@ Global switches live in published `config/capabilities.php` under `surfaces.*`:
 | Surface | Config key | Notes |
 |---|---|---|
 | Agent | `surfaces.agent` | Needs `laravel/ai` when enabled + `require_package` |
-| MCP | `surfaces.mcp` | Needs `laravel/mcp`; auth profile settings under `surfaces.mcp.auth` |
-| HTTP | `surfaces.http` | Default prefix `capabilities`; middleware `api`, `auth:sanctum` |
-| CLI | `surfaces.cli` | Marks capabilities available to product CLI callers |
+| MCP | `surfaces.mcp` | **Product MCP (server):** needs `laravel/mcp`; named profiles; optional `auto_register` (default true) via `McpServerRegistrar`; auth under `surfaces.mcp.auth` |
+| HTTP | `surfaces.http` | Default prefix `capabilities`; middleware `api`, `auth:sanctum` — also the transport the product CLI uses |
+| CLI | `surfaces.cli` | Marks capabilities available to product CLI **HTTP** callers (not an MCP bridge) |
 | Job | `surfaces.job` | Queue/job invokes need an explicit actor (not “null user = allow”) |
 | Artisan | `surfaces.artisan` | Optional **in-server** ops — not the downloadable product CLI |
 | Messaging | `surfaces.messaging` | Conversation channel flag; implementation is the **sibling** package |
 
 A capability’s `->surfaces([...])` list only **narrows** what global config already allows.
+
+### Product MCP vs product CLI
+
+| | **Product MCP** | **Product CLI** |
+|---|---|---|
+| Where | Server (`laravel/mcp` + this package) | Laptop binary `capabilities` |
+| How tools appear | Auto-register from `surfaces.mcp.profiles` (`auto_register`) or manual `Capability::mcpTools(profile: …)` | HTTP `catalog` / `run` / domain verbs only |
+| Hosts | Cursor, Claude Desktop, other MCP clients → **app** URLs under `path_prefix` (default `/mcp`) | Shell agents / humans over the capability HTTP API |
+| Not | The CLI binary | An MCP stdio server — `capabilities mcp` was **removed** |
 
 ### HTTP API (single tree)
 
@@ -209,6 +218,7 @@ Rules of thumb:
 | Matrix source of truth | `src/Adapters/PeerSupportMatrix.php` |
 | Config mirror | `peers.support` |
 | Declared constraints (current scaffold) | `laravel/ai`: `^0.1`, `^1.0`; `laravel/mcp`: `^0.1`, `^1.0` |
+| MCP auto-register | `Adapters\Mcp\McpServerRegistrar` + `surfaces.mcp.auto_register` / `profiles` / `servers` / `path_prefix` |
 
 When agent or MCP is enabled and the peer is missing or `supportsInstalledPeer() === false`:
 
@@ -218,6 +228,15 @@ When agent or MCP is enabled and the peer is missing or `supportsInstalledPeer()
 | `disable` | Soft-disable + CRITICAL log + health `disabled_incompatible` |
 
 **Never half-register tools.** Default package CI does not install live peers; honesty is matrix + unit contract fixtures. Live peer exercise is an optional **consumer app** path.
+
+### MCP auto-register (host path)
+
+With `surfaces.mcp.enabled` and a compatible `laravel/mcp` peer:
+
+1. Define named **profiles** under `surfaces.mcp.profiles` (capability name lists — D-008).
+2. Leave **`auto_register` true** (default): boot registers one MCP server per profile key (or rows from `servers`) via `McpServerRegistrar`.
+3. MCP clients talk to the **app** under `path_prefix` (default `/mcp`), not to the downloadable CLI.
+4. Set `auto_register` false only when you wire servers yourself (e.g. custom `Mcp::web` + `Capability::mcpTools`).
 
 Maintainer filters: see [package README — Peer support](../README.md#peer-support--d-011-release-gate).
 

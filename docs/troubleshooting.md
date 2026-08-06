@@ -135,12 +135,12 @@ Matrix source: `packages/laravel-capabilities/src/Adapters/PeerSupportMatrix.php
 
 ### `unknown command`
 
-**Fix:** Use `capabilities help`. Commands: `auth`, `catalog`, `describe`, `run`, `mcp`, `approvals`, `version`, `help`.
+**Fix:** Use `capabilities help`. Runnable commands: `auth`, `catalog`, `describe`, `run`, `approvals`, `version`, `help` (plus domain/verb synthesis). Token `mcp` is **reserved forever** as a domain name but is **not** a runnable command (CLI MCP stdio was removed).
 
 ### Built binary works but MCP client sees no tools
 
-**Cause:** Auth profile empty; server catalog empty for CLI caller; MCP stdio not attached correctly.  
-**Fix:** `catalog` with same profile; confirm capabilities include `cli` / are exposed over HTTP for that credential; run `capabilities mcp` as the stdio process your host expects.
+**Cause:** Product MCP is **server-side** (`laravel/mcp` + capabilities auto-register), not the CLI. Common gaps: `surfaces.mcp` disabled; peer missing/incompatible; empty `profiles` / `auto_register` false; host pointed at a local `capabilities mcp` process that no longer exists.  
+**Fix:** Enable `surfaces.mcp`, install compatible `laravel/mcp`, define named profiles (and leave `auto_register` true or register servers manually). Point the MCP host at the **app** MCP URL (default path prefix `/mcp`). For shell agents, use HTTP CLI `catalog` / `run` with a working auth profile — do **not** run `capabilities mcp`.
 
 ## Messaging (Telegram)
 
