@@ -19,6 +19,11 @@ final class RunTurnJob implements ShouldQueue
     /** Seconds; default from Package::DEFAULT_CLAIM_TTL; cheap-create may override from config. */
     public int $timeout = Package::DEFAULT_CLAIM_TTL;
 
+    /** Laravel bus / queue worker read these public props (no Queueable trait required). */
+    public ?string $queue = null;
+
+    public ?string $connection = null;
+
     public function __construct(
         public readonly string $turnUlid,
     ) {}

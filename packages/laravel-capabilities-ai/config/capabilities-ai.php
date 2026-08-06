@@ -61,6 +61,15 @@ return [
     /** Turn claim TTL seconds (worker heartbeat window). */
     'claim_ttl' => (int) $env('CAPABILITIES_AI_CLAIM_TTL', Package::DEFAULT_CLAIM_TTL),
 
+    /**
+     * Default RunTurnJob queue routing (happy path — no ConversationService rebind).
+     * Empty/null → Laravel default queue/connection.
+     */
+    'queue' => [
+        'connection' => $env('CAPABILITIES_AI_QUEUE_CONNECTION'),
+        'name' => $env('CAPABILITIES_AI_QUEUE_NAME'),
+    ],
+
     /** Max tool-call rounds per turn before force-complete/fail. */
     'max_tool_rounds' => (int) $env('CAPABILITIES_AI_MAX_TOOL_ROUNDS', 8),
 
