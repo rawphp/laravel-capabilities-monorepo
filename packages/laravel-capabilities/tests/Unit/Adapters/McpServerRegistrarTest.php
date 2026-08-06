@@ -379,3 +379,252 @@ it('fail: artifactKeys empty when surface disabled [ORI-790]', function () {
 
     expect($keys)->toBeEmpty();
 });
+
+// --- ORI-842: allowlist validation + on_register_error ---
+
+it('register throws on allowlist miss before soft-empty tools when registry provided [ORI-842]', function () {
+    $h = AdapterHelpers::harness([
+        'caps' => [
+            ['name' => 'create-invoice', 'groups' => ['billing'], 'allowSystemCallers' => true],
+        ],
+    ]);
+
+    expect(fn () => McpServerRegistrar::register(
+        mcpRegistrarConfig([
+            'profiles' => ['lab' => ['missing.cap']],
+        ]),
+        $h['mcp'],
+        BootHelpers::probe(mcp: true),
+        $h['registry'],
+    ))->toThrow(InvalidArgumentException::class, 'unknown capability');
+
+    expect($h['mcp']->isRegistered())->toBeFalse();
+});
+
+it('register throws when allowlisted capability excludes mcp surface [ORI-842]', function () {
+    $h = AdapterHelpers::harness([
+        'caps' => [
+            [
+                'name' => 'http-only-job',
+                'groups' => ['billing'],
+                'surfaces' => ['http', 'cli'],
+                'allowSystemCallers' => true,
+            ],
+        ],
+        'tool_surface' => [
+            'mcp' => [
+                'profiles' => [
+                    'lab' => ['http-only-job'],
+                ],
+            ],
+        ],
+    ]);
+
+    expect(fn () => McpServerRegistrar::register(
+        mcpRegistrarConfig([
+            'profiles' => ['lab' => ['http-only-job']],
+        ]),
+        $h['mcp'],
+        BootHelpers::probe(mcp: true),
+        $h['registry'],
+    ))->toThrow(InvalidArgumentException::class, 'does not enable the mcp surface');
+
+    expect($h['mcp']->isRegistered())->toBeFalse();
+});
+
+it('happy: register with registry validates known mcp capabilities and registers tools [ORI-842]', function () {
+    $h = AdapterHelpers::harness();
+
+    $servers = McpServerRegistrar::register(
+        mcpRegistrarConfig([
+            'profiles' => ['billing' => ['create-invoice', 'void-invoice', 'list-invoices']],
+        ]),
+        $h['mcp'],
+        BootHelpers::probe(mcp: true),
+        $h['registry'],
+    );
+
+    expect($servers)->toHaveCount(1)
+        ->and($h['mcp']->isRegistered())->toBeTrue();
+    $toolNames = array_column($servers[0]['tools'], 'name');
+    expect($toolNames)->toContain('create-invoice');
+});
+
+it('on_register_error=throw rethrows adapter register failures for non-empty plan [ORI-842]', function () {
+    $adapter = new class implements \Rawphp\Capabilities\Adapters\Mcp\McpToolAdapter
+    {
+        public function supportsInstalledPeer(): bool
+        {
+            return true;
+        }
+
+        public function adapterApiVersion(): int
+        {
+            return 1;
+        }
+
+        public function register(\Rawphp\Capabilities\Adapters\ToolSelection|string|array $selection): array
+        {
+            throw new RuntimeException('adapter mid-register boom');
+        }
+
+        public function handle(
+            string $name,
+            array $input,
+            \Rawphp\Capabilities\Adapters\Mcp\McpCredential $credential,
+            array $options = [],
+        ): \Rawphp\Capabilities\Support\CapabilityResult {
+            throw new RuntimeException('not used');
+        }
+
+        public function handleStructured(
+            string $name,
+            array $input,
+            \Rawphp\Capabilities\Adapters\Mcp\McpCredential $credential,
+            array $options = [],
+        ): array {
+            throw new RuntimeException('not used');
+        }
+    };
+
+    expect(fn () => McpServerRegistrar::register(
+        mcpRegistrarConfig([
+            'profiles' => ['billing' => ['create-invoice']],
+            'on_register_error' => 'throw',
+        ]),
+        $adapter,
+        BootHelpers::probe(mcp: true),
+    ))->toThrow(RuntimeException::class, 'adapter mid-register boom');
+});
+
+it('on_register_error=disable returns empty on adapter register failure for non-empty plan [ORI-842]', function () {
+    $adapter = new class implements \Rawphp\Capabilities\Adapters\Mcp\McpToolAdapter
+    {
+        public bool $registered = false;
+
+        public function supportsInstalledPeer(): bool
+        {
+            return true;
+        }
+
+        public function adapterApiVersion(): int
+        {
+            return 1;
+        }
+
+        public function register(\Rawphp\Capabilities\Adapters\ToolSelection|string|array $selection): array
+        {
+            $this->registered = true;
+            throw new RuntimeException('adapter mid-register boom');
+        }
+
+        public function handle(
+            string $name,
+            array $input,
+            \Rawphp\Capabilities\Adapters\Mcp\McpCredential $credential,
+            array $options = [],
+        ): \Rawphp\Capabilities\Support\CapabilityResult {
+            throw new RuntimeException('not used');
+        }
+
+        public function handleStructured(
+            string $name,
+            array $input,
+            \Rawphp\Capabilities\Adapters\Mcp\McpCredential $credential,
+            array $options = [],
+        ): array {
+            throw new RuntimeException('not used');
+        }
+    };
+
+    $servers = McpServerRegistrar::register(
+        mcpRegistrarConfig([
+            'profiles' => ['billing' => ['create-invoice']],
+            'on_register_error' => 'disable',
+        ]),
+        $adapter,
+        BootHelpers::probe(mcp: true),
+    );
+
+    expect($servers)->toBeEmpty();
+});
+
+it('default on_register_error is throw when key omitted [ORI-842]', function () {
+    $adapter = new class implements \Rawphp\Capabilities\Adapters\Mcp\McpToolAdapter
+    {
+        public function supportsInstalledPeer(): bool
+        {
+            return true;
+        }
+
+        public function adapterApiVersion(): int
+        {
+            return 1;
+        }
+
+        public function register(\Rawphp\Capabilities\Adapters\ToolSelection|string|array $selection): array
+        {
+            throw new RuntimeException('adapter mid-register boom');
+        }
+
+        public function handle(
+            string $name,
+            array $input,
+            \Rawphp\Capabilities\Adapters\Mcp\McpCredential $credential,
+            array $options = [],
+        ): \Rawphp\Capabilities\Support\CapabilityResult {
+            throw new RuntimeException('not used');
+        }
+
+        public function handleStructured(
+            string $name,
+            array $input,
+            \Rawphp\Capabilities\Adapters\Mcp\McpCredential $credential,
+            array $options = [],
+        ): array {
+            throw new RuntimeException('not used');
+        }
+    };
+
+    expect(fn () => McpServerRegistrar::register(
+        mcpRegistrarConfig([
+            'profiles' => ['billing' => ['create-invoice']],
+        ]),
+        $adapter,
+        BootHelpers::probe(mcp: true),
+    ))->toThrow(RuntimeException::class, 'adapter mid-register boom');
+});
+
+it('empty plan still soft-fails without peer (ORI-801 unchanged) [ORI-842]', function () {
+    $h = AdapterHelpers::harness();
+    $servers = McpServerRegistrar::register(
+        mcpRegistrarConfig([
+            'profiles' => [],
+            'servers' => [],
+            'on_incompatible' => 'fail',
+            'on_register_error' => 'throw',
+        ]),
+        $h['mcp'],
+        BootHelpers::probe(mcp: false),
+        $h['registry'],
+    );
+
+    expect($servers)->toBeEmpty()
+        ->and($h['mcp']->isRegistered())->toBeFalse();
+});
+
+it('register without registry skips allowlist validation (BC) [ORI-842]', function () {
+    $h = AdapterHelpers::harness();
+
+    // Profile lists a name absent from registry tool surface — without registry param, no pre-check.
+    $servers = McpServerRegistrar::register(
+        mcpRegistrarConfig([
+            'profiles' => ['billing' => ['create-invoice', 'void-invoice', 'list-invoices']],
+        ]),
+        $h['mcp'],
+        BootHelpers::probe(mcp: true),
+        null,
+    );
+
+    expect($servers)->toHaveCount(1);
+});
