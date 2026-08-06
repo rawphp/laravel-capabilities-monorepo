@@ -7,7 +7,7 @@
 
 **Primary requirement:** `laravel-capabilities` / `laravel-capabilities-ai` (and siblings) keep the **simplest, cleanest architecture possible**. The proposal defines that package shape — not a thick host extension framework.
 
-**Spec follow-up when build starts:** **D-024 host integration contract** in `docs/spec.md` (proposal is not the sole oracle).
+**Spec follow-up:** **D-024 host integration contract** recorded in `docs/spec.md` (build started 2026-08-07 / UR-062).
 
 ---
 
@@ -357,7 +357,7 @@ php artisan migrate
 
 ### Phase 0 — Document
 
-This proposal + D-024 when build starts.
+This proposal + D-024 recorded in docs/spec.md (build started).
 
 ### Phase 1 — Minimal package ship
 

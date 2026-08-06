@@ -4142,6 +4142,31 @@ public function mcp_profile_is_not_full_user_ui_surface(): void
 
 ---
 
+
+## D-024 — Host integration contract (package seams)
+
+**Status:** normative for 0.x package work (build-ready proposal 2026-08-06 rev 4).
+
+Hosts own domain capabilities, authorizer policy, product HTTP UX, and optional `extend(ProgressStore)`. Packages own runtime defaults and fail-closed product surfaces.
+
+| Seam | Owner | Rule |
+|------|--------|------|
+| Queue name/connection on default AI dispatch | AI package | Config `capabilities-ai.queue.{name,connection}` applied to `RunTurnJob` before dispatch |
+| Progress side-effects | Host | `app()->extend(ProgressStore::class, …)` after package bind — never full singleton rebind of redis/array store |
+| Product HTTP UX | Host routes | No package HTTP controller action map |
+| Idempotency readiness default | AI package | Live probe of core `IdempotencyStore` when bound; else `isReady()=false`. `AlwaysReadyIdempotency` is unit-test only |
+| Proposals | AI package | Single `proposals.enabled`; gates accept/reject routes, TurnRunner fence extract, and proposal history |
+| Stale turns | AI package | `capabilities-ai:reap-stale-turns` + thresholds; host schedules the command |
+| Integration diagnostics | Core package | `php artisan capabilities:integration-health` (≠ HTTP `…/capabilities/health`) |
+| AI-chat mode (health only) | Core health | `capabilities-ai.routes.enabled` **OR** non-empty `capabilities-ai.queue.name` |
+| MCP profiles | Core | `name => list<string>` capability names; validate existence + MCP surface at register; `on_register_error` (default `throw`) for mid-mount failures; empty plan soft-fail (ORI-801) |
+
+Deliberately **not** package APIs: progress decorator config, HTTP controller maps, `dispatch_binding`, nested MCP profile DSL, `product_chat` / `integration.mode`, package reaper auto-schedule.
+
+Full checklist and phased delivery: `docs/proposals/2026-08-06-host-integration-rearchitecture.md`.
+
+---
+
 ## Relationship to agent-native (TS)
 
 | | Agent-native | Laravel Capabilities |
