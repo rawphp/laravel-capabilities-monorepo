@@ -42,6 +42,9 @@ final class RedisProgressStore implements ProgressStore
             $this->redis->rPush($key, $payload);
         } elseif (method_exists($this->redis, 'rpush')) {
             $this->redis->rpush($key, $payload);
+        } elseif (is_callable([$this->redis, 'rpush'])) {
+            // Laravel Redis Connection wrappers expose rpush via __call only.
+            $this->redis->rpush($key, $payload);
         } else {
             throw new \RuntimeException('Redis client missing rPush');
         }
@@ -73,6 +76,12 @@ final class RedisProgressStore implements ProgressStore
             return $rows;
         }
         if (method_exists($this->redis, 'lrange')) {
+            /** @var list<string> $rows */
+            $rows = $this->redis->lrange($key, 0, -1) ?: [];
+
+            return $rows;
+        }
+        if (is_callable([$this->redis, 'lrange'])) {
             /** @var list<string> $rows */
             $rows = $this->redis->lrange($key, 0, -1) ?: [];
 

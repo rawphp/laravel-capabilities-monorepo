@@ -218,7 +218,20 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
 
         $manager = $app->make('redis');
         if (is_object($manager) && method_exists($manager, 'connection')) {
-            return $manager->connection($connection);
+            $conn = $manager->connection($connection);
+
+            // Laravel returns Illuminate\Redis\Connections\* wrappers. RedisProgressStore
+            // uses method_exists(rPush/lRange); those methods exist on the underlying
+            // ext-redis/predis client, not on the connection wrapper (only via __call).
+            // Prefer the native client so progress append/since work under phpredis.
+            if (is_object($conn) && method_exists($conn, 'client')) {
+                $client = $conn->client();
+                if (is_object($client)) {
+                    return $client;
+                }
+            }
+
+            return is_object($conn) ? $conn : null;
         }
         if (is_object($manager)) {
             return $manager;

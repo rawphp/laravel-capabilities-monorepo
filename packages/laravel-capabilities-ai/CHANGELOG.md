@@ -13,6 +13,7 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
+- **Redis progress under Laravel phpredis (coach turns):** `resolveRedisClientOrNull` now unwraps the Illuminate Redis connection to the native ext-redis/predis client (`connection()->client()`). `RedisProgressStore` also accepts Laravel connection wrappers that only expose `rpush`/`lrange` via `__call`. Without this, hosts with `CAPABILITIES_AI_PROGRESS_DRIVER=redis` failed every turn with `Redis client missing rPush` (SSE progress never appended; coach chat returned temporary-problem failures).
 - **Bus invoke principal (ORI-775):** `TurnRunner` tool invokes and `ProposalService` accept invokes now pass `caller=job` + conversation User as `actor` (legacy coach / `RunCoachCommandHandler` shape). Missing or unresolvable `conversation.user_id` fails closed (no `ResolveActor::defaultUser()` / silent id=1). Config: `capabilities-ai.user_model` (fallback `auth.providers.users.model`).
 
 ### Added

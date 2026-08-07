@@ -67,3 +67,49 @@ it('RedisProgressStore is optional and works with a fake redis client', function
     $events = $store->since('turn-a', 1);
     expect($events)->toHaveCount(1)->and($events[0]['kind'])->toBe('terminal');
 });
+
+it('RedisProgressStore accepts Laravel-style connection wrappers that only expose rpush via __call', function () {
+    $native = new class
+    {
+        /** @var array<string, list<string>> */
+        public array $lists = [];
+
+        public function rPush(string $key, string $value): int
+        {
+            $this->lists[$key][] = $value;
+
+            return count($this->lists[$key]);
+        }
+
+        /** @return list<string> */
+        public function lRange(string $key, int $start, int $end): array
+        {
+            return $this->lists[$key] ?? [];
+        }
+    };
+
+    // Mirrors Illuminate\Redis\Connections\Connection: no real rPush method, only __call.
+    $wrapper = new class($native)
+    {
+        public function __construct(private object $client) {}
+
+        public function client(): object
+        {
+            return $this->client;
+        }
+
+        public function __call(string $method, array $arguments): mixed
+        {
+            return $this->client->{$method}(...$arguments);
+        }
+    };
+
+    $store = new RedisProgressStore($wrapper);
+    $store->append('turn-wrap', ['kind' => 'status', 'data' => ['ok' => true]]);
+    $store->append('turn-wrap', ['kind' => 'terminal']);
+
+    $events = $store->since('turn-wrap', 0);
+    expect($events)->toHaveCount(2)
+        ->and($events[0]['kind'])->toBe('status')
+        ->and($events[1]['kind'])->toBe('terminal');
+});
