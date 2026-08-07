@@ -72,7 +72,23 @@ capabilities version
 2. Extract `capabilities.exe` into a folder on your **user** `PATH` (e.g. `%USERPROFILE%\bin`).
 3. Open a new terminal and run `capabilities version`.
 
-Windows binaries are currently **unsigned** (Authenticode optional). Source build remains supported — see **Build & test** below.
+Windows binaries are currently **unsigned** (Authenticode optional). Source build remains supported — see **Build & test** below. `capabilities self-update` is **darwin/linux only** — on Windows, download a new release zip manually.
+
+### Self-update (macOS / Linux)
+
+After the first install, upgrade to the **latest** release in place:
+
+```bash
+capabilities self-update
+```
+
+- **Latest only** (no version pin) — use `scripts/install.sh` with `VERSION=` to pin or reinstall.
+- Requires GitHub Release **`checksums.txt`** (fail closed on missing/mismatch).
+- Already up-to-date → exit **0**.
+- Unwritable install path → fail closed; reinstall with `install.sh` / `CAPABILITIES_INSTALL_DIR` into a directory you own (default `~/.local/bin`).
+- **darwin and linux only** (Windows: manual zip from Releases).
+
+Full detail: [docs/user-guide.md](docs/user-guide.md#self-update-macos--linux).
 
 ## Documentation
 

@@ -90,6 +90,32 @@ install -m 755 /tmp/capabilities ~/.local/bin/capabilities
 Windows binaries may be unsigned unless Authenticode secrets are configured.
 macOS release assets may be **Developer ID signed and notarized**.
 
+### Self-update (macOS / Linux)
+
+Once installed, upgrade to the **latest** GitHub Release without re-running the curl one-liner:
+
+```bash
+capabilities self-update
+```
+
+| | `self-update` | `scripts/install.sh` |
+|---|---------------|----------------------|
+| **When** | You already have a binary and want the latest | First install, pin a version, or choose install dir |
+| **Version** | **Latest only** (no pin) | Latest, or pin with `VERSION=` |
+| **Install dir** | Replaces **this** executable in place | `~/.local/bin` (or `CAPABILITIES_INSTALL_DIR`) |
+| **Platforms** | **darwin and linux only** | darwin / linux (Windows: manual zip) |
+| **Auth** | None (public Releases) | None |
+
+Behaviour:
+
+- Downloads the latest release of `rawphp/capabilities-cli` and verifies **`checksums.txt`** before replace (fail closed if missing or mismatched).
+- **Already up-to-date** → exit **0** with a short message (not an error).
+- Atomic replace when the install path is **writable**.
+- If the path is **not writable** (e.g. under `/usr/local` without permission), fails closed and points you at `scripts/install.sh` / `CAPABILITIES_INSTALL_DIR` into a directory you own (default `~/.local/bin`).
+- Non-interactive; does **not** touch auth/session stores.
+
+Windows: use [manual install](#windows) from Releases — `self-update` is not supported there.
+
 ### Build from source
 
 ```bash
@@ -307,10 +333,11 @@ capabilities approvals reject <id> [--profile=NAME]
 
 Missing `<id>` on accept/reject → exit **2** with a short usage line (not full help dump).
 
-### `version` / `help`
+### `version` / `self-update` / `help`
 
 ```bash
 capabilities version
+capabilities self-update                            # latest release; darwin/linux only
 capabilities help
 capabilities help run
 capabilities <domain> --help
@@ -320,8 +347,12 @@ capabilities run <name> --help                      # schema-first capability he
 
 Bare `capabilities` and `--help` paths exit **0** (success).
 
+`self-update` fetches the latest GitHub Release, requires `checksums.txt`, exits **0**
+when already current, and fails closed on unwritable install paths or unsupported OS
+(see [Self-update](#self-update-macos--linux)).
+
 Reserved meta-commands always win over domain tokens of the same name:
-`auth` · `catalog` · `describe` · `run` · `approvals` · `version` · `help`.
+`auth` · `catalog` · `describe` · `run` · `approvals` · `version` · `self-update` · `help`.
 The token **`mcp` remains reserved forever** (cannot be a synthesis domain) but
 is **not** a runnable command — product MCP is server-side / HTTP only.
 
@@ -431,6 +462,8 @@ These codes are part of the CLI contract (stable for automation).
 | Exit 4 | Approval required — `approvals accept/reject` |
 | Wrong product’s data | You used the wrong `--profile` |
 | `command not found: capabilities` | Install path not on `PATH` (`~/.local/bin`) |
+| `self-update` not writable | Reinstall via `scripts/install.sh` into a dir you own (`CAPABILITIES_INSTALL_DIR`, default `~/.local/bin`) |
+| `self-update` unsupported OS | darwin/linux only — on Windows download from [Releases](https://github.com/rawphp/capabilities-cli/releases) |
 | Gatekeeper / notarization (macOS) | Prefer release builds from GitHub; see [release-signing.md](release-signing.md) |
 
 Monorepo troubleshooting (broader product):  
