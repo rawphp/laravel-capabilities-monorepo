@@ -7,8 +7,11 @@ declare(strict_types=1);
 
 use Rawphp\Capabilities\Adapters\Mcp\McpCredential;
 use Rawphp\Capabilities\Adapters\Mcp\McpServerRegistrar;
+use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapter;
 use Rawphp\Capabilities\Adapters\PeerIncompatibleException;
+use Rawphp\Capabilities\Adapters\ToolSelection;
 use Rawphp\Capabilities\CapabilitiesServiceProvider;
+use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Tests\Fixtures\AdapterHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\BootHelpers;
 
@@ -451,7 +454,7 @@ it('happy: register with registry validates known mcp capabilities and registers
 });
 
 it('on_register_error=throw rethrows adapter register failures for non-empty plan [ORI-842]', function () {
-    $adapter = new class implements \Rawphp\Capabilities\Adapters\Mcp\McpToolAdapter
+    $adapter = new class implements McpToolAdapter
     {
         public function supportsInstalledPeer(): bool
         {
@@ -463,7 +466,7 @@ it('on_register_error=throw rethrows adapter register failures for non-empty pla
             return 1;
         }
 
-        public function register(\Rawphp\Capabilities\Adapters\ToolSelection|string|array $selection): array
+        public function register(ToolSelection|string|array $selection): array
         {
             throw new RuntimeException('adapter mid-register boom');
         }
@@ -471,16 +474,16 @@ it('on_register_error=throw rethrows adapter register failures for non-empty pla
         public function handle(
             string $name,
             array $input,
-            \Rawphp\Capabilities\Adapters\Mcp\McpCredential $credential,
+            McpCredential $credential,
             array $options = [],
-        ): \Rawphp\Capabilities\Support\CapabilityResult {
+        ): CapabilityResult {
             throw new RuntimeException('not used');
         }
 
         public function handleStructured(
             string $name,
             array $input,
-            \Rawphp\Capabilities\Adapters\Mcp\McpCredential $credential,
+            McpCredential $credential,
             array $options = [],
         ): array {
             throw new RuntimeException('not used');
@@ -498,7 +501,7 @@ it('on_register_error=throw rethrows adapter register failures for non-empty pla
 });
 
 it('on_register_error=disable returns empty on adapter register failure for non-empty plan [ORI-842]', function () {
-    $adapter = new class implements \Rawphp\Capabilities\Adapters\Mcp\McpToolAdapter
+    $adapter = new class implements McpToolAdapter
     {
         public bool $registered = false;
 
@@ -512,7 +515,7 @@ it('on_register_error=disable returns empty on adapter register failure for non-
             return 1;
         }
 
-        public function register(\Rawphp\Capabilities\Adapters\ToolSelection|string|array $selection): array
+        public function register(ToolSelection|string|array $selection): array
         {
             $this->registered = true;
             throw new RuntimeException('adapter mid-register boom');
@@ -521,16 +524,16 @@ it('on_register_error=disable returns empty on adapter register failure for non-
         public function handle(
             string $name,
             array $input,
-            \Rawphp\Capabilities\Adapters\Mcp\McpCredential $credential,
+            McpCredential $credential,
             array $options = [],
-        ): \Rawphp\Capabilities\Support\CapabilityResult {
+        ): CapabilityResult {
             throw new RuntimeException('not used');
         }
 
         public function handleStructured(
             string $name,
             array $input,
-            \Rawphp\Capabilities\Adapters\Mcp\McpCredential $credential,
+            McpCredential $credential,
             array $options = [],
         ): array {
             throw new RuntimeException('not used');
@@ -550,7 +553,7 @@ it('on_register_error=disable returns empty on adapter register failure for non-
 });
 
 it('default on_register_error is throw when key omitted [ORI-842]', function () {
-    $adapter = new class implements \Rawphp\Capabilities\Adapters\Mcp\McpToolAdapter
+    $adapter = new class implements McpToolAdapter
     {
         public function supportsInstalledPeer(): bool
         {
@@ -562,7 +565,7 @@ it('default on_register_error is throw when key omitted [ORI-842]', function () 
             return 1;
         }
 
-        public function register(\Rawphp\Capabilities\Adapters\ToolSelection|string|array $selection): array
+        public function register(ToolSelection|string|array $selection): array
         {
             throw new RuntimeException('adapter mid-register boom');
         }
@@ -570,16 +573,16 @@ it('default on_register_error is throw when key omitted [ORI-842]', function () 
         public function handle(
             string $name,
             array $input,
-            \Rawphp\Capabilities\Adapters\Mcp\McpCredential $credential,
+            McpCredential $credential,
             array $options = [],
-        ): \Rawphp\Capabilities\Support\CapabilityResult {
+        ): CapabilityResult {
             throw new RuntimeException('not used');
         }
 
         public function handleStructured(
             string $name,
             array $input,
-            \Rawphp\Capabilities\Adapters\Mcp\McpCredential $credential,
+            McpCredential $credential,
             array $options = [],
         ): array {
             throw new RuntimeException('not used');

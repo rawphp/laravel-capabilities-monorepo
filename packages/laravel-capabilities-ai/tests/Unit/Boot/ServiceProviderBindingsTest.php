@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 use Illuminate\Container\Container;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
+use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesAi\CapabilitiesAiServiceProvider;
@@ -23,6 +24,7 @@ use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
+use Rawphp\CapabilitiesAi\Support\StoreBoundIdempotencyReadiness;
 
 function aiFakeBus(): CapabilityBus
 {
@@ -131,7 +133,7 @@ it('defaults IdempotencyReadiness to fail-closed StoreBound when store unbound',
     $app = bootAiProviderContainer();
 
     $ready = $app->make(IdempotencyReadiness::class);
-    expect($ready)->toBeInstanceOf(\Rawphp\CapabilitiesAi\Support\StoreBoundIdempotencyReadiness::class)
+    expect($ready)->toBeInstanceOf(StoreBoundIdempotencyReadiness::class)
         ->and($ready->isReady())->toBeFalse();
 });
 
@@ -146,7 +148,7 @@ it('defaults IdempotencyReadiness ready when core IdempotencyStore is bound', fu
     $base = require dirname(__DIR__, 3).'/config/capabilities-ai.php';
     $app->instance('config', aiConfigRepo(['capabilities-ai' => $base]));
     $app->instance(CapabilityBus::class, aiFakeBus());
-    $app->instance(\Rawphp\Capabilities\Contracts\IdempotencyStore::class, new class implements \Rawphp\Capabilities\Contracts\IdempotencyStore
+    $app->instance(IdempotencyStore::class, new class implements IdempotencyStore
     {
         public function find(?string $tenantId, string $actorType, string $actorId, string $capabilityName, string $key): ?array
         {

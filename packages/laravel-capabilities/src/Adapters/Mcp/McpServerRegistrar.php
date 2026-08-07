@@ -202,7 +202,7 @@ final class McpServerRegistrar
     {
         try {
             $rows = self::plan($mcpConfig, $probe);
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return [];
         }
 

@@ -13,7 +13,9 @@ use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
+use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Proposal;
+use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 
@@ -140,8 +142,8 @@ it('history loads proposals when proposals enabled', function () {
         proposalsEnabled: true,
     );
     $ids = $svc->createUserMessage('hi');
-    $turn = \Rawphp\CapabilitiesAi\Models\Turn::query()->where('ulid', $ids['turn_ulid'])->firstOrFail();
-    $conversation = \Rawphp\CapabilitiesAi\Models\Conversation::query()->where('ulid', $ids['conversation_ulid'])->firstOrFail();
+    $turn = Turn::query()->where('ulid', $ids['turn_ulid'])->firstOrFail();
+    $conversation = Conversation::query()->where('ulid', $ids['conversation_ulid'])->firstOrFail();
     Proposal::query()->create([
         'turn_id' => $turn->id,
         'conversation_id' => $conversation->id,

@@ -84,7 +84,7 @@ function ihCommandApp(array $bindings = [], array $configTree = []): object
 function ihInvokeToolCount(object $app): int
 {
     $cmd = new IntegrationHealthCommand;
-    $ref = new \ReflectionClass($cmd);
+    $ref = new ReflectionClass($cmd);
     $laravel = $ref->getProperty('laravel');
     $laravel->setValue($cmd, $app);
     $method = $ref->getMethod('mcpToolCountCallback');

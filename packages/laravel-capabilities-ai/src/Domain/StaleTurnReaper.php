@@ -6,11 +6,12 @@ namespace Rawphp\CapabilitiesAi\Domain;
 
 use DateTimeInterface;
 use Illuminate\Support\Carbon;
+use Rawphp\CapabilitiesAi\Console\ReapStaleTurnsCommand;
 use Rawphp\CapabilitiesAi\Models\Turn;
 
 /**
  * Fail stale queued/running turns by threshold (D-024).
- * Host schedules {@see \Rawphp\CapabilitiesAi\Console\ReapStaleTurnsCommand}; package does not auto-schedule.
+ * Host schedules {@see ReapStaleTurnsCommand}; package does not auto-schedule.
  */
 final class StaleTurnReaper
 {

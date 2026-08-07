@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Rawphp\Capabilities\Adapters\Artisan;
 
-
 use Illuminate\Console\Command;
 use Rawphp\Capabilities\Adapters\Mcp\McpServerRegistrar;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
