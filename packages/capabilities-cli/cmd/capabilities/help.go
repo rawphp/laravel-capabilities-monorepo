@@ -17,13 +17,14 @@ USAGE:
   capabilities <domain> <verb> [flags]
 
 RESERVED COMMANDS:
-  auth        Login / logout / status (keychain token store)
-  catalog     List capabilities from the remote HTTP API
-  describe    Show JSON Schema for a capability
-  run         Validate locally, send Idempotency-Key, POST invoke
-  approvals   Accept or reject pending approvals
-  version     Print version
-  help        Show help
+  auth         Login / logout / status (keychain token store)
+  catalog      List capabilities from the remote HTTP API
+  describe     Show JSON Schema for a capability
+  run          Validate locally, send Idempotency-Key, POST invoke
+  approvals    Accept or reject pending approvals
+  version      Print version
+  self-update  Install the latest release of this binary (no auth)
+  help         Show help
 
 DISCOVERY:
   capabilities catalog                       domain index (human default)
@@ -132,6 +133,22 @@ USAGE:
 USAGE:
   capabilities version
 `
+	case "self-update":
+		return `self-update — download and replace this binary from GitHub Releases
+
+USAGE:
+  capabilities self-update
+
+BEHAVIOUR:
+  - Fetches the latest release of rawphp/capabilities-cli (darwin/linux only)
+  - Verifies checksums.txt before replace (fail closed on missing/mismatch)
+  - Atomic replace of this executable when the install path is writable
+  - Already up-to-date → exit 0 with a short message
+  - Non-interactive; does not touch auth/session stores
+
+If the install path is not writable, reinstall via scripts/install.sh into a
+directory you own (CAPABILITIES_INSTALL_DIR, default ~/.local/bin).
+`
 	case "help":
 		return RootHelp()
 	default:
@@ -144,7 +161,7 @@ USAGE:
 // (CLI MCP stdio was hard-removed; product MCP is server-side via laravel/mcp).
 var KnownCommands = []string{
 	"auth", "auth login", "auth logout", "auth status",
-	"catalog", "describe", "run", "approvals", "version", "help",
+	"catalog", "describe", "run", "approvals", "version", "self-update", "help",
 }
 
 // CommandExists reports whether a command is registered.
@@ -156,7 +173,7 @@ func CommandExists(name string) bool {
 	}
 	// Also accept top-level only.
 	switch name {
-	case "auth", "catalog", "describe", "run", "approvals", "version", "help":
+	case "auth", "catalog", "describe", "run", "approvals", "version", "self-update", "help":
 		return true
 	}
 	return false

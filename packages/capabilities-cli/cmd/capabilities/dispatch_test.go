@@ -33,7 +33,7 @@ func captureDispatch(t *testing.T, args []string, idx *synth.Index, summaries []
 
 func TestRootHelpListsReservedAndDiscoveryPointer(t *testing.T) {
 	h := RootHelp()
-	for _, cmd := range []string{"auth", "catalog", "describe", "run", "approvals", "version", "help"} {
+	for _, cmd := range []string{"auth", "catalog", "describe", "run", "approvals", "version", "self-update", "help"} {
 		if !strings.Contains(h, cmd) {
 			t.Fatalf("root help missing reserved %q:\n%s", cmd, h)
 		}

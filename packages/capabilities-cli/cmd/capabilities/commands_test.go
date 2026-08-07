@@ -87,6 +87,16 @@ func TestCommandhelpVersion(t *testing.T) {
 		t.Fatal()
 	}
 }
+func TestCommandexistsSelfupdate(t *testing.T) {
+	if !CommandExists("self-update") {
+		t.Fatal()
+	}
+}
+func TestCommandhelpSelfupdate(t *testing.T) {
+	if !strings.Contains(CommandHelp("self-update"), "self-update") {
+		t.Fatal()
+	}
+}
 func TestCommandexistsHelp(t *testing.T) {
 	if !CommandExists("help") {
 		t.Fatal()
