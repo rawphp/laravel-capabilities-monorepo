@@ -1983,7 +1983,7 @@ schedule every N minutes (default 1)
 | **Not a second accept** | Resume does not require a second human click; decision already final |
 | **Replay after executed** | Further accept/resume returns stored `result_json` |
 | **Stuck alert** | If `approved` longer than `approval.stuck_after_seconds` (default 300), increment metric and optional log/alert |
-| **Manual repair** | `php artisan capabilities:approvals-resume {id?}` forces the same code path as the scheduler |
+| **Manual repair** | Call `ResumeApprovedApprovals::artisan($id?)` (or `ApprovalManager::artisanResume`) — same path as the scheduled sweep. **Not** a registered Artisan command in core today; host may wrap it in a command or schedule the class directly |
 
 #### Shape B — Atomic accept (no sweeper required for limbo)
 
@@ -2192,7 +2192,7 @@ TelegramCallback::verify($token, $tampered)->assertInvalid();
 
 // P2-004: crash after approved — resume completes exactly once
 $approval = /* force status=approved, decided_by set, no result_json */;
-ResumeApprovedApprovals::dispatchSync(); // or artisan capabilities:approvals-resume
+(new ResumeApprovedApprovals($manager))->handle(); // same as schedule / artisanResume
 $approval->refresh();
 expect($approval->status)->toBe('executed');
 expect($approval->result_json)->not->toBeNull();

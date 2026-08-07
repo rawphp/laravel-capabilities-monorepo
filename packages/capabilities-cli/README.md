@@ -44,7 +44,7 @@ capabilities version
 
 ```bash
 # pin release
-curl -fsSL https://raw.githubusercontent.com/rawphp/capabilities-cli/main/scripts/install.sh | VERSION=0.1.7 bash
+curl -fsSL https://raw.githubusercontent.com/rawphp/capabilities-cli/main/scripts/install.sh | VERSION=0.4.0 bash
 
 # custom user-global dir (still no sudo)
 curl -fsSL https://raw.githubusercontent.com/rawphp/capabilities-cli/main/scripts/install.sh | CAPABILITIES_INSTALL_DIR="$HOME/bin" bash
@@ -53,7 +53,7 @@ curl -fsSL https://raw.githubusercontent.com/rawphp/capabilities-cli/main/script
 ### Manual (macOS / Linux)
 
 ```bash
-VERSION=0.1.7   # or latest from the Releases page
+VERSION=0.4.0   # or latest from the Releases page
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')   # darwin | linux
 ARCH=$(uname -m)
 case "$ARCH" in x86_64) ARCH=amd64;; aarch64|arm64) ARCH=arm64;; esac

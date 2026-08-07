@@ -469,7 +469,7 @@ Extend the catalog in the generator and re-run; do not hand-edit pure stubs.
 - [x] edge: approved within grace_seconds not claimed by resume [P2-004]
 - [x] happy: lease claim prevents two workers double run [P2-004]
 - [x] happy: stuck_after_seconds increments approvals_stuck_approved_total metric [P2-004]
-- [x] happy: artisan capabilities:approvals-resume uses same path as scheduler [P2-004]
+- [x] happy: ResumeApprovedApprovals::artisan uses same path as scheduler [P2-004]
 - [x] happy: atomic execution mode has no approved limbo and resume is no-op [P2-004]
 - [x] fail: process death before commit Shape B leaves pending allowing safe re-accept [P2-004]
 - [x] happy: audit chain approval.resume [P2-004]

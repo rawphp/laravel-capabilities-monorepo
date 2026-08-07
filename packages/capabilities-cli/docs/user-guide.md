@@ -63,14 +63,14 @@ capabilities version
 Pin version or install directory:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rawphp/capabilities-cli/main/scripts/install.sh | VERSION=0.1.7 bash
+curl -fsSL https://raw.githubusercontent.com/rawphp/capabilities-cli/main/scripts/install.sh | VERSION=0.4.0 bash
 curl -fsSL https://raw.githubusercontent.com/rawphp/capabilities-cli/main/scripts/install.sh | CAPABILITIES_INSTALL_DIR="$HOME/bin" bash
 ```
 
 ### Manual (macOS / Linux)
 
 ```bash
-VERSION=0.1.7   # or latest from Releases
+VERSION=0.4.0   # or latest from Releases
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m); case "$ARCH" in x86_64) ARCH=amd64;; aarch64|arm64) ARCH=arm64;; esac
 

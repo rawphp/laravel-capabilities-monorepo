@@ -1,6 +1,6 @@
 # Versioning and packaging
 
-How Laravel Capabilities packages are versioned and how consumers install them **today**. This does **not** claim Packagist listings or stable release tags already exist.
+How Laravel Capabilities packages are versioned and how consumers install them **today**. Coordinated monorepo `v*` tags and CLI GitHub Releases may already exist; this does **not** claim Packagist listings or a stable **1.x** public API.
 
 ## Packages, remotes, changelogs
 
@@ -191,8 +191,8 @@ Examples: `v0.1.0`, `v0.1.1`, `v0.2.0`.
 | **SemVer body** | `0.Y.Z` only while pre-stable (major stays `0`). |
 | **Scope** | One coordinated monorepo tag. The split workflow mirrors the same tag name onto each package remote. |
 | **Not used (v0.x)** | Package-scoped tags such as `laravel-capabilities/v0.1.0`. |
-| **First pre-stable target** | `v0.1.0` when a human deliberately cuts the first tag. |
-| **Annotated preferred** | `git tag -a v0.1.0 -m "Pre-stable 0.1.0"` on the monorepo. |
+| **Current line** | Monorepo already has coordinated `v*` tags (through at least `v0.4.0`); next cut is the next SemVer step, not a first-ever tag. |
+| **Annotated preferred** | `git tag -a v0.Y.Z -m "…"` on the monorepo. |
 | **Push** | Tag create/push on the monorepo are human-gated; package remotes receive the tag via CI. |
 
 ### CHANGELOG ↔ tag handoff (Keep a Changelog)
@@ -296,19 +296,19 @@ Durable approval / idempotency in a host app is a **config + migrations** path �
 | Tables | `capabilities_approvals`, `capabilities_idempotency` (`MigrationCatalog`) |
 | Host override | Bind `TableGateway` in `AppServiceProvider` (see [first-capability tutorial](tutorials/first-capability.md#durable-stores-approvals--idempotency)) |
 
-Package defaults: `approval.store` = `database`; `idempotency.driver` = `memory` until the host opts into database. Missing connection on a database driver fails closed (no silent `ArrayTableGateway`). Full host walkthrough: [first-capability tutorial](tutorials/first-capability.md). Package notes: [core package README](../packages/laravel-capabilities/README.md#durable-persistence-querytablegateway).
+Package defaults: `approval.store` = `database`; `idempotency.driver` = `database` (aligned with approval for multi-worker durability). Set either to `memory` only for single-process tests. Missing connection on a database driver fails closed (no silent `ArrayTableGateway`). Full host walkthrough: [first-capability tutorial](tutorials/first-capability.md). Package notes: [core package README](../packages/laravel-capabilities/README.md#durable-persistence-querytablegateway).
 
 This does **not** mean packages are on Packagist — install remains path or package-repo VCS until the human Packagist checklist above is complete.
 
 ## What this prep work does **not** do
 
 - No Packagist publish, API tokens, or `composer publish` automation.
-- No git tags created solely by versioning docs.
+- No git tags created solely by versioning docs (tags are cut by humans / `scripts/release.sh`).
 - No secrets, deploy keys, or live network release steps in-repo (split uses a configured `SPLIT_GITHUB_TOKEN` secret only).
-- No claim that packages are already on Packagist or that tags already exist on public remotes.
+- No claim that packages are already on **Packagist** (Composer `composer require` without VCS/path remains residual).
 - No monorepo unit test that hits `packagist.org` or requires `composer show` against the public registry.
 
-When a maintainer completes the **Packagist + git tag publish checklist** above, cut monorepo tags using the pattern in **Git tag naming**, fill dated CHANGELOG sections, and only then claim public install via Packagist / binary distribution.
+**Tags vs Packagist:** coordinated monorepo `v*` tags and package-remote mirrors (plus CLI GitHub Releases) may already exist. That does **not** mean Packagist listings are complete. Complete the **Packagist + git tag publish checklist** before claiming public install via Packagist; fill dated CHANGELOG sections when cutting each tag.
 
 ## AI package residuals (honesty)
 

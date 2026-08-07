@@ -564,7 +564,7 @@ final class ApprovalManager implements ApprovalGateway
     }
 
     /**
-     * Same code path as scheduler (artisan capabilities:approvals-resume).
+     * Same force path as scheduled resume / {@see ResumeApprovedApprovals::artisan()}.
      * Forces past grace for the targeted id (operator repair).
      *
      * @return list<CapabilityResult>

@@ -73,7 +73,7 @@ it('happy: stuck_after_seconds increments approvals_stuck_approved_total metric 
     expect($h['manager']->metrics()->get('approvals_stuck_approved_total'))->toBeGreaterThan(0);
 });
 
-it('happy: artisan capabilities:approvals-resume uses same path as scheduler [P2-004]', function () {
+it('happy: ResumeApprovedApprovals::artisan uses same path as scheduler [P2-004]', function () {
     $h = ApprovalHelpers::withPending();
     $id = (string) $h['row']['id'];
     $h['store']->update($id, ['status' => 'approved', 'approved_at' => $h['clock']->now()->modify('-120 seconds')->format(DATE_ATOM), 'execution_lease_until' => null]);

@@ -167,7 +167,7 @@ Do **not** put package behaviour tests under monorepo-root `tests/`. Each Compos
 - Prefer **typed package-native DTOs** (`CapabilityData`) on authorize/run/output; `array` only at wire edges.
 - Catalog and tools share the **same JSON Schema** derived from DTOs — no hand-copied second schema.
 - Fail **closed and obvious**: disabled surfaces register nothing; clear boot errors when peers missing while surface enabled.
-- PHP: Laravel 11+ / 12, PHP ^8.2; **Pest unit tests only** (no feature suite); PHPStan max on package code when CI lands.
+- PHP: Laravel 11 / 12 / 13 (`illuminate/*` ^11|^12|^13), PHP ^8.2 (Laravel 13 needs PHP ^8.3); **Pest unit tests only** (no feature suite); PHPStan max on package code when CI lands.
 - Design for testability: depend on interfaces; production may bind DB drivers, tests bind in-memory fakes — same code paths.
 - Go CLI: validate schema locally → ensure Idempotency-Key → POST single HTTP API; never embed domain logic; unit-test with mocked HTTP.
 - When in doubt, re-read the matching **D-0xx** section in `docs/spec.md` rather than inventing behaviour.

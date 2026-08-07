@@ -3,11 +3,11 @@
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/rawphp/capabilities-cli/main/scripts/install.sh | bash
-#   VERSION=0.1.7 bash scripts/install.sh
+#   VERSION=0.4.0 bash scripts/install.sh
 #   CAPABILITIES_INSTALL_DIR=~/bin bash scripts/install.sh
 #
 # Env:
-#   VERSION                 Pin a release (e.g. 0.1.7). Default: latest GitHub release.
+#   VERSION                 Pin a release (e.g. 0.4.0). Default: latest GitHub release.
 #   CAPABILITIES_INSTALL_DIR  Install directory (default: ~/.local/bin)
 #   REPO                    owner/name (default: rawphp/capabilities-cli)
 set -euo pipefail
@@ -59,7 +59,7 @@ if [[ -z "${VERSION:-}" ]]; then
   [[ -n "${VERSION}" ]] || die "could not resolve latest release version for ${REPO}"
 fi
 
-# Strip leading v if user passed v0.1.7
+# Strip leading v if user passed v0.4.0
 VERSION="${VERSION#v}"
 
 asset="${BIN_NAME}_${VERSION}_${os}_${arch}.${archive_ext}"

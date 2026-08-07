@@ -46,12 +46,13 @@ composer update rawphp/laravel-capabilities-messaging
 
 Auto-discovery loads `Rawphp\CapabilitiesMessaging\MessagingServiceProvider`.
 
-Publish config and migrations when you need them:
+Publish config when you need overrides:
 
 ```bash
 php artisan vendor:publish --tag=capabilities-messaging-config
-php artisan vendor:publish --tag=capabilities-messaging-migrations
 ```
+
+**Migrations:** the package still exposes publish tag `capabilities-messaging-migrations`, but the migrations directory is **empty** today (only a placeholder). Identity and threads are **process-local in-memory** (L-006 residual) — there is no package schema to migrate yet. Do not expect `php artisan migrate` to create messaging tables after publishing that tag.
 
 ## Configure
 

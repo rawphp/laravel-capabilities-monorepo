@@ -135,7 +135,7 @@ AI-chat mode for this command: `capabilities-ai.routes.enabled` **OR** non-empty
 ### Double apply on retry
 
 **Cause:** Idempotency disabled, definition not idempotent, missing key, or memory driver lost state across processes.  
-**Fix:** Enable idempotency; send `Idempotency-Key`; for multi-node production prefer a durable driver binding (package default scaffold uses `memory` — host apps may rebind database). CLI sends keys automatically on `run`.
+**Fix:** Enable idempotency; send `Idempotency-Key`; keep the package default `idempotency.driver` = `database` (and a shared DB) on multi-node hosts — do not leave `memory` in production. CLI sends keys automatically on `run`.
 
 ### Stuck pending approval
 

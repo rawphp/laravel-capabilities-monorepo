@@ -37,7 +37,7 @@ GOOS=windows GOARCH=arm64 go build -o dist/capabilities-windows-arm64.exe ./cmd/
 The CLI reports its version from package-level `var Version` in `cmd/capabilities`
 (`package main`). Release builds **must** inject the release version at link time
 so `capabilities version` matches the git tag (strip the leading `v` from tags
-like `v0.2.0` → `0.2.0`).
+like `v0.4.0` → `0.4.0`).
 
 **ldflags key (exact symbol path for GoReleaser / manual builds):**
 
@@ -49,9 +49,9 @@ Example:
 
 ```bash
 # from packages/capabilities-cli
-go build -ldflags "-X main.Version=0.2.0" -o dist/capabilities ./cmd/capabilities
+go build -ldflags "-X main.Version=0.4.0" -o dist/capabilities ./cmd/capabilities
 ./dist/capabilities version
-# → capabilities 0.2.0
+# → capabilities 0.4.0
 ```
 
 Without `-ldflags`, the binary keeps the source default in `Version` (dev string).

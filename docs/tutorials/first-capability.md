@@ -65,7 +65,7 @@ When you enable **database** drivers, the package uses a first-party `Rawphp\Cap
 |---|---|---|
 | `approval.store` | Approval store driver (`memory` / `database` / aliases) | `database` |
 | `approval.connection` | Optional Illuminate connection name for approvals | `null` → app default (`db`) |
-| `idempotency.driver` | Idempotency store driver | `memory` (set `database` for durable keys) |
+| `idempotency.driver` | Idempotency store driver | `database` (aligned with approval; set `memory` only for single-process tests) |
 | `idempotency.connection` | Optional connection name for idempotency | `null` → app default |
 
 Env mirrors: `CAPABILITIES_APPROVAL_CONNECTION`, `CAPABILITIES_IDEMPOTENCY_DRIVER`, `CAPABILITIES_IDEMPOTENCY_CONNECTION`.
@@ -77,7 +77,7 @@ php artisan vendor:publish --tag=capabilities-migrations
 php artisan migrate
 ```
 
-For production durability: keep `approval.store` = `database` (default) and set `idempotency.driver` = `database`. The service provider builds a **per-table** `QueryTableGateway` for each store from the resolved connection.
+For production durability: keep the package defaults (`approval.store` = `database`, `idempotency.driver` = `database`). The service provider builds a **per-table** `QueryTableGateway` for each store from the resolved connection.
 
 **Host override** (custom gateway, or `ArrayTableGateway` for unit isolation). Bind `TableGateway` before the package factories run — a host binding wins over the QueryTableGateway construction path:
 

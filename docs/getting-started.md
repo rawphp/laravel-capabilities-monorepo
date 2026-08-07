@@ -10,7 +10,7 @@ Install core into a Laravel app, define one capability, invoke it through the re
 
 ## Before you start
 
-- PHP **^8.2**, Laravel **11 or 12** (`illuminate/*` as required by the core package)
+- PHP **^8.2**, Laravel **11, 12, or 13** (`illuminate/*` as required by the core package; Laravel 13 apps need PHP ^8.3 per framework)
 - Composer in your app
 - Access to packages via either:
   - a monorepo clone (path install), or
