@@ -7,7 +7,6 @@ namespace Rawphp\Capabilities\Adapters\Artisan;
 
 use Illuminate\Console\Command;
 use Rawphp\Capabilities\Adapters\Mcp\McpServerRegistrar;
-use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapter;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\IntegrationHealthChecker;
 use Rawphp\Capabilities\Support\IntegrationHealthReport;
@@ -95,7 +94,11 @@ class IntegrationHealthCommand extends Command
     }
 
     /**
-     * Best-effort MCP tool count; null when registry/adapter unavailable.
+     * Best-effort MCP tool count via plan + registry (read-only; never mounts tools).
+     *
+     * Uses {@see McpServerRegistrar::plan} and {@see CapabilityRegistry::mcpTools} so
+     * diagnostics never call {@see McpServerRegistrar::register} / adapter register on
+     * the live singleton (ORI-846 / UR-063). Unbound registry or empty plan → 0.
      *
      * @return (callable(): int)|null
      */
@@ -103,7 +106,7 @@ class IntegrationHealthCommand extends Command
     {
         return function (): int {
             $app = $this->laravel;
-            if (! $app->bound(CapabilityRegistry::class) || ! $app->bound(McpToolAdapter::class)) {
+            if (! $app->bound(CapabilityRegistry::class)) {
                 return 0;
             }
 
@@ -115,10 +118,20 @@ class IntegrationHealthCommand extends Command
                 $mcp = [];
             }
 
-            $servers = McpServerRegistrar::register($mcp, $app->make(McpToolAdapter::class));
+            $rows = McpServerRegistrar::plan($mcp);
+            if ($rows === []) {
+                return 0;
+            }
+
+            /** @var CapabilityRegistry $registry */
+            $registry = $app->make(CapabilityRegistry::class);
             $n = 0;
-            foreach ($servers as $s) {
-                $n += count($s['tools'] ?? []);
+            foreach ($rows as $row) {
+                $profile = $row['profile'] ?? null;
+                if (! is_string($profile) || $profile === '') {
+                    continue;
+                }
+                $n += count($registry->mcpTools($profile));
             }
 
             return $n;
