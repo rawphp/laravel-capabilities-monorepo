@@ -24,6 +24,11 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Added
 
+- **`capabilities self-update`** — install the latest GitHub Release of this binary in place
+  (`rawphp/capabilities-cli`; darwin/linux only). Verifies `checksums.txt` (fail closed),
+  already-up-to-date exits **0**, unwritable path fails closed with `install.sh` /
+  `CAPABILITIES_INSTALL_DIR` guidance. No auth; does not touch session stores. Documented in
+  package README and `docs/user-guide.md` (when to use vs `scripts/install.sh`).
 - **`auth status --json`** — D-018 envelope with `profile`, `base_url`, `logged_in` (never the token).
 - **`auth list` / `auth profiles`** — list stored profiles (name, base_url, logged_in; never tokens); `--json` envelope.
 - **`catalog --include-schemas`** — list/JSON with `input_schema` / `output_schema` in one round-trip for agents.
