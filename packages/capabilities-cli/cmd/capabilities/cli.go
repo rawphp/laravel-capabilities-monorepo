@@ -49,6 +49,10 @@ type Env struct {
 	Summaries []catalog.CapabilitySummary
 	// SchemaFor optional schema provider for capability --help without HTTP.
 	SchemaFor SchemaLookup
+	// SelfUpdate optional engine override (tests inject a fake; no live network).
+	SelfUpdate SelfUpdateEngine
+	// ExecutablePath optional override for self-update target (default os.Executable).
+	ExecutablePath string
 }
 
 // Execute parses args and runs a subcommand. Returns process exit code.
@@ -91,6 +95,8 @@ func Execute(env Env) int {
 	case "version", "--version", "-v":
 		fmt.Fprintf(env.Stdout, "%s %s\n", BinaryName, Version)
 		return api.ExitOK
+	case "self-update":
+		return cmdSelfUpdate(env, rest)
 	case "auth":
 		return cmdAuth(env, rest)
 	case "catalog":
