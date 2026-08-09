@@ -16,6 +16,12 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 - **Redis progress under Laravel phpredis (coach turns):** `resolveRedisClientOrNull` now unwraps the Illuminate Redis connection to the native ext-redis/predis client (`connection()->client()`). `RedisProgressStore` also accepts Laravel connection wrappers that only expose `rpush`/`lrange` via `__call`. Without this, hosts with `CAPABILITIES_AI_PROGRESS_DRIVER=redis` failed every turn with `Redis client missing rPush` (SSE progress never appended; coach chat returned temporary-problem failures).
 - **Bus invoke principal (ORI-775):** `TurnRunner` tool invokes and `ProposalService` accept invokes now pass `caller=job` + conversation User as `actor` (legacy coach / `RunCoachCommandHandler` shape). Missing or unresolvable `conversation.user_id` fails closed (no `ResolveActor::defaultUser()` / silent id=1). Config: `capabilities-ai.user_model` (fallback `auth.providers.users.model`).
 
+## [0.5.1] - 2026-08-09
+
+### Fixed
+
+- **Anthropic dotted tool names:** `AnthropicLlmClient` encodes package/capability ids for the Anthropic wire (`pane.list` → `pane__list`, matching `^[a-zA-Z0-9_-]{1,128}$`) and decodes on inbound `tool_use` so `TurnRunner` still invokes the bus by capability name. Without this, hosts that advertise dotted tools (LivePane Assistant) failed every turn with Anthropic 400 `tools.N.custom.name` pattern errors.
+
 ### Added
 
 - **Host integration seams (UR-062 / D-024):** queue-on-default-dispatch, live idempotency readiness, proposals full gate, stale-turn reaper, phase-3 unsafe-driver guards. Greenfield checklist + ProgressStore `extend` order + residual kill-list: [docs/user-guide.md](docs/user-guide.md#host-integration-greenfield). Core companion: `php artisan capabilities:integration-health` (≠ HTTP `/capabilities/health`) and MCP `on_register_error` — see [rawphp/laravel-capabilities CHANGELOG](https://github.com/rawphp/laravel-capabilities/blob/main/CHANGELOG.md).
