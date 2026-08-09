@@ -136,6 +136,50 @@ it('maps package tool defs to Anthropic tools with input_schema and parses tool_
     });
 });
 
+it('encodes dotted capability names for Anthropic wire and decodes tool_use back', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'content' => [
+                [
+                    'type' => 'tool_use',
+                    'id' => 'toolu_pane',
+                    // Wire name Anthropic accepts (no dots).
+                    'name' => 'pane__list',
+                    'input' => ['workspace_id' => '01ARZ3NDEKTSV4RRFFQ69G5FAV'],
+                ],
+            ],
+        ], 200),
+    ]);
+
+    $client = new AnthropicLlmClient('test-key');
+    $out = $client->complete(
+        [['role' => 'user', 'content' => 'list panes']],
+        [[
+            'name' => 'pane.list',
+            'description' => 'List panes',
+            'parameters' => ['type' => 'object', 'properties' => []],
+        ]],
+    );
+
+    // Package layer still sees capability name (bus invoke).
+    expect($out['tool_calls'][0]['name'] ?? null)->toBe('pane.list')
+        ->and(AnthropicLlmClient::encodeToolName('pane.list'))->toBe('pane__list')
+        ->and(AnthropicLlmClient::decodeToolName('pane__list'))->toBe('pane.list')
+        ->and(AnthropicLlmClient::encodeToolName('pane__list'))->toMatch('/^[a-zA-Z0-9_-]{1,128}$/');
+
+    Http::assertSent(function ($request) {
+        $tools = $request->data()['tools'] ?? [];
+        $name = $tools[0]['name'] ?? null;
+
+        // Must match Anthropic pattern (no dots).
+        return $name === 'pane__list'
+            && is_string($name)
+            && (bool) preg_match('/^[a-zA-Z0-9_-]{1,128}$/', $name);
+    });
+});
+
 it('multi-round: tools advertised then tool_result then final text', function () {
     bootAnthropicHttp();
 
@@ -147,7 +191,8 @@ it('multi-round: tools advertised then tool_result then final text', function ()
         if ($sequence === 1) {
             $tools = $body['tools'] ?? [];
             expect($tools)->not->toBeEmpty()
-                ->and($tools[0]['name'] ?? null)->toBe('demo.tool')
+                // Dotted package names are encoded for Anthropic (no dots on wire).
+                ->and($tools[0]['name'] ?? null)->toBe('demo__tool')
                 ->and($tools[0]['input_schema'] ?? null)->not->toBeNull();
 
             return Http::response([
@@ -155,7 +200,7 @@ it('multi-round: tools advertised then tool_result then final text', function ()
                     [
                         'type' => 'tool_use',
                         'id' => 'toolu_round1',
-                        'name' => 'demo.tool',
+                        'name' => 'demo__tool',
                         'input' => ['x' => 1],
                     ],
                 ],

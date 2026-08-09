@@ -142,7 +142,8 @@ final class AnthropicLlmClient implements LlmClient
             if (($block['type'] ?? '') === 'tool_use') {
                 $toolCalls[] = [
                     'id' => (string) ($block['id'] ?? ''),
-                    'name' => (string) ($block['name'] ?? ''),
+                    // Decode Anthropic-safe wire name back to package/capability name.
+                    'name' => self::decodeToolName((string) ($block['name'] ?? '')),
                     'arguments' => $block['input'] ?? [],
                 ];
             }
@@ -154,6 +155,25 @@ final class AnthropicLlmClient implements LlmClient
         }
 
         return $out;
+    }
+
+    /**
+     * Anthropic custom tool names: ^[a-zA-Z0-9_-]{1,128}$ (no dots).
+     * Package/capability names use dotted ids (e.g. pane.list). Encode for the
+     * wire and decode on tool_use so TurnRunner still invokes the bus by
+     * capability name.
+     */
+    public static function encodeToolName(string $name): string
+    {
+        return str_replace('.', '__', $name);
+    }
+
+    /**
+     * Reverse {@see encodeToolName} (double-underscore → dot).
+     */
+    public static function decodeToolName(string $name): string
+    {
+        return str_replace('__', '.', $name);
     }
 
     /**
@@ -191,7 +211,7 @@ final class AnthropicLlmClient implements LlmClient
             }
 
             $mapped[] = [
-                'name' => $name,
+                'name' => self::encodeToolName($name),
                 'description' => (string) ($tool['description'] ?? ''),
                 'input_schema' => $schema,
             ];
@@ -246,7 +266,8 @@ final class AnthropicLlmClient implements LlmClient
                 $blocks[] = [
                     'type' => 'tool_use',
                     'id' => $id,
-                    'name' => (string) ($call['name'] ?? ''),
+                    // Re-encode package names when replaying assistant tool_use rounds.
+                    'name' => self::encodeToolName((string) ($call['name'] ?? '')),
                     // Empty input must encode as {} for Anthropic.
                     'input' => $input === [] ? new stdClass : $input,
                 ];
