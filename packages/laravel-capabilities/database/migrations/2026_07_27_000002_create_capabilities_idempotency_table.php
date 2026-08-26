@@ -7,6 +7,10 @@ use Rawphp\Capabilities\Persistence\MigrationCatalog;
 
 /**
  * Durable mutating-invoke outcomes (D-005). Composite unique identity is required.
+ *
+ * `id` is a string primary key (gateway ids are 32-char hex); shape lives in
+ * MigrationCatalog::defineIdempotency so fresh installs and corrective
+ * migrations converge on the same schema.
  */
 return new class extends Migration
 {
@@ -17,26 +21,8 @@ return new class extends Migration
             return;
         }
 
-        Schema::create($table, function (Blueprint $blueprint): void {
-            $blueprint->bigIncrements('id');
-            // Empty string for null tenant so unique index works on MySQL.
-            $blueprint->string('tenant_id', 191)->default('');
-            $blueprint->string('actor_type', 64);
-            $blueprint->string('actor_id', 191);
-            $blueprint->string('capability_name', 191);
-            $blueprint->string('idempotency_key', 191);
-            $blueprint->string('request_hash', 128)->nullable();
-            $blueprint->string('status', 32);
-            $blueprint->json('result_json')->nullable();
-            $blueprint->string('approval_id', 64)->nullable();
-            $blueprint->timestamp('created_at')->useCurrent();
-            $blueprint->timestamp('expires_at')->nullable()->index();
-
-            $blueprint->unique(
-                ['tenant_id', 'actor_type', 'actor_id', 'capability_name', 'idempotency_key'],
-                'capabilities_idempotency_identity_unique',
-            );
-            $blueprint->index(['capability_name', 'status']);
+        Schema::create($table, static function (Blueprint $blueprint): void {
+            MigrationCatalog::defineIdempotency($blueprint);
         });
     }
 

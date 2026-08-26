@@ -9,6 +9,39 @@ with **0.x pre-stable** expectations (breaking changes allowed without a major b
 Monorepo packaging policy (install paths, tags, Packagist checklist):  
 https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versioning.md
 
+## [0.5.2] - 2026-08-27
+
+### Fixed
+
+#### capabilities_idempotency.id — string primary key (CLI invokes failed on MySQL)
+
+Every CLI `capabilities run` failed at the idempotency stage on MySQL strict mode
+(SQLSTATE 22003 / 1264): the create migration defined `id` as BIGINT auto-increment
+while `QueryTableGateway::newId()` writes 32-char hex ids. Approvals and audit_outbox
+already used string ids; idempotency was the outlier.
+
+- **Create migration amended** — fresh installs get `id VARCHAR(64)` primary key via
+  the shared `MigrationCatalog::defineIdempotency` definition (single source for both
+  install paths).
+- **New corrective migration `2026_08_27_000001_alter_capabilities_idempotency_id_column`** —
+  existing installs converge on the same schema on `php artisan migrate`. Guards:
+  no-op when the table is missing (fresh install already correct) or `id` is already
+  a string column. Legacy rows are dropped, not converted — the table is an expiring
+  idempotency cache (D-005), and rows on non-strict installs hold truncated ids.
+  Rolling back is intentionally refused (the old shape cannot store gateway ids).
+- **Identity columns narrowed 191 → 160 chars** (`tenant_id`, `actor_id`,
+  `capability_name`, `idempotency_key`): the five-column composite unique exceeded
+  InnoDB's 3072-byte index limit on utf8mb4 (828 chars × 4 = 3312 bytes → MySQL 1071),
+  so table creation/rebuild failed on default-charset MySQL 8. New total
+  (160+64+160+160+160) × 4 = 2816 bytes. Column names and semantics unchanged.
+
+Consumers: `composer update rawphp/laravel-capabilities && php artisan migrate`.
+
+### Added
+
+- `ErrorCodeMap` admin-domain error codes: `self_delete` (403), `not_supported` (501),
+  `confirmation_failed` (422), `last_super_admin` (409) for platform-admin AdminError mapping.
+
 ## [Unreleased]
 
 ### Breaking (0.x behavior change)

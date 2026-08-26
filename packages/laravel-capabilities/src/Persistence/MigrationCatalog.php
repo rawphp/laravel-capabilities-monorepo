@@ -2,6 +2,8 @@
 
 namespace Rawphp\Capabilities\Persistence;
 
+use Illuminate\Database\Schema\Blueprint;
+
 /**
  * Pure schema catalog for core bus tables (D-005 / D-006 / D-010).
  *
@@ -122,6 +124,41 @@ final class MigrationCatalog
     public static function hasTable(string $table): bool
     {
         return isset(self::definitions()[$table]);
+    }
+
+    /**
+     * Apply the idempotency table shape (D-005). Single source for the create
+     * migration and the corrective rebuild so both install paths converge.
+     *
+     * `id` is a string primary key: gateway ids are 32-char hex
+     * (QueryTableGateway::newId), which BIGINT auto-increment rejects
+     * (MySQL strict-mode 1264).
+     *
+     * Identity columns are 160 chars so the composite unique fits InnoDB's
+     * 3072-byte key limit on utf8mb4: (160+64+160+160+160)*4 = 2816 bytes.
+     * 191-char columns overflow it (3312 bytes → MySQL 1071 on create).
+     */
+    public static function defineIdempotency(Blueprint $blueprint): void
+    {
+        $blueprint->string('id', 64)->primary();
+        // Empty string for null tenant so unique index works on MySQL.
+        $blueprint->string('tenant_id', 160)->default('');
+        $blueprint->string('actor_type', 64);
+        $blueprint->string('actor_id', 160);
+        $blueprint->string('capability_name', 160);
+        $blueprint->string('idempotency_key', 160);
+        $blueprint->string('request_hash', 128)->nullable();
+        $blueprint->string('status', 32);
+        $blueprint->json('result_json')->nullable();
+        $blueprint->string('approval_id', 64)->nullable();
+        $blueprint->timestamp('created_at')->useCurrent();
+        $blueprint->timestamp('expires_at')->nullable()->index();
+
+        $blueprint->unique(
+            ['tenant_id', 'actor_type', 'actor_id', 'capability_name', 'idempotency_key'],
+            'capabilities_idempotency_identity_unique',
+        );
+        $blueprint->index(['capability_name', 'status']);
     }
 
     /**
