@@ -17,7 +17,7 @@ Default config root:
     <profile>/
       token          # mode 0600 — never printed by auth status
       config.json    # { "base_url": "https://..." }
-      schemas/       # catalog JSON Schema cache
+      schemas/<key>/ # catalog JSON Schema cache, one dir per base URL + token (hashed)
       last_run.json  # last Idempotency-Key (for --retry-last)
 ```
 
@@ -78,7 +78,9 @@ environment).
 | Agents / CI | Shared default is risky | Explicit `--profile=` in every command |
 
 Tokens, base URLs, and schema caches are **isolated** per profile (covered by
-package tests).
+package tests). Within a profile, the schema cache is further keyed by base URL
+and token, so a new login or `--base-url` override never reads schemas cached
+for another account or deployment.
 
 ### One-time setup
 

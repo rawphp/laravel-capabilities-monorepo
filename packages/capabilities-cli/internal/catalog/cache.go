@@ -3,11 +3,14 @@
 package catalog
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/rawphp/capabilities-cli/internal/api"
 )
 
 // CacheEntry is one cached schema document.
@@ -26,7 +29,7 @@ type CacheEntry struct {
 	CLI *CLIMeta `json:"cli,omitempty"`
 }
 
-// Cache is a profile-scoped on-disk schema cache.
+// Cache is an on-disk schema cache; production callers scope it with PrincipalCache.
 type Cache struct {
 	Dir string
 	mu  sync.Mutex
@@ -117,12 +120,11 @@ func (c *Cache) Invalidate(name string) error {
 	return nil
 }
 
-// IsolationKey builds a cache root segment from profile + baseURL (path-safe).
-func IsolationKey(profile, baseURL string) string {
-	var h uint32 = 2166136261
-	for i := 0; i < len(baseURL); i++ {
-		h ^= uint32(baseURL[i])
-		h *= 16777619
-	}
-	return filepath.Join(profile, fmt.Sprintf("%08x", h))
+// PrincipalCache returns the cache for the principal c authenticates as, under a
+// profile's schema root. The catalog is filtered by server authorization, so
+// schemas cached for one credential or deployment are never read by another.
+// The key is a hash so the raw token never lands in a path.
+func PrincipalCache(root string, c *api.Client) *Cache {
+	sum := sha256.Sum256([]byte(c.BaseURL + "\x00" + c.Token))
+	return NewCache(filepath.Join(root, hex.EncodeToString(sum[:8])))
 }

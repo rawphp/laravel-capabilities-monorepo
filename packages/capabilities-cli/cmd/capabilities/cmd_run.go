@@ -38,7 +38,7 @@ func cmdDescribe(env Env, args []string) int {
 		fmt.Fprintln(env.Stderr, err.Error())
 		return api.ExitAuth
 	}
-	svc := &catalog.Service{Client: c, Cache: catalog.NewCache(st.SchemaCacheDir(profile)), NoCache: noCache}
+	svc := &catalog.Service{Client: c, Cache: catalog.PrincipalCache(st.SchemaCacheDir(profile), c), NoCache: noCache}
 	entry, _, err := svc.Describe(context.Background(), name)
 	if err != nil {
 		if se, ok := err.(*api.StructuredError); ok {
@@ -143,7 +143,7 @@ func invokeCapability(
 		fmt.Fprintln(env.Stderr, err.Error())
 		return api.ExitAuth
 	}
-	svc := &catalog.Service{Client: c, Cache: catalog.NewCache(st.SchemaCacheDir(profile)), NoCache: noCache}
+	svc := &catalog.Service{Client: c, Cache: catalog.PrincipalCache(st.SchemaCacheDir(profile), c), NoCache: noCache}
 
 	// Load schema for flag merge (cache / describe).
 	var schemaJSON []byte
