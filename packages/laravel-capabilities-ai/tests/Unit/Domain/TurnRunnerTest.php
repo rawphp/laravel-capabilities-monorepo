@@ -221,6 +221,61 @@ it('tool call path invokes CapabilityBus exactly once with expected name/payload
         ->and($data['error_code'])->toBeNull();
 });
 
+it('reports a running tool-call count per turn so the bus can enforce the turn budget [D-013]', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurnWithUser('use tools')['turn_ulid'];
+    $bus = new class implements CapabilityBus
+    {
+        /** @var list<mixed> */
+        public array $counts = [];
+
+        public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
+        {
+            $this->counts[] = $options['agent_turn_tool_calls'] ?? null;
+
+            return CapabilityResult::ok(['ok' => true]);
+        }
+
+        public function catalog(): CatalogPresenter
+        {
+            throw new RuntimeException('catalog not used in turn tests');
+        }
+    };
+    $llm = new FakeLlmClient([
+        ['tool_calls' => [['name' => 'a.tool', 'arguments' => []], ['name' => 'b.tool', 'arguments' => []]]],
+        ['tool_calls' => [['name' => 'c.tool', 'arguments' => []]]],
+        ['content' => 'done'],
+    ]);
+    $context = new class implements ConversationContextProvider
+    {
+        public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['role' => 'user', 'content' => 'use tools']];
+        }
+    };
+    $tools = new class implements ToolCatalog
+    {
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['name' => 'a.tool'], ['name' => 'b.tool'], ['name' => 'c.tool']];
+        }
+    };
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        bus: $bus,
+        progress: new ArrayProgressStore,
+        actors: turnActors(),
+    );
+
+    $turn = $runner->run($turnUlid);
+
+    expect($turn->status)->toBe(Turn::STATUS_COMPLETED)
+        ->and($bus->counts)->toBe([1, 2, 3]);
+});
+
 it('tool call path fails closed when conversation has no user_id', function () {
     bootTurnSqlite();
     $turnUlid = enqueueTurn('use tool'); // no userId

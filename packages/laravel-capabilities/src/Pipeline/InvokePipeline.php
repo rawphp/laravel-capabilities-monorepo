@@ -611,10 +611,11 @@ final class InvokePipeline
             return $this->rateLimitedResult('Forced failure at rate_limit.');
         }
 
-        // Agent turn budget (D-013) — checked when caller is agent and option is set.
-        if ($state->caller === 'agent' && array_key_exists('agent_turn_tool_calls', $state->options)) {
+        // Agent turn budget (D-013) — checked whenever a server-side turn loop reports its call count.
+        if (array_key_exists('agent_turn_tool_calls', $state->options)) {
             $calls = (int) $state->options['agent_turn_tool_calls'];
-            $budget = $this->agentTurnBudget();
+            $perTurn = $state->definition->rateLimit['max_tool_calls_per_turn'] ?? null;
+            $budget = $this->agentTurnBudget()->narrowedTo(is_numeric($perTurn) ? (int) $perTurn : null);
             if ($budget->exhausted($calls)) {
                 $stop = $budget->stopMessage($calls);
 

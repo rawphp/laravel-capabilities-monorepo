@@ -2960,6 +2960,7 @@ Invoke accepts **canonical or alias**. Dual-name period: both work until `sunset
 - Exceeded → stable error `rate_limited` (HTTP 429, CLI exit **6**).  
 - AI adapter stops the tool loop when `max_tool_calls` hit and returns a structured message to the model.  
 - Per-capability overrides: `#[Capability(rateLimit: ['per_minute' => 10])]`.
+- Per-capability turn budget: `rateLimit: ['max_tool_calls_per_turn' => 3]` stops a turn from reaching this capability after N tool calls. It can only tighten `agent_turn.max_tool_calls`, never loosen it. Applies to any invoke that carries a server-side `agent_turn_tool_calls` count (AI adapter, AI package `TurnRunner`).
 
 ---
 
