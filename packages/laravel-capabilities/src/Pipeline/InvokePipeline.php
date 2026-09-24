@@ -2,6 +2,7 @@
 
 namespace Rawphp\Capabilities\Pipeline;
 
+use Closure;
 use InvalidArgumentException;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Contracts\Authorizer;
@@ -22,6 +23,9 @@ use Rawphp\Capabilities\Support\CapabilityData;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\ErrorCodeMap;
 use Rawphp\Capabilities\Support\SystemActor;
+use ReflectionFunction;
+use ReflectionFunctionAbstract;
+use ReflectionMethod;
 use Throwable;
 
 /**
@@ -833,12 +837,11 @@ final class InvokePipeline
     private function executeRun(CapabilityDefinition $definition, mixed $input, mixed $context = null): mixed
     {
         if (is_callable($definition->run)) {
-            // Prefer (input, context) for D-003 re-resolve; fall back to input-only handlers.
-            try {
-                return ($definition->run)($input, $context);
-            } catch (\ArgumentCountError) {
-                return ($definition->run)($input);
-            }
+            $run = Closure::fromCallable($definition->run);
+
+            return self::acceptsContext(new ReflectionFunction($run))
+                ? $run($input, $context)
+                : $run($input);
         }
 
         if ($definition->handlerClass !== null) {
@@ -850,14 +853,21 @@ final class InvokePipeline
                 ));
             }
 
-            try {
-                return $handler->run($input, $context);
-            } catch (\ArgumentCountError) {
-                return $handler->run($input);
-            }
+            return self::acceptsContext(new ReflectionMethod($handler, 'run'))
+                ? $handler->run($input, $context)
+                : $handler->run($input);
         }
 
         throw new InvalidArgumentException('No run handler.');
+    }
+
+    /**
+     * D-003: pass context to run() only when its signature takes a second argument.
+     * Decided up front so a run() is never invoked twice for one invoke.
+     */
+    private static function acceptsContext(ReflectionFunctionAbstract $run): bool
+    {
+        return $run->isVariadic() || $run->getNumberOfParameters() >= 2;
     }
 
     /**
