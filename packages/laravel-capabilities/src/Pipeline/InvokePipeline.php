@@ -146,13 +146,17 @@ final class InvokePipeline
 
             $this->stageStoreIdempotency($state);
             $auditFailure = $this->stageRecordAudit($state, success: true);
-            $this->results()->emitEvents($state, success: true);
 
             // Strict audit failure after successful domain run: surface error without
             // rolling back domain-owned commits (D-010 footgun when domain already committed).
+            // Listeners see the same outcome the caller does.
             if ($auditFailure !== null) {
+                $this->results()->emitEvents($state, success: false, failure: $auditFailure);
+
                 return $this->results()->wireResponse($state, $auditFailure);
             }
+
+            $this->results()->emitEvents($state, success: true);
 
             $successMeta = [
                 'request_id' => $state->requestId,
