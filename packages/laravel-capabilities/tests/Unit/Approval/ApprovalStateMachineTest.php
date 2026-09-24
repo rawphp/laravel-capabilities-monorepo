@@ -286,6 +286,39 @@ it('happy: idempotency key completed after approval execution [D-005]', function
     expect($h['idempotency']->find('t-1', 'user', '7', 'create-invoice', 'k-1')['status'] ?? null)->toBe('completed');
 });
 
+it('happy: approval execution completes a same-hash pending_approval idempotency row [D-005]', function () {
+    $h = ApprovalHelpers::withPending(['record' => ['idempotency_key' => 'k-same', 'input_hash' => 'hash-1']]);
+    $h['idempotency']->put([
+        'tenant_id' => 't-1', 'actor_type' => 'user', 'actor_id' => '7', 'capability_name' => 'create-invoice',
+        'idempotency_key' => 'k-same', 'request_hash' => 'hash-1', 'status' => 'pending_approval',
+    ]);
+
+    $h['manager']->accept((string) $h['row']['id'], ApprovalHelpers::requester());
+
+    $found = $h['idempotency']->find('t-1', 'user', '7', 'create-invoice', 'k-same');
+    expect($found['status'])->toBe('completed')
+        ->and($found['approval_id'])->toBe($h['row']['id'])
+        ->and($found['result_json']['data']['invoice_id'] ?? null)->toBe(42);
+});
+
+it('edge: approval execution does not overwrite an idempotency row owned by a different request hash [D-005]', function () {
+    $h = ApprovalHelpers::withPending(['record' => ['idempotency_key' => 'k-reused', 'input_hash' => 'hash-1']]);
+    $other = ['ok' => true, 'data' => ['invoice_id' => 7]];
+    $h['idempotency']->put([
+        'tenant_id' => 't-1', 'actor_type' => 'user', 'actor_id' => '7', 'capability_name' => 'create-invoice',
+        'idempotency_key' => 'k-reused', 'request_hash' => 'hash-2', 'status' => 'completed',
+        'result_json' => $other, 'approval_id' => 'other-approval',
+    ]);
+
+    $result = $h['manager']->accept((string) $h['row']['id'], ApprovalHelpers::requester());
+
+    $found = $h['idempotency']->find('t-1', 'user', '7', 'create-invoice', 'k-reused');
+    expect($result->isOk())->toBeTrue()
+        ->and($found['request_hash'])->toBe('hash-2')
+        ->and($found['result_json'])->toBe($other)
+        ->and($found['approval_id'])->toBe('other-approval');
+});
+
 it('edge: approvalPolicy requester enforces who may decide [D-006]', function () {
     $h = ApprovalHelpers::withPending(['policy' => 'requester']);
     expect($h['manager']->accept((string) $h['row']['id'], ApprovalHelpers::requester())->isOk())->toBeTrue();

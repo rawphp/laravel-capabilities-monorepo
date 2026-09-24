@@ -358,6 +358,13 @@ final class ApprovalExecutor
             return;
         }
 
+        // Same key, different request body: the row belongs to another request (D-005 conflict).
+        $existingHash = $existing['request_hash'] ?? null;
+        $inputHash = $row['input_hash'] ?? null;
+        if ($existingHash !== null && $inputHash !== null && $existingHash !== $inputHash) {
+            return;
+        }
+
         $this->idempotency->update($tenantId, $actorType, $actorId, $capability, (string) $key, [
             'status' => 'completed',
             'result_json' => $result->toArray(),
