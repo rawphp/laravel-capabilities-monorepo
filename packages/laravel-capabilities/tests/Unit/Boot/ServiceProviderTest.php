@@ -403,7 +403,9 @@ it('D-006: container ApprovalManager accept runs the capability through the regi
     $pending = $registry->invoke('ship-order', PipelineHelpers::validInput(), PipelineHelpers::options('http', [
         'needs_approval' => true,
     ]));
-    $result = $app->make(ApprovalManager::class)->accept((string) $pending->approvalId(), PipelineHelpers::userActor(7));
+    $approver = PipelineHelpers::userActor(7);
+    $approver->tenant_id = 't-1';
+    $result = $app->make(ApprovalManager::class)->accept((string) $pending->approvalId(), $approver);
 
     expect($result->isOk())->toBeTrue()
         ->and($runs)->toBe(1)

@@ -72,7 +72,8 @@ final class ApprovalPolicy
         }
 
         $rowTenant = isset($row['tenant_id']) ? (is_string($row['tenant_id']) ? $row['tenant_id'] : (string) $row['tenant_id']) : null;
-        if ($rowTenant !== null && $rowTenant !== '' && $actorTenantId !== null && $actorTenantId !== $rowTenant) {
+        // Unresolved actor tenant on a tenant-scoped row fails closed (D-003).
+        if ($rowTenant !== null && $rowTenant !== '' && $actorTenantId !== $rowTenant) {
             return false;
         }
 
