@@ -7,7 +7,9 @@ declare(strict_types=1);
 use Rawphp\Capabilities\Audit\AuditLogger;
 use Rawphp\Capabilities\Pipeline\InvokeState;
 use Rawphp\Capabilities\Registry\CapabilityDefinition;
+use Rawphp\Capabilities\Support\CapabilityContext;
 use Rawphp\Capabilities\Support\CapabilityData;
+use Rawphp\Capabilities\Tests\Fixtures\ScopeCallerJobHelpers as H;
 
 function redactedInputFor(array $input): mixed
 {
@@ -74,4 +76,29 @@ it('fail: sensitive fields in a run() output never reach the audit result summar
 it('edge: array output is redacted and scalar output passes through [D-010]', function () {
     expect(resultSummaryFor(['password' => 'p', 'ok' => true]))->toBe(['password' => '[REDACTED]', 'ok' => true])
         ->and(resultSummaryFor('done'))->toBe('done');
+});
+
+it('fail: host-supplied MCP session secrets never reach the audit entry verbatim [D-010][D-023]', function () {
+    $state = new InvokeState(new CapabilityDefinition(name: 'mcp-cap', description: 'd', readOnly: true), [], 'mcp');
+    $state->context = CapabilityContext::make(['caller' => 'mcp', 'actor' => H::user(), 'mcp' => [
+        'auth_profile' => 'user_delegated',
+        'client_id' => 'claude-desktop',
+        'session' => ['tenant_id' => 't-1', 'access_token' => 'at', 'oauth' => ['refresh_token' => 'rt', 'scope' => 'read']],
+    ]]);
+
+    expect(AuditLogger::entry($state, true)['mcp'])->toBe([
+        'auth_profile' => 'user_delegated',
+        'client_id' => 'claude-desktop',
+        'session' => ['tenant_id' => 't-1', 'access_token' => '[REDACTED]', 'oauth' => ['refresh_token' => '[REDACTED]', 'scope' => 'read']],
+    ]);
+});
+
+it('fail: sensitive messaging metadata never reaches the audit entry verbatim [D-010]', function () {
+    $state = new InvokeState(new CapabilityDefinition(name: 'msg-cap', description: 'd', readOnly: true), [], 'agent');
+    $state->context = CapabilityContext::make(['caller' => 'agent', 'actor' => H::user(), 'messaging' => [
+        'channel' => 'telegram', 'chat_id' => '4242', 'bot_token' => 'b-1',
+    ]]);
+
+    expect(AuditLogger::entry($state, true)['messaging'])
+        ->toBe(['channel' => 'telegram', 'chat_id' => '4242', 'bot_token' => '[REDACTED]']);
 });

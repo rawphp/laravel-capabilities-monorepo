@@ -78,11 +78,12 @@ final class AuditLogger
             ],
             'request_id' => $state->requestId,
             // D-023: MCP auth profile + client_id on every MCP invoke when present.
-            'mcp' => $ctx?->mcp(),
+            // Host-supplied metadata goes through the same sieve as input.
+            'mcp' => self::redactNullable($ctx?->mcp()),
             // D-008: tool profile the surface gated this invoke under; null outside a profile.
             'tool_profile' => $state->options['tool_profile'] ?? null,
             // Messaging ingress metadata (channel, chat_id, user_link_id) when present.
-            'messaging' => $ctx?->messaging(),
+            'messaging' => self::redactNullable($ctx?->messaging()),
         ];
     }
 
@@ -138,6 +139,15 @@ final class AuditLogger
         }
 
         return self::redact($raw);
+    }
+
+    /**
+     * @param  array<array-key, mixed>|null  $data
+     * @return array<array-key, mixed>|null
+     */
+    private static function redactNullable(?array $data): ?array
+    {
+        return $data === null ? null : self::redact($data);
     }
 
     /**
