@@ -179,7 +179,12 @@ func invokeCapability(
 		return api.ExitValidation
 	}
 
-	merged, merr := fs.MergeJSON(baseJSON, flagMap)
+	// Bare --retry-last sends no input so run restores the previous body.
+	var merged []byte
+	var merr error
+	if !retryLast || baseJSON != nil || len(flagMap) > 0 {
+		merged, merr = fs.MergeJSON(baseJSON, flagMap)
+	}
 	if merr != nil {
 		fmt.Fprintln(env.Stderr, merr.Error())
 		// Point agents at help for required / usage errors.

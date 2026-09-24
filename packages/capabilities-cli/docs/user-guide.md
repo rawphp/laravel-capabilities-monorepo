@@ -412,8 +412,11 @@ capabilities run <name> --input='{"customer_id":1}' --profile=mesoprep
 
 capabilities <domain> <verb> --customer_id=1 --human --profile=mesoprep
 
-capabilities run <name> --input-file=./payload.json --retry-last
+capabilities run <name> --retry-last
 ```
+
+`--retry-last` resends the previous invoke of the same capability with the same
+`Idempotency-Key` and, when no new input is given, the same body.
 
 There is no tenant flag: the server derives tenant scope from your token (D-003).
 
