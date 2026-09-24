@@ -169,19 +169,15 @@ final class AuditLogger
 
     private static function resultSummary(mixed $output): mixed
     {
-        if ($output instanceof CapabilityData) {
-            return $output->toArray();
-        }
-
         if (is_object($output) && method_exists($output, 'toArray')) {
-            return $output->toArray();
-        }
-
-        if (is_scalar($output) || $output === null) {
-            return $output;
+            $output = $output->toArray();
         }
 
         if (is_array($output)) {
+            return self::redact($output);
+        }
+
+        if (is_scalar($output) || $output === null) {
             return $output;
         }
 
