@@ -7,6 +7,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use Rawphp\Capabilities\Observability\InMemoryMetrics;
 use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
@@ -21,6 +22,8 @@ function bootAnthropicHttp(): void
     $app->singleton('http', fn () => new HttpFactory);
     Http::swap(new HttpFactory);
 }
+
+afterEach(fn () => Sleep::fake(false));
 
 it('AnthropicLlmClient implements LlmClient', function () {
     expect(new AnthropicLlmClient('test-key'))->toBeInstanceOf(LlmClient::class);
@@ -70,8 +73,9 @@ it('fails closed on empty API key', function () {
     ]))->toThrow(RuntimeException::class, 'ANTHROPIC_API_KEY is empty');
 });
 
-it('fails closed on HTTP error', function () {
+it('fails closed on HTTP error once 429 retries are exhausted', function () {
     bootAnthropicHttp();
+    Sleep::fake();
 
     Http::fake([
         'api.anthropic.com/*' => Http::response([
@@ -82,7 +86,92 @@ it('fails closed on HTTP error', function () {
     $client = new AnthropicLlmClient('test-key');
     expect(fn () => $client->complete([
         ['role' => 'user', 'content' => 'hi'],
-    ]))->toThrow(RuntimeException::class, 'Anthropic API error: 429');
+    ]))->toThrow(RuntimeException::class, 'Anthropic API error: 429 (rate limited)');
+
+    Http::assertSentCount(3);
+    Sleep::assertSleptTimes(2);
+});
+
+it('retries a 429 after the Retry-After seconds and returns the next success', function () {
+    bootAnthropicHttp();
+    Sleep::fake();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::sequence()
+            ->push(['error' => ['message' => 'rate limited']], 429, ['retry-after' => '3'])
+            ->push(['content' => [['type' => 'text', 'text' => 'after wait']]], 200),
+    ]);
+
+    $out = (new AnthropicLlmClient('test-key'))->complete([['role' => 'user', 'content' => 'hi']]);
+
+    expect($out['content'])->toBe('after wait');
+    Http::assertSentCount(2);
+    Sleep::assertSequence([Sleep::for(3)->seconds()]);
+});
+
+it('backs off exponentially on 429 without a usable Retry-After', function () {
+    bootAnthropicHttp();
+    Sleep::fake();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::sequence()
+            ->push(['error' => ['message' => 'rate limited']], 429)
+            ->push(['error' => ['message' => 'rate limited']], 429, ['retry-after' => 'soon'])
+            ->push(['content' => [['type' => 'text', 'text' => 'ok']]], 200),
+    ]);
+
+    $out = (new AnthropicLlmClient('test-key'))->complete([['role' => 'user', 'content' => 'hi']]);
+
+    expect($out['content'])->toBe('ok');
+    Sleep::assertSequence([
+        Sleep::for(1)->seconds(),
+        Sleep::for(2)->seconds(),
+    ]);
+});
+
+it('caps a long Retry-After so one 429 cannot stall the turn', function () {
+    bootAnthropicHttp();
+    Sleep::fake();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::sequence()
+            ->push(['error' => ['message' => 'rate limited']], 429, ['retry-after' => '3600'])
+            ->push(['content' => [['type' => 'text', 'text' => 'ok']]], 200),
+    ]);
+
+    (new AnthropicLlmClient('test-key'))->complete([['role' => 'user', 'content' => 'hi']]);
+
+    Sleep::assertSequence([Sleep::for(60)->seconds()]);
+});
+
+it('does not retry non-429 errors', function () {
+    bootAnthropicHttp();
+    Sleep::fake();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response(['error' => ['message' => 'bad request']], 400),
+    ]);
+
+    expect(fn () => (new AnthropicLlmClient('test-key'))->complete([['role' => 'user', 'content' => 'hi']]))
+        ->toThrow(RuntimeException::class, 'Anthropic API error: 400 (bad request)');
+
+    Http::assertSentCount(1);
+    Sleep::assertNeverSlept();
+});
+
+it('maxRetries 0 turns 429 retry off', function () {
+    bootAnthropicHttp();
+    Sleep::fake();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response(['error' => ['message' => 'rate limited']], 429),
+    ]);
+
+    expect(fn () => (new AnthropicLlmClient('test-key', maxRetries: 0))->complete([['role' => 'user', 'content' => 'hi']]))
+        ->toThrow(RuntimeException::class, 'Anthropic API error: 429');
+
+    Http::assertSentCount(1);
+    Sleep::assertNeverSlept();
 });
 
 it('maps package tool defs to Anthropic tools with input_schema and parses tool_use id', function () {

@@ -128,6 +128,7 @@ final class ContainerBindings
                 maxTokens: (int) ($config['llm']['anthropic']['max_tokens'] ?? 64000),
                 metrics: $metrics,
                 tracer: $tracer,
+                maxRetries: (int) ($config['llm']['anthropic']['max_retries'] ?? 2),
             ),
         };
     }

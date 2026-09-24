@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Support;
 
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Rawphp\Capabilities\Contracts\Metrics;
@@ -22,6 +23,9 @@ use Throwable;
  *
  * Observability (D-019): optional core Metrics/Tracer record latency, token
  * usage (response `usage`) and failures around the outbound call only.
+ *
+ * Rate limits: a 429 is retried up to $maxRetries times via Laravel's Http retry,
+ * waiting Retry-After seconds (capped) or 1s, 2s, 4s… when the header is unusable.
  */
 final class AnthropicLlmClient implements LlmClient
 {
@@ -35,6 +39,8 @@ final class AnthropicLlmClient implements LlmClient
 
     public const SPAN_COMPLETE = 'capabilities_ai.llm.complete';
 
+    private const MAX_RETRY_AFTER_SECONDS = 60;
+
     public function __construct(
         private readonly string $apiKey,
         private readonly string $model = 'claude-sonnet-4-6',
@@ -42,6 +48,7 @@ final class AnthropicLlmClient implements LlmClient
         private readonly int $maxTokens = 64000,
         private readonly ?Metrics $metrics = null,
         private readonly ?Tracer $tracer = null,
+        private readonly int $maxRetries = 2,
     ) {}
 
     public function supportsToolRounds(): bool
@@ -186,7 +193,12 @@ final class AnthropicLlmClient implements LlmClient
                 'x-api-key' => $this->apiKey,
                 'anthropic-version' => '2023-06-01',
                 'content-type' => 'application/json',
-            ])->post(rtrim($this->baseUrl, '/').'/v1/messages', $payload);
+            ])->retry(
+                max(0, $this->maxRetries) + 1,
+                fn (int $attempt, Throwable $e): int => $this->retryDelayMs($attempt, $e),
+                fn (Throwable $e): bool => $e instanceof RequestException && $e->response->status() === 429,
+                throw: false,
+            )->post(rtrim($this->baseUrl, '/').'/v1/messages', $payload);
         } catch (Throwable $e) {
             $this->metrics?->histogram(self::METRIC_LATENCY, self::elapsedMs($started), $labels);
             $this->metrics?->increment(self::METRIC_FAILURES, 1, $labels + ['reason' => 'transport']);
@@ -236,6 +248,18 @@ final class AnthropicLlmClient implements LlmClient
     private static function elapsedMs(int $started): float
     {
         return (hrtime(true) - $started) / 1e6;
+    }
+
+    /**
+     * Milliseconds to wait before retry $attempt: Retry-After seconds when present
+     * (capped), else exponential 1s, 2s, 4s….
+     */
+    private function retryDelayMs(int $attempt, Throwable $e): int
+    {
+        $retryAfter = $e instanceof RequestException ? trim($e->response->header('Retry-After')) : '';
+        $seconds = ctype_digit($retryAfter) ? (int) $retryAfter : 2 ** ($attempt - 1);
+
+        return min($seconds, self::MAX_RETRY_AFTER_SECONDS) * 1000;
     }
 
     /**

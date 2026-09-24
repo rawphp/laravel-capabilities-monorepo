@@ -10,6 +10,7 @@ use Illuminate\Container\Container;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Observability\InMemoryMetrics;
 use Rawphp\Capabilities\Observability\InMemoryTracer;
@@ -172,6 +173,37 @@ it('makeLlmClient anthropic default max_tokens is 64000 from package config', fu
         return ($body['max_tokens'] ?? null) === 64000;
     });
 });
+
+it('makeLlmClient wires anthropic max_retries from config (default 2, 0 disables)', function (?int $maxRetries, int $expectedSends) {
+    $app = new Container;
+    Facade::setFacadeApplication($app);
+    $app->singleton('http', fn () => new Factory);
+    Http::swap(new Factory);
+    Sleep::fake();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response(['error' => ['message' => 'rate limited']], 429),
+    ]);
+
+    $anthropic = ['api_key' => 'test-key'];
+    if ($maxRetries !== null) {
+        $anthropic['max_retries'] = $maxRetries;
+    }
+    $client = ContainerBindings::makeLlmClient(aiConfig([
+        'llm' => ['driver' => 'anthropic', 'anthropic' => $anthropic],
+    ]));
+
+    try {
+        $client->complete([['role' => 'user', 'content' => 'hi']]);
+    } catch (RuntimeException) {
+    }
+
+    Http::assertSentCount($expectedSends);
+    Sleep::fake(false);
+})->with([
+    'package default' => [null, 3],
+    'disabled' => [0, 1],
+]);
 
 it('makeProgressStore returns ArrayProgressStore for array driver', function () {
     $store = ContainerBindings::makeProgressStore(aiConfig(['progress' => ['driver' => 'array']]));
