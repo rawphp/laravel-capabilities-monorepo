@@ -219,9 +219,25 @@ func (c *Client) InvokeCapability(ctx context.Context, name string, input json.R
 	if body == nil {
 		body = json.RawMessage(`{}`)
 	}
-	return c.do(ctx, http.MethodPost, PathCapabilities+"/"+name, body, map[string]string{
+	res, err := c.do(ctx, http.MethodPost, PathCapabilities+"/"+name, body, map[string]string{
 		"Idempotency-Key": idempotencyKey,
 	})
+	if err != nil {
+		return nil, err
+	}
+	// Fail closed: an invoke the server did not reject must carry a D-018
+	// success envelope. Anything else (HTML, empty, ok:false without error)
+	// is not proof the capability ran.
+	if res.Err == nil && !res.Envelope.OK {
+		res.Err = &StructuredError{
+			Code:       CodeInternal,
+			Message:    fmt.Sprintf("HTTP %d: malformed response from capability API (expected {\"ok\":true,…} envelope)", res.StatusCode),
+			HTTPStatus: res.StatusCode,
+			ExitCode:   ExitCode(CodeInternal),
+			Body:       res.Body,
+		}
+	}
+	return res, nil
 }
 
 // AcceptApproval POST /capabilities/approvals/{id}/accept
