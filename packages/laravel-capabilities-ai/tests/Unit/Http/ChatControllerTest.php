@@ -107,6 +107,50 @@ function bootHttpSqlite(): ArrayProgressStore
     return new ArrayProgressStore;
 }
 
+function httpRequestAs(?string $userId): Request
+{
+    $request = Request::create('/proposals', 'POST');
+    $user = $userId === null ? null : new class($userId) implements Authenticatable
+    {
+        public function __construct(private readonly string $id) {}
+
+        public function getAuthIdentifierName(): string
+        {
+            return 'id';
+        }
+
+        public function getAuthIdentifier(): mixed
+        {
+            return $this->id;
+        }
+
+        public function getAuthPasswordName(): string
+        {
+            return 'password';
+        }
+
+        public function getAuthPassword(): string
+        {
+            return '';
+        }
+
+        public function getRememberToken(): string
+        {
+            return '';
+        }
+
+        public function setRememberToken($value): void {}
+
+        public function getRememberTokenName(): string
+        {
+            return '';
+        }
+    };
+    $request->setUserResolver(static fn () => $user);
+
+    return $request;
+}
+
 function httpProposalService(CapabilityBus $bus): ProposalService
 {
     return new ProposalService(
@@ -392,7 +436,9 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse / unresolv
     };
 
     $controller = new ChatController;
+    $asOwner = httpRequestAs((string) $user->id);
     $ok = $controller->acceptProposal(
+        $asOwner,
         $makeProposal('ok')->ulid,
         httpProposalService($busOk),
     );
@@ -412,6 +458,7 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse / unresolv
         }
     };
     $apr = $controller->acceptProposal(
+        $asOwner,
         $makeProposal('apr')->ulid,
         httpProposalService($busApr),
     );
@@ -432,6 +479,7 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse / unresolv
         }
     };
     $retry = $controller->acceptProposal(
+        $asOwner,
         $makeProposal('rty')->ulid,
         httpProposalService($busRetry),
     );
@@ -451,6 +499,7 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse / unresolv
         }
     };
     $fail = $controller->acceptProposal(
+        $asOwner,
         $makeProposal('fai')->ulid,
         httpProposalService($busFail),
     );
@@ -470,6 +519,7 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse / unresolv
         }
     };
     $refuse = $controller->acceptProposal(
+        $asOwner,
         $makeProposal('ref')->ulid,
         httpProposalService($busRefuse),
     );
@@ -480,6 +530,7 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse / unresolv
     $rejected->status = Proposal::STATUS_REJECTED;
     $rejected->save();
     $rej = $controller->acceptProposal(
+        $asOwner,
         $rejected->ulid,
         httpProposalService($busOk),
     );
@@ -489,6 +540,7 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse / unresolv
     $orphan = $makeProposal('orp');
     ChatControllerTestUser::query()->whereKey($user->id)->delete();
     $unresolved = $controller->acceptProposal(
+        $asOwner,
         $orphan->ulid,
         httpProposalService($busOk),
     );
@@ -498,6 +550,7 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse / unresolv
         ->and($unresolved->getData(true)['error']['code'])->toBe('forbidden');
 
     $missing = $controller->acceptProposal(
+        $asOwner,
         'PROPDOESNOTEXIST0001',
         httpProposalService($busOk),
     );
@@ -629,4 +682,125 @@ it('storeMessage returns 404 and appends no message for an int-id user on anothe
     );
     expect($ownerReply->getStatusCode())->toBe(201)
         ->and($ownerReply->getData(true)['conversation_ulid'])->toBe($owned['conversation_ulid']);
+});
+
+function seedHttpProposal(?string $ownerId): Proposal
+{
+    $conversations = new ConversationService(static fn ($j) => null, new ArrayProgressStore);
+    $ids = $conversations->createUserMessage('p', userId: $ownerId);
+    $turn = Turn::query()->where('ulid', $ids['turn_ulid'])->firstOrFail();
+
+    return Proposal::query()->create([
+        'turn_id' => $turn->id,
+        'conversation_id' => $turn->conversation_id,
+        'ulid' => 'PROP'.strtoupper(bin2hex(random_bytes(8))),
+        'type' => 'action',
+        'payload' => [],
+        'target_capability' => 'demo.cap',
+        'status' => Proposal::STATUS_PENDING,
+    ]);
+}
+
+function countingBus(): CapabilityBus
+{
+    return new class implements CapabilityBus
+    {
+        public int $invokes = 0;
+
+        public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
+        {
+            $this->invokes++;
+
+            return CapabilityResult::ok();
+        }
+
+        public function catalog(): CatalogPresenter
+        {
+            throw new RuntimeException('unused');
+        }
+    };
+}
+
+it('acceptProposal and rejectProposal return 401 without an authenticated user and leave the proposal pending', function () {
+    bootHttpSqlite();
+    $owner = ChatControllerTestUser::query()->create(['name' => 'owner']);
+    $proposal = seedHttpProposal((string) $owner->id);
+    $bus = countingBus();
+    $controller = new ChatController;
+
+    expect($controller->acceptProposal(httpRequestAs(null), $proposal->ulid, httpProposalService($bus))->getStatusCode())->toBe(401)
+        ->and($controller->rejectProposal(httpRequestAs(null), $proposal->ulid, httpProposalService($bus))->getStatusCode())->toBe(401)
+        ->and($bus->invokes)->toBe(0)
+        ->and($proposal->fresh()->status)->toBe(Proposal::STATUS_PENDING);
+});
+
+it('acceptProposal and rejectProposal return 404 for another user\'s proposal without invoking the bus or changing status', function () {
+    bootHttpSqlite();
+    $owner = ChatControllerTestUser::query()->create(['name' => 'owner']);
+    $intruder = ChatControllerTestUser::query()->create(['name' => 'intruder']);
+    $proposal = seedHttpProposal((string) $owner->id);
+    $bus = countingBus();
+    $controller = new ChatController;
+    $asIntruder = httpRequestAs((string) $intruder->id);
+
+    $accept = $controller->acceptProposal($asIntruder, $proposal->ulid, httpProposalService($bus));
+    $reject = $controller->rejectProposal($asIntruder, $proposal->ulid, httpProposalService($bus));
+
+    expect($accept->getStatusCode())->toBe(404)
+        ->and($accept->getData(true)['message'])->toBe('Proposal not found')
+        ->and($reject->getStatusCode())->toBe(404)
+        ->and($reject->getData(true)['message'])->toBe('Proposal not found')
+        ->and($bus->invokes)->toBe(0)
+        ->and($proposal->fresh()->status)->toBe(Proposal::STATUS_PENDING);
+});
+
+it('acceptProposal and rejectProposal return 404 for an ownerless conversation\'s proposal', function () {
+    bootHttpSqlite();
+    $user = ChatControllerTestUser::query()->create(['name' => 'someone']);
+    $proposal = seedHttpProposal(null);
+    $bus = countingBus();
+    $controller = new ChatController;
+    $asUser = httpRequestAs((string) $user->id);
+
+    expect($controller->acceptProposal($asUser, $proposal->ulid, httpProposalService($bus))->getStatusCode())->toBe(404)
+        ->and($controller->rejectProposal($asUser, $proposal->ulid, httpProposalService($bus))->getStatusCode())->toBe(404)
+        ->and($bus->invokes)->toBe(0)
+        ->and($proposal->fresh()->status)->toBe(Proposal::STATUS_PENDING);
+});
+
+it('rejectProposal lets the owner reject, maps missing to 404 and non-pending to 409', function () {
+    bootHttpSqlite();
+    $owner = ChatControllerTestUser::query()->create(['name' => 'owner']);
+    $proposal = seedHttpProposal((string) $owner->id);
+    $bus = countingBus();
+    $controller = new ChatController;
+    $asOwner = httpRequestAs((string) $owner->id);
+
+    $ok = $controller->rejectProposal($asOwner, $proposal->ulid, httpProposalService($bus));
+    expect($ok->getStatusCode())->toBe(200)
+        ->and($ok->getData(true))->toBe(['ulid' => $proposal->ulid, 'status' => Proposal::STATUS_REJECTED])
+        ->and($bus->invokes)->toBe(0);
+
+    expect($controller->rejectProposal($asOwner, 'PROPDOESNOTEXIST0001', httpProposalService($bus))->getStatusCode())->toBe(404);
+
+    $accepted = seedHttpProposal((string) $owner->id);
+    $accepted->status = Proposal::STATUS_ACCEPTED;
+    $accepted->save();
+    expect($controller->rejectProposal($asOwner, $accepted->ulid, httpProposalService($bus))->getStatusCode())->toBe(409);
+});
+
+it('acceptProposal and rejectProposal map a proposal deleted after the owner check to 404', function () {
+    bootHttpSqlite();
+    $owner = ChatControllerTestUser::query()->create(['name' => 'owner']);
+    $controller = new ChatController;
+    $asOwner = httpRequestAs((string) $owner->id);
+    // Delete the row right after the ownership probe so the service lookup races a host delete.
+    Proposal::getConnectionResolver()->connection()->listen(static function ($query): void {
+        if (str_starts_with($query->sql, 'select exists')) {
+            Proposal::query()->delete();
+        }
+    });
+
+    expect($controller->acceptProposal($asOwner, seedHttpProposal((string) $owner->id)->ulid, httpProposalService(countingBus()))->getStatusCode())->toBe(404)
+        ->and($controller->rejectProposal($asOwner, seedHttpProposal((string) $owner->id)->ulid, httpProposalService(countingBus()))->getStatusCode())->toBe(404);
 });

@@ -210,6 +210,8 @@ Requires `proposals.enabled=true`. Fail-closed state machine + typed `AcceptOutc
 
 Hosts that still assume “reject always succeeds” or “accept failures are exceptions / 500s” must change clients.
 
+**Owner only (D-022):** accept and reject act as `$request->user()->getAuthIdentifier()`. No authenticated user → **401**; a proposal whose conversation belongs to another user (or has no owner) → **404**, same as missing. The check runs before `ProposalService::accept()`/`reject()`, so no status change and no bus invoke. Service-level callers use `ProposalService::ownedBy($ulid, $ownerId)` before accept/reject.
+
 **Reject (breaking vs force-reject):**
 
 | Case | HTTP | Body / notes |
@@ -217,7 +219,8 @@ Hosts that still assume “reject always succeeds” or “accept failures are e
 | `pending` | **200** | CAS → `rejected` |
 | already `rejected` | **200** | Idempotent success — not an error |
 | `accepting` / `accepted` / `failed` / `expired` | **409** | Refuse; do not force-reject mid-accept or after terminal states |
-| missing | **404** | — |
+| missing, another user's, or ownerless | **404** | — |
+| no authenticated user | **401** | — |
 
 **Accept (breaking vs throw-as-API):**
 
@@ -232,7 +235,8 @@ JSON body always includes `ulid`, `status`, `outcome` when the proposal exists. 
 | `refuse` (bus hard) | **403** | Terminal — do not re-drive as success |
 | `refuse` (already rejected) | **409** | Do not re-drive |
 | `refuse` (expired) | **410** | Do not re-drive |
-| (missing proposal) | **404** | — |
+| (missing, another user's, or ownerless proposal) | **404** | — |
+| (no authenticated user) | **401** | — |
 
 Authoritative mapping: `ProposalService` + `ChatController::jsonFromAcceptOutcome` / `rejectProposal` (see package unit tests).
 

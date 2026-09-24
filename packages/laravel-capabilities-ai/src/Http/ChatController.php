@@ -21,6 +21,8 @@ use RuntimeException;
  *
  * Conversation/turn routes act as the authenticated user only (D-022): no user → 401,
  * another user's conversation or turn → 404. Body `user_id` is ignored.
+ * Proposal accept/reject act as the authenticated user only (D-022): no user → 401,
+ * another user's (or an ownerless) conversation's proposal → 404, before the service runs.
  *
  * Error branches reuse the core D-018 envelope (same shape as capability invoke).
  */
@@ -143,14 +145,22 @@ final class ChatController
         }
     }
 
-    public function acceptProposal(string $proposalUlid, ProposalService $proposals): JsonResponse
+    public function acceptProposal(Request $request, string $proposalUlid, ProposalService $proposals): JsonResponse
     {
+        $userId = $this->userId($request);
+        if ($userId === null) {
+            return $this->unauthenticated();
+        }
+        if (! $proposals->ownedBy($proposalUlid, $userId)) {
+            return $this->proposalNotFound();
+        }
+
         try {
             $outcome = $proposals->accept($proposalUlid);
 
             return $this->jsonFromAcceptOutcome($outcome);
         } catch (ModelNotFoundException) {
-            return $this->failure('not_found', 'Proposal not found');
+            return $this->proposalNotFound();
         }
     }
 
@@ -184,14 +194,22 @@ final class ChatController
         return new JsonResponse($body, $status);
     }
 
-    public function rejectProposal(string $proposalUlid, ProposalService $proposals): JsonResponse
+    public function rejectProposal(Request $request, string $proposalUlid, ProposalService $proposals): JsonResponse
     {
+        $userId = $this->userId($request);
+        if ($userId === null) {
+            return $this->unauthenticated();
+        }
+        if (! $proposals->ownedBy($proposalUlid, $userId)) {
+            return $this->proposalNotFound();
+        }
+
         try {
             $proposal = $proposals->reject($proposalUlid);
 
             return new JsonResponse(['ulid' => $proposal->ulid, 'status' => $proposal->status]);
         } catch (ModelNotFoundException) {
-            return $this->failure('not_found', 'Proposal not found');
+            return $this->proposalNotFound();
         } catch (RuntimeException $e) {
             return $this->failure('conflict', $e->getMessage());
         }
@@ -234,5 +252,10 @@ final class ChatController
         $result = CapabilityResult::failure($code, $message);
 
         return new JsonResponse($result->toArray(), (int) ($result->error['http_status'] ?? 500));
+    }
+
+    private function proposalNotFound(): JsonResponse
+    {
+        return $this->failure('not_found', 'Proposal not found');
     }
 }

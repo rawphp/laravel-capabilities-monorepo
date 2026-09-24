@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Domain;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Support\CapabilityResult;
@@ -45,6 +46,18 @@ final class ProposalService
         private readonly ResolveConversationActor $actors = new ResolveConversationActor,
         private readonly ?ToolCatalog $tools = null,
     ) {}
+
+    /**
+     * True only when the proposal's conversation is owned by `$ownerId` (D-022). Missing or
+     * ownerless → false, so HTTP adapters can answer 404 before accept/reject runs.
+     */
+    public function ownedBy(string $proposalUlid, string $ownerId): bool
+    {
+        return Proposal::query()
+            ->where('ulid', $proposalUlid)
+            ->whereHas('conversation', static fn (Builder $q) => $q->where('user_id', $ownerId))
+            ->exists();
+    }
 
     public function accept(string $proposalUlid): AcceptOutcome
     {
