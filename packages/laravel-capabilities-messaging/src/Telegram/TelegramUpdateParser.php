@@ -76,6 +76,26 @@ final class TelegramUpdateParser
     }
 
     /**
+     * Stable D-005 key for the Nth tool call of one update, so a redelivered
+     * update replays the stored outcome instead of running the capability again.
+     * Null when update_id or chat id is not an integer — never invent a key.
+     *
+     * @param  array<string, mixed>  $update
+     */
+    public static function idempotencyKey(array $update, int $toolCallIndex): ?string
+    {
+        $updateId = $update['update_id'] ?? null;
+        $chatId = self::chatId($update);
+        if ($chatId === null || (! is_int($updateId) && ! is_string($updateId))) {
+            return null;
+        }
+
+        $key = sprintf('telegram:%s:%s:%d', $chatId, $updateId, $toolCallIndex);
+
+        return preg_match('/^telegram:-?\d+:-?\d+:\d+$/', $key) === 1 ? $key : null;
+    }
+
+    /**
      * @param  array<string, mixed>  $update
      * @return array{channel: string, chat_id: string|null, update_id: int|string|null}
      */
