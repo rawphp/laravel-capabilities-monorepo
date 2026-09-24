@@ -265,21 +265,8 @@ final class InvokePipeline
             );
         }
 
-        $inputClass = $state->definition->input;
-        if ($inputClass === null) {
-            $state->input = $state->rawInput;
-
-            return null;
-        }
-
         try {
-            if (is_a($inputClass, CapabilityData::class, true)) {
-                /** @var class-string<CapabilityData> $inputClass */
-                $state->input = $inputClass::fromArray($state->rawInput);
-            } else {
-                /** @var class-string<SchemaProvider> $inputClass */
-                $state->input = $inputClass::validate($state->rawInput);
-            }
+            $state->input = $this->hydrate($state->definition, $state->rawInput);
         } catch (Throwable $e) {
             return CapabilityResult::failure(
                 code: 'validation_failed',
@@ -504,6 +491,53 @@ final class InvokePipeline
     }
 
     /**
+     * Authorize stored raw input for an actor outside a live invoke — approval
+     * accept re-checks the original requester (spec: re-validation on accept, step 4).
+     * Same decision as the authorize stage; input that no longer hydrates is denied.
+     *
+     * @param  array<string, mixed>  $rawInput
+     */
+    public function authorizes(CapabilityDefinition $definition, array $rawInput, CapabilityContext $context): bool
+    {
+        try {
+            $input = $this->hydrate($definition, $rawInput);
+        } catch (Throwable) {
+            return false;
+        }
+
+        return $this->allows($definition, $input, $context);
+    }
+
+    /**
+     * @param  array<string, mixed>  $rawInput
+     */
+    private function hydrate(CapabilityDefinition $definition, array $rawInput): mixed
+    {
+        $inputClass = $definition->input;
+        if ($inputClass === null) {
+            return $rawInput;
+        }
+
+        if (is_a($inputClass, CapabilityData::class, true)) {
+            /** @var class-string<CapabilityData> $inputClass */
+            return $inputClass::fromArray($rawInput);
+        }
+
+        /** @var class-string<SchemaProvider> $inputClass */
+        return $inputClass::validate($rawInput);
+    }
+
+    private function allows(CapabilityDefinition $definition, mixed $input, mixed $context): bool
+    {
+        $definitionAuth = $definition->authorize;
+        if (is_callable($definitionAuth)) {
+            return (bool) $definitionAuth($input, $context);
+        }
+
+        return $this->authorizer->authorize($definition->name, $input, $context);
+    }
+
+    /**
      * @param  list<string>  $forced
      */
     private function stageAuthorize(InvokeState $state, array $forced): ?CapabilityResult
@@ -517,19 +551,7 @@ final class InvokePipeline
             );
         }
 
-        $allowed = true;
-        $definitionAuth = $state->definition->authorize;
-        if (is_callable($definitionAuth)) {
-            $allowed = (bool) $definitionAuth($state->input, $state->context);
-        } else {
-            $allowed = $this->authorizer->authorize(
-                $state->definition->name,
-                $state->input,
-                $state->context,
-            );
-        }
-
-        if (! $allowed) {
+        if (! $this->allows($state->definition, $state->input, $state->context)) {
             return CapabilityResult::failure(
                 code: 'forbidden',
                 message: sprintf('Not authorized to invoke "%s".', $state->definition->name),

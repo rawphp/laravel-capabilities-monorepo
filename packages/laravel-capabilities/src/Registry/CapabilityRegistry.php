@@ -556,6 +556,22 @@ final class CapabilityRegistry implements CapabilityBus
         return $this->pipeline->approvalManager;
     }
 
+    /**
+     * Would this actor be allowed to invoke the capability with this stored input?
+     * Same authorize decision as a live invoke; unknown capability or input that
+     * no longer hydrates is denied (approval accept re-checks the original actor).
+     *
+     * @param  array<string, mixed>  $rawInput
+     */
+    public function authorizes(string $nameOrAlias, array $rawInput, CapabilityContext $context): bool
+    {
+        if (! $this->has($nameOrAlias)) {
+            return false;
+        }
+
+        return $this->pipeline->authorizes($this->get($nameOrAlias), $rawInput, $context);
+    }
+
     public function audit(): ?AuditWriter
     {
         return $this->pipeline->auditStage->auditWriter;

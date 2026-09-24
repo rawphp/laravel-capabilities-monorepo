@@ -20,6 +20,7 @@ use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
 use Rawphp\Capabilities\Tests\Fixtures\BootHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 
 it('happy: registers config merge [BOOT-001]', function () {
     $plan = CapabilitiesServiceProvider::registrationPlan();
@@ -370,4 +371,107 @@ it('REQ-057: CapabilityBus resolves to the same singleton instance as Capability
         ->and($bus)->toBeInstanceOf(CapabilityBus::class)
         ->and($app->aliases[CapabilityBus::class] ?? null)->toBe(CapabilityRegistry::class)
         ->and($app->aliases['CapabilityBus'] ?? null)->toBe(CapabilityRegistry::class);
+});
+
+// --- Re-validation on accept: provider wires the original-actor re-check ---
+
+/**
+ * @return array{0: object, 1: string}
+ */
+function oaaProviderPendingApproval(?object $auth = null): array
+{
+    $app = req048FakeApp(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+    ]));
+    if ($auth !== null) {
+        $app->instance('auth', $auth);
+    }
+
+    $registry = $app->make(CapabilityRegistry::class);
+    $registry->define('create-invoice')
+        ->input(CreateInvoiceInput::class)
+        ->authorize(static fn (mixed $input, $ctx): bool => $ctx->actor()->id === '7')
+        ->run(static fn () => 'never')
+        ->register($registry);
+
+    $row = $app->make(ApprovalManager::class)->request([
+        'capability_name' => 'create-invoice',
+        'requester_actor_type' => 'user',
+        'requester_actor_id' => '7',
+        'original_caller' => 'http',
+        'input_json' => ['customer_id' => 1, 'amount_cents' => 500, 'currency' => 'AUD'],
+    ]);
+
+    return [$app, (string) $row['id']];
+}
+
+function oaaProviderAuth(?object $guard): object
+{
+    return new class($guard)
+    {
+        public function __construct(private ?object $guard) {}
+
+        public function guard(): ?object
+        {
+            return $this->guard;
+        }
+    };
+}
+
+function oaaProviderApprover(): object
+{
+    $user = new stdClass;
+    $user->id = '7';
+
+    return $user;
+}
+
+it('fail: provider-wired accept denies when the original requester cannot be rehydrated', function () {
+    [$app, $id] = oaaProviderPendingApproval();
+
+    $result = $app->make(ApprovalManager::class)->accept($id, oaaProviderApprover());
+
+    expect($result->isOk())->toBeFalse()
+        ->and($result->toArray()['error']['code'])->toBe('forbidden');
+});
+
+it('fail: provider-wired accept denies when the default guard exposes no user provider', function () {
+    [$app, $id] = oaaProviderPendingApproval(oaaProviderAuth(new stdClass));
+
+    $result = $app->make(ApprovalManager::class)->accept($id, oaaProviderApprover());
+
+    expect($result->toArray()['error']['code'] ?? null)->toBe('forbidden');
+});
+
+it('happy: provider-wired accept re-authorizes the requester via the default auth user provider', function () {
+    $looked = [];
+    $provider = new class($looked)
+    {
+        public function __construct(public array &$looked) {}
+
+        public function retrieveById(mixed $id): ?object
+        {
+            $this->looked[] = $id;
+            $user = new stdClass;
+            $user->id = (string) $id;
+
+            return $user;
+        }
+    };
+    $guard = new class($provider)
+    {
+        public function __construct(private object $provider) {}
+
+        public function getProvider(): object
+        {
+            return $this->provider;
+        }
+    };
+    [$app, $id] = oaaProviderPendingApproval(oaaProviderAuth($guard));
+
+    $result = $app->make(ApprovalManager::class)->accept($id, oaaProviderApprover());
+
+    expect($result->isOk())->toBeTrue()
+        ->and($looked)->toBe(['7']);
 });
