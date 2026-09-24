@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/tomkaczocha/.grok/skills/do-work/lib/session-hook.sh start"
+            "command": "/Users/tomkaczocha/EA/skills/do-work/lib/session-hook.sh start"
           }
         ]
       }
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/tomkaczocha/.grok/skills/do-work/lib/session-hook.sh end"
+            "command": "/Users/tomkaczocha/EA/skills/do-work/lib/session-hook.sh end"
           }
         ]
       }
