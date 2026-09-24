@@ -196,11 +196,11 @@ it('storeMessage returns 201 with ids, then 429 retryable at the turn ceiling', 
     $conversations = new ConversationService(static fn ($j) => null, $progress, maxConcurrentTurns: 1);
     $controller = new ChatController;
 
-    $created = $controller->storeMessage(Request::create('/', 'POST', ['content' => 'one']), $conversations);
+    $created = $controller->storeMessage(messageRequest(['content' => 'one'], new ChatControllerAuthUser('u1')), $conversations);
     expect($created->getStatusCode())->toBe(201)
         ->and($created->getData(true))->toHaveKey('turn_ulid');
 
-    $busy = $controller->storeMessage(Request::create('/', 'POST', ['content' => 'two']), $conversations);
+    $busy = $controller->storeMessage(messageRequest(['content' => 'two'], new ChatControllerAuthUser('u1')), $conversations);
     expect($busy->getStatusCode())->toBe(429)
         ->and($busy->getData(true)['outcome'])->toBe('retryable')
         ->and($busy->getData(true)['message'])->toContain('retry later')
