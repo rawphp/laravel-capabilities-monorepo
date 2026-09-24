@@ -116,6 +116,13 @@ final class InvokePipeline
             if ($early !== null) {
                 // Replay is success-shaped; conflict/busy are failures.
                 if ($state->idempotentReplay) {
+                    // Replays still spend turn budget and rate limits (D-013): a loop
+                    // resending one idempotency key must not bypass loop protection.
+                    $limited = $this->stageRateLimit($state, $forced);
+                    if ($limited !== null) {
+                        return $this->results()->finishFailure($state, $limited);
+                    }
+
                     return $this->results()->finishReplay($state, $early);
                 }
 
