@@ -111,7 +111,7 @@ FLAGS:
   --input=JSON
   --input-file=PATH
   --idempotency-key=KEY   manual key (default: new UUID)
-  --retry-last            reuse last Idempotency-Key after network failure
+  --retry-last            reuse last Idempotency-Key (and input, if none given) after network failure
   --no-cache              re-fetch schema
   --json                  print D-018 envelope (stdout always envelope; flag kept for agents)
   --human                 short ok/fail summary on stderr (stdout stays the envelope)

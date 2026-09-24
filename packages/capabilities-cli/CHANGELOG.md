@@ -124,6 +124,13 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   Then leave [Unreleased] empty for the next cycle. Section title has no leading "v";
   git tag keeps the "v" prefix.
 -->
+### Fixed
+
+- **`run --retry-last` with no input replays the last body** — when no
+  `--input`, `--input-file`, or schema flag is given, the CLI resends the
+  persisted input with the persisted `Idempotency-Key`, so the server replays
+  the stored outcome instead of rejecting a mismatched body (409). Explicit
+  input still wins.
 
 ## [0.x] — pre-stable
 

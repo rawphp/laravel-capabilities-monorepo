@@ -170,6 +170,12 @@ func TestExecuteCatalogDescribeRun(t *testing.T) {
 	if code != 0 {
 		t.Fatal(code, errb)
 	}
+
+	// retry last with no input replays the stored body (schema requires customer_id)
+	code, _, errb = CaptureExecute([]string{"run", "create-invoice", "--retry-last"}, root, factory)
+	if code != 0 {
+		t.Fatal(code, errb)
+	}
 }
 
 func TestExecuteRunRequiresAuth(t *testing.T) {
