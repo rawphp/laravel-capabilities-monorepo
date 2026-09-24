@@ -7,6 +7,7 @@ namespace Rawphp\CapabilitiesAi\Support;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use InvalidArgumentException;
 use Rawphp\Capabilities\Contracts\Metrics;
 use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
@@ -267,10 +268,23 @@ final class AnthropicLlmClient implements LlmClient
      * Package/capability names use dotted ids (e.g. pane.list). Encode for the
      * wire and decode on tool_use so TurnRunner still invokes the bus by
      * capability name.
+     *
+     * Fails closed when the encoding is not reversible (e.g. `a__b` would decode
+     * to `a.b`), so a tool_use can never resolve to a different capability than
+     * the one advertised.
+     *
+     * @throws InvalidArgumentException
      */
     public static function encodeToolName(string $name): string
     {
-        return str_replace('.', '__', $name);
+        $wire = str_replace('.', '__', $name);
+        if (self::decodeToolName($wire) !== $name) {
+            throw new InvalidArgumentException(
+                "Tool name [{$name}] cannot be encoded reversibly for Anthropic: avoid '__' and '_' next to '.'."
+            );
+        }
+
+        return $wire;
     }
 
     /**

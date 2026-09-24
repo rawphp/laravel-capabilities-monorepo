@@ -259,7 +259,7 @@ it('encodes dotted capability names for Anthropic wire and decodes tool_use back
     expect($out['tool_calls'][0]['name'] ?? null)->toBe('pane.list')
         ->and(AnthropicLlmClient::encodeToolName('pane.list'))->toBe('pane__list')
         ->and(AnthropicLlmClient::decodeToolName('pane__list'))->toBe('pane.list')
-        ->and(AnthropicLlmClient::encodeToolName('pane__list'))->toMatch('/^[a-zA-Z0-9_-]{1,128}$/');
+        ->and(AnthropicLlmClient::encodeToolName('pane.list'))->toMatch('/^[a-zA-Z0-9_-]{1,128}$/');
 
     Http::assertSent(function ($request) {
         $tools = $request->data()['tools'] ?? [];
@@ -270,6 +270,46 @@ it('encodes dotted capability names for Anthropic wire and decodes tool_use back
             && is_string($name)
             && (bool) preg_match('/^[a-zA-Z0-9_-]{1,128}$/', $name);
     });
+});
+
+it('round-trips capability names that contain single underscores', function (string $name) {
+    $wire = AnthropicLlmClient::encodeToolName($name);
+
+    expect($wire)->toMatch('/^[a-zA-Z0-9_-]{1,128}$/')
+        ->and(AnthropicLlmClient::decodeToolName($wire))->toBe($name);
+})->with([
+    'invoice.void_all',
+    'billing_admin.refund',
+    'a.b_c.d_e',
+    'snake_case_only',
+    'kebab-case.void_all',
+    // Shares wire name a___b with rejected a_.b; decode resolves to this one only.
+    'a._b',
+]);
+
+it('rejects capability names whose wire encoding would decode to a different capability', function (string $name) {
+    expect(fn () => AnthropicLlmClient::encodeToolName($name))
+        ->toThrow(InvalidArgumentException::class, $name);
+})->with([
+    'double underscore decodes to dot' => 'pane__list',
+    'trailing underscore before dot' => 'a_.b',
+]);
+
+it('fails closed before any request when an advertised tool name cannot round-trip', function () {
+    bootAnthropicHttp();
+    Http::fake();
+
+    $client = new AnthropicLlmClient('test-key');
+
+    expect(fn () => $client->complete(
+        [['role' => 'user', 'content' => 'hi']],
+        [
+            ['name' => 'pane.list'],
+            ['name' => 'pane__list'],
+        ],
+    ))->toThrow(InvalidArgumentException::class, 'pane__list');
+
+    Http::assertNothingSent();
 });
 
 it('multi-round: tools advertised then tool_result then final text', function () {
