@@ -6,6 +6,7 @@ use Rawphp\Capabilities\Contracts\ApprovalStore;
 use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Events\CapabilityApprovalExecuted;
+use Rawphp\Capabilities\Pipeline\ResolveActor;
 use Rawphp\Capabilities\Support\CapabilityResult;
 
 /**
@@ -145,6 +146,11 @@ final class ApprovalExecutor
         string $fromStatus = ApprovalStateMachine::STATUS_APPROVED,
     ): CapabilityResult {
         $id = (string) $row['id'];
+        // Who ran the domain (D-002): approver on accept, SystemActor on resume.
+        $executor = [
+            'executor_actor_type' => ResolveActor::actorType($actor),
+            'executor_actor_id' => ResolveActor::actorId($actor),
+        ];
 
         // Re-validation
         $stale = $this->runRevalidation($row);
@@ -154,6 +160,7 @@ final class ApprovalExecutor
                 'result_status' => 'failed',
                 'result_json' => $stale->toArray(),
                 'execution_lease_until' => null,
+                ...$executor,
             ]);
 
             // Atomic path may still be pending.
@@ -163,6 +170,7 @@ final class ApprovalExecutor
                     'result_status' => 'failed',
                     'result_json' => $stale->toArray(),
                     'execution_lease_until' => null,
+                    ...$executor,
                 ]);
             }
 
@@ -191,6 +199,7 @@ final class ApprovalExecutor
                 'result_status' => 'failed',
                 'result_json' => $fail->toArray(),
                 'execution_lease_until' => null,
+                ...$executor,
             ]);
             $this->auditWrite('approval.executed', [
                 'approval_id' => $id,
@@ -218,6 +227,7 @@ final class ApprovalExecutor
             'result_status' => $resultStatus,
             'result_json' => $result->toArray(),
             'execution_lease_until' => null,
+            ...$executor,
         ];
 
         $updated = $this->store->compareAndUpdate($id, $fromStatus, $payload);
