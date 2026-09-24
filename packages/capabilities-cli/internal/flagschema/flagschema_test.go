@@ -353,3 +353,55 @@ func fieldNames(fs []Field) []string {
 	sort.Strings(out)
 	return out
 }
+
+// Two properties that kebab-case to the same flag must not silently shadow
+// each other (winner would depend on map iteration order). Both are demoted
+// to json-only and the shared flag is rejected as ambiguous.
+func TestFromJSONSchema_kebabCollisionIsAmbiguous(t *testing.T) {
+	const collide = `{
+	  "type": "object",
+	  "properties": {
+	    "customer_id": { "type": "integer" },
+	    "customer-id": { "type": "string" },
+	    "note": { "type": "string" }
+	  }
+	}`
+	for i := 0; i < 20; i++ {
+		s, err := FromJSONSchema([]byte(collide))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range []string{"customer_id", "customer-id"} {
+			f, ok := s.LookupName(name)
+			if !ok {
+				t.Fatalf("missing field %s", name)
+			}
+			if f.Pass != PassJSONOnly {
+				t.Fatalf("%s: Pass=%q want json-only", name, f.Pass)
+			}
+		}
+		if _, ok := s.LookupFlag("customer-id"); ok {
+			t.Fatal("ambiguous flag must not resolve to a field")
+		}
+		if f, ok := s.LookupFlag("note"); !ok || f.Pass != PassFlag {
+			t.Fatal("non-colliding flag must stay a flag")
+		}
+
+		_, err = s.Merge(nil, map[string]string{"customer-id": "5"})
+		if !errors.Is(err, ErrAmbiguousFlag) {
+			t.Fatalf("err=%v want ErrAmbiguousFlag", err)
+		}
+		if want := `ambiguous flag: --customer-id (properties "customer-id", "customer_id"; pass via --input/--input-file)`; err.Error() != want {
+			t.Fatalf("err=%q want %q", err.Error(), want)
+		}
+
+		got, err := s.Merge([]byte(`{"customer_id":5,"customer-id":"x"}`), map[string]string{"note": "hi"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := map[string]any{"customer_id": float64(5), "customer-id": "x", "note": "hi"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("got %v want %v", got, want)
+		}
+	}
+}
