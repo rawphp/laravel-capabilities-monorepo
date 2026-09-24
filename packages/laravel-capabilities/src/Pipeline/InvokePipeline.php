@@ -189,7 +189,7 @@ final class InvokePipeline
             $state->mark(PipelineStages::WIRE_RESPONSE);
             $this->observation->lastState = $state;
             $this->observation->lastStages = $state->stages;
-            $this->results()->recordFailure($state->definition, $e->getMessage(), $state->caller, 'internal');
+            $this->results()->recordFailure($state->definition->name, $e->getMessage(), $state->caller, 'internal');
 
             return CapabilityResult::failure(
                 code: 'internal',
@@ -199,9 +199,22 @@ final class InvokePipeline
         }
     }
 
-    public function finishEarly(CapabilityResult $result, ?InvokeState $state): CapabilityResult
+    /**
+     * Registry gate deny (sunset / surface): audited and emitted like an authorize deny.
+     */
+    public function finishGateDeny(InvokeState $state, CapabilityResult $result): CapabilityResult
     {
-        return $this->results()->finishEarly($result, $state);
+        return $this->results()->finishFailure($state, $result, auditDeny: true);
+    }
+
+    /**
+     * Unknown capability: no definition to audit against, but the attempt is still a failed invoke.
+     */
+    public function finishUnknown(string $name, string $caller, CapabilityResult $result): CapabilityResult
+    {
+        $this->results()->recordFailure($name, (string) ($result->error['message'] ?? 'not found'), $caller, 'not_found');
+
+        return $this->results()->finishEarly($result, null);
     }
 
     /**
