@@ -242,5 +242,44 @@ class WriteFilesNoWipeTests(unittest.TestCase):
             self.assertIn("written=", out.lower())
 
 
+class RemovedCliMcpStdioCatalogTests(unittest.TestCase):
+    """ORI-791 hard-removed `capabilities mcp` and internal/mcpstdio."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cli_go = {
+            f.relpath: {gen.go_test_func_name(c.title) for c in f.cases}
+            for f in gen.build_catalog()
+            if f.package == "cli" and f.language == "go"
+        }
+
+    def test_catalog_has_no_mcpstdio_package_stubs(self):
+        stale = [p for p in self.cli_go if p.startswith("internal/mcpstdio/")]
+        self.assertEqual(stale, [])
+
+    def test_catalog_does_not_require_mcp_as_a_working_cli_command(self):
+        stale = {
+            "cmd/capabilities/commands_test.go": {"TestCommandexistsMcp", "TestCommandhelpMcp"},
+            "cmd/capabilities/help_test.go": {"TestHelpmcp"},
+            "cmd/capabilities/main_test.go": {"TestHelplistsauthcatalogrunmcpapprovals"},
+            "internal/auth/guards_test.go": {"TestMcpwithoutauthfails"},
+            "internal/auth/command_guards_test.go": {
+                "TestMcprequiresauth",
+                "TestMcpfailswithexit3whennotoken",
+            },
+        }
+        for relpath, names in stale.items():
+            present = {n.lower() for n in self.cli_go[relpath]}
+            self.assertEqual({n.lower() for n in names} & present, set(), relpath)
+
+    def test_catalog_requires_mcp_command_is_removed(self):
+        # Exact Go names: sync matches suite func names verbatim.
+        removed = self.cli_go["cmd/capabilities/mcp_removed_test.go"]
+        self.assertIn("TestMcpIsNotARunnableCommand", removed)
+        self.assertIn("TestRootHelpDoesNotListWorkingMcpStdio", removed)
+        commands = self.cli_go["cmd/capabilities/commands_test.go"]
+        self.assertIn("TestCommandexistsMcpFalse", commands)
+
+
 if __name__ == "__main__":
     unittest.main()
