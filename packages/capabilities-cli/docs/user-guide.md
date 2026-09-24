@@ -338,7 +338,7 @@ Missing `<id>` on accept/reject → exit **2** with a short usage line (not full
 
 ```bash
 capabilities version
-capabilities self-update                            # latest release; darwin/linux only
+capabilities self-update [--json]                   # latest release; darwin/linux only
 capabilities help
 capabilities help run
 capabilities <domain> --help
@@ -350,7 +350,10 @@ Bare `capabilities` and `--help` paths exit **0** (success).
 
 `self-update` fetches the latest GitHub Release, requires `checksums.txt`, exits **0**
 when already current, and fails closed on unwritable install paths or unsupported OS
-(see [Self-update](#self-update-macos--linux)).
+(see [Self-update](#self-update-macos--linux)). With `--json`, stdout carries one
+envelope: `{"ok":true,"data":{"outcome":"updated|already_latest","current_version","latest_version"}}`
+or a D-018 error (`code: "internal"`, `retryable: true` for network/resolve failures);
+the human diagnostic stays on stderr.
 
 Reserved meta-commands always win over domain tokens of the same name:
 `auth` · `catalog` · `describe` · `run` · `approvals` · `version` · `self-update` · `help`.

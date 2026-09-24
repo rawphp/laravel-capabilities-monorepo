@@ -137,7 +137,11 @@ USAGE:
 		return `self-update — download and replace this binary from GitHub Releases
 
 USAGE:
-  capabilities self-update
+  capabilities self-update [--json]
+
+FLAGS:
+  --json    Print a D-018 envelope on stdout: {"ok":true,"data":{"outcome",...}}
+            or {"ok":false,"error":{"code":"internal","message",...}}
 
 BEHAVIOUR:
   - Fetches the latest release of rawphp/capabilities-cli (darwin/linux only)
