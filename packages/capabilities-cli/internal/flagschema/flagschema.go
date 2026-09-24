@@ -218,6 +218,16 @@ func plainTypesFromUnion(types []any) (plain []string, hasNull bool) {
 			return nil, hasNull
 		}
 	}
+	// integer ⊂ number in JSON Schema: PHP int|float exports ["integer","number"].
+	if seen["integer"] && seen["number"] {
+		kept := plain[:0]
+		for _, ts := range plain {
+			if ts != "integer" {
+				kept = append(kept, ts)
+			}
+		}
+		plain = kept
+	}
 	return plain, hasNull
 }
 
