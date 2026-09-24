@@ -158,17 +158,19 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 |--------------|-----------------|--------------|
 | **history** | Empty messages / always **200** | Real history from `ConversationService`; missing conversation → **HTTP 404** |
 | **showTurn** | Stub body `{turn_ulid}` | Real turn from `TurnService`; missing → **HTTP 404** |
-| **cancelTurn** | Always **200** cancelled stub | Real cancel; missing → **HTTP 404**; conflict (not cancellable) → **HTTP 409** + `message` |
+| **cancelTurn** | Always **200** cancelled stub | Real cancel; missing → **HTTP 404**; conflict (not cancellable) → **HTTP 409** `conflict` |
 | **turnEvents** | Empty events | Real progress events; query `cursor` (default **0**); JSON body `{turn_ulid, events}`; missing turn → **HTTP 404** |
-| **destroyConversation** | Always **200** deleted stub | Real destroy; missing → **HTTP 404**; conflict (e.g. active turns) → **HTTP 409** + `message` |
+| **destroyConversation** | Always **200** deleted stub | Real destroy; missing → **HTTP 404**; conflict (e.g. active turns) → **HTTP 409** `conflict` |
 
 **Status mapping (controller):**
 
 | Exception / case | HTTP | Typical routes |
 |------------------|------|----------------|
-| `ModelNotFoundException` | **404** | history, showTurn, cancelTurn, turnEvents, destroyConversation |
-| `RuntimeException` (domain conflict) | **409** + `message` | cancelTurn, destroyConversation |
+| `ModelNotFoundException` | **404** `not_found` | history, showTurn, cancelTurn, turnEvents, destroyConversation, accept/reject |
+| `RuntimeException` (domain conflict) | **409** `conflict` | cancelTurn, destroyConversation, reject |
 | Success | **200** (message create **201**) | real service payload — not an empty stub |
+
+**Error body:** 404/409 use the same D-018 envelope as the core capability HTTP API — `{ "ok": false, "error": { "code": "not_found" | "conflict", "message": "…", "retryable": false, … } }`. Read `error.message`, not a top-level `message`. Accept outcomes keep their own `AcceptOutcome` body.
 
 **turnEvents shape (high level):**
 
