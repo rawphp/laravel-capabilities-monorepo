@@ -154,8 +154,8 @@ it('history returns 404 for another user\'s conversation', function () {
     $ids = $conversations->createUserMessage('secret', userId: 'u1');
     $response = (new ChatController)->history(chatRequest('u2'), $ids['conversation_ulid'], $conversations);
 
-    expect($response->getStatusCode())->toBe(404)
-        ->and($response->getData(true))->toBe(['message' => 'Conversation not found']);
+    expect($response->getStatusCode())->toBe(404);
+    expectChatErrorEnvelope($response->getData(true), 'not_found', 'Conversation not found');
 });
 
 it('storeMessage owns the conversation by the authenticated user, not the body user_id', function () {
@@ -276,7 +276,7 @@ it('storeMessage returns 404 for a well-formed but unknown conversation_ulid', f
     );
 
     expect($response->getStatusCode())->toBe(404)
-        ->and($response->getData(true)['message'])->toBe('Conversation not found')
+        ->and($response->getData(true)['error']['message'])->toBe('Conversation not found')
         ->and(Message::query()->count())->toBe(0);
 });
 
@@ -542,12 +542,12 @@ it('not-found branches use the D-018 not_found envelope', function () {
     $missingTurn = '01MISSINGTURN00000000000';
 
     $cases = [
-        [$controller->history($missingConv, $conversations), 'Conversation not found'],
-        [$controller->storeMessage(Request::create('/m', 'POST', ['content' => 'x', 'conversation_ulid' => $missingConv]), $conversations), 'Conversation not found'],
-        [$controller->destroyConversation($missingConv, $conversations), 'Conversation not found'],
-        [$controller->showTurn($missingTurn, $turns), 'Turn not found'],
-        [$controller->cancelTurn($missingTurn, $turns), 'Turn not found'],
-        [$controller->turnEvents(Request::create('/e', 'GET'), $missingTurn, $turns), 'Turn not found'],
+        [$controller->history(chatRequest('u1'), $missingConv, $conversations), 'Conversation not found'],
+        [$controller->storeMessage(chatRequest('u1', 'POST', ['content' => 'x', 'conversation_ulid' => str_repeat('0', 26)]), $conversations), 'Conversation not found'],
+        [$controller->destroyConversation(chatRequest('u1'), $missingConv, $conversations), 'Conversation not found'],
+        [$controller->showTurn(chatRequest('u1'), $missingTurn, $turns), 'Turn not found'],
+        [$controller->cancelTurn(chatRequest('u1'), $missingTurn, $turns), 'Turn not found'],
+        [$controller->turnEvents(chatRequest('u1'), $missingTurn, $turns), 'Turn not found'],
         [$controller->rejectProposal('PROPDOESNOTEXIST0001', $proposals), 'Proposal not found'],
     ];
 
@@ -560,10 +560,10 @@ it('not-found branches use the D-018 not_found envelope', function () {
 it('domain conflict branches use the D-018 conflict envelope', function () {
     $progress = bootHttpSqlite();
     $conversations = new ConversationService(static fn ($j) => null, $progress);
-    $ids = $conversations->createUserMessage('busy');
+    $ids = $conversations->createUserMessage('busy', userId: 'u1');
     $controller = new ChatController;
 
-    $destroy = $controller->destroyConversation($ids['conversation_ulid'], $conversations);
+    $destroy = $controller->destroyConversation(chatRequest('u1'), $ids['conversation_ulid'], $conversations);
     expect($destroy->getStatusCode())->toBe(409);
     expectChatErrorEnvelope(
         $destroy->getData(true),
@@ -572,7 +572,7 @@ it('domain conflict branches use the D-018 conflict envelope', function () {
     );
 
     Turn::query()->where('ulid', $ids['turn_ulid'])->update(['status' => Turn::STATUS_COMPLETED]);
-    $cancel = $controller->cancelTurn($ids['turn_ulid'], new TurnService($progress));
+    $cancel = $controller->cancelTurn(chatRequest('u1'), $ids['turn_ulid'], new TurnService($progress));
     expect($cancel->getStatusCode())->toBe(409);
     expectChatErrorEnvelope(
         $cancel->getData(true),
