@@ -11,6 +11,12 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Added
+
+- `GET /{prefix}/health` now reports `api_version` (`RouteTable::API_VERSION`, currently `1`).
+  The product CLI checks it before `run` and refuses a server that speaks another version.
+  Bump it on any breaking change to route shapes or the invoke/error envelopes.
+
 ### Changed (BREAKING)
 
 #### Accepted approvals now run the capability
