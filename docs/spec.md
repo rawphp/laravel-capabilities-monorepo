@@ -958,8 +958,8 @@ raw JSON + optional Idempotency-Key
   → resolve actor / scope (D-002, D-003)
   → idempotency lookup (D-005)
   → authorize(DTO)
+  → rate limit check (D-013) — before approval, so approval requests are budgeted too
   → needsApproval(DTO)?  → maybe pending + CapabilityApprovalRequested event
-  → rate limit check (D-013)
   → run(DTO)             → domain owns its transaction (D-010)
   → validate output schema (D-014 — default ON for mutations)
   → store idempotency result (if key)

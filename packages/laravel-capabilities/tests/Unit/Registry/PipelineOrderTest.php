@@ -93,31 +93,31 @@ it('edge: stage authorize runs after idempotency_lookup [PIPE-001]', function ()
     expect($a)->not->toBeFalse()->and($b)->not->toBeFalse()->and($b)->toBeGreaterThan($a);
 });
 
-it('happy: pipeline position 07 is needs_approval [PIPE-001]', function () {
-    expect(PipelineStages::ordered()[7])->toBe(PipelineStages::NEEDS_APPROVAL);
+it('happy: pipeline position 07 is rate_limit [PIPE-001]', function () {
+    expect(PipelineStages::ordered()[7])->toBe(PipelineStages::RATE_LIMIT);
 });
 
-it('edge: stage needs_approval runs after authorize [PIPE-001]', function () {
+it('edge: stage rate_limit runs after authorize [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http', ['idempotency_key' => 'ord-7']));
     expect($result->isOk())->toBeTrue();
     $stages = $h['registry']->lastStages();
     $a = array_search('authorize', $stages, true);
-    $b = array_search('needs_approval', $stages, true);
+    $b = array_search('rate_limit', $stages, true);
     expect($a)->not->toBeFalse()->and($b)->not->toBeFalse()->and($b)->toBeGreaterThan($a);
 });
 
-it('happy: pipeline position 08 is rate_limit [PIPE-001]', function () {
-    expect(PipelineStages::ordered()[8])->toBe(PipelineStages::RATE_LIMIT);
+it('happy: pipeline position 08 is needs_approval [PIPE-001]', function () {
+    expect(PipelineStages::ordered()[8])->toBe(PipelineStages::NEEDS_APPROVAL);
 });
 
-it('edge: stage rate_limit runs after needs_approval [PIPE-001]', function () {
+it('edge: stage needs_approval runs after rate_limit [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http', ['idempotency_key' => 'ord-8']));
     expect($result->isOk())->toBeTrue();
     $stages = $h['registry']->lastStages();
-    $a = array_search('needs_approval', $stages, true);
-    $b = array_search('rate_limit', $stages, true);
+    $a = array_search('rate_limit', $stages, true);
+    $b = array_search('needs_approval', $stages, true);
     expect($a)->not->toBeFalse()->and($b)->not->toBeFalse()->and($b)->toBeGreaterThan($a);
 });
 
@@ -125,12 +125,12 @@ it('happy: pipeline position 09 is run [PIPE-001]', function () {
     expect(PipelineStages::ordered()[9])->toBe(PipelineStages::RUN);
 });
 
-it('edge: stage run runs after rate_limit [PIPE-001]', function () {
+it('edge: stage run runs after needs_approval [PIPE-001]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http', ['idempotency_key' => 'ord-9']));
     expect($result->isOk())->toBeTrue();
     $stages = $h['registry']->lastStages();
-    $a = array_search('rate_limit', $stages, true);
+    $a = array_search('needs_approval', $stages, true);
     $b = array_search('run', $stages, true);
     expect($a)->not->toBeFalse()->and($b)->not->toBeFalse()->and($b)->toBeGreaterThan($a);
 });

@@ -134,14 +134,15 @@ final class InvokePipeline
                 return $this->results()->finishFailure($state, $early, auditDeny: true);
             }
 
-            $early = $this->stageNeedsApproval($state, $forced);
-            if ($early !== null) {
-                return $this->results()->finishApprovalRequired($state, $early);
-            }
-
+            // Rate limit before approval so approval requests cannot flood the store/notifiers (D-013).
             $early = $this->stageRateLimit($state, $forced);
             if ($early !== null) {
                 return $this->results()->finishFailure($state, $early, auditDeny: true);
+            }
+
+            $early = $this->stageNeedsApproval($state, $forced);
+            if ($early !== null) {
+                return $this->results()->finishApprovalRequired($state, $early);
             }
 
             // ── run ─────────────────────────────────────────────────────
