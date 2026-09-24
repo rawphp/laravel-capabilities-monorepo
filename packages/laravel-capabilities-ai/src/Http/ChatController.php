@@ -8,6 +8,7 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesAi\Domain\AcceptOutcome;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
@@ -20,6 +21,8 @@ use RuntimeException;
  *
  * Conversation/turn routes act as the authenticated user only (D-022): no user → 401,
  * another user's conversation or turn → 404. Body `user_id` is ignored.
+ *
+ * Error branches reuse the core D-018 envelope (same shape as capability invoke).
  */
 final class ChatController
 {
@@ -36,7 +39,7 @@ final class ChatController
         try {
             return new JsonResponse($conversations->history($conversationUlid, $userId));
         } catch (ModelNotFoundException) {
-            return new JsonResponse(['message' => 'Conversation not found'], 404);
+            return $this->failure('not_found', 'Conversation not found');
         }
     }
 
@@ -66,7 +69,7 @@ final class ChatController
         } catch (TurnCapacityExceededException $e) {
             return new JsonResponse(['message' => $e->getMessage(), 'outcome' => AcceptOutcome::KIND_RETRYABLE], 429);
         } catch (ModelNotFoundException) {
-            return new JsonResponse(['message' => 'Conversation not found'], 404);
+            return $this->failure('not_found', 'Conversation not found');
         }
 
         return new JsonResponse($ids, 201);
@@ -103,7 +106,7 @@ final class ChatController
         try {
             return new JsonResponse($turns->show($turnUlid, $userId));
         } catch (ModelNotFoundException) {
-            return new JsonResponse(['message' => 'Turn not found'], 404);
+            return $this->failure('not_found', 'Turn not found');
         }
     }
 
@@ -117,9 +120,9 @@ final class ChatController
         try {
             return new JsonResponse($turns->cancel($turnUlid, $userId));
         } catch (ModelNotFoundException) {
-            return new JsonResponse(['message' => 'Turn not found'], 404);
+            return $this->failure('not_found', 'Turn not found');
         } catch (RuntimeException $e) {
-            return new JsonResponse(['message' => $e->getMessage()], 409);
+            return $this->failure('conflict', $e->getMessage());
         }
     }
 
@@ -136,7 +139,7 @@ final class ChatController
 
             return new JsonResponse(['turn_ulid' => $turnUlid, 'events' => $events]);
         } catch (ModelNotFoundException) {
-            return new JsonResponse(['message' => 'Turn not found'], 404);
+            return $this->failure('not_found', 'Turn not found');
         }
     }
 
@@ -147,7 +150,7 @@ final class ChatController
 
             return $this->jsonFromAcceptOutcome($outcome);
         } catch (ModelNotFoundException) {
-            return new JsonResponse(['message' => 'Proposal not found'], 404);
+            return $this->failure('not_found', 'Proposal not found');
         }
     }
 
@@ -188,9 +191,9 @@ final class ChatController
 
             return new JsonResponse(['ulid' => $proposal->ulid, 'status' => $proposal->status]);
         } catch (ModelNotFoundException) {
-            return new JsonResponse(['message' => 'Proposal not found'], 404);
+            return $this->failure('not_found', 'Proposal not found');
         } catch (RuntimeException $e) {
-            return new JsonResponse(['message' => $e->getMessage()], 409);
+            return $this->failure('conflict', $e->getMessage());
         }
     }
 
@@ -204,9 +207,9 @@ final class ChatController
         try {
             return new JsonResponse($conversations->destroy($conversationUlid, $userId));
         } catch (ModelNotFoundException) {
-            return new JsonResponse(['message' => 'Conversation not found'], 404);
+            return $this->failure('not_found', 'Conversation not found');
         } catch (RuntimeException $e) {
-            return new JsonResponse(['message' => $e->getMessage()], 409);
+            return $this->failure('conflict', $e->getMessage());
         }
     }
 
@@ -224,5 +227,12 @@ final class ChatController
     private function unauthenticated(): JsonResponse
     {
         return new JsonResponse(['message' => 'Unauthenticated'], 401);
+    }
+
+    private function failure(string $code, string $message): JsonResponse
+    {
+        $result = CapabilityResult::failure($code, $message);
+
+        return new JsonResponse($result->toArray(), (int) ($result->error['http_status'] ?? 500));
     }
 }

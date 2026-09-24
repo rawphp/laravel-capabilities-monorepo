@@ -159,10 +159,10 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 | **storeMessage** | Body `user_id` set the conversation owner | Owner = authenticated user (body `user_id` ignored); unauthenticated → **HTTP 401**; `conversation_ulid` owned by another user → **HTTP 404** |
 | **history** | Empty messages / always **200** | Real history from `ConversationService`; missing conversation → **HTTP 404** |
 | **showTurn** | Stub body `{turn_ulid}` | Real turn from `TurnService`; missing → **HTTP 404** |
-| **cancelTurn** | Always **200** cancelled stub | Real cancel; missing → **HTTP 404**; conflict (not cancellable) → **HTTP 409** + `message` |
+| **cancelTurn** | Always **200** cancelled stub | Real cancel; missing → **HTTP 404**; conflict (not cancellable) → **HTTP 409** `conflict` |
 | **turnEvents** | Empty events | Real progress events; query `cursor` (default **0**); JSON body `{turn_ulid, events}`; missing turn → **HTTP 404** |
-| **destroyConversation** | Always **200** deleted stub | Real destroy; missing → **HTTP 404**; conflict (e.g. active turns) → **HTTP 409** + `message` |
-| **storeMessage** | Any body accepted; unknown `conversation_ulid` → **500** | `content` must be a non-empty string and `conversation_ulid` (optional) a 26-char uppercase ULID, else **HTTP 422** + `{message, errors}` with no rows or turn job; well-formed but unknown `conversation_ulid` → **HTTP 404** |
+| **destroyConversation** | Always **200** deleted stub | Real destroy; missing → **HTTP 404**; conflict (e.g. active turns) → **HTTP 409** `conflict` |
+| **storeMessage** | Any body accepted; unknown `conversation_ulid` → **500** | `content` must be a non-empty string and `conversation_ulid` (optional) a 26-char uppercase ULID, else **HTTP 422** + `{message, errors}` with no rows or turn job; well-formed but unknown `conversation_ulid` → **HTTP 404** `not_found` |
 
 **Status mapping (controller):**
 
@@ -170,11 +170,13 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 |------------------|------|----------------|
 | No authenticated user (`$request->user()`) | **401** | every chat route above + message create |
 | Invalid message body | **422** + `{message, errors}` | storeMessage |
-| Another user's (or ownerless) conversation/turn | **404** (same as missing) | history, message append, showTurn, cancelTurn, turnEvents, destroyConversation |
-| `ModelNotFoundException` | **404** | storeMessage (unknown `conversation_ulid`), history, showTurn, cancelTurn, turnEvents, destroyConversation |
-| `RuntimeException` (domain conflict) | **409** + `message` | cancelTurn, destroyConversation |
+| Another user's (or ownerless) conversation/turn | **404** `not_found` (same as missing) | history, message append, showTurn, cancelTurn, turnEvents, destroyConversation |
+| `ModelNotFoundException` | **404** `not_found` | history, message create (unknown `conversation_ulid`), showTurn, cancelTurn, turnEvents, destroyConversation, proposal accept/reject |
+| `RuntimeException` (domain conflict) | **409** `conflict` | cancelTurn, destroyConversation, proposal reject |
 | `TurnCapacityExceededException` (`max_concurrent_turns` reached) | **429** + `message`, `outcome: retryable` | storeMessage — nothing persisted or dispatched; resend later |
 | Success | **200** (message create **201**) | real service payload — not an empty stub |
+
+**Error body (breaking vs `{message}`):** 404 / 409 bodies use the same D-018 envelope as core capability invoke — `{ "ok": false, "error": { "code", "message", "violations", "approval_id", "request_id", "retryable", "http_status", "cli_exit" }, "meta": {} }`. The old top-level `message` key is gone; read `error.code` / `error.message`. Accept outcome bodies (`ulid` / `status` / `outcome`) are unchanged.
 
 **turnEvents shape (high level):**
 

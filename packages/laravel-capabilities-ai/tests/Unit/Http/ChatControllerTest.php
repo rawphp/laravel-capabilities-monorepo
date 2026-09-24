@@ -502,7 +502,83 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse / unresolv
         httpProposalService($busOk),
     );
     expect($missing->getStatusCode())->toBe(404)
-        ->and($missing->getData(true)['message'])->toBe('Proposal not found');
+        ->and($missing->getData(true)['ok'])->toBeFalse()
+        ->and($missing->getData(true)['error']['code'])->toBe('not_found')
+        ->and($missing->getData(true)['error']['message'])->toBe('Proposal not found');
+});
+
+/**
+ * @param  array<string, mixed>  $body
+ */
+function expectChatErrorEnvelope(array $body, string $code, string $message): void
+{
+    expect($body['ok'])->toBeFalse()
+        ->and($body['meta'])->toBe([])
+        ->and($body['error']['code'])->toBe($code)
+        ->and($body['error']['message'])->toBe($message)
+        ->and($body['error']['violations'])->toBe([])
+        ->and($body['error'])->toHaveKeys(['approval_id', 'request_id', 'retryable', 'http_status', 'cli_exit'])
+        ->and($body)->not->toHaveKey('message');
+}
+
+it('not-found branches use the D-018 not_found envelope', function () {
+    $progress = bootHttpSqlite();
+    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    $turns = new TurnService($progress);
+    $proposals = httpProposalService(new class implements CapabilityBus
+    {
+        public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
+        {
+            throw new RuntimeException('unused');
+        }
+
+        public function catalog(): CatalogPresenter
+        {
+            throw new RuntimeException('unused');
+        }
+    });
+    $controller = new ChatController;
+    $missingConv = '01MISSINGCONV00000000000';
+    $missingTurn = '01MISSINGTURN00000000000';
+
+    $cases = [
+        [$controller->history($missingConv, $conversations), 'Conversation not found'],
+        [$controller->storeMessage(Request::create('/m', 'POST', ['content' => 'x', 'conversation_ulid' => $missingConv]), $conversations), 'Conversation not found'],
+        [$controller->destroyConversation($missingConv, $conversations), 'Conversation not found'],
+        [$controller->showTurn($missingTurn, $turns), 'Turn not found'],
+        [$controller->cancelTurn($missingTurn, $turns), 'Turn not found'],
+        [$controller->turnEvents(Request::create('/e', 'GET'), $missingTurn, $turns), 'Turn not found'],
+        [$controller->rejectProposal('PROPDOESNOTEXIST0001', $proposals), 'Proposal not found'],
+    ];
+
+    foreach ($cases as [$response, $message]) {
+        expect($response->getStatusCode())->toBe(404);
+        expectChatErrorEnvelope($response->getData(true), 'not_found', $message);
+    }
+});
+
+it('domain conflict branches use the D-018 conflict envelope', function () {
+    $progress = bootHttpSqlite();
+    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    $ids = $conversations->createUserMessage('busy');
+    $controller = new ChatController;
+
+    $destroy = $controller->destroyConversation($ids['conversation_ulid'], $conversations);
+    expect($destroy->getStatusCode())->toBe(409);
+    expectChatErrorEnvelope(
+        $destroy->getData(true),
+        'conflict',
+        "Conversation {$ids['conversation_ulid']} has queued or running turns",
+    );
+
+    Turn::query()->where('ulid', $ids['turn_ulid'])->update(['status' => Turn::STATUS_COMPLETED]);
+    $cancel = $controller->cancelTurn($ids['turn_ulid'], new TurnService($progress));
+    expect($cancel->getStatusCode())->toBe(409);
+    expectChatErrorEnvelope(
+        $cancel->getData(true),
+        'conflict',
+        "Turn {$ids['turn_ulid']} cannot be cancelled (status=".Turn::STATUS_COMPLETED.')',
+    );
 });
 
 it('storeMessage owns the conversation as the authenticated user and ignores body user_id', function () {
