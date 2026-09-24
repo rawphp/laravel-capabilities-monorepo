@@ -105,12 +105,16 @@ function recordingBus(): object
         /** @var array<string, mixed> */
         public array $lastOptions = [];
 
+        /** @var list<array<string, mixed>> */
+        public array $allOptions = [];
+
         public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
         {
             $this->invokes++;
             $this->lastName = $nameOrAlias;
             $this->lastInput = $input;
             $this->lastOptions = $options;
+            $this->allOptions[] = $options;
 
             return CapabilityResult::ok(['ok' => true]);
         }
@@ -219,6 +223,52 @@ it('tool call path invokes CapabilityBus exactly once with expected name/payload
         ->and($data['ok'] ?? null)->toBeTrue()
         ->and(array_key_exists('error_code', $data))->toBeTrue()
         ->and($data['error_code'])->toBeNull();
+});
+
+it('tool invokes carry a 1-based per-turn tool-call count across rounds for the D-013 budget', function () {
+    bootTurnSqlite();
+    $context = new class implements ConversationContextProvider
+    {
+        public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['role' => 'user', 'content' => 'use tools']];
+        }
+    };
+    $tools = new class implements ToolCatalog
+    {
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['name' => 'demo.tool']];
+        }
+    };
+    $runTurn = static function (object $bus) use ($context, $tools): void {
+        $runner = new TurnRunner(
+            claim: new TurnClaim,
+            llm: new FakeLlmClient([
+                ['tool_calls' => [
+                    ['name' => 'demo.tool', 'arguments' => []],
+                    ['name' => 'demo.tool', 'arguments' => []],
+                ]],
+                ['tool_calls' => [['name' => 'demo.tool', 'arguments' => []]]],
+                ['content' => 'done'],
+            ]),
+            context: $context,
+            tools: $tools,
+            bus: $bus,
+            progress: new ArrayProgressStore,
+            actors: turnActors(),
+        );
+        $runner->run(enqueueTurnWithUser('use tools')['turn_ulid']);
+    };
+
+    $first = recordingBus();
+    $runTurn($first);
+    $second = recordingBus();
+    $runTurn($second);
+
+    expect(array_column($first->allOptions, 'agent_turn_tool_calls'))->toBe([1, 2, 3])
+        ->and(array_column($second->allOptions, 'agent_turn_tool_calls'))->toBe([1, 2, 3])
+        ->and(array_unique(array_column($first->allOptions, 'caller')))->toBe([ResolveConversationActor::CALLER_JOB]);
 });
 
 it('tool call path fails closed when conversation has no user_id', function () {
