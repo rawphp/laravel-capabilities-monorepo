@@ -18,6 +18,7 @@ use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\ProposalFenceExtractor;
 use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
 use Rawphp\CapabilitiesAi\Support\RetryableLlmException;
+use Rawphp\CapabilitiesAi\Support\ToolSchemaHash;
 use RuntimeException;
 
 /**
@@ -82,7 +83,7 @@ final class TurnRunner
                         'content' => $content,
                         'meta' => null,
                     ]);
-                    $this->maybeCreateProposalsFromFence($conversation->id, $turn->id, $turnUlid, $content);
+                    $this->maybeCreateProposalsFromFence($conversation, $turn, $content);
                     break;
                 }
 
@@ -127,7 +128,7 @@ final class TurnRunner
                         'content' => $content,
                         'meta' => null,
                     ]);
-                    $this->maybeCreateProposalsFromFence($conversation->id, $turn->id, $turnUlid, $content);
+                    $this->maybeCreateProposalsFromFence($conversation, $turn, $content);
                     break;
                 }
 
@@ -257,7 +258,7 @@ final class TurnRunner
         return json_encode($wire, JSON_THROW_ON_ERROR);
     }
 
-    private function maybeCreateProposalsFromFence(int $conversationId, int $turnId, string $turnUlid, string $content): void
+    private function maybeCreateProposalsFromFence(Conversation $conversation, Turn $turn, string $content): void
     {
         if (! $this->proposalsEnabled) {
             return;
@@ -266,7 +267,7 @@ final class TurnRunner
         $fence = $this->proposalExtractor->parse($content);
         if ($fence->isInvalid()) {
             // Surface provider/prompt format drift instead of silently dropping the proposal.
-            $this->progress->append($turnUlid, ['kind' => 'proposal_invalid', 'data' => null]);
+            $this->progress->append($turn->ulid, ['kind' => 'proposal_invalid', 'data' => null]);
 
             return;
         }
@@ -276,14 +277,31 @@ final class TurnRunner
             return;
         }
 
+        $target = isset($data['target_capability']) ? (string) $data['target_capability'] : null;
+
         Proposal::query()->create([
-            'turn_id' => $turnId,
-            'conversation_id' => $conversationId,
+            'turn_id' => $turn->id,
+            'conversation_id' => $conversation->id,
             'ulid' => strtoupper(bin2hex(random_bytes(13))),
             'type' => (string) ($data['type'] ?? 'action'),
             'payload' => $data['payload'] ?? $data,
-            'target_capability' => isset($data['target_capability']) ? (string) $data['target_capability'] : null,
+            'target_capability' => $target,
+            'schema_hash' => $target === null ? null : $this->targetSchemaHash($target, $conversation->ulid, $turn->ulid),
             'status' => Proposal::STATUS_PENDING,
         ]);
+    }
+
+    /**
+     * Stamp the target's then-current input schema so accept can tell drift from a bad payload.
+     */
+    private function targetSchemaHash(string $target, string $conversationUlid, string $turnUlid): ?string
+    {
+        foreach ($this->tools?->toolsForTurn($conversationUlid, $turnUlid) ?? [] as $tool) {
+            if (($tool['name'] ?? null) === $target) {
+                return ToolSchemaHash::of($tool);
+            }
+        }
+
+        return null;
     }
 }
