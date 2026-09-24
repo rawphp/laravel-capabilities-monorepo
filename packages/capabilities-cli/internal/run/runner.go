@@ -166,7 +166,7 @@ func Run(ctx context.Context, opts Options) *Result {
 	apiRes, err := opts.Client.InvokeCapability(ctx, opts.Capability, body, key)
 	if err != nil {
 		res.ExitCode = ExitInternal
-		res.Stderr = err.Error()
+		appendStderr(res, err.Error())
 		res.Envelope = localFailEnvelope(api.CodeInternal, err.Error(), nil)
 		// Persist key so --retry-last reuses it after network failure.
 		_ = saveLastRun(opts, opts.Capability, key, opts.InputJSON)
@@ -177,7 +177,7 @@ func Run(ctx context.Context, opts Options) *Result {
 	res.Envelope = apiRes.Body
 	if apiRes.Err != nil {
 		res.ExitCode = apiRes.Err.ExitCode
-		res.Stderr = apiRes.Err.Error()
+		appendStderr(res, apiRes.Err.Error())
 		// Machine envelope on stdout for structured server errors.
 		if len(apiRes.Body) > 0 {
 			res.Stdout = string(apiRes.Body)
@@ -204,13 +204,17 @@ func Run(ctx context.Context, opts Options) *Result {
 	res.Stdout = string(apiRes.Body)
 	if opts.Human {
 		// Short human summary on stderr only — never dumps full payload (that is stdout).
-		summary := humanSuccessSummary(opts.Capability, apiRes.Body)
-		if res.Stderr != "" && !strings.HasSuffix(res.Stderr, "\n") {
-			res.Stderr += "\n"
-		}
-		res.Stderr += summary + "\n"
+		appendStderr(res, humanSuccessSummary(opts.Capability, apiRes.Body)+"\n")
 	}
 	return res
+}
+
+// appendStderr adds msg after any earlier stderr (the D-012 deprecation warning) instead of replacing it.
+func appendStderr(res *Result, msg string) {
+	if res.Stderr != "" && !strings.HasSuffix(res.Stderr, "\n") {
+		res.Stderr += "\n"
+	}
+	res.Stderr += msg
 }
 
 // humanSuccessSummary is a one-line stderr cue for --human (stdout keeps the envelope).
