@@ -184,6 +184,11 @@ it('claimLease uses atomic updateWhereLeaseFree without prior find TOCTOU', func
             return $row;
         }
 
+        public function insertIfAbsent(array $identity, array $row): ?array
+        {
+            return $this->insert(array_merge($row, $identity));
+        }
+
         public function find(string $id): ?array
         {
             $this->findCalls++;

@@ -47,6 +47,17 @@ interface IdempotencyStore
     public function put(array $record): array;
 
     /**
+     * Atomically take the composite identity for a new invoke.
+     *
+     * Writes $record only when no unexpired record holds the identity and
+     * returns true; returns false when another record holds it. Of two
+     * concurrent claims for one identity, exactly one returns true.
+     *
+     * @param  array<string, mixed>  $record
+     */
+    public function claim(array $record): bool;
+
+    /**
      * Merge attributes for an existing identity; null when not found.
      *
      * @param  array<string, mixed>  $attributes

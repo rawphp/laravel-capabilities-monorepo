@@ -41,6 +41,56 @@ final class DatabaseIdempotencyStore implements IdempotencyStore
 
     public function put(array $record): array
     {
+        [$identity, $row] = $this->rowFor($record);
+
+        return $this->toPublic($this->table->upsert($identity, $row));
+    }
+
+    /**
+     * Insert-if-absent on the unique identity; an expired holder is taken over
+     * with a compare-and-swap on the expiry we read, so one taker wins.
+     */
+    public function claim(array $record): bool
+    {
+        [$identity, $row] = $this->rowFor($record);
+
+        if ($this->table->insertIfAbsent($identity, $row) !== null) {
+            return true;
+        }
+
+        $rows = $this->table->findWhere($identity);
+        if ($rows === [] || ! $this->isExpired($rows[0])) {
+            return false;
+        }
+
+        $swap = $identity + ['expires_at' => $rows[0]['expires_at']];
+
+        return $this->table->updateWhere($swap, $row) !== null;
+    }
+
+    public function update(
+        ?string $tenantId,
+        string $actorType,
+        string $actorId,
+        string $capabilityName,
+        string $key,
+        array $attributes,
+    ): ?array {
+        $identity = $this->identityMap($tenantId, $actorType, $actorId, $capabilityName, $key);
+        $updated = $this->table->updateWhere($identity, $attributes);
+        if ($updated === null) {
+            return null;
+        }
+
+        return $this->toPublic($updated);
+    }
+
+    /**
+     * @param  array<string, mixed>  $record
+     * @return array{0: array{tenant_id: string, actor_type: string, actor_id: string, capability_name: string, idempotency_key: string}, 1: array<string, mixed>}
+     */
+    private function rowFor(array $record): array
+    {
         $tenantId = array_key_exists('tenant_id', $record)
             ? (is_string($record['tenant_id']) || $record['tenant_id'] === null
                 ? $record['tenant_id']
@@ -68,26 +118,7 @@ final class DatabaseIdempotencyStore implements IdempotencyStore
             'expires_at' => $record['expires_at'] ?? null,
         ];
 
-        $stored = $this->table->upsert($identity, $row);
-
-        return $this->toPublic($stored);
-    }
-
-    public function update(
-        ?string $tenantId,
-        string $actorType,
-        string $actorId,
-        string $capabilityName,
-        string $key,
-        array $attributes,
-    ): ?array {
-        $identity = $this->identityMap($tenantId, $actorType, $actorId, $capabilityName, $key);
-        $updated = $this->table->updateWhere($identity, $attributes);
-        if ($updated === null) {
-            return null;
-        }
-
-        return $this->toPublic($updated);
+        return [$identity, $row];
     }
 
     /**

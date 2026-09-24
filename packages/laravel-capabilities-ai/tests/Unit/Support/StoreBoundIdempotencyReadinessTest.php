@@ -23,6 +23,11 @@ it('is ready when store find ping succeeds', function () {
             return $record;
         }
 
+        public function claim(array $record): bool
+        {
+            return true;
+        }
+
         public function update(?string $tenantId, string $actorType, string $actorId, string $capabilityName, string $key, array $attributes): ?array
         {
             return null;
@@ -44,6 +49,11 @@ it('is not ready when store find ping throws', function () {
         public function put(array $record): array
         {
             return $record;
+        }
+
+        public function claim(array $record): bool
+        {
+            return true;
         }
 
         public function update(?string $tenantId, string $actorType, string $actorId, string $capabilityName, string $key, array $attributes): ?array

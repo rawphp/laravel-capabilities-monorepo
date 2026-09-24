@@ -46,6 +46,34 @@ final class InMemoryIdempotencyStore implements IdempotencyStore
 
     public function put(array $record): array
     {
+        [$identity, $row] = $this->rowFrom($record);
+        $this->rows[$identity] = $row;
+
+        return $row;
+    }
+
+    /**
+     * In-process, so the check and the write cannot interleave with another claim.
+     */
+    public function claim(array $record): bool
+    {
+        [$identity, $row] = $this->rowFrom($record);
+        $holder = $this->rows[$identity] ?? null;
+        if ($holder !== null && ! $this->isExpired($holder)) {
+            return false;
+        }
+
+        $this->rows[$identity] = $row;
+
+        return true;
+    }
+
+    /**
+     * @param  array<string, mixed>  $record
+     * @return array{0: string, 1: array<string, mixed>}
+     */
+    private function rowFrom(array $record): array
+    {
         $tenantId = isset($record['tenant_id']) ? (is_string($record['tenant_id']) || is_null($record['tenant_id']) ? $record['tenant_id'] : (string) $record['tenant_id']) : null;
         $actorType = (string) ($record['actor_type'] ?? '');
         $actorId = (string) ($record['actor_id'] ?? '');
@@ -68,9 +96,7 @@ final class InMemoryIdempotencyStore implements IdempotencyStore
             'expires_at' => $record['expires_at'] ?? null,
         ];
 
-        $this->rows[$this->identity($tenantId, $actorType, $actorId, $capabilityName, $key)] = $row;
-
-        return $row;
+        return [$this->identity($tenantId, $actorType, $actorId, $capabilityName, $key), $row];
     }
 
     public function update(
