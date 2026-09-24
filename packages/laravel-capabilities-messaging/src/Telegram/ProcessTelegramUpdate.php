@@ -286,13 +286,20 @@ final class ProcessTelegramUpdate
                 messaging: $messagingMeta,
                 agent: ['profile' => $profile, 'thread_id' => $thread['id']],
             );
-            $result = $this->registry->invoke($name, $call['input'] ?? [], [
+            $options = [
                 'context' => $ctx,
                 'caller' => 'agent',
                 'actor' => $user,
                 // Core pipeline enforces the per-turn tool budget from this count (D-013).
                 'agent_turn_tool_calls' => ++$turnToolCalls,
-            ]);
+            ];
+            // D-005: redelivered update → same key → store replay, not a second run().
+            // Index = count of prior successful calls (any failure throws before the next).
+            $key = TelegramUpdateParser::idempotencyKey($update, count($toolResults));
+            if ($key !== null) {
+                $options['idempotency_key'] = $key;
+            }
+            $result = $this->registry->invoke($name, $call['input'] ?? [], $options);
             if (! $result->isOk()) {
                 $code = (string) ($result->errorCode() ?? 'registry_validation');
                 if ($code === 'forbidden') {

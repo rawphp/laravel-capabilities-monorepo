@@ -27,12 +27,13 @@ final class ResolveConversationActor
     /**
      * Resolve a real user principal for the conversation owner.
      *
-     * @throws RuntimeException when user_id is missing/invalid or the user cannot be loaded
+     * @throws UnresolvedConversationActorException when user_id is missing/invalid or the user cannot be loaded
+     * @throws RuntimeException when no usable user model is configured
      */
     public function resolve(mixed $userId): object
     {
         if ($userId === null) {
-            throw new RuntimeException(
+            throw new UnresolvedConversationActorException(
                 'Conversation user_id is required for capability bus invokes; refusing silent default principal'
             );
         }
@@ -42,7 +43,7 @@ final class ResolveConversationActor
             : '';
 
         if ($id === '') {
-            throw new RuntimeException(
+            throw new UnresolvedConversationActorException(
                 'Conversation user_id is required for capability bus invokes; refusing silent default principal'
             );
         }
@@ -72,7 +73,7 @@ final class ResolveConversationActor
         }
 
         if ($user === null || ! is_object($user)) {
-            throw new RuntimeException(
+            throw new UnresolvedConversationActorException(
                 "Conversation user_id [{$id}] does not resolve to a user; refusing bus invoke"
             );
         }
