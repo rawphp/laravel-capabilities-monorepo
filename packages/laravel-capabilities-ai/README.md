@@ -66,6 +66,7 @@ Key defaults (`config/capabilities-ai.php`):
 | `reaper.stale_queued_minutes` | `30` (`CAPABILITIES_AI_REAPER_STALE_QUEUED`) |
 | `reaper.stale_running_grace_seconds` | `60` (`CAPABILITIES_AI_REAPER_RUNNING_GRACE`) |
 | `allow_unsafe` | `false` (`CAPABILITIES_AI_ALLOW_UNSAFE`) — local demos only |
+| `max_concurrent_turns` | `0` = unlimited (`CAPABILITIES_AI_MAX_CONCURRENT_TURNS`) — at the ceiling of queued + running turns, message create returns **429** `outcome: retryable` and persists/dispatches nothing |
 | `max_tool_rounds` | `8` |
 | `routes.enabled` | `false` |
 
