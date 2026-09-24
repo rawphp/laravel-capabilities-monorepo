@@ -37,7 +37,7 @@ final class AuditLogger
         $redacted = self::redactInput($state);
 
         return [
-            'event' => $success ? 'capability.invoked' : 'capability.failed',
+            'event' => self::event($success, $failure),
             'name' => $state->definition->name,
             'capability_name' => $state->definition->name,
             'caller' => $state->caller,
@@ -84,6 +84,19 @@ final class AuditLogger
             // Messaging ingress metadata (channel, chat_id, user_link_id) when present.
             'messaging' => $ctx?->messaging(),
         ];
+    }
+
+    /**
+     * output_invalid is a server bug (D-014), so it gets its own tag rather than
+     * hiding among ordinary capability.failed entries.
+     */
+    private static function event(bool $success, ?CapabilityResult $failure): string
+    {
+        if ($success) {
+            return 'capability.invoked';
+        }
+
+        return $failure?->errorCode() === 'output_invalid' ? 'capability.output_invalid' : 'capability.failed';
     }
 
     public static function assertValidMode(string $mode): string
