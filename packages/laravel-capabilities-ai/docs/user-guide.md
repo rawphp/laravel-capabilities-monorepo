@@ -343,6 +343,8 @@ php artisan capabilities-ai:reap-stale-turns
 | `reaper.stale_queued_minutes` | 30 | Queued turns older than threshold → reaped |
 | `reaper.stale_running_grace_seconds` | 60 | Running turns: age(`claimed_at`) > max(`claim_ttl`, grace) |
 
+Each reaped turn is marked `failed` and gets `error` then `terminal` (`status: failed`) progress events, so clients replaying its progress see the stream end.
+
 Host schedules the command (cron / scheduler). No package auto-schedule config.
 
 ### Forbidden (do not)

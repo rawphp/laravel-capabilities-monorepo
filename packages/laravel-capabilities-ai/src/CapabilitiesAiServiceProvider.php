@@ -103,7 +103,9 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
 
         $this->app->singleton(TurnClaim::class, static fn () => new TurnClaim);
 
-        $this->app->singleton(StaleTurnReaper::class, static fn () => new StaleTurnReaper);
+        $this->app->singleton(StaleTurnReaper::class, static fn (Container $app) => new StaleTurnReaper(
+            $app->make(ProgressStore::class),
+        ));
 
         $this->app->singleton(TurnService::class, function (Container $app) {
             return ContainerBindings::makeTurnService($app->make(ProgressStore::class));
