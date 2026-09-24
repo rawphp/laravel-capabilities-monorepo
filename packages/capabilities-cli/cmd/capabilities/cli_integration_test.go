@@ -354,3 +354,19 @@ func TestExecuteSubcommandHelpFlags(t *testing.T) {
 		})
 	}
 }
+
+func TestExecuteAuthLogoutRejectsCollidingProfileName(t *testing.T) {
+	srv, url := testAPI(t)
+	root := t.TempDir()
+	factory := newClientFactory(srv)
+	if code, _, errb := CaptureExecute([]string{"auth", "login", "--profile=prod_eu", "--base-url=" + url, "--token=pat-1"}, root, factory); code != 0 {
+		t.Fatal(code, errb)
+	}
+	code, out, errb := CaptureExecute([]string{"auth", "logout", "--profile=prod.eu"}, root, factory)
+	if code != api.ExitValidation || strings.Contains(out, "logged out") || !strings.Contains(errb, "invalid profile name") {
+		t.Fatalf("want validation exit and no logout claim: %d %q %q", code, out, errb)
+	}
+	if !auth.NewStore(root).HasToken("prod_eu") {
+		t.Fatal("prod_eu token deleted via colliding name")
+	}
+}
