@@ -114,6 +114,17 @@ Static entries:
 ],
 ```
 
+Allowlist ids are not checked at boot. Check them in your deploy or setup step with a lookup against your user model, so a stale or mistyped `laravel_user_id` fails before a chat message arrives:
+
+```php
+use Rawphp\CapabilitiesMessaging\Boot\TelegramSetup;
+use Rawphp\CapabilitiesMessaging\MessagingConfig;
+
+TelegramSetup::runOrFail(app(MessagingConfig::class), fn (string $id) => User::find($id));
+```
+
+`runOrFail` throws naming each bad entry (`identity.allowlist[1]: laravel_user_id "999" …`). Entries missing either id fail even without a lookup.
+
 ## Agent profile
 
 Set `agent_profile` to a profile name that exists in core agent surface config (or is otherwise resolvable by the profile selector). Default config value is `support`.
