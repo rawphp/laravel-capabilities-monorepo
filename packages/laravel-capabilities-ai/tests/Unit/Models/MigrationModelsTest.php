@@ -69,6 +69,29 @@ it('proposals table has last_error after full migrate', function () {
     expect($schema->hasColumn(TableNames::proposals(), 'last_error'))->toBeTrue();
 });
 
+it('add schema_hash migration adds the column idempotently and drops it on down', function () {
+    bootAiSqlite();
+    runAiMigrations();
+    $schema = Capsule::connection()->getSchemaBuilder();
+    $table = TableNames::proposals();
+    expect($schema->hasColumn($table, 'schema_hash'))->toBeTrue();
+
+    $migration = require dirname(__DIR__, 3).'/database/migrations/2026_09_25_000001_add_schema_hash_to_capabilities_ai_proposals_table.php';
+    // Idempotent: second up() must not throw.
+    $migration->up();
+    expect($schema->hasColumn($table, 'schema_hash'))->toBeTrue();
+
+    $migration->down();
+    $migration->down();
+    expect($schema->hasColumn($table, 'schema_hash'))->toBeFalse()
+        ->and($schema->hasTable($table))->toBeTrue();
+
+    $schema->drop($table);
+    $migration->up();
+    $migration->down();
+    expect($schema->hasTable($table))->toBeFalse();
+});
+
 it('add last_error migration upgrades table that already exists without the column', function () {
     bootAiSqlite();
     $schema = Capsule::connection()->getSchemaBuilder();

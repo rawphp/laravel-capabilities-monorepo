@@ -42,6 +42,7 @@ class Proposal extends Model
         'type',
         'payload',
         'target_capability',
+        'schema_hash',
         'status',
         'accepted_at',
         'last_error',

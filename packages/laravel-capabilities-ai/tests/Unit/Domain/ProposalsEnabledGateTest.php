@@ -18,6 +18,7 @@ use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
+use Rawphp\CapabilitiesAi\Support\ToolSchemaHash;
 
 function bootProposalsGateSqlite(): void
 {
@@ -117,6 +118,50 @@ it('creates proposal from fence when proposalsEnabled=true', function () {
     expect(Proposal::query()->count())->toBe(1)
         ->and(Proposal::query()->first()?->target_capability)->toBe('x.y')
         ->and(Proposal::query()->first()?->status)->toBe(Proposal::STATUS_PENDING);
+});
+
+it('stamps the target tool schema hash on a fenced proposal at creation time', function () {
+    bootProposalsGateSqlite();
+    $seeded = enqueueProposalGateTurn();
+    $tool = ['name' => 'x.y', 'parameters' => ['type' => 'object', 'properties' => ['a' => ['type' => 'integer']]]];
+    $tools = new class($tool) implements ToolCatalog
+    {
+        /** @param  array<string, mixed>  $tool */
+        public function __construct(private array $tool) {}
+
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [$this->tool];
+        }
+    };
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: new FakeLlmClient([['content' => proposalFenceContent()]]),
+        progress: new ArrayProgressStore,
+        context: emptyContextProvider(),
+        tools: $tools,
+        bus: null,
+    );
+    $runner->run($seeded['turn_ulid']);
+
+    expect(Proposal::query()->first()?->schema_hash)->toBe(ToolSchemaHash::of($tool));
+});
+
+it('leaves schema_hash null when the fenced target is not in the turn tool profile', function () {
+    bootProposalsGateSqlite();
+    $seeded = enqueueProposalGateTurn();
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: new FakeLlmClient([['content' => proposalFenceContent()]]),
+        progress: new ArrayProgressStore,
+        context: emptyContextProvider(),
+        tools: emptyToolCatalog(),
+        bus: null,
+    );
+    $runner->run($seeded['turn_ulid']);
+
+    expect(Proposal::query()->count())->toBe(1)
+        ->and(Proposal::query()->first()?->schema_hash)->toBeNull();
 });
 
 it('history returns empty proposals when service constructed with proposals disabled', function () {
