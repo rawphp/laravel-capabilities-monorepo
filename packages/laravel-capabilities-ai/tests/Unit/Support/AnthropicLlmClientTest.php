@@ -782,7 +782,7 @@ it('counts an HTTP error as a failure and ends the span with error before throwi
         ->and($spans[0]['attributes'])->toMatchArray(['http_status' => 429]);
 });
 
-it('counts a transport failure and rethrows it unchanged', function () {
+it('counts a transport failure and rethrows it as retryable', function () {
     bootAnthropicHttp();
 
     Http::fake(function () {
@@ -793,8 +793,13 @@ it('counts a transport failure and rethrows it unchanged', function () {
     $tracer = new InMemoryTracer;
     $client = new AnthropicLlmClient('test-key', model: 'claude-test', metrics: $metrics, tracer: $tracer);
 
-    expect(fn () => $client->complete([['role' => 'user', 'content' => 'hi']]))
-        ->toThrow(ConnectionException::class, 'connection refused');
+    try {
+        $client->complete([['role' => 'user', 'content' => 'hi']]);
+        $this->fail('expected RetryableLlmException');
+    } catch (RetryableLlmException $e) {
+        expect($e->getPrevious())->toBeInstanceOf(ConnectionException::class)
+            ->and($e->getPrevious()->getMessage())->toBe('connection refused');
+    }
 
     expect($metrics->get(AnthropicLlmClient::METRIC_FAILURES, [
         'provider' => 'anthropic',
