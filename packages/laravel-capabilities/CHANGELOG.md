@@ -38,6 +38,10 @@ contract was never checked.
   `#[Capability]` that does not implement `DefinesCapability` now throws `BootException`
   during discovery instead of being silently dropped from the catalog. Add
   `implements DefinesCapability` or remove the attribute.
+- **Failed audit outbox rows are retried (D-010).** `WriteAuditJob::handle()` now calls
+  `AuditOutbox::requeueFailed($maxAttempts)` before draining, so a `failed` row goes back
+  to `pending` until it has used `maxAttempts` (new constructor argument, default `3`).
+  Before, one failed write left the row `failed` forever. Rows at the cap stay `failed`.
 
 ## [0.5.2] - 2026-08-27
 
