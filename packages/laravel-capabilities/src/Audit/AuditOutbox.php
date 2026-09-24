@@ -78,6 +78,26 @@ final class AuditOutbox
     }
 
     /**
+     * Move failed rows that have used fewer than $maxAttempts back to pending.
+     * Rows at the cap stay failed (terminal). Returns the number requeued.
+     */
+    public function requeueFailed(int $maxAttempts): int
+    {
+        $requeued = 0;
+        foreach ($this->rows as $id => $row) {
+            if ($row['status'] !== self::STATUS_FAILED || (int) $row['attempts'] >= $maxAttempts) {
+                continue;
+            }
+            $row['status'] = self::STATUS_PENDING;
+            $row['updated_at'] = $this->clock->now()->format(DATE_ATOM);
+            $this->rows[$id] = $row;
+            $requeued++;
+        }
+
+        return $requeued;
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     public function pending(): array
