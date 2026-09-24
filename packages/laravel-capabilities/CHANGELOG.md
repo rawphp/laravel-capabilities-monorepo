@@ -44,6 +44,10 @@ Consumers: `composer update rawphp/laravel-capabilities && php artisan migrate`.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Agent turn budget (D-013) is no longer agent-caller only:** the pipeline enforces `rate_limits.agent_turn.max_tool_calls` whenever an in-process adapter supplies `agent_turn_tool_calls`, whatever the caller. AI turns (`caller=job` from `rawphp/laravel-capabilities-ai`) are now capped. The option is never read from HTTP or tool input, and it can only deny.
+
 ### Breaking (0.x behavior change)
 
 #### JsonSchemaValidator — empty object / `[]`-as-object `required` enforcement
