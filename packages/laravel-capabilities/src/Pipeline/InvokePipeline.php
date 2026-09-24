@@ -792,7 +792,7 @@ final class InvokePipeline
             return null;
         }
 
-        $check = $this->outputValidator->validate($state->definition, $state->output);
+        $check = $this->outputValidator->validate($state->definition, $state->output, $state->context);
         if ($check !== null) {
             return $check;
         }
