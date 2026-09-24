@@ -102,6 +102,7 @@ final class AttributeDiscoverer
             source: 'attribute',
             cliDomain: $attr->cliDomain,
             cliVerb: $attr->cliVerb,
+            idempotencyKeyFields: $attr->idempotencyKeyFields,
         );
     }
 
