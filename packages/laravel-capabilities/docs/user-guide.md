@@ -272,6 +272,48 @@ Greenfield AI-chat hosts use this after queue/progress/proposals config — see 
 
 Deep state machine detail (monorepo): [spec.md](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/spec.md).
 
+## Error codes
+
+Every failure is a `CapabilityResult` with `ok: false` and an `error.code`. The source of truth is `src/Support/ErrorCodeMap.php` (D-018); `tests/Unit/Errors/ErrorCodesUserGuideTest.php` fails if this table drifts from it.
+
+How one code presents on each surface:
+
+- **HTTP:** the response status is `error.http_status` and the body is the result envelope (`ok`, `error`, `meta`).
+- **Product CLI:** `--json` prints the same envelope as HTTP; the process exits with `error.cli_exit` (success is `0`).
+- **Agent / MCP:** tool handles return a structured error (`code`, `message`, `structured: true`, `retryable`, `details`). A few codes are renamed for tool callers (see the last column); `details` still carries the original registry error, including its `code`.
+- **Job / direct `invoke`:** the `CapabilityResult` itself. Branch on `isRetryable()` and `isHardRefuse()`, not on message text.
+- **Artisan `capability:run`** (in-server ops, not the product CLI): prints `error.message` and exits `1` for every code. `cli_exit` applies to the product CLI only.
+
+| Code | HTTP | CLI exit | Retryable | Agent / MCP code |
+|---|---|---|---|---|
+| `validation_failed` | 422 | 2 | no | `schema_invalid` |
+| `unauthenticated` | 401 | 3 | no | `unauthenticated` |
+| `forbidden` | 403 | 3 | no | `unauthorized` |
+| `self_delete` | 403 | 3 | no | `self_delete` |
+| `capability_not_in_profile` | 403 | 3 | no | `not_in_profile` |
+| `approval_required` | 202 | 4 | no | `approval_required` |
+| `domain_error` | 422 | 5 | no | `domain_error` |
+| `confirmation_failed` | 422 | 5 | no | `confirmation_failed` |
+| `conflict` | 409 | 5 | no | `conflict` |
+| `last_super_admin` | 409 | 5 | no | `last_super_admin` |
+| `not_found` | 404 | 5 | no | `not_found` |
+| `gone` | 410 | 5 | no | `gone` |
+| `expired` | 410 | 5 | no | `expired` |
+| `not_configured` | 501 | 5 | no | `not_configured` |
+| `not_supported` | 501 | 5 | no | `not_supported` |
+| `output_invalid` | 500 | 5 | no | `output_invalid` |
+| `rate_limited` | 429 | 6 | yes | `rate_limited` |
+| `internal` | 500 | 1 | yes | `internal` |
+| `audit_failed` | 500 | 1 | no | `audit_failed` |
+| `not_runnable` | 500 | 1 | no | `not_runnable` |
+
+Notes:
+
+- `approval_required` is not a failure to retry. It carries `error.approval_id`; resolve it through the approval accept/reject routes.
+- Hard refuses (`forbidden`, `capability_not_in_profile`, `not_runnable`, `unauthenticated`) are terminal. Retrying the same call with the same credentials will not succeed.
+- Retryable is a default. A result may override `retryable`, `http_status`, or `cli_exit` explicitly, so clients should read the fields on the error rather than hard-code this table.
+- Unknown codes fall back to HTTP `500`, CLI exit `1`, not retryable.
+
 ## Testing helpers (D-020)
 
 On registry and `Capability` facade:
