@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Schema;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
@@ -61,6 +62,13 @@ function httpProposalService(CapabilityBus $bus): ProposalService
         $bus,
         new AlwaysReadyIdempotency,
         new ResolveConversationActor(ChatControllerTestUser::class),
+        new class implements ToolCatalog
+        {
+            public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+            {
+                return [['name' => 'demo.cap']];
+            }
+        },
     );
 }
 
