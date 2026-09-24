@@ -278,6 +278,7 @@ final class ProcessTelegramUpdate
             throw new RuntimeException('tool_registry_failure');
         }
 
+        $turnToolCalls = 0;
         foreach ($toolCalls as $call) {
             $name = (string) ($call['name'] ?? '');
             if ($name === '' || ! in_array($name, $profileTools, true)) {
@@ -292,7 +293,13 @@ final class ProcessTelegramUpdate
                 messaging: $messagingMeta,
                 agent: ['profile' => $profile, 'thread_id' => $thread['id']],
             );
-            $options = ['context' => $ctx, 'caller' => 'agent', 'actor' => $user];
+            $options = [
+                'context' => $ctx,
+                'caller' => 'agent',
+                'actor' => $user,
+                // Core pipeline enforces the per-turn tool budget from this count (D-013).
+                'agent_turn_tool_calls' => ++$turnToolCalls,
+            ];
             // D-005: redelivered update → same key → store replay, not a second run().
             // Index = count of prior successful calls (any failure throws before the next).
             $key = TelegramUpdateParser::idempotencyKey($update, count($toolResults));
