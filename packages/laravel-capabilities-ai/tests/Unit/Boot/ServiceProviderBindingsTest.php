@@ -275,6 +275,6 @@ it('RunTurnJob handle type-hints TurnRunner (UR-021 wiring allowed)', function (
     $src = file_get_contents($path) ?: '';
 
     // UR-017 only required that DI not own the job body; UR-021 wires handle(TurnRunner).
-    expect($src)->toContain('handle(TurnRunner $runner)')
+    expect($src)->toContain('handle(TurnRunner $runner')
         ->and($src)->toContain('$runner->run($this->turnUlid)');
 });

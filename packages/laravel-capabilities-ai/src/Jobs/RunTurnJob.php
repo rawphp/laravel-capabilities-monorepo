@@ -5,8 +5,12 @@ declare(strict_types=1);
 namespace Rawphp\CapabilitiesAi\Jobs;
 
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
+use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
+use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Package;
+use Throwable;
 
 /**
  * Async turn execution — thin adapter over TurnRunner (claim lives in the runner only).
@@ -28,8 +32,19 @@ final class RunTurnJob implements ShouldQueue
         public readonly string $turnUlid,
     ) {}
 
-    public function handle(TurnRunner $runner): void
+    public function handle(TurnRunner $runner, TurnClaim $claim, ProgressStore $progress): void
     {
-        $runner->run($this->turnUlid);
+        try {
+            $runner->run($this->turnUlid);
+        } catch (Throwable $e) {
+            // Failed before claim (e.g. host seams unbound): with one try nothing will claim it,
+            // so fail it now with the real reason instead of leaving it to the stale-queued reaper.
+            if ($claim->failUnclaimed($this->turnUlid, $e->getMessage())) {
+                $progress->append($this->turnUlid, ['kind' => 'error', 'data' => ['message' => $e->getMessage()]]);
+                $progress->append($this->turnUlid, ['kind' => 'terminal', 'data' => ['status' => Turn::STATUS_FAILED]]);
+            }
+
+            throw $e;
+        }
     }
 }
