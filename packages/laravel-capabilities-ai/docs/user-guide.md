@@ -114,6 +114,10 @@ Each tool invoke appends a progress event:
 
 **Host action:** branch on `data.ok` / `data.error_code`. Do not treat every `kind=tool` event as success.
 
+#### Progress `kind=proposal_invalid` events
+
+With `proposals.enabled`, a ```` ```proposal ```` fence whose body is not a decodable JSON object appends `{ "kind": "proposal_invalid", "data": null }` before `terminal`. No proposal is created and the turn still completes. Treat it as a signal of provider/prompt format drift (log or count it), not as a turn failure.
+
 #### Tool-role message content
 
 After each bus invoke, TurnRunner appends a message for the next LLM round:

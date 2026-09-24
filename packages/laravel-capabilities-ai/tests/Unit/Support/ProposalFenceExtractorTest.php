@@ -30,3 +30,29 @@ MD;
         ->and($data['payload']['a'] ?? null)->toBe(1)
         ->and($data['payload']['nested']['b'] ?? null)->toBe(2);
 });
+
+it('parse reports absent when no proposal fence is present', function () {
+    $fence = (new ProposalFenceExtractor)->parse("plain answer\n```json\n{\"a\":1}\n```");
+    expect($fence->present)->toBeFalse()
+        ->and($fence->data)->toBeNull()
+        ->and($fence->isInvalid())->toBeFalse();
+});
+
+it('parse reports invalid when a proposal fence is present but not a decodable JSON object', function (string $content) {
+    $fence = (new ProposalFenceExtractor)->parse($content);
+    expect($fence->present)->toBeTrue()
+        ->and($fence->data)->toBeNull()
+        ->and($fence->isInvalid())->toBeTrue();
+})->with([
+    'broken json' => "```proposal\n{not-json}\n```",
+    'empty body' => "```proposal\n\n```",
+    'no object' => "```proposal\n[1,2]\n```",
+    'unbalanced braces' => "```proposal\n{\"a\":{\"b\":1}\n```",
+]);
+
+it('parse reports a valid fence with decoded data', function () {
+    $fence = (new ProposalFenceExtractor)->parse("```proposal\n{\"type\":\"action\"}\n```");
+    expect($fence->present)->toBeTrue()
+        ->and($fence->data)->toBe(['type' => 'action'])
+        ->and($fence->isInvalid())->toBeFalse();
+});

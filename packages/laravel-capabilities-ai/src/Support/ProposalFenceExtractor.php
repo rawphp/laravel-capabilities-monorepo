@@ -17,16 +17,21 @@ final class ProposalFenceExtractor
      */
     public function extract(string $content): ?array
     {
+        return $this->parse($content)->data;
+    }
+
+    /**
+     * Distinguishes "no fence" from "fence present but undecodable" so format drift is visible.
+     */
+    public function parse(string $content): ProposalFence
+    {
         if (! preg_match('/```proposal\s*(.*?)\s*```/s', $content, $m)) {
-            return null;
+            return ProposalFence::absent();
         }
 
-        $body = trim($m[1]);
-        if ($body === '') {
-            return null;
-        }
+        $data = $this->decodeJsonObject(trim($m[1]));
 
-        return $this->decodeJsonObject($body);
+        return $data === null ? ProposalFence::invalid() : ProposalFence::valid($data);
     }
 
     /**
