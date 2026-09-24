@@ -88,3 +88,54 @@ it('fail: authorization deny through mcp does not mutate [D-011]', function () {
     expect($r->errorCode())->toBe('forbidden')
         ->and($h['runs']['create-invoice']->value)->toBe(0);
 });
+
+it('fail: handle without profile after multi-profile register refuses instead of last-profile fallback [D-008]', function () {
+    $h = AdapterHelpers::harness();
+    $h['mcp']->register('billing');
+    $h['mcp']->register('support');
+
+    $r = $h['mcp']->handle(
+        'list-invoices',
+        AdapterHelpers::input(),
+        McpCredential::userPat($h['user']),
+    );
+
+    expect($r->isOk())->toBeFalse()
+        ->and($r->errorCode())->toBe('not_runnable')
+        ->and($r->error['normalized_code'] ?? null)->toBe('profile_required')
+        ->and($r->error['registered_profiles'] ?? null)->toBe(['billing', 'support'])
+        ->and($h['runs']['list-invoices']->value)->toBe(0)
+        ->and($h['mcp']->handleStructured('list-invoices', AdapterHelpers::input(), McpCredential::userPat($h['user']))['error']['code'])
+        ->toBe('profile_required');
+});
+
+it('happy: explicit profile still runs after multi-profile register [D-008]', function () {
+    $h = AdapterHelpers::harness();
+    $h['mcp']->register('billing');
+    $h['mcp']->register('support');
+
+    $r = $h['mcp']->handle(
+        'create-invoice',
+        AdapterHelpers::input(),
+        McpCredential::userPat($h['user']),
+        ['profile' => 'billing'],
+    );
+
+    expect($r->isOk())->toBeTrue()
+        ->and($h['runs']['create-invoice']->value)->toBe(1);
+});
+
+it('edge: re-registering the same profile keeps the implicit single-profile default [D-008]', function () {
+    $h = AdapterHelpers::harness();
+    $h['mcp']->register('billing');
+    $h['mcp']->register('billing');
+
+    $r = $h['mcp']->handle(
+        'create-invoice',
+        AdapterHelpers::input(),
+        McpCredential::userPat($h['user']),
+    );
+
+    expect($r->isOk())->toBeTrue()
+        ->and($h['runs']['create-invoice']->value)->toBe(1);
+});

@@ -456,7 +456,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
      * for each planned profile. It does **not** push definitions into laravel/mcp — there is no
      * peer sink like {@see HttpRouteRegistrar::registerInto}. Hosts still wire peer MCP servers
      * (e.g. Mcp::web / peer docs). Multi-profile sequential register overwrites adapter active
-     * profile/tools (last profile wins). Optional $sink is for tests/host glue only.
+     * profile/tools (last profile wins); handle() then requires options['profile']. Optional $sink is for tests/host glue only.
      * Disabled surface, empty profiles/servers, or soft-disabled peer → plan nothing
      * (no half-registration). PeerIncompatibleException only when the plan is non-empty
      * and the peer is missing/incompatible with on_incompatible=fail.

@@ -18,7 +18,8 @@ use Throwable;
  * themselves. Optional {@see registerInto} sink is for tests/host glue only — not a live
  * peer facade mount in package boot.
  *
- * Multi-profile: sequential adapter register overwrites active profile/tools (last profile wins).
+ * Multi-profile: sequential adapter register overwrites active profile/tools (last profile wins);
+ * the adapter's handle() then requires an explicit options['profile'] (profile_required).
  * Optional registry validates profile allowlists before adapter register (D-024).
  * {@see on_register_error}: throw (default) or disable (soft-empty) on mid-mount adapter failure.
  *
