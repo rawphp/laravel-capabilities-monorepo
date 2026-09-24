@@ -84,6 +84,7 @@ capabilities self-update
 
 - **Latest only** (no version pin) — use `scripts/install.sh` with `VERSION=` to pin or reinstall.
 - Requires GitHub Release **`checksums.txt`** (fail closed on missing/mismatch).
+- Release builds that pin a signing key also require **`checksums.txt.sig`** (ed25519) to verify against that key — a swapped binary + `checksums.txt` is rejected. See [docs/release-signing.md](docs/release-signing.md#release-signature-self-update).
 - Already up-to-date → exit **0**.
 - Unwritable install path → fail closed; reinstall with `install.sh` / `CAPABILITIES_INSTALL_DIR` into a directory you own (default `~/.local/bin`).
 - **darwin and linux only** (Windows: manual zip from Releases).

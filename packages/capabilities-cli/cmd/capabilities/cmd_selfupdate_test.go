@@ -112,6 +112,21 @@ func TestSelfUpdateChecksumFailure(t *testing.T) {
 	}
 }
 
+func TestSelfUpdateSignatureFailure(t *testing.T) {
+	for _, sentinel := range []error{selfupdate.ErrSignatureMissing, selfupdate.ErrSignatureInvalid} {
+		eng := func(ctx context.Context, opt selfupdate.Options) (*selfupdate.Result, error) {
+			return nil, sentinel
+		}
+		code, _, errb := captureSelfUpdate(t, []string{"self-update"}, eng, "/tmp/fake-capabilities")
+		if code == api.ExitOK {
+			t.Fatal("expected non-zero")
+		}
+		if !strings.Contains(errb, "signature verification failed") {
+			t.Fatalf("expected signature message for %v, stderr=%q", sentinel, errb)
+		}
+	}
+}
+
 func TestSelfUpdateNetworkFailure(t *testing.T) {
 	eng := func(ctx context.Context, opt selfupdate.Options) (*selfupdate.Result, error) {
 		return nil, selfupdate.ErrNetwork

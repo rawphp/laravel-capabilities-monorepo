@@ -109,6 +109,7 @@ capabilities self-update
 Behaviour:
 
 - Downloads the latest release of `rawphp/capabilities-cli` and verifies **`checksums.txt`** before replace (fail closed if missing or mismatched).
+- When your binary was built with a pinned release key, **`checksums.txt.sig`** must also verify against it (fail closed if missing or invalid).
 - **Already up-to-date** → exit **0** with a short message (not an error).
 - Atomic replace when the install path is **writable**.
 - If the path is **not writable** (e.g. under `/usr/local` without permission), fails closed and points you at `scripts/install.sh` / `CAPABILITIES_INSTALL_DIR` into a directory you own (default `~/.local/bin`).

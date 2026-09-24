@@ -18,6 +18,10 @@
 # Runner selection (REQ-065): a prepare job picks macos-latest when
 # APPLE_CERTIFICATE_BASE64 is set (codesign/notary need Darwin). Otherwise
 # ubuntu-latest. Never use `if: secrets.*` — GitHub rejects that and yields 0 jobs.
+#
+# Release signature: when CAPABILITIES_RELEASE_SIGNING_KEY (ed25519 PEM) is set,
+# binaries pin its public key and sign-checksums publishes checksums.txt.sig.
+# Pinned binaries refuse to self-update to a release without a valid signature.
 
 name: Release
 
@@ -37,7 +41,26 @@ jobs:
     outputs:
       runner: ${{ steps.pick.outputs.runner }}
       apple_present: ${{ steps.pick.outputs.apple_present }}
+      release_public_key: ${{ steps.release_key.outputs.public_key }}
     steps:
+      # Public key only (not secret): raw 32-byte ed25519 key, base64. Empty → unsigned.
+      - name: Derive release public key
+        id: release_key
+        env:
+          CAPABILITIES_RELEASE_SIGNING_KEY: ${{ secrets.CAPABILITIES_RELEASE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CAPABILITIES_RELEASE_SIGNING_KEY}" ]; then
+            echo "release signature skipped: CAPABILITIES_RELEASE_SIGNING_KEY absent; self-update stays checksum-only"
+            exit 0
+          fi
+          key="${RUNNER_TEMP}/release-signing.pem"
+          printf '%s\n' "${CAPABILITIES_RELEASE_SIGNING_KEY}" > "${key}"
+          pub="$(openssl pkey -in "${key}" -pubout -outform DER | tail -c 32 | base64 -w0)"
+          rm -f "${key}"
+          echo "public_key=${pub}" >> "${GITHUB_OUTPUT}"
+          echo "Release public key: ${pub}"
+
       - name: Choose runner for GoReleaser
         id: pick
         env:
@@ -169,3 +192,34 @@ jobs:
           # Windows Authenticode (optional — empty when unset; hooks soft-skip).
           WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
           WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+          # Pinned into selfupdate.ReleasePublicKey (empty → checksum-only self-update).
+          CAPABILITIES_RELEASE_PUBLIC_KEY: ${{ needs.select-runner.outputs.release_public_key }}
+
+  # Signs the published checksums.txt so pinned binaries can verify releases.
+  # Runs on Linux for OpenSSL 3 (ed25519 -rawin). Clients see a short window
+  # between publish and upload where the signature is missing and fail closed.
+  sign-checksums:
+    needs: [select-runner, goreleaser]
+    if: needs.select-runner.outputs.release_public_key != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sign and upload checksums.txt.sig
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CAPABILITIES_RELEASE_SIGNING_KEY: ${{ secrets.CAPABILITIES_RELEASE_SIGNING_KEY }}
+          RELEASE_PUBLIC_KEY: ${{ needs.select-runner.outputs.release_public_key }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          work="${RUNNER_TEMP}/sign"
+          mkdir -p "${work}"
+          cd "${work}"
+          printf '%s\n' "${CAPABILITIES_RELEASE_SIGNING_KEY}" > key.pem
+          gh release download "${TAG}" --repo "${REPO}" --pattern checksums.txt --clobber
+          openssl pkeyutl -sign -rawin -inkey key.pem -in checksums.txt -out checksums.txt.sig
+          rm -f key.pem
+          # Self-check against the key pinned into this release's binaries.
+          { printf '\x30\x2a\x30\x05\x06\x03\x2b\x65\x70\x03\x21\x00'; printf '%s' "${RELEASE_PUBLIC_KEY}" | base64 -d; } > pub.der
+          openssl pkeyutl -verify -rawin -pubin -keyform DER -inkey pub.der -in checksums.txt -sigfile checksums.txt.sig
+          gh release upload "${TAG}" checksums.txt.sig --repo "${REPO}" --clobber
