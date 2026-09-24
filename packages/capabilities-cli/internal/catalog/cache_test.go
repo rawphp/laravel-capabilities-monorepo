@@ -1,10 +1,15 @@
 package catalog
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/rawphp/capabilities-cli/internal/api"
 )
 
 func TestCachehitsameversion(t *testing.T) {
@@ -62,19 +67,76 @@ func TestCachebypassnocacheflag(t *testing.T) {
 	}
 }
 
+func principalClient(base, token string) *api.Client {
+	return api.NewClient(base, token)
+}
+
+func seededMiss(t *testing.T, a, b *Cache) bool {
+	t.Helper()
+	if err := a.Put(&CacheEntry{Name: "n", SchemaVersion: "1", InputSchema: json.RawMessage(`{}`)}); err != nil {
+		t.Fatal(err)
+	}
+	_, ok := b.Get("n", "")
+	return !ok
+}
+
 func TestCacheperprofileisolation(t *testing.T) {
-	a := IsolationKey("p1", "https://a")
-	b := IsolationKey("p2", "https://a")
-	if a == b {
+	root := t.TempDir()
+	c := principalClient("https://a", "tok")
+	a := PrincipalCache(filepath.Join(root, "p1"), c)
+	b := PrincipalCache(filepath.Join(root, "p2"), c)
+	if !seededMiss(t, a, b) {
 		t.Fatal("profiles must isolate")
 	}
 }
 
 func TestCacheperbaseurlisolation(t *testing.T) {
-	a := IsolationKey("p", "https://a")
-	b := IsolationKey("p", "https://b")
-	if a == b {
+	root := t.TempDir()
+	a := PrincipalCache(root, principalClient("https://a", "tok"))
+	b := PrincipalCache(root, principalClient("https://b", "tok"))
+	if !seededMiss(t, a, b) {
 		t.Fatal("base urls must isolate")
+	}
+}
+
+func TestCacheperprincipalisolation(t *testing.T) {
+	root := t.TempDir()
+	alice := PrincipalCache(root, principalClient("https://a", "tok-alice"))
+	bob := PrincipalCache(root, principalClient("https://a", "tok-bob"))
+	if !seededMiss(t, alice, bob) {
+		t.Fatal("a different credential under the same profile must not read another principal's schemas")
+	}
+	again := PrincipalCache(root, principalClient("https://a", "tok-alice"))
+	if _, ok := again.Get("n", ""); !ok {
+		t.Fatal("same principal must hit its own cache")
+	}
+}
+
+func TestCacheprincipalkeydoesnotleaktoken(t *testing.T) {
+	root := t.TempDir()
+	c := PrincipalCache(root, principalClient("https://a", "secret-token-value"))
+	if strings.Contains(c.Dir, "secret-token-value") {
+		t.Fatalf("cache path must not contain the raw token: %s", c.Dir)
+	}
+	if filepath.Dir(c.Dir) != root {
+		t.Fatalf("principal cache must live directly under the profile schema root: %s", c.Dir)
+	}
+}
+
+func TestDescribeservesprincipalcachewithoutrefetch(t *testing.T) {
+	hits := 0
+	c, _ := clientServer(t, func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.Write([]byte(`{"ok":true,"data":{"name":"x","schema_version":"1","input_schema":{"type":"object"}}}`))
+	})
+	svc := &Service{Client: c, Cache: PrincipalCache(t.TempDir(), c)}
+	for i := 0; i < 2; i++ {
+		if _, _, err := svc.Describe(context.Background(), "x"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if hits != 1 {
+		t.Fatalf("second describe for the same principal must come from cache, hits=%d", hits)
 	}
 }
 

@@ -62,7 +62,7 @@ func cmdAuth(env Env, args []string) int {
 			if env.NewClient != nil {
 				c = env.NewClient(base, tok)
 			}
-			svc := &catalog.Service{Client: c, Cache: catalog.NewCache(st.SchemaCacheDir(profile))}
+			svc := &catalog.Service{Client: c, Cache: catalog.PrincipalCache(st.SchemaCacheDir(profile), c)}
 			_, _ = svc.Refresh(context.Background())
 		}
 		fmt.Fprintf(env.Stdout, "logged in profile=%s base_url=%s\n", profile, base)
