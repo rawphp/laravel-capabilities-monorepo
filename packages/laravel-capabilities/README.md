@@ -8,6 +8,34 @@ Core product capability bus for Laravel.
 
 Define a capability once (schema, authorization, `run`, approval, audit) and expose it via agent, MCP, HTTP, product CLI, and jobs — same rules, one `run()`.
 
+```php
+use Rawphp\Capabilities\Capability;
+use Rawphp\Capabilities\Registry\CapabilityRegistry;
+use Rawphp\Capabilities\Support\CapabilityContext;
+
+/** @var CapabilityRegistry $registry */
+$registry = app(CapabilityRegistry::class);
+
+Capability::define('create-invoice')
+    ->description('Create an invoice for a customer.')
+    ->surfaces(['agent', 'mcp', 'http', 'cli', 'job'])
+    ->input(CreateInvoiceInput::class)
+    ->output(CreateInvoiceResult::class)
+    ->groups(['billing'])
+    ->idempotent('optional')
+    ->authorize(function (CreateInvoiceInput $input, CapabilityContext $ctx): bool {
+        // Re-resolve resources under scope; never trust client ids alone
+        return $ctx->user() !== null;
+    })
+    ->run(function (CreateInvoiceInput $input, CapabilityContext $ctx): CreateInvoiceResult {
+        // Single domain write path
+        return new CreateInvoiceResult(invoice_id: 1);
+    })
+    ->register($registry);
+```
+
+More builder options, attribute discovery, and surface wiring: [user guide](docs/user-guide.md#define-a-capability).
+
 ## Scope (this package)
 
 | | |
