@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -281,16 +282,22 @@ func TestRuninternalerrorexitcode1(t *testing.T) {
 	}
 }
 
-func TestRuntenanthintisnotauthoritativescope(t *testing.T) {
+func TestRunbodyisinputonly(t *testing.T) {
 	opts, rec := harness(t, nil)
-	opts.TenantHint = "tenant-99"
 	res := Run(context.Background(), opts)
 	if res.ExitCode != 0 {
 		t.Fatal(res)
 	}
-	// Body may include _tenant_hint namespaced; never X-Capabilities-Caller
-	if strings.Contains(string(rec.Body), `"caller"`) {
-		t.Fatal("must not send caller in body as authority")
+	// Body is the capability input verbatim: no caller or tenant claims (D-022, D-003).
+	var sent, want map[string]any
+	if err := json.Unmarshal(rec.Body, &sent); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(opts.InputJSON, &want); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(sent, want) {
+		t.Fatalf("body %s != input %s", rec.Body, opts.InputJSON)
 	}
 }
 
