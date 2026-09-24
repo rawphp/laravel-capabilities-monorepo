@@ -13,6 +13,8 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Changed
 
+- **Breaking — chat HTTP errors use the D-018 envelope:** `ChatController` 404/409 responses (history, showTurn, cancelTurn, turnEvents, acceptProposal, rejectProposal, destroyConversation) now return core's `{ok: false, error: {code, message, retryable, …}}` with `code` `not_found` or `conflict`, instead of `{message}`. Status codes are unchanged. **Hosts:** read `error.message` / `error.code`; the top-level `message` key is gone.
+
 - **Proposal accept stays inside the tool profile (D-008):** `ProposalService` takes an optional host `ToolCatalog` (SP passes the bound one) and, on every accept execute, requires `target_capability` to be in `toolsForTurn(conversation, turn)`. Outside the profile — including a profile narrowed after the proposal was made — or no `ToolCatalog` bound → proposal `failed`, `AcceptOutcome::refuse` **403** `capability_not_in_profile`, no bus invoke. **Hosts:** a capability the model may propose must be in that turn's tool list; proposal-only targets outside it now refuse.
 
 ### Fixed

@@ -7,6 +7,7 @@ namespace Rawphp\CapabilitiesAi\Http;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesAi\Domain\AcceptOutcome;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
@@ -15,6 +16,7 @@ use RuntimeException;
 
 /**
  * Thin HTTP adapters — domain logic lives in services.
+ * Errors use the core D-018 envelope ({ok: false, error: {code, message, …}}).
  */
 final class ChatController
 {
@@ -23,7 +25,7 @@ final class ChatController
         try {
             return new JsonResponse($conversations->history($conversationUlid));
         } catch (ModelNotFoundException) {
-            return new JsonResponse(['message' => 'Conversation not found'], 404);
+            return $this->notFound('Conversation not found');
         }
     }
 
@@ -44,7 +46,7 @@ final class ChatController
         try {
             return new JsonResponse($turns->show($turnUlid));
         } catch (ModelNotFoundException) {
-            return new JsonResponse(['message' => 'Turn not found'], 404);
+            return $this->notFound('Turn not found');
         }
     }
 
@@ -53,9 +55,9 @@ final class ChatController
         try {
             return new JsonResponse($turns->cancel($turnUlid));
         } catch (ModelNotFoundException) {
-            return new JsonResponse(['message' => 'Turn not found'], 404);
+            return $this->notFound('Turn not found');
         } catch (RuntimeException $e) {
-            return new JsonResponse(['message' => $e->getMessage()], 409);
+            return $this->conflict($e);
         }
     }
 
@@ -67,7 +69,7 @@ final class ChatController
 
             return new JsonResponse(['turn_ulid' => $turnUlid, 'events' => $events]);
         } catch (ModelNotFoundException) {
-            return new JsonResponse(['message' => 'Turn not found'], 404);
+            return $this->notFound('Turn not found');
         }
     }
 
@@ -78,7 +80,7 @@ final class ChatController
 
             return $this->jsonFromAcceptOutcome($outcome);
         } catch (ModelNotFoundException) {
-            return new JsonResponse(['message' => 'Proposal not found'], 404);
+            return $this->notFound('Proposal not found');
         }
     }
 
@@ -119,9 +121,9 @@ final class ChatController
 
             return new JsonResponse(['ulid' => $proposal->ulid, 'status' => $proposal->status]);
         } catch (ModelNotFoundException) {
-            return new JsonResponse(['message' => 'Proposal not found'], 404);
+            return $this->notFound('Proposal not found');
         } catch (RuntimeException $e) {
-            return new JsonResponse(['message' => $e->getMessage()], 409);
+            return $this->conflict($e);
         }
     }
 
@@ -130,9 +132,19 @@ final class ChatController
         try {
             return new JsonResponse($conversations->destroy($conversationUlid));
         } catch (ModelNotFoundException) {
-            return new JsonResponse(['message' => 'Conversation not found'], 404);
+            return $this->notFound('Conversation not found');
         } catch (RuntimeException $e) {
-            return new JsonResponse(['message' => $e->getMessage()], 409);
+            return $this->conflict($e);
         }
+    }
+
+    private function notFound(string $message): JsonResponse
+    {
+        return new JsonResponse(CapabilityResult::failure('not_found', $message)->toArray(), 404);
+    }
+
+    private function conflict(RuntimeException $e): JsonResponse
+    {
+        return new JsonResponse(CapabilityResult::failure('conflict', $e->getMessage())->toArray(), 409);
     }
 }

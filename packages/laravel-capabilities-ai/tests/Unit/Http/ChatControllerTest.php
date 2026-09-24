@@ -292,5 +292,99 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse / unresolv
         httpProposalService($busOk),
     );
     expect($missing->getStatusCode())->toBe(404)
-        ->and($missing->getData(true)['message'])->toBe('Proposal not found');
+        ->and($missing->getData(true)['ok'])->toBeFalse()
+        ->and($missing->getData(true)['error']['code'])->toBe('not_found')
+        ->and($missing->getData(true)['error']['message'])->toBe('Proposal not found');
+});
+
+it('missing resources return the D-018 not_found envelope on every chat route', function () {
+    $progress = bootHttpSqlite();
+    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    $turns = new TurnService($progress);
+    $proposals = httpProposalService(new class implements CapabilityBus
+    {
+        public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
+        {
+            throw new RuntimeException('unused');
+        }
+
+        public function catalog(): CatalogPresenter
+        {
+            throw new RuntimeException('unused');
+        }
+    });
+    $controller = new ChatController;
+    $missingTurn = '01MISSINGTURN0000000000';
+    $missingConversation = '01MISSINGCONV00000000000';
+
+    $responses = [
+        'Conversation not found' => [
+            $controller->history($missingConversation, $conversations),
+            $controller->destroyConversation($missingConversation, $conversations),
+        ],
+        'Turn not found' => [
+            $controller->showTurn($missingTurn, $turns),
+            $controller->cancelTurn($missingTurn, $turns),
+            $controller->turnEvents(Request::create('/events'), $missingTurn, $turns),
+        ],
+        'Proposal not found' => [
+            $controller->rejectProposal('PROPDOESNOTEXIST0001', $proposals),
+        ],
+    ];
+
+    foreach ($responses as $message => $group) {
+        foreach ($group as $response) {
+            $body = $response->getData(true);
+            expect($response->getStatusCode())->toBe(404)
+                ->and($body['ok'])->toBeFalse()
+                ->and($body['error']['code'])->toBe('not_found')
+                ->and($body['error']['message'])->toBe($message)
+                ->and($body['error']['retryable'])->toBeFalse()
+                ->and($body)->not->toHaveKey('message');
+        }
+    }
+});
+
+it('domain conflicts return the D-018 conflict envelope with the service message', function () {
+    $progress = bootHttpSqlite();
+    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    $ids = $conversations->createUserMessage('busy');
+    $controller = new ChatController;
+
+    $destroy = $controller->destroyConversation($ids['conversation_ulid'], $conversations);
+
+    Turn::query()->where('ulid', $ids['turn_ulid'])->update(['status' => Turn::STATUS_COMPLETED]);
+    $cancel = $controller->cancelTurn($ids['turn_ulid'], new TurnService($progress));
+
+    $turn = Turn::query()->where('ulid', $ids['turn_ulid'])->firstOrFail();
+    $proposal = Proposal::query()->create([
+        'turn_id' => $turn->id,
+        'conversation_id' => $turn->conversation_id,
+        'ulid' => 'PROPACCEPTED'.bin2hex(random_bytes(6)),
+        'type' => 'action',
+        'payload' => [],
+        'target_capability' => 'demo.cap',
+        'status' => Proposal::STATUS_ACCEPTED,
+    ]);
+    $reject = $controller->rejectProposal($proposal->ulid, httpProposalService(new class implements CapabilityBus
+    {
+        public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
+        {
+            throw new RuntimeException('unused');
+        }
+
+        public function catalog(): CatalogPresenter
+        {
+            throw new RuntimeException('unused');
+        }
+    }));
+
+    foreach ([$destroy, $cancel, $reject] as $response) {
+        $body = $response->getData(true);
+        expect($response->getStatusCode())->toBe(409)
+            ->and($body['ok'])->toBeFalse()
+            ->and($body['error']['code'])->toBe('conflict')
+            ->and($body['error']['message'])->toBeString()->not->toBe('')
+            ->and($body)->not->toHaveKey('message');
+    }
 });
