@@ -9,6 +9,15 @@ with **0.x pre-stable** expectations (breaking changes allowed without a major b
 Monorepo packaging policy (install paths, tags, Packagist checklist):  
 https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versioning.md
 
+## [Unreleased]
+
+### Changed
+
+- **Discovery fails closed on half-written capability classes (D-017).** A class carrying
+  `#[Capability]` that does not implement `DefinesCapability` now throws `BootException`
+  during discovery instead of being silently dropped from the catalog. Add
+  `implements DefinesCapability` or remove the attribute.
+
 ## [0.5.2] - 2026-08-27
 
 ### Fixed
