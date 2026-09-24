@@ -149,6 +149,65 @@ A capability’s `->surfaces([...])` list only **narrows** what global config al
 | Hosts | Cursor, Claude Desktop, other MCP clients → **app** MCP endpoints the **host** mounts (plan rows include a planned `path` under `path_prefix`, default `/mcp/{profile}` — not a live auto-mount by this package) | Shell agents / humans over the capability HTTP API |
 | Not | The CLI binary | An MCP stdio server — `capabilities mcp` was **removed** |
 
+### Worked example: MCP-only capability and principals
+
+A capability that MCP hosts may call, and nothing else:
+
+```php
+use Rawphp\Capabilities\Capability;
+use Rawphp\Capabilities\Support\CapabilityContext;
+use Rawphp\Capabilities\Support\SystemActor;
+
+Capability::define('send-invoice-reminder')
+    ->description('Email a payment reminder for an open invoice.')
+    ->surfaces(['mcp'])                      // narrows: no agent/http/cli/job
+    ->input(SendInvoiceReminderInput::class)
+    ->groups(['billing'])
+    ->allowSystemCallers(['billing-bot'])    // only needed for `integration` principals
+    ->authorize(function (SendInvoiceReminderInput $input, CapabilityContext $ctx): bool {
+        $actor = $ctx->actor();              // User or SystemActor, never null
+
+        return $actor instanceof SystemActor
+            ? true                           // allow-list above already gated the name
+            : $actor->can('remind', Invoice::class);
+    })
+    ->run(fn (SendInvoiceReminderInput $input, CapabilityContext $ctx) => /* one domain write */)
+    ->register($registry);
+```
+
+```php
+// config/capabilities.php
+'mcp' => [
+    'enabled' => true,
+    'profiles' => ['billing' => ['send-invoice-reminder', 'list-invoices']],
+    'auth' => [
+        'default_profile' => 'user_pat',
+        'allow_integration_credentials' => true,     // default false
+        'integration_actors' => ['mcp-billing-service' => 'billing-bot'],
+    ],
+],
+
+// Host wiring (the package plans servers; the host mounts them)
+use Laravel\Mcp\Facades\Mcp;
+use Rawphp\Capabilities\Facades\Capability;
+
+Mcp::web('billing', fn ($server) => $server->tools(Capability::mcpTools(profile: 'billing')));
+```
+
+Three gates apply in order: the capability must be in the MCP **profile** the host mounted (else `capability_not_in_profile`); the host's credential must resolve to a **principal** (D-023); then `authorize()` runs as usual. The credential decides the actor, never tool input — keys like `actor`, `user_id`, `client_id`, `auth_profile`, `tenant_id` in arguments are refused as `forbidden`.
+
+Once `mcp` is enabled, who can invoke `send-invoice-reminder`:
+
+| Principal | Credential | Actor in `run()` | Can invoke when | Refused as |
+|---|---|---|---|---|
+| `user_pat` | `McpCredential::userPat($user)` | That `User` | Always resolves; `authorize()` decides. `allowSystemCallers` is ignored | `unauthenticated` if no user is bound |
+| `integration` | `McpCredential::integration('mcp-billing-service')` | `SystemActor` `billing-bot` | `allow_integration_credentials` is true, `client_id` is in `integration_actors`, **and** the mapped name is in `allowSystemCallers` | `forbidden` when integration is off or the name is not allowed; `unauthenticated` for a missing or unknown `client_id` |
+| `user_delegated` | `McpCredential::userDelegated($user, 'cursor-mcp')` | The delegating `User` | `client_id` is present; `authorize()` decides. `allowSystemCallers` is ignored | `unauthenticated` if no user or no `client_id` |
+
+Every successful call records `caller: mcp` and `mcp.auth_profile`; `integration` and `user_delegated` also record `mcp.client_id` (`user_pat` only when a client id is supplied and `audit_client_id` is on). An `integration` principal's tenant comes from the trusted credential session (`session.tenant_id`), never from tool input.
+
+For `integration` principals `$ctx->user()` is `null` — an `authorize()` that only checks `$ctx->user() !== null` (like the `create-invoice` example above) will deny every integration call. Branch on `$ctx->actor()` instead. The table is pinned by `tests/Unit/Mcp/AuthProfileCapabilityMatrixTest.php`.
+
 ### HTTP API (single tree)
 
 When `surfaces.http.enabled` is true, routes come from `RouteTable` (default prefix `capabilities`):
