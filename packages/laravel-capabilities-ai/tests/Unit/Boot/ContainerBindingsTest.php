@@ -11,6 +11,8 @@ use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Http;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
+use Rawphp\Capabilities\Observability\InMemoryMetrics;
+use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
@@ -256,4 +258,40 @@ it('claimTtlFromConfig uses Package default and clamps non-positive', function (
     expect(ContainerBindings::claimTtlFromConfig([]))->toBe(Package::DEFAULT_CLAIM_TTL)
         ->and(ContainerBindings::claimTtlFromConfig(['claim_ttl' => 30]))->toBe(30)
         ->and(ContainerBindings::claimTtlFromConfig(['claim_ttl' => 0]))->toBe(Package::DEFAULT_CLAIM_TTL);
+});
+
+it('makeLlmClient passes core Metrics and Tracer into the anthropic client', function () {
+    $app = new Container;
+    Facade::setFacadeApplication($app);
+    $app->singleton('http', fn () => new Factory);
+    Http::swap(new Factory);
+
+    Http::fake([
+        'example.test/*' => Http::response([
+            'content' => [['type' => 'text', 'text' => 'ok']],
+            'usage' => ['input_tokens' => 7, 'output_tokens' => 3],
+        ], 200),
+    ]);
+
+    $metrics = new InMemoryMetrics;
+    $tracer = new InMemoryTracer;
+    $client = ContainerBindings::makeLlmClient(aiConfig([
+        'llm' => [
+            'driver' => 'anthropic',
+            'anthropic' => [
+                'api_key' => 'test-key',
+                'model' => 'claude-test',
+                'base_url' => 'https://example.test',
+            ],
+        ],
+    ]), $metrics, $tracer);
+
+    $client->complete([['role' => 'user', 'content' => 'hi']]);
+
+    expect($metrics->get(AnthropicLlmClient::METRIC_TOKENS, [
+        'provider' => 'anthropic',
+        'model' => 'claude-test',
+        'type' => 'input',
+    ]))->toBe(7)
+        ->and($tracer->spans())->toHaveCount(1);
 });

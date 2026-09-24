@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Support;
 
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use Rawphp\Capabilities\Contracts\Metrics;
+use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use RuntimeException;
 use stdClass;
+use Throwable;
 
 /**
  * Anthropic Messages API client behind LlmClient.
@@ -15,16 +19,29 @@ use stdClass;
  *
  * Multi-round tools: package tool defs → Anthropic tools (input_schema);
  * tool_use blocks → tool_calls with id; role=tool → tool_result content blocks.
+ *
+ * Observability (D-019): optional core Metrics/Tracer record latency, token
+ * usage (response `usage`) and failures around the outbound call only.
  */
 final class AnthropicLlmClient implements LlmClient
 {
     use LlmClientDefaults;
+
+    public const METRIC_LATENCY = 'capabilities_ai_llm_duration_ms';
+
+    public const METRIC_TOKENS = 'capabilities_ai_llm_tokens_total';
+
+    public const METRIC_FAILURES = 'capabilities_ai_llm_failures_total';
+
+    public const SPAN_COMPLETE = 'capabilities_ai.llm.complete';
 
     public function __construct(
         private readonly string $apiKey,
         private readonly string $model = 'claude-sonnet-4-6',
         private readonly string $baseUrl = 'https://api.anthropic.com',
         private readonly int $maxTokens = 64000,
+        private readonly ?Metrics $metrics = null,
+        private readonly ?Tracer $tracer = null,
     ) {}
 
     public function supportsToolRounds(): bool
@@ -108,11 +125,7 @@ final class AnthropicLlmClient implements LlmClient
             $payload['tools'] = $this->mapTools($tools);
         }
 
-        $response = Http::withHeaders([
-            'x-api-key' => $this->apiKey,
-            'anthropic-version' => '2023-06-01',
-            'content-type' => 'application/json',
-        ])->post(rtrim($this->baseUrl, '/').'/v1/messages', $payload);
+        $response = $this->send($payload);
 
         if (! $response->successful()) {
             $detail = '';
@@ -155,6 +168,74 @@ final class AnthropicLlmClient implements LlmClient
         }
 
         return $out;
+    }
+
+    /**
+     * POST /v1/messages wrapped in latency, token and failure telemetry.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function send(array $payload): Response
+    {
+        $labels = ['provider' => 'anthropic', 'model' => $this->model];
+        $spanId = $this->tracer?->startSpan(self::SPAN_COMPLETE, $labels);
+        $started = hrtime(true);
+
+        try {
+            $response = Http::withHeaders([
+                'x-api-key' => $this->apiKey,
+                'anthropic-version' => '2023-06-01',
+                'content-type' => 'application/json',
+            ])->post(rtrim($this->baseUrl, '/').'/v1/messages', $payload);
+        } catch (Throwable $e) {
+            $this->metrics?->histogram(self::METRIC_LATENCY, self::elapsedMs($started), $labels);
+            $this->metrics?->increment(self::METRIC_FAILURES, 1, $labels + ['reason' => 'transport']);
+            $this->endSpan($spanId, 'error');
+
+            throw $e;
+        }
+
+        $this->metrics?->histogram(self::METRIC_LATENCY, self::elapsedMs($started), $labels);
+
+        if (! $response->successful()) {
+            $this->metrics?->increment(self::METRIC_FAILURES, 1, $labels + ['reason' => 'http_'.$response->status()]);
+            $this->endSpan($spanId, 'error', ['http_status' => $response->status()]);
+
+            return $response;
+        }
+
+        $usage = [];
+        foreach (['input' => 'input_tokens', 'output' => 'output_tokens'] as $type => $key) {
+            $count = data_get($response->json(), 'usage.'.$key);
+            if (is_int($count)) {
+                $usage[$key] = $count;
+                $this->metrics?->increment(self::METRIC_TOKENS, $count, $labels + ['type' => $type]);
+            }
+        }
+
+        $this->endSpan($spanId, 'ok', $usage);
+
+        return $response;
+    }
+
+    /**
+     * @param  array<string, scalar|null>  $attributes
+     */
+    private function endSpan(?string $spanId, string $status, array $attributes = []): void
+    {
+        if ($this->tracer === null || $spanId === null) {
+            return;
+        }
+
+        if ($attributes !== []) {
+            $this->tracer->setAttributes($spanId, $attributes);
+        }
+        $this->tracer->endSpan($spanId, $status);
+    }
+
+    private static function elapsedMs(int $started): float
+    {
+        return (hrtime(true) - $started) / 1e6;
     }
 
     /**

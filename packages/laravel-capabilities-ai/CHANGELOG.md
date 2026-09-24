@@ -11,6 +11,10 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Added
+
+- **LLM telemetry (D-019):** `AnthropicLlmClient` accepts optional core `Metrics` / `Tracer`. Around the outbound `/v1/messages` call it records `capabilities_ai_llm_duration_ms`, `capabilities_ai_llm_tokens_total{type=input|output}` (from response `usage`), `capabilities_ai_llm_failures_total{reason=transport|http_<status>}` and a `capabilities_ai.llm.complete` span. The service provider passes container-bound core `Metrics` / `Tracer` through `ContainerBindings::makeLlmClient`.
+
 ### Changed
 
 - **BREAKING — chat message owner is the authenticated user (D-022):** `ChatController::storeMessage` sets `conversation.user_id` from `$request->user()->getAuthIdentifier()` and ignores any body `user_id`. No authenticated user → **401**, nothing created. Posting to a `conversation_ulid` owned by another user → **404** (`ConversationService::createUserMessage` scopes an existing conversation to `userId` when one is given). Previously any authenticated caller could name another user as owner, and every turn tool call / proposal accept then ran as that user. **Hosts** that create conversations for another user (integrations, back-office) call `ConversationService::createUserMessage(userId: …)` from server code instead of the package route.

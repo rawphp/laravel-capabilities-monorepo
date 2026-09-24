@@ -8,8 +8,15 @@ declare(strict_types=1);
  */
 
 use Illuminate\Container\Container;
+use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Support\Facades\Facade;
+use Illuminate\Support\Facades\Http;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
+use Rawphp\Capabilities\Contracts\Metrics;
+use Rawphp\Capabilities\Contracts\Tracer;
+use Rawphp\Capabilities\Observability\InMemoryMetrics;
+use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesAi\CapabilitiesAiServiceProvider;
@@ -22,6 +29,7 @@ use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
+use Rawphp\CapabilitiesAi\Support\AnthropicLlmClient;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 use Rawphp\CapabilitiesAi\Support\StoreBoundIdempotencyReadiness;
@@ -277,4 +285,27 @@ it('RunTurnJob handle type-hints TurnRunner (UR-021 wiring allowed)', function (
     // UR-017 only required that DI not own the job body; UR-021 wires handle(TurnRunner).
     expect($src)->toContain('handle(TurnRunner $runner)')
         ->and($src)->toContain('$runner->run($this->turnUlid)');
+});
+
+it('wires container-bound core Metrics and Tracer into the anthropic LlmClient', function () {
+    $app = bootAiProviderContainer(['llm' => ['driver' => 'anthropic', 'anthropic' => ['api_key' => 'test-key']]]);
+    $metrics = new InMemoryMetrics;
+    $tracer = new InMemoryTracer;
+    $app->instance(Metrics::class, $metrics);
+    $app->instance(Tracer::class, $tracer);
+
+    Facade::setFacadeApplication($app);
+    $app->singleton('http', fn () => new HttpFactory);
+    Http::swap(new HttpFactory);
+    Http::fake([
+        'api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 500),
+    ]);
+
+    $llm = $app->make(LlmClient::class);
+
+    expect($llm)->toBeInstanceOf(AnthropicLlmClient::class)
+        ->and(fn () => $llm->complete([['role' => 'user', 'content' => 'hi']]))->toThrow(RuntimeException::class);
+
+    expect(array_column($metrics->emissions(), 'name'))->toContain(AnthropicLlmClient::METRIC_FAILURES)
+        ->and($tracer->spans()[0]['status'])->toBe('error');
 });

@@ -3,9 +3,12 @@
 declare(strict_types=1);
 
 use Illuminate\Container\Container;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Http;
+use Rawphp\Capabilities\Observability\InMemoryMetrics;
+use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Support\AnthropicLlmClient;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
@@ -463,4 +466,119 @@ it('string-only user content is still sent as a string (no regression)', functio
 
         return is_string($content) && $content === 'plain text turn';
     });
+});
+
+it('records latency, token usage and an ok span around a successful call', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'content' => [['type' => 'text', 'text' => 'ok']],
+            'usage' => ['input_tokens' => 120, 'output_tokens' => 45],
+        ], 200),
+    ]);
+
+    $metrics = new InMemoryMetrics;
+    $tracer = new InMemoryTracer;
+    $client = new AnthropicLlmClient('test-key', model: 'claude-test', metrics: $metrics, tracer: $tracer);
+    $client->complete([['role' => 'user', 'content' => 'hi']]);
+
+    $labels = ['provider' => 'anthropic', 'model' => 'claude-test'];
+    $spans = $tracer->spans();
+
+    expect($metrics->histogramSamples(AnthropicLlmClient::METRIC_LATENCY, $labels))->toHaveCount(1)
+        ->and($metrics->histogramSamples(AnthropicLlmClient::METRIC_LATENCY, $labels)[0])->toBeGreaterThanOrEqual(0.0)
+        ->and($metrics->get(AnthropicLlmClient::METRIC_TOKENS, $labels + ['type' => 'input']))->toBe(120)
+        ->and($metrics->get(AnthropicLlmClient::METRIC_TOKENS, $labels + ['type' => 'output']))->toBe(45)
+        ->and($metrics->get(AnthropicLlmClient::METRIC_FAILURES, $labels + ['reason' => 'http_429']))->toBe(0)
+        ->and($spans)->toHaveCount(1)
+        ->and($spans[0]['name'])->toBe(AnthropicLlmClient::SPAN_COMPLETE)
+        ->and($spans[0]['status'])->toBe('ok')
+        ->and($spans[0]['ended'])->toBeTrue()
+        ->and($spans[0]['attributes'])->toMatchArray([
+            'provider' => 'anthropic',
+            'model' => 'claude-test',
+            'input_tokens' => 120,
+            'output_tokens' => 45,
+        ]);
+});
+
+it('skips token counters when the response carries no usage block', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'content' => [['type' => 'text', 'text' => 'ok']],
+        ], 200),
+    ]);
+
+    $metrics = new InMemoryMetrics;
+    $client = new AnthropicLlmClient('test-key', model: 'claude-test', metrics: $metrics);
+    $client->complete([['role' => 'user', 'content' => 'hi']]);
+
+    $names = array_column($metrics->emissions(), 'name');
+
+    expect($names)->not->toContain(AnthropicLlmClient::METRIC_TOKENS)
+        ->and($metrics->histogramSamples(AnthropicLlmClient::METRIC_LATENCY, [
+            'provider' => 'anthropic',
+            'model' => 'claude-test',
+        ]))->toHaveCount(1);
+});
+
+it('counts an HTTP error as a failure and ends the span with error before throwing', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response(['error' => ['message' => 'rate limited']], 429),
+    ]);
+
+    $metrics = new InMemoryMetrics;
+    $tracer = new InMemoryTracer;
+    $client = new AnthropicLlmClient('test-key', model: 'claude-test', metrics: $metrics, tracer: $tracer);
+
+    expect(fn () => $client->complete([['role' => 'user', 'content' => 'hi']]))
+        ->toThrow(RuntimeException::class, 'Anthropic API error: 429');
+
+    $labels = ['provider' => 'anthropic', 'model' => 'claude-test'];
+    $spans = $tracer->spans();
+
+    expect($metrics->get(AnthropicLlmClient::METRIC_FAILURES, $labels + ['reason' => 'http_429']))->toBe(1)
+        ->and($metrics->histogramSamples(AnthropicLlmClient::METRIC_LATENCY, $labels))->toHaveCount(1)
+        ->and($spans[0]['status'])->toBe('error')
+        ->and($spans[0]['attributes'])->toMatchArray(['http_status' => 429]);
+});
+
+it('counts a transport failure and rethrows it unchanged', function () {
+    bootAnthropicHttp();
+
+    Http::fake(function () {
+        throw new ConnectionException('connection refused');
+    });
+
+    $metrics = new InMemoryMetrics;
+    $tracer = new InMemoryTracer;
+    $client = new AnthropicLlmClient('test-key', model: 'claude-test', metrics: $metrics, tracer: $tracer);
+
+    expect(fn () => $client->complete([['role' => 'user', 'content' => 'hi']]))
+        ->toThrow(ConnectionException::class, 'connection refused');
+
+    expect($metrics->get(AnthropicLlmClient::METRIC_FAILURES, [
+        'provider' => 'anthropic',
+        'model' => 'claude-test',
+        'reason' => 'transport',
+    ]))->toBe(1)
+        ->and($tracer->spans()[0]['status'])->toBe('error')
+        ->and($tracer->spans()[0]['ended'])->toBeTrue();
+});
+
+it('does not record a failure for the empty API key guard (no outbound call)', function () {
+    $metrics = new InMemoryMetrics;
+    $tracer = new InMemoryTracer;
+    $client = new AnthropicLlmClient(apiKey: '', metrics: $metrics, tracer: $tracer);
+
+    expect(fn () => $client->complete([['role' => 'user', 'content' => 'hi']]))
+        ->toThrow(RuntimeException::class, 'ANTHROPIC_API_KEY is empty');
+
+    expect($metrics->emissions())->toBe([])
+        ->and($tracer->spans())->toBe([]);
 });
