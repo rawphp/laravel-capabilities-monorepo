@@ -271,6 +271,7 @@ final class ProcessTelegramUpdate
             throw new RuntimeException('tool_registry_failure');
         }
 
+        $turnToolCalls = 0;
         foreach ($toolCalls as $call) {
             $name = (string) ($call['name'] ?? '');
             if ($name === '' || ! in_array($name, $profileTools, true)) {
@@ -289,6 +290,8 @@ final class ProcessTelegramUpdate
                 'context' => $ctx,
                 'caller' => 'agent',
                 'actor' => $user,
+                // Core pipeline enforces the per-turn tool budget from this count (D-013).
+                'agent_turn_tool_calls' => ++$turnToolCalls,
             ]);
             if (! $result->isOk()) {
                 $code = (string) ($result->errorCode() ?? 'registry_validation');
