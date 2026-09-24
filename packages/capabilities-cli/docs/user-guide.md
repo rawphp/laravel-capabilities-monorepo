@@ -380,7 +380,7 @@ via `run` / `describe` only.
 capabilities run <name> \
   [--input=JSON | --input-file=PATH | scalar flags] \
   [--idempotency-key=KEY] [--retry-last] \
-  [--no-cache] [--human] [--tenant=ID] \
+  [--no-cache] [--human] \
   [--profile=NAME] [--base-url=URL]
 ```
 
@@ -415,7 +415,7 @@ capabilities <domain> <verb> --customer_id=1 --human --profile=mesoprep
 capabilities run <name> --input-file=./payload.json --retry-last
 ```
 
-`--tenant=ID` is a **hint only** — not authoritative scope (server decides).
+There is no tenant flag: the server derives tenant scope from your token (D-003).
 
 `--human` writes a **short one-line** summary to **stderr** (e.g. `ok get_today_meals date=…`);
 stdout remains the machine envelope. Do not parse `--human` stderr for full payload data.

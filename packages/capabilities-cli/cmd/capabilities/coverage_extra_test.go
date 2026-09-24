@@ -98,20 +98,42 @@ func TestCatalogNoCacheAndProfileFlags(t *testing.T) {
 	}
 }
 
-func TestRunTenantAndJSONFlags(t *testing.T) {
-	srv, url := testAPI(t)
+// --tenant was removed: the server never read the hint, and DTO schemas
+// (additionalProperties:false) rejected the injected body key. It is now an
+// unknown flag like any other — exit 2 before any POST (D-003: scope is server-derived).
+func TestFlagtenantremoved(t *testing.T) {
+	posts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			posts++
+		}
+		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/capabilities/") {
+			w.Write([]byte(`{"ok":true,"data":{"name":"create-invoice","schema_version":"1","input_schema":{"type":"object","required":["customer_id"],"properties":{"customer_id":{"type":"integer"}}}}}`))
+			return
+		}
+		w.Write([]byte(`{"ok":true,"data":{"invoice_id":1}}`))
+	}))
+	t.Cleanup(srv.Close)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", url, "tok")
-	code, out, errb := CaptureExecute([]string{
+	_, _ = auth.LoginWithToken(st, "default", srv.URL, "tok")
+	code, _, errb := CaptureExecute([]string{
 		"run", "create-invoice",
 		"--input={\"customer_id\":1}",
 		"--tenant=acme",
-		"--json",
 		"--no-cache",
 	}, root, newClientFactory(srv))
-	if code != 0 {
-		t.Fatal(code, out, errb)
+	if code != api.ExitValidation {
+		t.Fatalf("want exit 2 got %d stderr=%s", code, errb)
+	}
+	if !strings.Contains(errb, "unknown flag") {
+		t.Fatalf("want unknown flag, got %s", errb)
+	}
+	if posts != 0 {
+		t.Fatalf("must not POST, got %d", posts)
+	}
+	if strings.Contains(CommandHelp("run"), "--tenant") {
+		t.Fatal("run help must not document --tenant")
 	}
 }
 

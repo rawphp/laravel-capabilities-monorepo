@@ -51,15 +51,6 @@ func TestFlagnocache(t *testing.T) {
 	}
 }
 
-func TestFlagtenanthintnotauthoritative(t *testing.T) {
-	opts, _ := harness(t, nil)
-	opts.TenantHint = "t1"
-	res := Run(context.Background(), opts)
-	if res.ExitCode != 0 {
-		t.Fatal(res)
-	}
-}
-
 func TestFlagretrylast(t *testing.T) {
 	opts, rec := harness(t, nil)
 	opts.IdempotencyKey = "rl-1"

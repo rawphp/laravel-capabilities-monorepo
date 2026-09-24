@@ -24,9 +24,8 @@ type Options struct {
 	IdempotencyKey string
 	RetryLast      bool
 	NoCache        bool
-	JSON           bool   // legacy: stdout is always machine envelope; kept for call-site compat
-	Human          bool   // human summary on stderr only; never replaces stdout envelope
-	TenantHint     string // hint only — not authoritative scope (D-003)
+	JSON           bool // legacy: stdout is always machine envelope; kept for call-site compat
+	Human          bool // human summary on stderr only; never replaces stdout envelope
 	Store          *auth.Store
 	Client         *api.Client
 	Catalog        *catalog.Service
@@ -149,18 +148,9 @@ func Run(ctx context.Context, opts Options) *Result {
 		return res
 	}
 
-	// Tenant hint is optional body metadata only when explicitly set — never authority.
-	// We do not send X-Capabilities-Caller. Server derives caller from Bearer token.
+	// Body is the capability input only. We do not send X-Capabilities-Caller or a
+	// tenant claim: the server derives caller and scope from the Bearer token (D-022, D-003).
 	body := opts.InputJSON
-	if opts.TenantHint != "" {
-		// Attach as non-authoritative request field only if body is object.
-		var m map[string]any
-		if json.Unmarshal(body, &m) == nil {
-			// Hint lives under a namespaced key so it cannot forge scope.
-			m["_tenant_hint"] = opts.TenantHint
-			body, _ = json.Marshal(m)
-		}
-	}
 
 	// Wire-version preflight: refuse before POST when the server speaks another API version.
 	if verr := opts.Client.CheckAPIVersion(ctx); verr != nil {
