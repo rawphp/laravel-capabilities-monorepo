@@ -412,8 +412,11 @@ capabilities run <name> --input='{"customer_id":1}' --profile=mesoprep
 
 capabilities <domain> <verb> --customer_id=1 --human --profile=mesoprep
 
-capabilities run <name> --input-file=./payload.json --retry-last
+capabilities run <name> --retry-last   # after a network failure: same key, same body
 ```
+
+`--retry-last` reuses the last `Idempotency-Key`. With no `--input`, `--input-file`, or field
+flags it also resends the last input, so the server replays instead of returning a conflict.
 
 `--tenant=ID` is a **hint only** — not authoritative scope (server decides).
 
