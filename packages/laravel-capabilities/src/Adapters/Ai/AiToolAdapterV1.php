@@ -7,6 +7,7 @@ use Rawphp\Capabilities\Adapters\PeerIncompatibleException;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 use Rawphp\Capabilities\Adapters\StructuredToolResponse;
 use Rawphp\Capabilities\Adapters\ToolSelection;
+use Rawphp\Capabilities\Profiles\ProfileRequiredException;
 use Rawphp\Capabilities\RateLimiting\AgentTurnBudget;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\CapabilityContext;
@@ -96,6 +97,11 @@ final class AiToolAdapterV1 implements AiToolAdapter
             throw $e;
         } catch (RuntimeException $e) {
             // Refuse catch-all empty tool lists on unexpected adapter errors (D-011).
+            $this->registered = false;
+            $this->registeredTools = [];
+            throw $e;
+        } catch (ProfileRequiredException $e) {
+            // Missing profile is a D-008 refusal like TooManyToolsException — never keep stale tools.
             $this->registered = false;
             $this->registeredTools = [];
             throw $e;
