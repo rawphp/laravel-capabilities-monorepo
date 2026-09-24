@@ -273,7 +273,7 @@ it('actor resolver misconfiguration leaves proposal accepting for re-drive after
     bootProposalSqlite();
     $proposal = seedPendingProposal();
     $bus = proposalBus();
-    $service = new ProposalService($bus, new AlwaysReadyIdempotency, new ResolveConversationActor('NoSuchUserModel'));
+    $service = new ProposalService($bus, new AlwaysReadyIdempotency, new ResolveConversationActor('NoSuchUserModel'), proposalTools());
 
     expect(fn () => $service->accept($proposal->ulid))
         ->toThrow(RuntimeException::class, 'does not exist');
