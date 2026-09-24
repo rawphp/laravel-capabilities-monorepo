@@ -29,6 +29,11 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   already-up-to-date exits **0**, unwritable path fails closed with `install.sh` /
   `CAPABILITIES_INSTALL_DIR` guidance. No auth; does not touch session stores. Documented in
   package README and `docs/user-guide.md` (when to use vs `scripts/install.sh`).
+- **Signed self-update** — release builds pin an ed25519 public key
+  (`selfupdate.ReleasePublicKey` via ldflags) and `self-update` then requires a valid
+  `checksums.txt.sig` over `checksums.txt` (fail closed when missing/invalid). The release
+  workflow signs checksums when `CAPABILITIES_RELEASE_SIGNING_KEY` is set; without it, releases
+  and dev builds stay checksum-only. See `docs/release-signing.md`.
 - **`auth status --json`** — D-018 envelope with `profile`, `base_url`, `logged_in` (never the token).
 - **`auth list` / `auth profiles`** — list stored profiles (name, base_url, logged_in; never tokens); `--json` envelope.
 - **`catalog --include-schemas`** — list/JSON with `input_schema` / `output_schema` in one round-trip for agents.

@@ -82,6 +82,9 @@ func mapSelfUpdateError(env Env, err error) int {
 	case errors.Is(err, selfupdate.ErrUnsupportedArch):
 		fmt.Fprintf(env.Stderr, "self-update: unsupported architecture (need amd64 or arm64)\n")
 		return api.ExitInternal
+	case errors.Is(err, selfupdate.ErrSignatureMissing), errors.Is(err, selfupdate.ErrSignatureInvalid):
+		fmt.Fprintf(env.Stderr, "self-update: release signature verification failed — aborting (%v)\n", err)
+		return api.ExitInternal
 	case errors.Is(err, selfupdate.ErrChecksumMissing), errors.Is(err, selfupdate.ErrChecksumMismatch):
 		fmt.Fprintf(env.Stderr, "self-update: checksum verification failed — aborting (%v)\n", err)
 		return api.ExitInternal

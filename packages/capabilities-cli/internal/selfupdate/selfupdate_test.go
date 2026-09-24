@@ -66,6 +66,7 @@ type releaseFixture struct {
 	Arch         string
 	Archive      []byte
 	Checksums    string // empty → 404 for checksums.txt
+	Signature    []byte // nil → 404 for checksums.txt.sig
 	AssetStatus  int    // 0 → 200
 	LatestMode   string // "redirect" (default), "api", "fail"
 	DownloadHits int
@@ -79,6 +80,7 @@ func (f *releaseFixture) handler(t *testing.T) http.Handler {
 	asset := assetName(f.Version, f.OS, f.Arch)
 	assetPath := repoPath + "/releases/download/v" + f.Version + "/" + asset
 	checksumsPath := repoPath + "/releases/download/v" + f.Version + "/checksums.txt"
+	signaturePath := checksumsPath + ".sig"
 	apiPath := "/repos/" + testRepo + "/releases/latest"
 
 	mux.HandleFunc(repoPath+"/releases/latest", func(w http.ResponseWriter, r *http.Request) {
@@ -120,6 +122,13 @@ func (f *releaseFixture) handler(t *testing.T) http.Handler {
 		}
 		w.Header().Set("Content-Type", "text/plain")
 		_, _ = io.WriteString(w, f.Checksums)
+	})
+	mux.HandleFunc(signaturePath, func(w http.ResponseWriter, r *http.Request) {
+		if f.Signature == nil {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(f.Signature)
 	})
 	return mux
 }

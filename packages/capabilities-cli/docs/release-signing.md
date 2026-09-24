@@ -126,6 +126,32 @@ hooks:
 
 ---
 
+## Release signature (self-update)
+
+`checksums.txt` alone cannot catch a release whose binary **and** checksums were swapped together (compromised token or upload). `self-update` closes that gap with an ed25519 signature pinned in the installed binary.
+
+| Piece | Where |
+|---|---|
+| Secret `CAPABILITIES_RELEASE_SIGNING_KEY` | ed25519 private key, PEM (`openssl genpkey -algorithm ed25519`). Set on `rawphp/capabilities-cli` only. |
+| Public key pin | `select-runner` derives it; GoReleaser injects `-X github.com/rawphp/capabilities-cli/internal/selfupdate.ReleasePublicKey=<base64>` |
+| `checksums.txt.sig` | `sign-checksums` job: raw 64-byte ed25519 signature over `checksums.txt`, self-verified, then `gh release upload --clobber` |
+
+Behaviour:
+
+- **Secret absent** → no pin, no `.sig`; logs `release signature skipped`. Self-update stays checksum-only (as before).
+- **Secret present** → binaries from that release refuse any later release whose `checksums.txt.sig` is missing or does not verify. The pin lives in the already-installed binary, so an attacker who controls release assets cannot remove it.
+- Between GoReleaser publishing and the `.sig` upload, pinned clients fail closed (retry after the workflow finishes).
+- **Rotating the key** strands pinned binaries: they reject releases signed by the new key. Users reinstall with `scripts/install.sh` (checksum-only today). Treat the key as long-lived.
+
+Local check:
+
+```bash
+openssl pkey -in release.pem -pubout -outform DER | tail -c 32 | base64   # the pinned value
+openssl pkeyutl -sign -rawin -inkey release.pem -in checksums.txt -out checksums.txt.sig
+```
+
+---
+
 ## Security
 
 - Do **not** paste cert/key material into issues, PRs, or this doc.
