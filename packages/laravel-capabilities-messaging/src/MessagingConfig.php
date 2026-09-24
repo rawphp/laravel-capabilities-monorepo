@@ -19,6 +19,9 @@ final class MessagingConfig
         'skip_boot_checks',
     ];
 
+    /** @var list<string> */
+    public const IDENTITY_MODES = ['code_link', 'allowlist'];
+
     /**
      * @param  array<string, mixed>  $config
      */
@@ -156,6 +159,25 @@ final class MessagingConfig
     public function identityMode(): string
     {
         return (string) ($this->config['identity']['mode'] ?? 'code_link');
+    }
+
+    /**
+     * Validated on setup (MSG-002): an unknown mode would leave binding behaviour undefined.
+     *
+     * @throws RuntimeException
+     */
+    public function requireIdentityMode(): string
+    {
+        $mode = $this->identityMode();
+        if (! in_array($mode, self::IDENTITY_MODES, true)) {
+            throw new RuntimeException(sprintf(
+                'capabilities-messaging.identity.mode "%s" is not recognized; use %s (MSG-002).',
+                $mode,
+                implode(' or ', self::IDENTITY_MODES),
+            ));
+        }
+
+        return $mode;
     }
 
     public function codeTtlSeconds(): int
