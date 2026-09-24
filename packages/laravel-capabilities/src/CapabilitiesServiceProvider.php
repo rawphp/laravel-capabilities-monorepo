@@ -44,6 +44,7 @@ use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\Capabilities\Observability\LogFallbackMetrics;
 use Rawphp\Capabilities\Persistence\TableGateway;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
+use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\DefaultScopeResolver;
 use Rawphp\Capabilities\Support\IlluminateRateLimitCache;
 
@@ -119,11 +120,18 @@ class CapabilitiesServiceProvider extends ServiceProvider
         $this->app->singleton(ApprovalManager::class, function ($app) {
             $config = self::configFromApp($app);
 
+            // Accept / resume run the stored invoke through the registry (D-006). Resolved
+            // lazily: the registry itself is built from this manager's store.
             return ContainerBindings::makeApprovalManager(
                 $config,
                 self::boundTableGatewayOrNull($app),
                 self::boundConnectionOrNull($app, $config, 'approval'),
-            );
+            )->withExecutor(static function (array $row) use ($app): CapabilityResult {
+                /** @var CapabilityRegistry $registry */
+                $registry = $app->make(CapabilityRegistry::class);
+
+                return $registry->executeApproval($row);
+            });
         });
         $this->app->alias(ApprovalManager::class, 'ApprovalManager');
         // Sibling surfaces type-hint ApprovalGateway — same singleton, no second SM (D-006 / D-007).

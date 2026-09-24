@@ -9,6 +9,29 @@ with **0.x pre-stable** expectations (breaking changes allowed without a major b
 Monorepo packaging policy (install paths, tags, Packagist checklist):  
 https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versioning.md
 
+## [Unreleased]
+
+### Changed (BREAKING)
+
+#### Accepted approvals now run the capability
+
+Before this change, an `ApprovalManager` with no executor bound — which included the
+container singleton behind the HTTP approve route and the messaging `ApprovalGateway`,
+and `CapabilityRegistry::approvals()` — marked accepted or resumed approvals `executed`
+with a fabricated `{"executed": true}` result. The capability never ran and its output
+contract was never checked.
+
+- **Default executor** — `CapabilityRegistry::executeApproval($row)` re-invokes the
+  stored capability through the registry pipeline as the original requester (user id +
+  tenant, or the same `SystemActor`) and caller: re-validate, re-scope, authorize, run
+  once, output contract. The container `ApprovalManager` and `registry->approvals()`
+  use it by default.
+- **Fail closed** — a manager with no executor now records `executed` + `failed` with
+  `not_configured` instead of reporting success.
+- **Host note** — the requester is rebuilt as a plain principal (`id`, `tenant_id`). If
+  your authorizer needs a real user model, bind your own with
+  `ApprovalManager::withExecutor(...)`.
+
 ## [0.5.2] - 2026-08-27
 
 ### Fixed
