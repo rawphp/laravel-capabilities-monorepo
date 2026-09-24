@@ -482,7 +482,11 @@ final class InvokePipeline
             $key = IdempotencyKey::derive($state->definition->idempotencyKeyFields, $state->rawInput);
         }
         $state->idempotencyKey = $key;
-        $state->requestHash = RequestHash::of($state->rawInput);
+        // Hash the validated, defaults-applied input so omitted vs explicit-default
+        // optional fields are the same request (D-005 canonical input JSON).
+        $state->requestHash = RequestHash::of($state->input instanceof CapabilityData
+            ? $state->input->toArray()
+            : $state->rawInput);
 
         // Policy before any store interaction (required key / format / warn missing).
         $policy = $this->idempotencyGuard->assertKeyPolicy(
