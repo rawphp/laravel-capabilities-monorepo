@@ -62,11 +62,14 @@ final class TurnRunner
             $offeredNames = array_column($toolDefs, 'name');
 
             $rounds = 0;
+            $usage = [];
             // 1-based tool-call count across all rounds of this turn → core D-013 agent turn budget.
             $toolCallCount = 0;
             while ($rounds < $this->maxToolRounds) {
                 $rounds++;
+                $startedAt = hrtime(true);
                 $response = $this->llm->complete($messages, $toolDefs);
+                $usage[] = $this->roundUsage($response, $startedAt);
                 $toolCalls = $response['tool_calls'] ?? [];
 
                 if ($toolCalls === []) {
@@ -172,10 +175,14 @@ final class TurnRunner
             // Cooperative cancel: do not overwrite cancelled mid-run
             $fresh = Turn::query()->where('ulid', $turnUlid)->first();
             if ($fresh !== null && $fresh->status === Turn::STATUS_CANCELLED) {
+                $fresh->usage = $usage;
+                $fresh->save();
+
                 return $fresh;
             }
 
             $turn->status = Turn::STATUS_COMPLETED;
+            $turn->usage = $usage;
             $turn->finished_at = Carbon::now();
             $turn->save();
 
@@ -195,6 +202,7 @@ final class TurnRunner
 
             $turn->status = Turn::STATUS_FAILED;
             $turn->error = $e->getMessage();
+            $turn->usage = $usage ?? null;
             $turn->finished_at = Carbon::now();
             $turn->save();
             $this->progress->append($turnUlid, [
@@ -207,6 +215,26 @@ final class TurnRunner
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * One round's accounting: runner-measured latency plus any non-negative int
+     * token counts the client reported (junk values are dropped, not coerced).
+     *
+     * @param  array<string, mixed>  $response
+     * @return array{latency_ms: int, input_tokens?: int, output_tokens?: int}
+     */
+    private function roundUsage(array $response, int $startedAt): array
+    {
+        $round = ['latency_ms' => intdiv(hrtime(true) - $startedAt, 1_000_000)];
+        $reported = is_array($response['usage'] ?? null) ? $response['usage'] : [];
+        foreach (['input_tokens', 'output_tokens'] as $key) {
+            if (is_int($reported[$key] ?? null) && $reported[$key] >= 0) {
+                $round[$key] = $reported[$key];
+            }
+        }
+
+        return $round;
     }
 
     private function encodeToolResult(string $name, CapabilityResult $result): string

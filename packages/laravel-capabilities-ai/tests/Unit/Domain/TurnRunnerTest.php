@@ -841,3 +841,123 @@ it('tool call for a name outside the turn tool list is refused without a bus inv
         ->and($refused['error']['code'] ?? null)->toBe('capability_not_in_profile')
         ->and($refused['name'] ?? null)->toBe('admin.wipe');
 });
+
+/**
+ * @return array{0: ConversationContextProvider, 1: ToolCatalog}
+ */
+function usageContextAndTools(): array
+{
+    $context = new class implements ConversationContextProvider
+    {
+        public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['role' => 'user', 'content' => 'use tool']];
+        }
+    };
+    $tools = new class implements ToolCatalog
+    {
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['name' => 'demo.tool']];
+        }
+    };
+
+    return [$context, $tools];
+}
+
+it('records per-round LLM usage and latency on the completed turn', function () {
+    bootTurnSqlite();
+    $seeded = enqueueTurnWithUser('use tool');
+    [$context, $tools] = usageContextAndTools();
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: new FakeLlmClient([
+            [
+                'tool_calls' => [['name' => 'demo.tool', 'arguments' => []]],
+                'usage' => ['input_tokens' => 120, 'output_tokens' => 30],
+            ],
+            // Client that reports nothing (or junk) still gets a latency-only round.
+            ['content' => 'done', 'usage' => ['input_tokens' => 'many', 'output_tokens' => -1]],
+        ]),
+        context: $context,
+        tools: $tools,
+        bus: recordingBus(),
+        progress: new ArrayProgressStore,
+        actors: turnActors(),
+    );
+
+    $turn = $runner->run($seeded['turn_ulid']);
+
+    $usage = Turn::query()->where('ulid', $seeded['turn_ulid'])->firstOrFail()->usage;
+    expect($turn->status)->toBe(Turn::STATUS_COMPLETED)
+        ->and($usage)->toHaveCount(2)
+        ->and($usage[0]['input_tokens'])->toBe(120)
+        ->and($usage[0]['output_tokens'])->toBe(30)
+        ->and($usage[0]['latency_ms'])->toBeInt()->toBeGreaterThanOrEqual(0)
+        ->and(array_keys($usage[1]))->toBe(['latency_ms']);
+});
+
+it('records usage for rounds that ran before a turn failed', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurn('use tool');
+    [$context, $tools] = usageContextAndTools();
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: new FakeLlmClient([
+            [
+                'tool_calls' => [['name' => 'demo.tool', 'arguments' => []]],
+                'usage' => ['input_tokens' => 50, 'output_tokens' => 5],
+            ],
+        ]),
+        context: $context,
+        tools: $tools,
+        bus: null,
+        progress: new ArrayProgressStore,
+    );
+
+    expect(fn () => $runner->run($turnUlid))->toThrow(RuntimeException::class, 'CapabilityBus required');
+
+    $turn = Turn::query()->where('ulid', $turnUlid)->firstOrFail();
+    expect($turn->status)->toBe(Turn::STATUS_FAILED)
+        ->and($turn->usage)->toHaveCount(1)
+        ->and($turn->usage[0]['input_tokens'])->toBe(50)
+        ->and($turn->usage[0]['output_tokens'])->toBe(5);
+});
+
+it('records usage on a turn cancelled mid-run without overwriting cancelled', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurn();
+    $GLOBALS['usage_cancel_turn_ulid'] = $turnUlid;
+    $llm = new class implements LlmClient
+    {
+        public function supportsToolRounds(): bool
+        {
+            return true;
+        }
+
+        public function complete(array $messages, array $tools = []): array
+        {
+            Turn::query()->where('ulid', $GLOBALS['usage_cancel_turn_ulid'])->update([
+                'status' => Turn::STATUS_CANCELLED,
+            ]);
+
+            return ['content' => 'too late', 'usage' => ['input_tokens' => 7, 'output_tokens' => 3]];
+        }
+    };
+    [$context, $tools] = usageContextAndTools();
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        progress: new ArrayProgressStore,
+    );
+
+    $turn = $runner->run($turnUlid);
+
+    $stored = Turn::query()->where('ulid', $turnUlid)->firstOrFail();
+    expect($turn->status)->toBe(Turn::STATUS_CANCELLED)
+        ->and($stored->status)->toBe(Turn::STATUS_CANCELLED)
+        ->and($stored->usage[0]['input_tokens'])->toBe(7)
+        ->and($stored->usage[0]['output_tokens'])->toBe(3);
+});

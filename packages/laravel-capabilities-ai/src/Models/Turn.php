@@ -43,12 +43,14 @@ class Turn extends Model
         'error',
         'started_at',
         'finished_at',
+        'usage',
     ];
 
     protected $casts = [
         'claimed_at' => 'datetime',
         'started_at' => 'datetime',
         'finished_at' => 'datetime',
+        'usage' => 'array',
     ];
 
     public function getTable(): string
