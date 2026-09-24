@@ -338,3 +338,24 @@ func TestRunvalidationviolationslistedinenvelope(t *testing.T) {
 		t.Fatal(string(res.Envelope))
 	}
 }
+
+// A >=400 body claiming ok:true alongside an error object is the only shape the
+// API client leaves without a StructuredError; its self-declared code is not
+// trusted, so the runner always falls back to CodeInternal.
+func TestRunContradictoryOkEnvelopeOnHTTPErrorMapsToInternal(t *testing.T) {
+	body := `{"ok":true,"error":{"code":"approval_required","message":"hmm"}}`
+	opts, _ := harness(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(409)
+		w.Write([]byte(body))
+	})
+	res := Run(context.Background(), opts)
+	if res.ExitCode != ExitInternal {
+		t.Fatalf("exit=%d want %d", res.ExitCode, ExitInternal)
+	}
+	if res.Stderr != body {
+		t.Fatalf("stderr=%q", res.Stderr)
+	}
+	if res.Stdout != "" {
+		t.Fatalf("stdout must stay empty, got %q", res.Stdout)
+	}
+}

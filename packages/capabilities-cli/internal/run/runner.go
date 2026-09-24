@@ -190,11 +190,10 @@ func Run(ctx context.Context, opts Options) *Result {
 		return res
 	}
 	if apiRes.StatusCode >= 400 {
-		code := api.CodeInternal
-		if apiRes.Err != nil {
-			code = apiRes.Err.Code
-		}
-		res.ExitCode = ExitCodeFor(code)
+		// Only reachable when the body claims ok:true yet carries an error object
+		// (the API client builds a StructuredError for every other >=400 shape).
+		// Its self-declared code is not trusted: always CodeInternal.
+		res.ExitCode = ExitCodeFor(api.CodeInternal)
 		res.Stderr = string(apiRes.Body)
 		return res
 	}
