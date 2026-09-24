@@ -374,6 +374,13 @@ final class ApprovalManager implements ApprovalGateway
             return CapabilityResult::failure('not_found', 'Approval not found.');
         }
 
+        // Scope before status: a replay or terminal status must not leak to an out-of-policy caller.
+        if (! $this->policy->allows($row, $approver, $options['tenant_id'] ?? $this->tenantOf($approver))) {
+            $this->metrics->increment('approvals_accept_total', 1, ['result' => 'forbidden']);
+
+            return CapabilityResult::failure('forbidden', 'Approver is not authorized for this approval.');
+        }
+
         $status = (string) $row['status'];
 
         if ($status === ApprovalStateMachine::STATUS_EXECUTED) {
@@ -411,12 +418,6 @@ final class ApprovalManager implements ApprovalGateway
 
         if ($status !== ApprovalStateMachine::STATUS_PENDING) {
             return CapabilityResult::failure('conflict', 'Approval is not pending.');
-        }
-
-        if (! $this->policy->allows($row, $approver, $options['tenant_id'] ?? $this->tenantOf($approver))) {
-            $this->metrics->increment('approvals_accept_total', 1, ['result' => 'forbidden']);
-
-            return CapabilityResult::failure('forbidden', 'Approver is not authorized for this approval.');
         }
 
         $now = $this->clock->now();
