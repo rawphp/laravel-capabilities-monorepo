@@ -11,6 +11,10 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Changed
+
+- **Proposal accept stays inside the tool profile (D-008):** `ProposalService` takes an optional host `ToolCatalog` (SP passes the bound one) and, on every accept execute, requires `target_capability` to be in `toolsForTurn(conversation, turn)`. Outside the profile — including a profile narrowed after the proposal was made — or no `ToolCatalog` bound → proposal `failed`, `AcceptOutcome::refuse` **403** `capability_not_in_profile`, no bus invoke. **Hosts:** a capability the model may propose must be in that turn's tool list; proposal-only targets outside it now refuse.
+
 ### Fixed
 
 - **Redis progress under Laravel phpredis (coach turns):** `resolveRedisClientOrNull` now unwraps the Illuminate Redis connection to the native ext-redis/predis client (`connection()->client()`). `RedisProgressStore` also accepts Laravel connection wrappers that only expose `rpush`/`lrange` via `__call`. Without this, hosts with `CAPABILITIES_AI_PROGRESS_DRIVER=redis` failed every turn with `Redis client missing rPush` (SSE progress never appended; coach chat returned temporary-problem failures).

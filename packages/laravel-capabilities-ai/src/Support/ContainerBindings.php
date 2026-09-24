@@ -258,6 +258,7 @@ final class ContainerBindings
         CapabilityBus $bus,
         IdempotencyReadiness $idempotency,
         ?string $userModel = null,
+        ?ToolCatalog $tools = null,
     ): ProposalService {
         return new ProposalService(
             $bus,
@@ -265,6 +266,7 @@ final class ContainerBindings
             new ResolveConversationActor(
                 is_string($userModel) && $userModel !== '' ? $userModel : null,
             ),
+            $tools,
         );
     }
 

@@ -153,6 +153,7 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
                 $app->make(CapabilityBus::class),
                 $app->make(IdempotencyReadiness::class),
                 is_string($userModel) && $userModel !== '' ? $userModel : null,
+                self::optional($app, ToolCatalog::class),
             );
         });
     }

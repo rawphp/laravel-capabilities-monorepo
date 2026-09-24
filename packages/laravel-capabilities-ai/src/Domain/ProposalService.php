@@ -8,8 +8,10 @@ use Illuminate\Support\Carbon;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
+use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
 use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Proposal;
+use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\DatabaseConnection;
 use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
 use Rawphp\CapabilitiesAi\Support\UnresolvedConversationActorException;
@@ -24,6 +26,9 @@ use RuntimeException;
  * - accepting → failed + last_error on hard non-retryable (or missing target / unresolvable actor)
  * - accepting stays accepting on isRetryable() / isApprovalRequired() (D-005 resume)
  * - Bus invoke always passes idempotency_key=proposal:{ulid} (D-005)
+ * - Target re-checked against the host ToolCatalog for the proposal's turn on every
+ *   execute (D-008); outside the profile or no catalog bound → failed + refuse
+ *   capability_not_in_profile, no bus invoke
  * - Live IdempotencyReadiness probe (fail closed) — not a constructor stamp
  * - Rejected / expired / unknown status → AcceptOutcome::refuse (no throw-as-API)
  *
@@ -38,6 +43,7 @@ final class ProposalService
         private readonly CapabilityBus $bus,
         private readonly IdempotencyReadiness $idempotency,
         private readonly ResolveConversationActor $actors = new ResolveConversationActor,
+        private readonly ?ToolCatalog $tools = null,
     ) {}
 
     public function accept(string $proposalUlid): AcceptOutcome
@@ -167,6 +173,23 @@ final class ProposalService
             );
         }
 
+        // The model authored target_capability; it stays inside the turn's tool profile (D-008).
+        if (! $this->targetInProfile($target, $proposal)) {
+            $message = sprintf('Capability "%s" is not in the selected profile.', $target);
+            $this->markFailed($proposal, 'capability_not_in_profile', $message);
+
+            return AcceptOutcome::refuse(
+                $proposal->refresh(),
+                message: $message,
+                httpStatus: 403,
+                error: [
+                    'code' => 'capability_not_in_profile',
+                    'message' => $message,
+                    'retryable' => false,
+                ],
+            );
+        }
+
         $payload = is_array($proposal->payload) ? $proposal->payload : [];
         $conversation = Conversation::query()->findOrFail($proposal->conversation_id);
         // Same principal shape as TurnRunner tool invokes (caller=job + conversation user).
@@ -195,6 +218,23 @@ final class ProposalService
         );
 
         return $this->mapBusResult($proposal, $result);
+    }
+
+    private function targetInProfile(string $target, Proposal $proposal): bool
+    {
+        if ($this->tools === null) {
+            return false;
+        }
+
+        $conversationUlid = Conversation::query()->whereKey($proposal->getAttribute('conversation_id'))->value('ulid');
+        $turnUlid = Turn::query()->whereKey($proposal->getAttribute('turn_id'))->value('ulid');
+        if (! is_string($conversationUlid) || ! is_string($turnUlid)) {
+            return false;
+        }
+
+        $tools = $this->tools->toolsForTurn($conversationUlid, $turnUlid);
+
+        return in_array($target, array_column($tools, 'name'), true);
     }
 
     private function mapBusResult(Proposal $proposal, CapabilityResult $result): AcceptOutcome
