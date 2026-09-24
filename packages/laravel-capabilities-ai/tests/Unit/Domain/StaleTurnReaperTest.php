@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Container\Container;
 use Illuminate\Database\Capsule\Manager as Capsule;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Events\Dispatcher as EventDispatcher;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Facade;
@@ -52,7 +53,7 @@ it('fails queued turns older than threshold', function () {
         'updated_at' => $frozenNow->copy()->subMinutes(31),
     ]);
 
-    $counts = (new StaleTurnReaper)->reap(
+    $counts = (new StaleTurnReaper(new ArrayProgressStore))->reap(
         staleQueuedMinutes: 30,
         claimTtlSeconds: 120,
         runningGraceSeconds: 60,
@@ -82,7 +83,7 @@ it('fails running turns past max(claim_ttl, grace)', function () {
         'updated_at' => $frozenNow->copy()->subSeconds(200),
     ]);
 
-    $counts = (new StaleTurnReaper)->reap(
+    $counts = (new StaleTurnReaper(new ArrayProgressStore))->reap(
         staleQueuedMinutes: 30,
         claimTtlSeconds: 120,
         runningGraceSeconds: 60,
@@ -116,7 +117,7 @@ it('leaves fresh queued and running turns alone', function () {
         'updated_at' => $frozenNow->copy()->subSeconds(30),
     ]);
 
-    $counts = (new StaleTurnReaper)->reap(
+    $counts = (new StaleTurnReaper(new ArrayProgressStore))->reap(
         staleQueuedMinutes: 30,
         claimTtlSeconds: 120,
         runningGraceSeconds: 60,
@@ -140,7 +141,7 @@ it('uses the larger of claim_ttl and running grace for running cutoff', function
         'claimed_at' => $frozenNow->copy()->subSeconds(100),
     ]);
 
-    $counts = (new StaleTurnReaper)->reap(
+    $counts = (new StaleTurnReaper(new ArrayProgressStore))->reap(
         staleQueuedMinutes: 30,
         claimTtlSeconds: 60,
         runningGraceSeconds: 180,
@@ -155,7 +156,7 @@ it('uses the larger of claim_ttl and running grace for running cutoff', function
         'claimed_at' => $frozenNow->copy()->subSeconds(200),
     ]);
 
-    $counts2 = (new StaleTurnReaper)->reap(
+    $counts2 = (new StaleTurnReaper(new ArrayProgressStore))->reap(
         staleQueuedMinutes: 30,
         claimTtlSeconds: 60,
         runningGraceSeconds: 180,
@@ -164,4 +165,94 @@ it('uses the larger of claim_ttl and running grace for running cutoff', function
 
     expect($counts2['running'])->toBe(1)
         ->and(Turn::query()->where('ulid', $ids['turn_ulid'])->value('status'))->toBe(Turn::STATUS_FAILED);
+});
+
+it('appends error then terminal failed progress for each reaped turn', function () {
+    bootStaleReaperSqlite();
+    $frozenNow = Carbon::parse('2026-08-07 12:00:00');
+    $progress = new ArrayProgressStore;
+
+    $queuedIds = seedQueuedTurnForReaper();
+    Turn::query()->where('ulid', $queuedIds['turn_ulid'])->update([
+        'created_at' => $frozenNow->copy()->subMinutes(31),
+    ]);
+
+    $runningIds = seedQueuedTurnForReaper();
+    Turn::query()->where('ulid', $runningIds['turn_ulid'])->update([
+        'status' => Turn::STATUS_RUNNING,
+        'claimed_at' => $frozenNow->copy()->subSeconds(200),
+    ]);
+    $progress->append($runningIds['turn_ulid'], ['kind' => 'status', 'data' => ['status' => Turn::STATUS_RUNNING]]);
+
+    (new StaleTurnReaper($progress))->reap(
+        staleQueuedMinutes: 30,
+        claimTtlSeconds: 120,
+        runningGraceSeconds: 60,
+        now: $frozenNow,
+    );
+
+    $queuedEvents = $progress->since($queuedIds['turn_ulid']);
+    expect(array_column($queuedEvents, 'kind'))->toBe(['error', 'terminal'])
+        ->and($queuedEvents[0]['data'])->toBe(['message' => 'reaped: stale queued'])
+        ->and($queuedEvents[1]['data'])->toBe(['status' => Turn::STATUS_FAILED]);
+
+    // Replay from the client's cursor after the last pre-reap event ends on terminal failed.
+    $runningEvents = $progress->since($runningIds['turn_ulid'], 1);
+    expect(array_column($runningEvents, 'kind'))->toBe(['error', 'terminal'])
+        ->and($runningEvents[0]['data'])->toBe(['message' => 'reaped: stale running claim'])
+        ->and($runningEvents[1]['data'])->toBe(['status' => Turn::STATUS_FAILED]);
+});
+
+it('appends no progress for turns it leaves alone', function () {
+    bootStaleReaperSqlite();
+    $frozenNow = Carbon::parse('2026-08-07 12:00:00');
+    $progress = new ArrayProgressStore;
+
+    $ids = seedQueuedTurnForReaper();
+    Turn::query()->where('ulid', $ids['turn_ulid'])->update([
+        'created_at' => $frozenNow->copy()->subMinutes(10),
+    ]);
+
+    (new StaleTurnReaper($progress))->reap(
+        staleQueuedMinutes: 30,
+        claimTtlSeconds: 120,
+        runningGraceSeconds: 60,
+        now: $frozenNow,
+    );
+
+    expect($progress->since($ids['turn_ulid']))->toBe([]);
+});
+
+it('skips a turn that left the stale state before its guarded update', function () {
+    bootStaleReaperSqlite();
+    $frozenNow = Carbon::parse('2026-08-07 12:00:00');
+    $progress = new ArrayProgressStore;
+
+    $ids = seedQueuedTurnForReaper();
+    $ulid = $ids['turn_ulid'];
+    Turn::query()->where('ulid', $ulid)->update([
+        'created_at' => $frozenNow->copy()->subMinutes(31),
+    ]);
+
+    // A worker claims the turn right after the reaper selected it as stale.
+    $raced = false;
+    Turn::query()->getConnection()->listen(function (QueryExecuted $query) use (&$raced, $ulid) {
+        if ($raced || ! str_starts_with(strtolower($query->sql), 'select')) {
+            return;
+        }
+        $raced = true;
+        Turn::query()->where('ulid', $ulid)->update(['status' => Turn::STATUS_RUNNING]);
+    });
+
+    $counts = (new StaleTurnReaper($progress))->reap(
+        staleQueuedMinutes: 30,
+        claimTtlSeconds: 120,
+        runningGraceSeconds: 60,
+        now: $frozenNow,
+    );
+
+    expect($raced)->toBeTrue()
+        ->and($counts['queued'])->toBe(0)
+        ->and(Turn::query()->where('ulid', $ulid)->value('status'))->toBe(Turn::STATUS_RUNNING)
+        ->and($progress->since($ulid))->toBe([]);
 });
