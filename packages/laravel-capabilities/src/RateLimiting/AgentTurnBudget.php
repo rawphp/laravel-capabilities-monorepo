@@ -61,6 +61,19 @@ final class AgentTurnBudget
         ];
     }
 
+    /**
+     * Budget for one capability: its declared max_tool_calls_per_turn can only
+     * tighten the global budget, never loosen it.
+     */
+    public function narrowedTo(?int $max): self
+    {
+        if ($max === null) {
+            return $this;
+        }
+
+        return new self(max(0, min($this->maxToolCalls, $max)));
+    }
+
     public static function fromConfig(array $agentTurn): self
     {
         $max = (int) ($agentTurn['max_tool_calls'] ?? self::DEFAULT_MAX);

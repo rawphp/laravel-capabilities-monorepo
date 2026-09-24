@@ -87,11 +87,16 @@ final class HttpTelegramBotClient implements TelegramBotClient
             throw new RuntimeException('Telegram Bot API transport returned a non-array response.');
         }
 
+        if (($result['ok'] ?? false) !== true) {
+            throw TelegramBotApiException::fromResponse($method, $result);
+        }
+
         return $result;
     }
 
     /**
      * Built-in production transport (no Illuminate dependency). Unit tests inject a fake.
+     * Returns the decoded Bot API body; call() classifies ok:false responses (D-018).
      *
      * @param  array<string, mixed>  $params
      * @return array<string, mixed>
@@ -112,17 +117,12 @@ final class HttpTelegramBotClient implements TelegramBotClient
 
         $raw = @file_get_contents($url, false, $context);
         if ($raw === false) {
-            throw new RuntimeException("Telegram Bot API request failed: {$method}");
+            throw TelegramBotApiException::transportFailure($method, 'request failed');
         }
 
         $decoded = json_decode($raw, true);
         if (! is_array($decoded)) {
-            throw new RuntimeException("Telegram Bot API returned invalid JSON for {$method}");
-        }
-
-        if (($decoded['ok'] ?? false) !== true) {
-            $desc = is_string($decoded['description'] ?? null) ? $decoded['description'] : 'unknown error';
-            throw new RuntimeException("Telegram Bot API error on {$method}: {$desc}");
+            throw TelegramBotApiException::transportFailure($method, 'invalid JSON');
         }
 
         return $decoded;

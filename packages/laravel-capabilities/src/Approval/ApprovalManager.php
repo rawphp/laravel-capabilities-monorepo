@@ -445,7 +445,7 @@ final class ApprovalManager implements ApprovalGateway
                 return $this->accept($id, $approver, $options);
             }
 
-            $this->emitDecided($updated, 'approved', $decidedBy, $options['reason'] ?? null);
+            $this->emitDecided($updated, 'approved', $decidedBy, $options['reason'] ?? null, $options);
 
             return $this->executeRow($updated, $approver, via: 'accept');
         }
@@ -469,7 +469,7 @@ final class ApprovalManager implements ApprovalGateway
             return $this->accept($id, $approver, $options);
         }
 
-        $this->emitDecided($locked, 'approved', $decidedBy, $options['reason'] ?? null);
+        $this->emitDecided($locked, 'approved', $decidedBy, $options['reason'] ?? null, $options);
 
         return $this->executeRow($locked, $approver, via: 'accept', fromStatus: ApprovalStateMachine::STATUS_PENDING);
     }
@@ -524,7 +524,7 @@ final class ApprovalManager implements ApprovalGateway
             return $this->reject($id, $approver, $reason, $options);
         }
 
-        $this->emitDecided($updated, 'rejected', $decidedBy, $reason);
+        $this->emitDecided($updated, 'rejected', $decidedBy, $reason, $options);
 
         return CapabilityResult::failure(
             'rejected',
@@ -635,8 +635,9 @@ final class ApprovalManager implements ApprovalGateway
 
     /**
      * @param  array<string, mixed>  $row
+     * @param  array<string, mixed>  $options
      */
-    private function emitDecided(array $row, string $decision, string $decidedBy, ?string $reason): void
+    private function emitDecided(array $row, string $decision, string $decidedBy, ?string $reason, array $options): void
     {
         $this->events[] = new CapabilityApprovalDecided(
             capability: (string) ($row['capability_name'] ?? ''),
@@ -650,7 +651,30 @@ final class ApprovalManager implements ApprovalGateway
             'decided_by' => $decidedBy,
             'decision' => $decision,
             'reason' => $reason,
-        ]);
+        ] + $this->decidedVia($options));
+    }
+
+    /**
+     * Surface-supplied channel identity of the approver (e.g. the Telegram user
+     * that tapped Accept). Only string channel fields are kept; set by server-side
+     * adapters, never forwarded from client input.
+     *
+     * @param  array<string, mixed>  $options
+     * @return array{decided_via?: array{channel: string, channel_user_id?: string}}
+     */
+    private function decidedVia(array $options): array
+    {
+        $via = $options['decided_via'] ?? null;
+        if (! is_array($via) || ! is_string($via['channel'] ?? null) || $via['channel'] === '') {
+            return [];
+        }
+
+        $clean = ['channel' => $via['channel']];
+        if (is_string($via['channel_user_id'] ?? null) && $via['channel_user_id'] !== '') {
+            $clean['channel_user_id'] = $via['channel_user_id'];
+        }
+
+        return ['decided_via' => $clean];
     }
 
     /**

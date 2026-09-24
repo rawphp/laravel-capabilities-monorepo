@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Schema;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
@@ -61,6 +62,13 @@ function httpProposalService(CapabilityBus $bus): ProposalService
         $bus,
         new AlwaysReadyIdempotency,
         new ResolveConversationActor(ChatControllerTestUser::class),
+        new class implements ToolCatalog
+        {
+            public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+            {
+                return [['name' => 'demo.cap']];
+            }
+        },
     );
 }
 
@@ -141,7 +149,7 @@ it('controller source delegates without Eloquent creates', function () {
         ->and($src)->not->toContain('::query()->where');
 });
 
-it('acceptProposal maps accepted / approval / retry / failed / refuse without uncaught exceptions', function () {
+it('acceptProposal maps accepted / approval / retry / failed / refuse / unresolved actor without uncaught exceptions', function () {
     $progress = bootHttpSqlite();
     $user = ChatControllerTestUser::query()->create(['name' => 'http-user']);
     $conversations = new ConversationService(static fn ($j) => null, $progress);
@@ -267,6 +275,17 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse without un
     );
     expect($rej->getStatusCode())->toBe(409)
         ->and($rej->getData(true)['outcome'])->toBe('refuse');
+
+    $orphan = $makeProposal('orp');
+    ChatControllerTestUser::query()->whereKey($user->id)->delete();
+    $unresolved = $controller->acceptProposal(
+        $orphan->ulid,
+        httpProposalService($busOk),
+    );
+    expect($unresolved->getStatusCode())->toBe(403)
+        ->and($unresolved->getData(true)['outcome'])->toBe('refuse')
+        ->and($unresolved->getData(true)['status'])->toBe(Proposal::STATUS_FAILED)
+        ->and($unresolved->getData(true)['error']['code'])->toBe('forbidden');
 
     $missing = $controller->acceptProposal(
         'PROPDOESNOTEXIST0001',

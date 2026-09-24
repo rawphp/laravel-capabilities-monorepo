@@ -146,13 +146,17 @@ final class InvokePipeline
 
             $this->stageStoreIdempotency($state);
             $auditFailure = $this->stageRecordAudit($state, success: true);
-            $this->results()->emitEvents($state, success: true);
 
             // Strict audit failure after successful domain run: surface error without
             // rolling back domain-owned commits (D-010 footgun when domain already committed).
+            // Listeners see the same outcome the caller does.
             if ($auditFailure !== null) {
+                $this->results()->emitEvents($state, success: false, failure: $auditFailure);
+
                 return $this->results()->wireResponse($state, $auditFailure);
             }
+
+            $this->results()->emitEvents($state, success: true);
 
             $successMeta = [
                 'request_id' => $state->requestId,
@@ -265,21 +269,8 @@ final class InvokePipeline
             );
         }
 
-        $inputClass = $state->definition->input;
-        if ($inputClass === null) {
-            $state->input = $state->rawInput;
-
-            return null;
-        }
-
         try {
-            if (is_a($inputClass, CapabilityData::class, true)) {
-                /** @var class-string<CapabilityData> $inputClass */
-                $state->input = $inputClass::fromArray($state->rawInput);
-            } else {
-                /** @var class-string<SchemaProvider> $inputClass */
-                $state->input = $inputClass::validate($state->rawInput);
-            }
+            $state->input = $this->hydrate($state->definition, $state->rawInput);
         } catch (Throwable $e) {
             return CapabilityResult::failure(
                 code: 'validation_failed',
@@ -504,6 +495,53 @@ final class InvokePipeline
     }
 
     /**
+     * Authorize stored raw input for an actor outside a live invoke — approval
+     * accept re-checks the original requester (spec: re-validation on accept, step 4).
+     * Same decision as the authorize stage; input that no longer hydrates is denied.
+     *
+     * @param  array<string, mixed>  $rawInput
+     */
+    public function authorizes(CapabilityDefinition $definition, array $rawInput, CapabilityContext $context): bool
+    {
+        try {
+            $input = $this->hydrate($definition, $rawInput);
+        } catch (Throwable) {
+            return false;
+        }
+
+        return $this->allows($definition, $input, $context);
+    }
+
+    /**
+     * @param  array<string, mixed>  $rawInput
+     */
+    private function hydrate(CapabilityDefinition $definition, array $rawInput): mixed
+    {
+        $inputClass = $definition->input;
+        if ($inputClass === null) {
+            return $rawInput;
+        }
+
+        if (is_a($inputClass, CapabilityData::class, true)) {
+            /** @var class-string<CapabilityData> $inputClass */
+            return $inputClass::fromArray($rawInput);
+        }
+
+        /** @var class-string<SchemaProvider> $inputClass */
+        return $inputClass::validate($rawInput);
+    }
+
+    private function allows(CapabilityDefinition $definition, mixed $input, mixed $context): bool
+    {
+        $definitionAuth = $definition->authorize;
+        if (is_callable($definitionAuth)) {
+            return (bool) $definitionAuth($input, $context);
+        }
+
+        return $this->authorizer->authorize($definition->name, $input, $context);
+    }
+
+    /**
      * @param  list<string>  $forced
      */
     private function stageAuthorize(InvokeState $state, array $forced): ?CapabilityResult
@@ -517,19 +555,7 @@ final class InvokePipeline
             );
         }
 
-        $allowed = true;
-        $definitionAuth = $state->definition->authorize;
-        if (is_callable($definitionAuth)) {
-            $allowed = (bool) $definitionAuth($state->input, $state->context);
-        } else {
-            $allowed = $this->authorizer->authorize(
-                $state->definition->name,
-                $state->input,
-                $state->context,
-            );
-        }
-
-        if (! $allowed) {
+        if (! $this->allows($state->definition, $state->input, $state->context)) {
             return CapabilityResult::failure(
                 code: 'forbidden',
                 message: sprintf('Not authorized to invoke "%s".', $state->definition->name),
@@ -611,10 +637,12 @@ final class InvokePipeline
             return $this->rateLimitedResult('Forced failure at rate_limit.');
         }
 
-        // Agent turn budget (D-013) — checked when caller is agent and option is set.
-        if ($state->caller === 'agent' && array_key_exists('agent_turn_tool_calls', $state->options)) {
+        // Agent turn budget (D-013) — checked whenever an in-process adapter supplies the turn's
+        // tool-call count (agent tools, AI turns as caller=job). Only ever narrows.
+        if (array_key_exists('agent_turn_tool_calls', $state->options)) {
             $calls = (int) $state->options['agent_turn_tool_calls'];
-            $budget = $this->agentTurnBudget();
+            $perTurn = $state->definition->rateLimit['max_tool_calls_per_turn'] ?? null;
+            $budget = $this->agentTurnBudget()->narrowedTo(is_numeric($perTurn) ? (int) $perTurn : null);
             if ($budget->exhausted($calls)) {
                 $stop = $budget->stopMessage($calls);
 

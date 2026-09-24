@@ -30,6 +30,9 @@ final class AiToolAdapterV1 implements AiToolAdapter
     /** @var list<array<string, mixed>> */
     private array $registeredTools = [];
 
+    /** @var string|array<string, mixed>|list<string>|null */
+    private string|array|null $activeProfile = null;
+
     public function __construct(
         private readonly CapabilityRegistry $registry,
         private readonly PeerVersionProbe $probe,
@@ -72,6 +75,7 @@ final class AiToolAdapterV1 implements AiToolAdapter
     /**
      * Register tools for the agent surface. Never half-registers on peer failure.
      *
+     * @param  ToolSelection|string|array<string, mixed>|list<string>  $selection
      * @return list<array<string, mixed>>
      */
     public function register(ToolSelection|string|array $selection): array
@@ -79,6 +83,7 @@ final class AiToolAdapterV1 implements AiToolAdapter
         if (! $this->surfaceEnabled) {
             $this->registered = false;
             $this->registeredTools = [];
+            $this->activeProfile = null;
 
             return [];
         }
@@ -98,6 +103,7 @@ final class AiToolAdapterV1 implements AiToolAdapter
 
         $this->registered = true;
         $this->registeredTools = $tools;
+        $this->activeProfile = $selection instanceof ToolSelection ? $selection->profile : $selection;
 
         return $tools;
     }
@@ -115,6 +121,14 @@ final class AiToolAdapterV1 implements AiToolAdapter
         return $this->registered;
     }
 
+    /**
+     * @return string|array<string, mixed>|list<string>|null
+     */
+    public function activeProfile(): string|array|null
+    {
+        return $this->activeProfile;
+    }
+
     public function handle(string $name, array $input, object $actor, array $options = []): CapabilityResult
     {
         if (! $this->surfaceEnabled) {
@@ -123,6 +137,10 @@ final class AiToolAdapterV1 implements AiToolAdapter
                 message: 'Agent surface is disabled.',
             );
         }
+
+        // Every attempt spends turn budget (D-013), including rejected spoofs — otherwise a
+        // model could loop on spoofed calls without ever tripping rate_limited.
+        $this->turnToolCalls++;
 
         $spoof = $this->detectSpoof($input);
         $clean = $this->stripSpoofKeys($input);
@@ -137,7 +155,6 @@ final class AiToolAdapterV1 implements AiToolAdapter
 
         // Caller is always server-derived agent — never from model JSON (D-022).
         unset($options['caller']);
-        $this->turnToolCalls++;
 
         $invokeOptions = array_merge($options, [
             'caller' => 'agent',
@@ -156,7 +173,7 @@ final class AiToolAdapterV1 implements AiToolAdapter
             unset($clean['idempotency_key']);
         }
 
-        $profile = $options['profile'] ?? null;
+        $profile = $options['profile'] ?? $this->activeProfile;
         if ($profile !== null) {
             return $this->registry->runCapabilityInProfile(
                 'agent',

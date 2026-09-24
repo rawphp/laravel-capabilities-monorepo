@@ -19,6 +19,9 @@ final class AuditLogger
     /** @var list<string> */
     public const SUPPORTED_MODES = ['best_effort', 'strict'];
 
+    /** @var list<string> Matched as substrings of the normalized key. */
+    private const SENSITIVE_KEYS = ['password', 'secret', 'token', 'apikey', 'authorization'];
+
     /**
      * @return array<string, mixed>
      */
@@ -76,6 +79,8 @@ final class AuditLogger
             'request_id' => $state->requestId,
             // D-023: MCP auth profile + client_id on every MCP invoke when present.
             'mcp' => $ctx?->mcp(),
+            // Messaging ingress metadata (channel, chat_id, user_link_id) when present.
+            'messaging' => $ctx?->messaging(),
         ];
     }
 
@@ -105,7 +110,7 @@ final class AuditLogger
     }
 
     /**
-     * @return array<string, mixed>|list<mixed>|null
+     * @return array<array-key, mixed>|null
      */
     private static function redactInput(InvokeState $state): ?array
     {
@@ -117,14 +122,34 @@ final class AuditLogger
             return null;
         }
 
-        $redacted = $raw;
-        foreach (['password', 'secret', 'token', 'api_key', 'authorization'] as $sensitive) {
-            if (array_key_exists($sensitive, $redacted)) {
-                $redacted[$sensitive] = '[REDACTED]';
+        return self::redact($raw);
+    }
+
+    /**
+     * Recursively redacts values whose key contains a sensitive word, ignoring case
+     * and separators (Authorization, user_password, apiKey, Access-Token).
+     *
+     * @param  array<array-key, mixed>  $data
+     * @return array<array-key, mixed>
+     */
+    private static function redact(array $data): array
+    {
+        foreach ($data as $key => $value) {
+            $normalized = str_replace(['_', '-', '.', ' '], '', strtolower((string) $key));
+            foreach (self::SENSITIVE_KEYS as $sensitive) {
+                if (str_contains($normalized, $sensitive)) {
+                    $data[$key] = '[REDACTED]';
+
+                    continue 2;
+                }
+            }
+
+            if (is_array($value)) {
+                $data[$key] = self::redact($value);
             }
         }
 
-        return $redacted;
+        return $data;
     }
 
     private static function resultSummary(mixed $output): mixed

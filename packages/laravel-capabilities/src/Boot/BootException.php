@@ -73,6 +73,15 @@ final class BootException extends RuntimeException
         );
     }
 
+    public static function capabilityMissingContract(string $name, string $class): self
+    {
+        return new self(sprintf(
+            'Capability "%s" (%s) has #[Capability] but does not implement DefinesCapability (D-017).',
+            $name,
+            $class,
+        ));
+    }
+
     public static function duplicateCliPair(
         string $domain,
         string $verb,

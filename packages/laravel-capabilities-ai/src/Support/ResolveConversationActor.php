@@ -27,12 +27,13 @@ final class ResolveConversationActor
     /**
      * Resolve a real user principal for the conversation owner.
      *
-     * @throws RuntimeException when user_id is missing/invalid or the user cannot be loaded
+     * @throws UnresolvedConversationActorException when user_id is missing/invalid or the user cannot be loaded
+     * @throws RuntimeException when no usable user model is configured
      */
     public function resolve(mixed $userId): object
     {
         if ($userId === null) {
-            throw new RuntimeException(
+            throw new UnresolvedConversationActorException(
                 'Conversation user_id is required for capability bus invokes; refusing silent default principal'
             );
         }
@@ -42,13 +43,38 @@ final class ResolveConversationActor
             : '';
 
         if ($id === '') {
-            throw new RuntimeException(
+            throw new UnresolvedConversationActorException(
                 'Conversation user_id is required for capability bus invokes; refusing silent default principal'
             );
         }
 
-        $modelClass = $this->userModelClass();
-        if ($modelClass === null) {
+        $modelClass = self::assertQueryableModel($this->userModelClass());
+
+        $user = $modelClass::query()->find($id);
+        if ($user === null && ctype_digit($id)) {
+            $user = $modelClass::query()->find((int) $id);
+        }
+
+        if ($user === null || ! is_object($user)) {
+            throw new UnresolvedConversationActorException(
+                "Conversation user_id [{$id}] does not resolve to a user; refusing bus invoke"
+            );
+        }
+
+        return $user;
+    }
+
+    /**
+     * Fail closed on a missing, unknown, or non-queryable user model. Never queries.
+     * Also run at provider boot so misconfiguration surfaces before the first turn.
+     *
+     * @return class-string
+     *
+     * @throws RuntimeException
+     */
+    public static function assertQueryableModel(?string $modelClass): string
+    {
+        if ($modelClass === null || $modelClass === '') {
             throw new RuntimeException(
                 'No user model configured for conversation actor resolution (set capabilities-ai.user_model or auth.providers.users.model)'
             );
@@ -66,18 +92,7 @@ final class ResolveConversationActor
             );
         }
 
-        $user = $modelClass::query()->find($id);
-        if ($user === null && ctype_digit($id)) {
-            $user = $modelClass::query()->find((int) $id);
-        }
-
-        if ($user === null || ! is_object($user)) {
-            throw new RuntimeException(
-                "Conversation user_id [{$id}] does not resolve to a user; refusing bus invoke"
-            );
-        }
-
-        return $user;
+        return $modelClass;
     }
 
     /**

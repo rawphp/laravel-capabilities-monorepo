@@ -41,6 +41,22 @@ it('happy: agent turn max_tool_calls stops loop with structured message [D-013]'
         ->and($h['runCount']->value)->toBe(0);
 });
 
+it('fail: agent turn budget applies to non-agent callers that supply a turn count [D-013]', function () {
+    $h = RateLimitHelpers::harness(['max_tool_calls' => 2, 'per_min' => 1000, 'per_cap' => 1000, 'name' => 'rl-turn-job']);
+    $r = $h['registry']->invoke($h['name'], RateLimitHelpers::input(), RateLimitHelpers::options('job', [
+        'agent_turn_tool_calls' => 3,
+    ]));
+    expect($r->errorCode())->toBe('rate_limited')
+        ->and($r->error['max_tool_calls'] ?? null)->toBe(2)
+        ->and($h['runCount']->value)->toBe(0);
+});
+
+it('happy: non-agent caller without a turn count is not turn-budgeted [D-013]', function () {
+    $h = RateLimitHelpers::harness(['max_tool_calls' => 0, 'per_min' => 1000, 'per_cap' => 1000, 'name' => 'rl-turn-none']);
+    $r = $h['registry']->invoke($h['name'], RateLimitHelpers::input(), RateLimitHelpers::options('job'));
+    expect($r->isOk())->toBeTrue()->and($h['runCount']->value)->toBe(1);
+});
+
 it('edge: per-capability rateLimit attribute overrides defaults [D-013]', function () {
     $h = RateLimitHelpers::harness([
         'per_min' => 1000,

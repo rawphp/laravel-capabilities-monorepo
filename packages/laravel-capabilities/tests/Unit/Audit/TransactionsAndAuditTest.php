@@ -71,6 +71,25 @@ it('edge: strict mode surfaces failure when audit fails depending on txn design 
         ->and($h['runCount']->value)->toBe(1); // domain already ran
 });
 
+it('edge: strict audit failure emits CapabilityFailed not CapabilityInvoked [D-010]', function () {
+    $h = AuditHelpers::harness(['mode' => 'strict', 'fail_audit' => true]);
+    $r = $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
+    expect($r->errorCode())->toBe('audit_failed')
+        ->and($h['registry']->invokedEvents())->toBe([])
+        ->and($h['registry']->failedEvents())->toHaveCount(1)
+        ->and($h['registry']->failedEvents()[0])->toBeInstanceOf(CapabilityFailed::class)
+        ->and($h['registry']->failedEvents()[0]->code)->toBe('audit_failed')
+        ->and($h['registry']->lastStages())->toContain(PipelineStages::EMIT_EVENTS);
+});
+
+it('happy: best_effort audit failure still emits CapabilityInvoked [D-010]', function () {
+    $h = AuditHelpers::harness(['mode' => 'best_effort', 'fail_audit' => true]);
+    $r = $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
+    expect($r->isOk())->toBeTrue()
+        ->and($h['registry']->invokedEvents())->toHaveCount(1)
+        ->and($h['registry']->failedEvents())->toBe([]);
+});
+
 it('happy: transactions wrap_run false by default does not wrap run [D-010]', function () {
     $h = AuditHelpers::harness(['transactions' => ['wrap_run' => false]]);
     expect($h['registry']->transactionsWrapRun())->toBeFalse();

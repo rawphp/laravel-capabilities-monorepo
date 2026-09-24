@@ -3,12 +3,14 @@
 namespace Rawphp\CapabilitiesMessaging;
 
 use Illuminate\Contracts\Bus\Dispatcher as BusDispatcher;
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\ServiceProvider;
 use Rawphp\Capabilities\Contracts\ApprovalNotifier;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\ConversationIdentity;
 use Rawphp\Capabilities\Contracts\ConversationIngress;
 use Rawphp\Capabilities\Contracts\ConversationReply;
+use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\CapabilitiesMessaging\Boot\MessagingBindings;
 use Rawphp\CapabilitiesMessaging\Boot\MessagingRegistration;
 use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
@@ -130,7 +132,7 @@ class MessagingServiceProvider extends ServiceProvider
             );
         });
 
-        $this->app->singleton(ProcessTelegramUpdate::class, function ($app) {
+        $this->app->singleton(ProcessTelegramUpdate::class, function (Container $app) {
             $registry = $app->bound(CapabilityBus::class) ? $app->make(CapabilityBus::class) : null;
 
             return new ProcessTelegramUpdate(
@@ -140,6 +142,7 @@ class MessagingServiceProvider extends ServiceProvider
                 $app->make(TelegramAdapter::class),
                 $registry,
                 $app->make(TelegramBotClient::class),
+                turnLimiter: $app->bound(RateLimiter::class) ? $app->make(RateLimiter::class) : null,
             );
         });
     }

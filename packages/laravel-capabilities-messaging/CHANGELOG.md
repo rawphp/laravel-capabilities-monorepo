@@ -26,6 +26,16 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   `ApprovalManager is required…` → `ApprovalGateway is required…` (host tests asserting the
   old string break).
 
+### Security
+
+- **CallbackHandler approver binding** — a non-empty signed `approver_hint` now binds the
+  callback to that product principal id (the linked user's `id`, else `getAuthIdentifier()`).
+  A different linked Telegram user clicking a forwarded/leaked button gets
+  `status: forbidden`, `message: approver_mismatch` before the approval gateway is touched.
+  Empty hint keeps the old behaviour (approval policy decides). **Consumer impact:** hosts
+  that put a Telegram user id (or anything other than the product user id) in
+  `approver_hint` must switch to the product user id or send an empty hint.
+
 ### Changed
 
 - **Internal extract** — `TelegramUpdateParser` peels pure Update field extraction from

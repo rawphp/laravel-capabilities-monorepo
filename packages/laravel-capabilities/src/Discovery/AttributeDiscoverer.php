@@ -3,6 +3,7 @@
 namespace Rawphp\Capabilities\Discovery;
 
 use Rawphp\Capabilities\Attributes\Capability as CapabilityAttribute;
+use Rawphp\Capabilities\Boot\BootException;
 use Rawphp\Capabilities\Contracts\DefinesCapability;
 use Rawphp\Capabilities\Registry\CapabilityDefinition;
 use RecursiveDirectoryIterator;
@@ -68,12 +69,12 @@ final class AttributeDiscoverer
             return null;
         }
 
-        if (! $reflection->implementsInterface(DefinesCapability::class)) {
-            return null;
-        }
-
         /** @var CapabilityAttribute $attr */
         $attr = $attributes[0]->newInstance();
+
+        if (! $reflection->implementsInterface(DefinesCapability::class)) {
+            throw BootException::capabilityMissingContract($attr->name, $class);
+        }
 
         return new CapabilityDefinition(
             name: $attr->name,

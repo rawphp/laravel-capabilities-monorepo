@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Attributes\Capability as CapabilityAttribute;
+use Rawphp\Capabilities\Boot\BootException;
 use Rawphp\Capabilities\Capability;
 use Rawphp\Capabilities\Discovery\AttributeDiscoverer;
 use Rawphp\Capabilities\Discovery\DiscoveryPaths;
@@ -49,4 +51,16 @@ it('happy: fluent define works regardless of path [D-017]', function () {
         ->register($registry);
 
     expect($registry->has('path-independent'))->toBeTrue();
+});
+
+it('fail: #[Capability] class without DefinesCapability throws at discovery [D-017]', function () {
+    $halfWritten = new #[CapabilityAttribute(name: 'half-written')] class {};
+
+    (new AttributeDiscoverer)->fromClass($halfWritten::class);
+})->throws(BootException::class, 'Capability "half-written"');
+
+it('edge: class without #[Capability] is skipped silently [D-017]', function () {
+    $plain = new class {};
+
+    expect((new AttributeDiscoverer)->fromClass($plain::class))->toBeNull();
 });

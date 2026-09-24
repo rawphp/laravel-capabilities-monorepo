@@ -39,6 +39,7 @@ final class MessagingConfig
                 'webhook_secret' => null,
                 'callback_secret' => null,
                 'callback_ttl_seconds' => 900,
+                'turns_per_minute' => 20,
             ],
             'queue_driver' => 'auto',
             'bot_driver' => 'auto',
@@ -117,6 +118,17 @@ final class MessagingConfig
     public function callbackTtlSeconds(): int
     {
         return (int) ($this->config['telegram']['callback_ttl_seconds'] ?? 900);
+    }
+
+    /**
+     * Agent turns allowed per chat per minute (D-013). Zero or less disables the cap.
+     */
+    public function turnsPerMinute(): int
+    {
+        $telegram = $this->config['telegram'] ?? null;
+        $value = is_array($telegram) ? ($telegram['turns_per_minute'] ?? 20) : 20;
+
+        return is_numeric($value) ? (int) $value : 20;
     }
 
     public function agentProfile(): ?string

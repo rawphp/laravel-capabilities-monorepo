@@ -3,6 +3,7 @@
 namespace Rawphp\CapabilitiesMessaging\Telegram;
 
 use Rawphp\Capabilities\Contracts\CapabilityBus;
+use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Support\CapabilityContext;
 use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
 use Rawphp\CapabilitiesMessaging\MessagingConfig;
@@ -19,6 +20,9 @@ use Throwable;
  * → tool_calls_registry → conversation_reply
  *
  * Webhook verify + queue happen earlier (controller). Never domain run outside registry.
+ *
+ * D-013: an optional core RateLimiter caps agent turns per chat_id per minute
+ * (telegram.turns_per_minute), checked before identity so a flooding chat costs nothing.
  */
 final class ProcessTelegramUpdate
 {
@@ -60,6 +64,7 @@ final class ProcessTelegramUpdate
         private readonly ?TelegramBotClient $bot = null,
         ?callable $profileResolver = null,
         ?callable $agentRunner = null,
+        private readonly ?RateLimiter $turnLimiter = null,
     ) {
         $this->profileResolver = $profileResolver;
         $this->agentRunner = $agentRunner;
@@ -190,6 +195,8 @@ final class ProcessTelegramUpdate
             throw new RuntimeException('unknown_chat');
         }
 
+        $this->enforceChatTurnLimit((string) $chatId);
+
         $telegramUserId = TelegramUpdateParser::telegramUserId($update);
         $topicId = TelegramUpdateParser::topicId($update);
         $text = TelegramUpdateParser::text($update);
@@ -271,6 +278,7 @@ final class ProcessTelegramUpdate
             throw new RuntimeException('tool_registry_failure');
         }
 
+        $turnToolCalls = 0;
         foreach ($toolCalls as $call) {
             $name = (string) ($call['name'] ?? '');
             if ($name === '' || ! in_array($name, $profileTools, true)) {
@@ -285,11 +293,20 @@ final class ProcessTelegramUpdate
                 messaging: $messagingMeta,
                 agent: ['profile' => $profile, 'thread_id' => $thread['id']],
             );
-            $result = $this->registry->invoke($name, $call['input'] ?? [], [
+            $options = [
                 'context' => $ctx,
                 'caller' => 'agent',
                 'actor' => $user,
-            ]);
+                // Core pipeline enforces the per-turn tool budget from this count (D-013).
+                'agent_turn_tool_calls' => ++$turnToolCalls,
+            ];
+            // D-005: redelivered update → same key → store replay, not a second run().
+            // Index = count of prior successful calls (any failure throws before the next).
+            $key = TelegramUpdateParser::idempotencyKey($update, count($toolResults));
+            if ($key !== null) {
+                $options['idempotency_key'] = $key;
+            }
+            $result = $this->registry->invoke($name, $call['input'] ?? [], $options);
             if (! $result->isOk()) {
                 $code = (string) ($result->errorCode() ?? 'registry_validation');
                 if ($code === 'forbidden') {
@@ -342,6 +359,23 @@ final class ProcessTelegramUpdate
     }
 
     /**
+     * D-013: cap agent turns per chat per minute, separate from the in-turn tool budget.
+     */
+    private function enforceChatTurnLimit(string $chatId): void
+    {
+        $max = $this->config->turnsPerMinute();
+        if ($this->turnLimiter === null || $max <= 0) {
+            return;
+        }
+
+        $key = 'rl:telegram:chat:'.$chatId;
+        if ($this->turnLimiter->tooManyAttempts($key, $max)) {
+            throw new RuntimeException('rate_limited');
+        }
+        $this->turnLimiter->hit($key, 60);
+    }
+
+    /**
      * @return list<string>
      */
     private function resolveProfileTools(string $profile): array
@@ -385,6 +419,7 @@ final class ProcessTelegramUpdate
         foreach ([
             'invalid_update_shape',
             'unknown_chat',
+            'rate_limited',
             'identity_unresolved',
             'thread_store',
             'ingress_failure',

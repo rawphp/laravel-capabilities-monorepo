@@ -60,6 +60,8 @@ final class TurnRunner
                 : [];
 
             $rounds = 0;
+            // 1-based tool-call count across all rounds of this turn → core D-013 agent turn budget.
+            $toolCallCount = 0;
             while ($rounds < $this->maxToolRounds) {
                 $rounds++;
                 $response = $this->llm->complete($messages, $toolDefs);
@@ -137,7 +139,9 @@ final class TurnRunner
                         $payload = [];
                     }
                     $toolCallId = (string) $call['id'];
-                    $result = $this->bus->invoke($name, $payload, $invokeOptions);
+                    $result = $this->bus->invoke($name, $payload, array_merge($invokeOptions, [
+                        'agent_turn_tool_calls' => ++$toolCallCount,
+                    ]));
                     $toolContent = $this->encodeToolResult($name, $result);
                     $this->progress->append($turnUlid, [
                         'kind' => 'tool',

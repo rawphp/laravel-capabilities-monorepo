@@ -48,6 +48,19 @@ it('happy: max_tool_calls_per_turn enforced on agent loop budget [D-013]', funct
         ->and($h['ai']->turnToolCalls())->toBe(3);
 });
 
+it('fail: spoofed tool calls count toward the agent turn budget [D-013]', function () {
+    $h = AdapterHelpers::harness(['max_tool_calls' => 2]);
+    $user = $h['user'];
+    $spoof1 = $h['ai']->handle('create-invoice', AdapterHelpers::input(['actor' => 'x']), $user, ['profile' => 'billing']);
+    $spoof2 = $h['ai']->handle('create-invoice', AdapterHelpers::input(['caller' => 'http']), $user, ['profile' => 'billing']);
+    $limited = $h['ai']->handle('create-invoice', AdapterHelpers::input(), $user, ['profile' => 'billing']);
+    expect($spoof1->errorCode())->toBe('forbidden')
+        ->and($spoof2->errorCode())->toBe('forbidden')
+        ->and($limited->errorCode())->toBe('rate_limited')
+        ->and($h['ai']->turnToolCalls())->toBe(3)
+        ->and($h['runs']['create-invoice']->value)->toBe(0);
+});
+
 it('edge: tool input_schema equals catalog input_schema [D-004]', function () {
     $h = AdapterHelpers::harness();
     $tool = collect($h['ai']->toolsFor('billing'))->firstWhere('name', 'create-invoice');
@@ -92,4 +105,27 @@ it('edge: messaging agent turn still caller agent with messaging metadata [D-007
             'channel' => 'telegram',
             'chat_id' => '99',
         ]);
+});
+
+it('fail: handle without profile option enforces the registered profile [D-008]', function () {
+    $h = AdapterHelpers::harness();
+    $h['ai']->register('support');
+    $r = $h['ai']->handle('delete-account', AdapterHelpers::input(), $h['user']);
+    expect($r->errorCode())->toBe('capability_not_in_profile')
+        ->and($h['ai']->activeProfile())->toBe('support')
+        ->and($h['runs']['delete-account']->value)->toBe(0);
+});
+
+it('happy: handle without profile option runs capability in the registered profile [D-008]', function () {
+    $h = AdapterHelpers::harness();
+    $h['ai']->register(['groups' => ['support']]);
+    $r = $h['ai']->handle('get-customer', AdapterHelpers::input(), $h['user']);
+    expect($r->isOk())->toBeTrue()
+        ->and($h['runs']['get-customer']->value)->toBe(1);
+});
+
+it('edge: disabled agent surface clears the registered profile [D-008]', function () {
+    $h = AdapterHelpers::harness(['agent_enabled' => false]);
+    $h['ai']->register('support');
+    expect($h['ai']->activeProfile())->toBeNull();
 });
