@@ -61,6 +61,8 @@ return [
             'base_url' => $env('CAPABILITIES_AI_ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
             /** Host-parity default (was hard-coded 1024; truncated long coach replies). */
             'max_tokens' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS', 64000),
+            /** 429 retries per request (honours Retry-After, capped at 60s); 0 disables. */
+            'max_retries' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_RETRIES', 2),
         ],
     ],
 

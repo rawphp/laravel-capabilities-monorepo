@@ -6,6 +6,8 @@ namespace Rawphp\CapabilitiesAi\Support;
 
 use InvalidArgumentException;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
+use Rawphp\Capabilities\Contracts\Metrics;
+use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
@@ -109,8 +111,10 @@ final class ContainerBindings
 
     /**
      * @param  array<string, mixed>  $config
+     * @param  Metrics|null  $metrics  core D-019 metrics (host-bound); null = no LLM telemetry
+     * @param  Tracer|null  $tracer  core D-019 tracer (host-bound); null = no LLM spans
      */
-    public static function makeLlmClient(array $config): LlmClient
+    public static function makeLlmClient(array $config, ?Metrics $metrics = null, ?Tracer $tracer = null): LlmClient
     {
         $driver = (string) (($config['llm']['driver'] ?? null) ?: 'fake');
         $resolved = self::resolveLlmDriver($driver);
@@ -122,6 +126,9 @@ final class ContainerBindings
                 model: (string) ($config['llm']['anthropic']['model'] ?? 'claude-sonnet-4-6'),
                 baseUrl: (string) ($config['llm']['anthropic']['base_url'] ?? 'https://api.anthropic.com'),
                 maxTokens: (int) ($config['llm']['anthropic']['max_tokens'] ?? 64000),
+                metrics: $metrics,
+                tracer: $tracer,
+                maxRetries: (int) ($config['llm']['anthropic']['max_retries'] ?? 2),
             ),
         };
     }
