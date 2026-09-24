@@ -470,7 +470,7 @@ it('storeMessage returns 401 without an authenticated user and creates nothing',
         ->and(Message::query()->count())->toBe(0);
 });
 
-it('storeMessage returns 404 when appending to another user\'s conversation', function () {
+it('storeMessage returns 404 and appends no message for an int-id user on another user\'s conversation', function () {
     $progress = bootHttpSqlite();
     $conversations = new ConversationService(static fn ($j) => null, $progress);
     $owned = $conversations->createUserMessage('mine', userId: '7');
