@@ -7,6 +7,7 @@ namespace Rawphp\CapabilitiesAi\Domain;
 use Illuminate\Support\Carbon;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\Redactor;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
@@ -168,7 +169,8 @@ final class TurnRunner
                         'kind' => 'tool',
                         'data' => [
                             'name' => $name,
-                            'payload' => $payload,
+                            // Served live over turn-events HTTP — never echo secrets (D-010).
+                            'payload' => Redactor::redact($payload),
                             'ok' => $result->ok,
                             'error_code' => $result->errorCode(),
                             'tool_call_id' => $toolCallId,

@@ -226,6 +226,53 @@ it('tool call path invokes CapabilityBus exactly once with expected name/payload
         ->and($data['error_code'])->toBeNull();
 });
 
+it('progress tool events redact sensitive payload keys while the bus receives raw input [D-010]', function () {
+    bootTurnSqlite();
+    $seeded = enqueueTurnWithUser('use tool');
+    $turnUlid = $seeded['turn_ulid'];
+    $bus = recordingBus();
+    $raw = ['email' => 'a@example.com', 'password' => 'hunter2', 'auth' => ['apiKey' => 'k-1']];
+    $llm = new FakeLlmClient([
+        ['tool_calls' => [['name' => 'demo.tool', 'arguments' => $raw]]],
+        ['content' => 'done'],
+    ]);
+    $context = new class implements ConversationContextProvider
+    {
+        public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['role' => 'user', 'content' => 'use tool']];
+        }
+    };
+    $tools = new class implements ToolCatalog
+    {
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['name' => 'demo.tool']];
+        }
+    };
+    $progress = new ArrayProgressStore;
+    (new TurnRunner(
+        claim: new TurnClaim,
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        bus: $bus,
+        progress: $progress,
+        actors: turnActors(),
+    ))->run($turnUlid);
+
+    $toolEvents = array_values(array_filter(
+        $progress->since($turnUlid),
+        static fn (array $e): bool => ($e['kind'] ?? null) === 'tool',
+    ));
+    expect($bus->lastInput)->toBe($raw)
+        ->and($toolEvents[0]['data']['payload'] ?? null)->toBe([
+            'email' => 'a@example.com',
+            'password' => '[REDACTED]',
+            'auth' => ['apiKey' => '[REDACTED]'],
+        ]);
+});
+
 it('tool invokes carry a 1-based per-turn tool-call count across rounds for the D-013 budget', function () {
     bootTurnSqlite();
     $context = new class implements ConversationContextProvider

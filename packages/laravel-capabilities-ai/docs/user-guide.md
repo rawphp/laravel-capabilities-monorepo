@@ -107,7 +107,7 @@ Each tool invoke appends a progress event:
 | Field | Type | Notes |
 |-------|------|--------|
 | `name` | string | Capability name / alias invoked |
-| `payload` | object | Invoke input (may contain host PII — treat progress as sensitive if streamed) |
+| `payload` | object | Invoke input with sensitive keys (`password`, `secret`, `token`, `apikey`, `authorization`, any case/separator, nested) replaced by `[REDACTED]` — same rule as the audit log. Other host PII passes through; treat progress as sensitive if streamed |
 | `ok` | bool | From `CapabilityResult::$ok` — **not** always true |
 | `error_code` | string \| null | From `CapabilityResult::errorCode()`; null when `ok` is true |
 | `tool_call_id` | string | Correlates to the model `tool_calls[].id` for this round (multi-round tools) |
