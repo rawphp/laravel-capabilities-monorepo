@@ -2,6 +2,7 @@
 
 namespace Rawphp\Capabilities;
 
+use ArrayAccess;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\ServiceProvider;
@@ -21,6 +22,7 @@ use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapterV1;
 use Rawphp\Capabilities\Adapters\PeerIncompatibleException;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 use Rawphp\Capabilities\Approval\ApprovalManager;
+use Rawphp\Capabilities\Approval\OriginalActorAuthorizer;
 use Rawphp\Capabilities\Audit\AuditLogger;
 use Rawphp\Capabilities\Boot\BootGuard;
 use Rawphp\Capabilities\Boot\CapabilitiesConfig;
@@ -120,7 +122,8 @@ class CapabilitiesServiceProvider extends ServiceProvider
         $this->app->singleton(ApprovalManager::class, function ($app) {
             $config = self::configFromApp($app);
 
-            // Accept / resume run the stored invoke through the registry (D-006). Resolved
+            // Accept / resume run the stored invoke through the registry (D-006), after
+            // re-authorizing the original requester (re-validation step 4). Both resolved
             // lazily: the registry itself is built from this manager's store.
             return ContainerBindings::makeApprovalManager(
                 $config,
@@ -131,9 +134,17 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 $registry = $app->make(CapabilityRegistry::class);
 
                 return $registry->executeApproval($row);
-            });
+            })->withOriginalAuthorizer(static fn (array $row): bool => self::originalActorAllows($app, $row));
         });
         $this->app->alias(ApprovalManager::class, 'ApprovalManager');
+        // Hosts with custom actor lookup rebind this; default resolves users through
+        // the default auth guard's user provider and denies when there is none.
+        $this->app->singleton(OriginalActorAuthorizer::class, static function ($app) {
+            /** @var CapabilityRegistry $registry */
+            $registry = $app->make(CapabilityRegistry::class);
+
+            return new OriginalActorAuthorizer($registry, static fn (string $type, string $id): ?object => self::authUserOrNull($app, $id));
+        });
         // Sibling surfaces type-hint ApprovalGateway — same singleton, no second SM (D-006 / D-007).
         $this->app->alias(ApprovalManager::class, ApprovalGateway::class);
         $this->app->alias(ApprovalManager::class, 'ApprovalGateway');
@@ -267,6 +278,30 @@ class CapabilitiesServiceProvider extends ServiceProvider
      * Host-bound TableGateway override (ArrayTableGateway in unit tests, custom backends).
      * Unbound → null so factories build QueryTableGateway from connection.
      */
+    /**
+     * @param  array<mixed>  $row
+     */
+    private static function originalActorAllows(mixed $app, array $row): bool
+    {
+        $authorizer = is_object($app) && method_exists($app, 'make') ? $app->make(OriginalActorAuthorizer::class) : null;
+
+        return $authorizer instanceof OriginalActorAuthorizer && $authorizer($row);
+    }
+
+    /**
+     * Requester lookup for the original-actor re-check: default auth guard's user
+     * provider. No auth, no provider, or no user → null (the re-check then denies).
+     */
+    private static function authUserOrNull(mixed $app, string $id): ?object
+    {
+        $auth = $app instanceof ArrayAccess && isset($app['auth']) ? $app['auth'] : null;
+        $guard = is_object($auth) && method_exists($auth, 'guard') ? $auth->guard() : null;
+        $users = is_object($guard) && method_exists($guard, 'getProvider') ? $guard->getProvider() : null;
+        $user = is_object($users) && method_exists($users, 'retrieveById') ? $users->retrieveById($id) : null;
+
+        return is_object($user) ? $user : null;
+    }
+
     private static function boundTableGatewayOrNull(object $app): ?TableGateway
     {
         try {
