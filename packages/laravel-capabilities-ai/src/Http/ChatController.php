@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Http;
 
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,19 +40,19 @@ final class ChatController
         return new JsonResponse($ids, 201);
     }
 
-    public function showTurn(string $turnUlid, TurnService $turns): JsonResponse
+    public function showTurn(Request $request, string $turnUlid, TurnService $turns): JsonResponse
     {
         try {
-            return new JsonResponse($turns->show($turnUlid));
+            return new JsonResponse($turns->show($turnUlid, $this->actorId($request)));
         } catch (ModelNotFoundException) {
             return new JsonResponse(['message' => 'Turn not found'], 404);
         }
     }
 
-    public function cancelTurn(string $turnUlid, TurnService $turns): JsonResponse
+    public function cancelTurn(Request $request, string $turnUlid, TurnService $turns): JsonResponse
     {
         try {
-            return new JsonResponse($turns->cancel($turnUlid));
+            return new JsonResponse($turns->cancel($turnUlid, $this->actorId($request)));
         } catch (ModelNotFoundException) {
             return new JsonResponse(['message' => 'Turn not found'], 404);
         } catch (RuntimeException $e) {
@@ -63,12 +64,23 @@ final class ChatController
     {
         try {
             $cursor = (int) $request->query('cursor', 0);
-            $events = $turns->events($turnUlid, $cursor);
+            $events = $turns->events($turnUlid, $this->actorId($request), $cursor);
 
             return new JsonResponse(['turn_ulid' => $turnUlid, 'events' => $events]);
         } catch (ModelNotFoundException) {
             return new JsonResponse(['message' => 'Turn not found'], 404);
         }
+    }
+
+    /**
+     * Server-derived caller for ownership checks (never a client-supplied id).
+     */
+    private function actorId(Request $request): ?string
+    {
+        $user = $request->user();
+        $id = $user instanceof Authenticatable ? $user->getAuthIdentifier() : null;
+
+        return is_int($id) || is_string($id) ? (string) $id : null;
     }
 
     public function acceptProposal(string $proposalUlid, ProposalService $proposals): JsonResponse

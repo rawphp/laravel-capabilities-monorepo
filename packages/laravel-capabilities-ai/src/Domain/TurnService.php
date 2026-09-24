@@ -14,6 +14,10 @@ use RuntimeException;
 
 /**
  * Turn query + cancel + progress events for HTTP adapters.
+ *
+ * Every method takes the server-derived actor id and only sees turns whose
+ * conversation.user_id matches it. A turn the actor does not own is reported
+ * as missing (404), so ulids cannot be probed across users.
  */
 final class TurnService
 {
@@ -32,12 +36,9 @@ final class TurnService
      *     finished_at: ?string
      * }
      */
-    public function show(string $turnUlid): array
+    public function show(string $turnUlid, ?string $actorId): array
     {
-        $turn = Turn::query()->where('ulid', $turnUlid)->with('conversation')->first();
-        if ($turn === null) {
-            throw (new ModelNotFoundException)->setModel(Turn::class, [$turnUlid]);
-        }
+        $turn = $this->ownedTurn($turnUlid, $actorId);
 
         return [
             'turn_ulid' => $turn->ulid,
@@ -59,12 +60,9 @@ final class TurnService
      *
      * @return array{turn_ulid: string, status: string}
      */
-    public function cancel(string $turnUlid): array
+    public function cancel(string $turnUlid, ?string $actorId): array
     {
-        $turn = Turn::query()->where('ulid', $turnUlid)->first();
-        if ($turn === null) {
-            throw (new ModelNotFoundException)->setModel(Turn::class, [$turnUlid]);
-        }
+        $turn = $this->ownedTurn($turnUlid, $actorId);
 
         if ($turn->status === Turn::STATUS_CANCELLED) {
             return ['turn_ulid' => $turn->ulid, 'status' => Turn::STATUS_CANCELLED];
@@ -116,13 +114,25 @@ final class TurnService
     /**
      * @return list<array{kind: string, data?: mixed, at?: string, index: int}>
      */
-    public function events(string $turnUlid, int $cursor = 0): array
+    public function events(string $turnUlid, ?string $actorId, int $cursor = 0): array
     {
-        $exists = Turn::query()->where('ulid', $turnUlid)->exists();
-        if (! $exists) {
+        $this->ownedTurn($turnUlid, $actorId);
+
+        return $this->progress->since($turnUlid, $cursor);
+    }
+
+    /**
+     * Missing turn, ownerless conversation, and someone else's turn all read as not found.
+     */
+    private function ownedTurn(string $turnUlid, ?string $actorId): Turn
+    {
+        $turn = Turn::query()->where('ulid', $turnUlid)->with('conversation')->first();
+        $owner = $turn?->conversation?->user_id;
+
+        if ($turn === null || $actorId === null || $owner === null || (string) $owner !== $actorId) {
             throw (new ModelNotFoundException)->setModel(Turn::class, [$turnUlid]);
         }
 
-        return $this->progress->since($turnUlid, $cursor);
+        return $turn;
     }
 }
