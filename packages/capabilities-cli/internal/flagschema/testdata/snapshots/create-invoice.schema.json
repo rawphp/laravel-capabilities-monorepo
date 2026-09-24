@@ -1,0 +1,136 @@
+{
+    "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "customer_id": {
+                "type": "integer",
+                "description": "Customer to bill",
+                "minimum": 1
+            },
+            "amount_cents": {
+                "type": "integer",
+                "minimum": 0
+            },
+            "currency": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 3,
+                "enum": [
+                    "AUD",
+                    "USD"
+                ]
+            },
+            "line_items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "description": {
+                            "type": "string"
+                        },
+                        "quantity": {
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "unit_cents": {
+                            "type": "integer"
+                        }
+                    },
+                    "required": [
+                        "description",
+                        "quantity",
+                        "unit_cents"
+                    ]
+                },
+                "minItems": 1
+            },
+            "due_on": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date"
+            },
+            "note": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "send_email": {
+                "type": "boolean"
+            },
+            "discount_rate": {
+                "type": [
+                    "integer",
+                    "number",
+                    "null"
+                ]
+            },
+            "billing_address": {
+                "type": [
+                    "object",
+                    "null"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                    "line1": {
+                        "type": "string"
+                    },
+                    "postcode": {
+                        "type": "string"
+                    },
+                    "line2": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "line1",
+                    "postcode"
+                ]
+            },
+            "metadata": {
+                "type": "array"
+            },
+            "reference": {
+                "type": [
+                    "string",
+                    "integer"
+                ]
+            }
+        },
+        "required": [
+            "customer_id",
+            "amount_cents",
+            "currency",
+            "line_items"
+        ]
+    },
+    "output_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "invoice_id": {
+                "type": "integer"
+            },
+            "status": {
+                "type": "string",
+                "enum": [
+                    "draft",
+                    "open"
+                ]
+            }
+        },
+        "required": [
+            "invoice_id",
+            "status"
+        ]
+    }
+}

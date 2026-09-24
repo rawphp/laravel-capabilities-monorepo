@@ -40,6 +40,9 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Changed (0.x agent/script contract)
 
+- **`int|float` inputs are flags** — a property exported as `["integer","number"]` (PHP `int|float`,
+  optionally nullable) now takes `--flag 0.1` as a `number` instead of being json-only. Locked by D-020
+  snapshot fixtures under `internal/flagschema/testdata/snapshots/`.
 - **Unauthenticated domain/unknown argv** — exit **3** with `not authenticated` (was exit **5**
   “unknown domain”, which hid the need to login). Authenticated unknown domain remains exit **5**.
 - **Domain catalog load uses active `--profile`** (no longer always loads with `default`).
