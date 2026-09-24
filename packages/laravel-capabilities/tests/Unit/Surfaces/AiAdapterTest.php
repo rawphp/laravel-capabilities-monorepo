@@ -93,3 +93,26 @@ it('edge: messaging agent turn still caller agent with messaging metadata [D-007
             'chat_id' => '99',
         ]);
 });
+
+it('fail: handle without profile option enforces the registered profile [D-008]', function () {
+    $h = AdapterHelpers::harness();
+    $h['ai']->register('support');
+    $r = $h['ai']->handle('delete-account', AdapterHelpers::input(), $h['user']);
+    expect($r->errorCode())->toBe('capability_not_in_profile')
+        ->and($h['ai']->activeProfile())->toBe('support')
+        ->and($h['runs']['delete-account']->value)->toBe(0);
+});
+
+it('happy: handle without profile option runs capability in the registered profile [D-008]', function () {
+    $h = AdapterHelpers::harness();
+    $h['ai']->register(['groups' => ['support']]);
+    $r = $h['ai']->handle('get-customer', AdapterHelpers::input(), $h['user']);
+    expect($r->isOk())->toBeTrue()
+        ->and($h['runs']['get-customer']->value)->toBe(1);
+});
+
+it('edge: disabled agent surface clears the registered profile [D-008]', function () {
+    $h = AdapterHelpers::harness(['agent_enabled' => false]);
+    $h['ai']->register('support');
+    expect($h['ai']->activeProfile())->toBeNull();
+});
