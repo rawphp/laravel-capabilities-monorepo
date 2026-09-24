@@ -47,10 +47,13 @@ interface LlmClient
      * @param  list<array<string, mixed>>  $tools
      * @return array{
      *     content?: string,
-     *     tool_calls?: list<array{id?: string, name?: string, arguments?: mixed, input?: mixed}>
+     *     tool_calls?: list<array{id?: string, name?: string, arguments?: mixed, input?: mixed}>,
+     *     usage?: array{input_tokens?: int, output_tokens?: int}
      * }
      *         When `tool_calls` is non-empty, each entry SHOULD include non-empty `id`
      *         (required for multi-round correlation; FakeLlmClient always normalizes it).
+     *         `usage` is optional provider token accounting for this call; TurnRunner
+     *         stores it per round on the Turn alongside its own measured `latency_ms`.
      */
     public function complete(array $messages, array $tools = []): array;
 }

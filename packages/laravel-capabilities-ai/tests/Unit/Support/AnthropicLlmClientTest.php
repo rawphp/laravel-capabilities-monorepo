@@ -49,6 +49,35 @@ it('complete success path with Http::fake without network', function () {
     Http::assertSentCount(1);
 });
 
+it('reports input/output token usage from the Anthropic response', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'content' => [['type' => 'text', 'text' => 'hi']],
+            'usage' => ['input_tokens' => 42, 'output_tokens' => 9, 'cache_read_input_tokens' => 0],
+        ], 200),
+    ]);
+
+    $out = (new AnthropicLlmClient('test-key'))->complete([['role' => 'user', 'content' => 'hi']]);
+
+    expect($out['usage'] ?? null)->toBe(['input_tokens' => 42, 'output_tokens' => 9]);
+});
+
+it('omits usage when the Anthropic response carries none', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'content' => [['type' => 'text', 'text' => 'hi']],
+        ], 200),
+    ]);
+
+    $out = (new AnthropicLlmClient('test-key'))->complete([['role' => 'user', 'content' => 'hi']]);
+
+    expect($out)->not->toHaveKey('usage');
+});
+
 it('testing default FakeLlmClient does not hit network', function () {
     $fake = new FakeLlmClient([['content' => 'local']]);
     expect($fake->complete([['role' => 'user', 'content' => 'x']]))->toBe(['content' => 'local'])

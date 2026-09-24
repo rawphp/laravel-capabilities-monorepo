@@ -98,6 +98,47 @@ it('add last_error migration upgrades table that already exists without the colu
         ->and($schema->hasTable($table))->toBeTrue();
 });
 
+it('turns table has usage after full migrate', function () {
+    bootAiSqlite();
+    runAiMigrations();
+
+    $schema = Capsule::connection()->getSchemaBuilder();
+    expect($schema->hasColumn(TableNames::turns(), 'usage'))->toBeTrue();
+});
+
+it('add usage migration upgrades turns table that already exists without the column', function () {
+    bootAiSqlite();
+    $schema = Capsule::connection()->getSchemaBuilder();
+    $table = TableNames::turns();
+
+    // Simulate host that ran create before usage was added.
+    $schema->create($table, function (Blueprint $blueprint): void {
+        $blueprint->id();
+        $blueprint->string('ulid', 26)->unique();
+        $blueprint->string('status', 32)->default('queued');
+        $blueprint->timestamps();
+    });
+
+    $migration = require dirname(__DIR__, 3).'/database/migrations/2026_09_24_000001_add_usage_to_capabilities_ai_turns_table.php';
+    $migration->up();
+    expect($schema->hasColumn($table, 'usage'))->toBeTrue();
+
+    // Idempotent: second up() must not throw.
+    $migration->up();
+    expect($schema->hasColumn($table, 'usage'))->toBeTrue();
+
+    $migration->down();
+    expect($schema->hasColumn($table, 'usage'))->toBeFalse()
+        ->and($schema->hasTable($table))->toBeTrue();
+
+    // down() is a no-op once the column (or table) is gone.
+    $migration->down();
+    $schema->drop($table);
+    $migration->up();
+    $migration->down();
+    expect($schema->hasTable($table))->toBeFalse();
+});
+
 it('creates conversation and message by ulid', function () {
     bootAiSqlite();
     runAiMigrations();

@@ -174,6 +174,12 @@ final class AnthropicLlmClient implements LlmClient
         if ($toolCalls !== []) {
             $out['tool_calls'] = $toolCalls;
         }
+        if (is_array($json['usage'] ?? null)) {
+            $out['usage'] = [
+                'input_tokens' => (int) ($json['usage']['input_tokens'] ?? 0),
+                'output_tokens' => (int) ($json['usage']['output_tokens'] ?? 0),
+            ];
+        }
 
         return $out;
     }
