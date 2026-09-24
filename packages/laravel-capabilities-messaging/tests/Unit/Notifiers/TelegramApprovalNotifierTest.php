@@ -55,3 +55,26 @@ it('fail: notifier does not call domain services [D-007]', function () {
     $n->notifyPending(['id' => 'a1', 'messaging' => ['chat_id' => '1']]);
     expect($n->domainServiceCalls())->toBe(0);
 });
+
+it('fail: notifyPending sends nothing when telegram is disabled even with secrets set [D-021]', function () {
+    $bot = H::bot();
+    $n = H::notifier(H::config(['telegram' => ['enabled' => false]], 'production'), $bot);
+    $n->notifyPending([
+        'id' => 'appr-1',
+        'capability_name' => 'billing.void',
+        'messaging' => ['chat_id' => '55'],
+    ]);
+    expect($bot->calls())->toBe([]);
+    expect($n->notified())->toBe([]);
+});
+
+it('fail: editMessage sends nothing when telegram is disabled [D-021]', function () {
+    $bot = H::bot();
+    $n = H::notifier(H::config(['telegram' => ['enabled' => false]], 'production'), $bot);
+    $n->editMessage([
+        'id' => 'a',
+        'messaging' => ['chat_id' => '1', 'message_id' => 9],
+    ], 'expired');
+    expect($bot->calls())->toBe([]);
+    expect($n->edits())->toBe([]);
+});
