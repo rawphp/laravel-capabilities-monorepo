@@ -10,6 +10,7 @@ use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\ConversationIdentity;
 use Rawphp\Capabilities\Contracts\ConversationIngress;
 use Rawphp\Capabilities\Contracts\ConversationReply;
+use Rawphp\Capabilities\Contracts\Metrics;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\CapabilitiesMessaging\Boot\MessagingBindings;
 use Rawphp\CapabilitiesMessaging\Boot\MessagingRegistration;
@@ -98,7 +99,10 @@ class MessagingServiceProvider extends ServiceProvider
 
         $this->app->singleton(ThreadStore::class, static fn () => new ThreadStore);
         $this->app->singleton(IdentityLinker::class, function ($app) {
-            return new IdentityLinker($app->make(MessagingConfig::class));
+            return new IdentityLinker(
+                $app->make(MessagingConfig::class),
+                metrics: $app->bound(Metrics::class) ? $app->make(Metrics::class) : null,
+            );
         });
         $this->app->alias(IdentityLinker::class, ConversationIdentity::class);
 

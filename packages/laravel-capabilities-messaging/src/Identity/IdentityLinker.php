@@ -3,6 +3,7 @@
 namespace Rawphp\CapabilitiesMessaging\Identity;
 
 use Rawphp\Capabilities\Contracts\ConversationIdentity;
+use Rawphp\Capabilities\Contracts\Metrics;
 use Rawphp\CapabilitiesMessaging\MessagingConfig;
 use Rawphp\CapabilitiesMessaging\Support\LinkedUser;
 use RuntimeException;
@@ -11,9 +12,12 @@ use RuntimeException;
  * Maps Telegram (etc.) user → product principal before agent tools may mutate.
  *
  * Modes: code_link | allowlist. Never trusts client-forged laravel_user_id.
+ * Denials (forged bind, cross-tenant resolve) are counted on the optional core Metrics contract (D-019).
  */
 final class IdentityLinker implements ConversationIdentity
 {
+    public const METRIC_BIND_DENIED = 'messaging_identity_bind_denied_total';
+
     /** @var array<string, array{user_id: string, tenant_id: string|null, telegram_user_id: string}> */
     private array $links = [];
 
@@ -30,6 +34,7 @@ final class IdentityLinker implements ConversationIdentity
     public function __construct(
         private readonly MessagingConfig $config = new MessagingConfig([]),
         ?callable $userFactory = null,
+        private readonly ?Metrics $metrics = null,
     ) {
         $this->userFactory = $userFactory ?? static fn (string $id, ?string $tenantId): LinkedUser => new LinkedUser(
             id: $id,
@@ -129,6 +134,8 @@ final class IdentityLinker implements ConversationIdentity
 
         $expectedTenant = $externalIdentity['expected_tenant_id'] ?? $externalIdentity['tenant_id'] ?? null;
         if ($expectedTenant !== null && $link['tenant_id'] !== null && (string) $expectedTenant !== (string) $link['tenant_id']) {
+            $this->metrics?->increment(self::METRIC_BIND_DENIED, 1, ['reason' => 'tenant_mismatch']);
+
             return null;
         }
 
@@ -162,6 +169,8 @@ final class IdentityLinker implements ConversationIdentity
      */
     public function rejectForgedBind(array $payload): never
     {
+        $this->metrics?->increment(self::METRIC_BIND_DENIED, 1, ['reason' => 'forged_bind']);
+
         throw new RuntimeException(
             'Forged identity bind rejected: use code_link or allowlist only (MSG-002).'
         );
