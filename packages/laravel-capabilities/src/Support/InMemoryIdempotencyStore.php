@@ -150,6 +150,10 @@ final class InMemoryIdempotencyStore implements IdempotencyStore
         string $capabilityName,
         string $key,
     ): string {
+        if ($tenantId === '') {
+            throw new \InvalidArgumentException('Idempotency tenant id must be null or non-empty; \'\' would share the null-tenant row (D-005).');
+        }
+
         return implode("\0", [
             $tenantId ?? '',
             $actorType,
