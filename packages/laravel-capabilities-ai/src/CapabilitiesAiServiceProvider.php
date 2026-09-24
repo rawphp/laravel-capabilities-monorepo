@@ -16,6 +16,7 @@ use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
+use Rawphp\CapabilitiesAi\Contracts\ProgressStoreReadiness;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
@@ -26,6 +27,7 @@ use Rawphp\CapabilitiesAi\Domain\TurnService;
 use Rawphp\CapabilitiesAi\Support\ContainerBindings;
 use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
 use Rawphp\CapabilitiesAi\Support\StoreBoundIdempotencyReadiness;
+use Rawphp\CapabilitiesAi\Support\StoreBoundProgressStoreReadiness;
 use RuntimeException;
 
 /**
@@ -131,6 +133,16 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
                 }
 
                 return StoreBoundIdempotencyReadiness::unbound();
+            });
+        }
+
+        if (! $this->app->bound(ProgressStoreReadiness::class)) {
+            // Live ping of the resolved ProgressStore; read by core capabilities:integration-health.
+            $this->app->singleton(ProgressStoreReadiness::class, function (Container $app) {
+                return new StoreBoundProgressStoreReadiness(
+                    $app->make(ProgressStore::class),
+                    self::optional($app, Metrics::class),
+                );
             });
         }
 

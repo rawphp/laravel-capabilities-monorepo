@@ -84,6 +84,7 @@ Happy-path AI-chat hosts **configure** — they do not rebind package runtime fo
 | Queue | Set `CAPABILITIES_AI_QUEUE_NAME` / `CAPABILITIES_AI_QUEUE_CONNECTION` | Full `ConversationService` rebind only to pick a queue |
 | Progress side-effects | `app()->extend(ProgressStore::class, …)` in **`boot()`** after package bind | `singleton(ProgressStore::class, …)` replacing redis/array |
 | Idempotency readiness | Leave SP default **`StoreBoundIdempotencyReadiness`** (live core store ping; fail closed when unbound) | Bind **`AlwaysReadyIdempotency`** in production (tests-only) |
+| Progress readiness | Leave SP default **`StoreBoundProgressStoreReadiness`** (read-only ping of the bound `ProgressStore`; increments `ai_progress_store_not_ready_total` on core `Metrics` when down) | Treat a skipped `ai_progress_ready` health row as proof Redis is reachable |
 | Proposals | `CAPABILITIES_AI_PROPOSALS_ENABLED=false` on greenfield | Assume routes-only gate — flag also skips TurnRunner fence extract + history proposals |
 | Stale turns | Schedule `php artisan capabilities-ai:reap-stale-turns` | Host reapers on wrong tables / dual chat stores without a kill date |
 | Product HTTP UX | **Host routes** → bus / AI services | Package route surgery or hijacking package chat HTTP for product UX |

@@ -37,6 +37,7 @@ class IntegrationHealthCommand extends Command
             $this->boundCallback(),
             $this->mcpToolCountCallback(),
             $this->idempotencyReadinessClassCallback(),
+            $this->progressStoreReadyCallback(),
         );
 
         $this->render($report);
@@ -153,6 +154,30 @@ class IntegrationHealthCommand extends Command
                 return is_object($resolved) ? $resolved::class : null;
             } catch (Throwable) {
                 return null;
+            }
+        };
+    }
+
+    /**
+     * Live progress-store ping via the AI package's ProgressStoreReadiness (class-string; no hard dependency).
+     * Unbound → null (skip). Resolve failure (e.g. missing Redis client) → not ready.
+     *
+     * @return callable(): (bool|null)
+     */
+    private function progressStoreReadyCallback(): callable
+    {
+        return function (): ?bool {
+            $abstract = 'Rawphp\\CapabilitiesAi\\Contracts\\ProgressStoreReadiness';
+            try {
+                if (! $this->laravel->bound($abstract)) {
+                    return null;
+                }
+                $readiness = $this->laravel->make($abstract);
+
+                return is_object($readiness) && method_exists($readiness, 'isReady')
+                    && $readiness->isReady() === true;
+            } catch (Throwable) {
+                return false;
             }
         };
     }
