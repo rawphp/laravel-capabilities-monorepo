@@ -2411,6 +2411,8 @@ Capability::audit()
 
 Default **`audit.mode = best_effort`**: a successful domain `run` is not rolled back if audit persistence fails; the bus queues/retries audit (outbox) when `audit.required` is true. Set **`audit.mode = strict`** only when you intentionally couple business success to audit write success.
 
+A single high-blast-radius capability can opt into strict without changing the global default: `audit: ['mode' => 'strict']` (attribute) or `->audit(['mode' => 'strict'])` (fluent). The override only tightens; `'best_effort'` or an unknown mode on a capability fails at definition time.
+
 ---
 
 ## D-010 — Transaction / side-effect consistency

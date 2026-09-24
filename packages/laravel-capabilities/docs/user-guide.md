@@ -195,7 +195,7 @@ Publish: `php artisan vendor:publish --tag=capabilities-config`
 | HTTP | `prefix`, `middleware` | Route mount and auth |
 | Approval | `store`, `ttl_hours`, `execution`, `resume.*` | Human-in-the-loop |
 | Idempotency | `enabled`, `driver` (default `database`; use `memory` only for single-process tests), `header` (`Idempotency-Key`) | Safe retries; AI proposal accept readiness pings this store |
-| Audit | `enabled`, `mode` (`best_effort`), `driver` | Observability of invokes |
+| Audit | `enabled`, `mode` (`best_effort`), `driver` | Observability of invokes. A single capability can force strict with `->audit(['mode' => 'strict'])` (or `audit: ['mode' => 'strict']` on the attribute); it can only tighten the global mode, never loosen it |
 | Rate limits | `defaults.per_minute`, per-capability, agent turn max tools | Abuse control |
 | Clients | `token_abilities` (e.g. `capabilities:cli` → `cli`), privilege order | Caller derivation |
 | Peers | `peers.support` | Mirrors `PeerSupportMatrix` |
