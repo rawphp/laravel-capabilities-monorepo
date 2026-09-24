@@ -167,7 +167,7 @@ Env: `CAPABILITIES_MCP_ON_REGISTER_ERROR=throw|disable`.
 php artisan capabilities:integration-health
 ```
 
-Diagnoses **host product readiness** (bindings, AI-chat mode, MCP tools, AI proposals/AlwaysReady safety when `capabilities-ai` config is present). Distinct from **HTTP** `GET …/capabilities/health` (surface catalog / peer status for clients).
+Diagnoses **host product readiness** (bindings, audit writer wired into the registry, AI-chat mode, MCP tools, AI proposals/AlwaysReady safety when `capabilities-ai` config is present). Distinct from **HTTP** `GET …/capabilities/health` (surface catalog / peer status for clients).
 
 AI-chat mode for this command: `capabilities-ai.routes.enabled` **OR** non-empty `capabilities-ai.queue.name`. Details: [docs/user-guide.md](docs/user-guide.md#integration-health-vs-http-health).
 

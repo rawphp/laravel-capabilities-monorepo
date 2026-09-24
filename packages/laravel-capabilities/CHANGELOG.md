@@ -47,6 +47,13 @@ profile — or no profile — returns `forbidden` with `normalized_code`
 ### Added
 
 - **`capabilities:integration-health` pings the AI progress store:** in AI-chat mode a new `ai_progress_ready` row resolves `Rawphp\CapabilitiesAi\Contracts\ProgressStoreReadiness` by class-string and fails when the store is unreachable (or cannot be resolved, e.g. `progress.driver=redis` with no Redis client); skips when the AI package does not bind it. `IntegrationHealthChecker::check()` takes an optional sixth `$progressStoreReady` callable.
+- **`capabilities:integration-health` warns on silent audit loss (D-010).** New
+  `audit_writer` check: when `audit.enabled` and any invoke surface is on but the live
+  registry has no `AuditWriter`, it reports `warn` (every audit record is otherwise a
+  silent no-op). It probes `CapabilityRegistry::audit()`, not a container binding — the
+  service provider does not inject a bound `AuditWriter`; wire one with
+  `CapabilityRegistry::withAuditWriter(...)`. Warn only; exit code unchanged.
+  `IntegrationHealthChecker::check()` takes an optional seventh `$auditWriterWired` probe.
 
 ### Changed
 

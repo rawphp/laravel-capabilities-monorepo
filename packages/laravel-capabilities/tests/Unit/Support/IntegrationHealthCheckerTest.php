@@ -400,3 +400,84 @@ it('bus-only mode never probes progress store readiness', function () {
     expect($probed)->toBeFalse()
         ->and(ihCodes($report))->not->toContain('ai_progress_ready');
 });
+
+it('audit_writer warns when audit enabled, an invoke surface is enabled, and no writer is wired', function () {
+    $report = (new IntegrationHealthChecker)->check(
+        ihCapabilities() + ['audit' => ['enabled' => true]],
+        null,
+        ihBound([Authorizer::class]),
+        null,
+        null,
+        auditWriterWired: static fn (): bool => false,
+    );
+
+    expect(ihLevel($report, 'audit_writer'))->toBe('warn')
+        ->and(ihMessage($report, 'audit_writer'))->toContain('silently dropped')
+        ->and($report->failed())->toBeFalse();
+});
+
+it('audit_writer ok when the registry has a writer wired', function () {
+    $report = (new IntegrationHealthChecker)->check(
+        ihCapabilities(),
+        null,
+        ihBound([Authorizer::class]),
+        null,
+        null,
+        auditWriterWired: static fn (): bool => true,
+    );
+
+    expect(ihLevel($report, 'audit_writer'))->toBe('ok');
+});
+
+it('audit_writer warns when the wiring probe throws', function () {
+    $report = (new IntegrationHealthChecker)->check(
+        ihCapabilities(),
+        null,
+        ihBound([Authorizer::class]),
+        null,
+        null,
+        auditWriterWired: static function (): bool {
+            throw new RuntimeException('registry boot failed');
+        },
+    );
+
+    expect(ihLevel($report, 'audit_writer'))->toBe('warn');
+});
+
+it('audit_writer skipped when audit is disabled, no invoke surface is enabled, or no probe is given', function () {
+    $unwired = static fn (): bool => false;
+
+    $disabled = (new IntegrationHealthChecker)->check(
+        ihCapabilities() + ['audit' => ['enabled' => false]],
+        null,
+        ihBound([Authorizer::class]),
+        null,
+        null,
+        auditWriterWired: $unwired,
+    );
+
+    $noInvoke = (new IntegrationHealthChecker)->check(
+        ihCapabilities([
+            'agent' => ['enabled' => false],
+            'mcp' => ['enabled' => false],
+            'http' => ['enabled' => false],
+            'cli' => ['enabled' => false],
+            'job' => ['enabled' => false],
+        ]),
+        null,
+        ihBound([]),
+        null,
+        null,
+        auditWriterWired: $unwired,
+    );
+
+    $noProbe = (new IntegrationHealthChecker)->check(
+        ihCapabilities(),
+        null,
+        ihBound([Authorizer::class]),
+    );
+
+    expect(ihLevel($disabled, 'audit_writer'))->toBe('skip')
+        ->and(ihLevel($noInvoke, 'audit_writer'))->toBe('skip')
+        ->and(ihLevel($noProbe, 'audit_writer'))->toBe('skip');
+});
