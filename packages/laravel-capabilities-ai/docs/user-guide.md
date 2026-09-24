@@ -167,7 +167,9 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 
 | Exception / case | HTTP | Typical routes |
 |------------------|------|----------------|
-| `ModelNotFoundException` | **404** | storeMessage (foreign `conversation_ulid`), history, showTurn, cancelTurn, turnEvents, destroyConversation |
+| No authenticated user (`$request->user()`) | **401** | every chat route above + message create |
+| Another user's (or ownerless) conversation/turn | **404** (same as missing) | history, message append, showTurn, cancelTurn, turnEvents, destroyConversation |
+| `ModelNotFoundException` | **404** | storeMessage (unknown `conversation_ulid`), history, showTurn, cancelTurn, turnEvents, destroyConversation |
 | `RuntimeException` (domain conflict) | **409** + `message` | cancelTurn, destroyConversation |
 | `TurnCapacityExceededException` (`max_concurrent_turns` reached) | **429** + `message`, `outcome: retryable` | storeMessage — nothing persisted or dispatched; resend later |
 | Success | **200** (message create **201**) | real service payload — not an empty stub |
@@ -176,6 +178,8 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 
 - Query: `cursor` integer, default **0** when omitted
 - Body: `{ "turn_ulid": "<ulid>", "events": [ … ] }` from `TurnService::events`
+
+**Ownership (D-022):** the controller acts as `$request->user()->getAuthIdentifier()` only. Conversations are owned by that id; body `user_id` is ignored. Services take the owner explicitly (`history($ulid, $ownerId)`, `TurnService::show($ulid, $ownerId)`, …).
 
 **Host action:** if you enable routes, stop assuming always-**200** empty bodies. Handle **404** for missing conversation/turn and **409** for cancel/destroy conflicts. Leave `routes.enabled` false until clients are ready.
 

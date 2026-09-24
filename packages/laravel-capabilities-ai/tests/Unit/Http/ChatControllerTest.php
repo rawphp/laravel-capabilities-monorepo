@@ -123,11 +123,19 @@ function httpProposalService(CapabilityBus $bus): ProposalService
     );
 }
 
+function chatRequest(?string $userId, string $method = 'GET', array $params = []): Request
+{
+    $request = Request::create('/chat', $method, $params);
+    $request->setUserResolver(static fn () => $userId === null ? null : new ChatControllerAuthUser($userId));
+
+    return $request;
+}
+
 it('history returns 200 with messages', function () {
     $progress = bootHttpSqlite();
     $conversations = new ConversationService(static fn ($j) => null, $progress);
-    $ids = $conversations->createUserMessage('hello');
-    $response = (new ChatController)->history($ids['conversation_ulid'], $conversations);
+    $ids = $conversations->createUserMessage('hello', userId: 'u1');
+    $response = (new ChatController)->history(chatRequest('u1'), $ids['conversation_ulid'], $conversations);
 
     expect($response->getStatusCode())->toBe(200)
         ->and($response->getData(true)['messages'][0]['content'])->toBe('hello');
@@ -136,21 +144,90 @@ it('history returns 200 with messages', function () {
 it('history returns 404 when missing', function () {
     bootHttpSqlite();
     $conversations = new ConversationService(static fn ($j) => null, new ArrayProgressStore);
-    $response = (new ChatController)->history('01MISSINGCONV00000000000', $conversations);
+    $response = (new ChatController)->history(chatRequest('u1'), '01MISSINGCONV00000000000', $conversations);
     expect($response->getStatusCode())->toBe(404);
+});
+
+it('history returns 404 for another user\'s conversation', function () {
+    $progress = bootHttpSqlite();
+    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    $ids = $conversations->createUserMessage('secret', userId: 'u1');
+    $response = (new ChatController)->history(chatRequest('u2'), $ids['conversation_ulid'], $conversations);
+
+    expect($response->getStatusCode())->toBe(404)
+        ->and($response->getData(true))->toBe(['message' => 'Conversation not found']);
+});
+
+it('storeMessage owns the conversation by the authenticated user, not the body user_id', function () {
+    $progress = bootHttpSqlite();
+    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    $request = chatRequest('u1', 'POST', ['content' => 'hi', 'user_id' => 'victim']);
+    $response = (new ChatController)->storeMessage($request, $conversations);
+
+    $ulid = $response->getData(true)['conversation_ulid'];
+    expect($response->getStatusCode())->toBe(201)
+        ->and(Conversation::query()->where('ulid', $ulid)->value('user_id'))->toBe('u1');
+});
+
+it('storeMessage returns 404 when appending to another user\'s conversation', function () {
+    $progress = bootHttpSqlite();
+    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    $ids = $conversations->createUserMessage('mine', userId: 'u1');
+    $request = chatRequest('u2', 'POST', ['content' => 'intrude', 'conversation_ulid' => $ids['conversation_ulid']]);
+
+    expect((new ChatController)->storeMessage($request, $conversations)->getStatusCode())->toBe(404)
+        ->and(Turn::query()->count())->toBe(1);
+});
+
+it('every chat route returns 401 without an authenticated user and touches nothing', function () {
+    $progress = bootHttpSqlite();
+    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    $turns = new TurnService($progress);
+    $ids = $conversations->createUserMessage('owned', userId: 'u1');
+    $controller = new ChatController;
+    $anon = chatRequest(null, 'POST', ['content' => 'x']);
+
+    $responses = [
+        $controller->history($anon, $ids['conversation_ulid'], $conversations),
+        $controller->storeMessage($anon, $conversations),
+        $controller->showTurn($anon, $ids['turn_ulid'], $turns),
+        $controller->cancelTurn($anon, $ids['turn_ulid'], $turns),
+        $controller->turnEvents($anon, $ids['turn_ulid'], $turns),
+        $controller->destroyConversation($anon, $ids['conversation_ulid'], $conversations),
+    ];
+
+    foreach ($responses as $response) {
+        expect($response->getStatusCode())->toBe(401);
+    }
+    expect(Turn::query()->count())->toBe(1)
+        ->and(Turn::query()->value('status'))->toBe(Turn::STATUS_QUEUED);
+});
+
+it('showTurn, cancelTurn and turnEvents return 404 for another user\'s turn', function () {
+    $progress = bootHttpSqlite();
+    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    $ids = $conversations->createUserMessage('t', userId: 'u1');
+    $turns = new TurnService($progress);
+    $controller = new ChatController;
+    $other = chatRequest('u2');
+
+    expect($controller->showTurn($other, $ids['turn_ulid'], $turns)->getStatusCode())->toBe(404)
+        ->and($controller->cancelTurn($other, $ids['turn_ulid'], $turns)->getStatusCode())->toBe(404)
+        ->and($controller->turnEvents($other, $ids['turn_ulid'], $turns)->getStatusCode())->toBe(404)
+        ->and(Turn::query()->where('ulid', $ids['turn_ulid'])->value('status'))->toBe(Turn::STATUS_QUEUED);
 });
 
 it('showTurn and cancelTurn happy path', function () {
     $progress = bootHttpSqlite();
     $conversations = new ConversationService(static fn ($j) => null, $progress);
-    $ids = $conversations->createUserMessage('t');
+    $ids = $conversations->createUserMessage('t', userId: 'u1');
     $turns = new TurnService($progress);
 
-    $show = (new ChatController)->showTurn($ids['turn_ulid'], $turns);
+    $show = (new ChatController)->showTurn(chatRequest('u1'), $ids['turn_ulid'], $turns);
     expect($show->getStatusCode())->toBe(200)
         ->and($show->getData(true)['status'])->toBe(Turn::STATUS_QUEUED);
 
-    $cancel = (new ChatController)->cancelTurn($ids['turn_ulid'], $turns);
+    $cancel = (new ChatController)->cancelTurn(chatRequest('u1'), $ids['turn_ulid'], $turns);
     expect($cancel->getStatusCode())->toBe(200)
         ->and($cancel->getData(true)['status'])->toBe(Turn::STATUS_CANCELLED);
 });
@@ -158,18 +235,18 @@ it('showTurn and cancelTurn happy path', function () {
 it('cancelTurn returns 409 on illegal transition', function () {
     $progress = bootHttpSqlite();
     $conversations = new ConversationService(static fn ($j) => null, $progress);
-    $ids = $conversations->createUserMessage('done');
+    $ids = $conversations->createUserMessage('done', userId: 'u1');
     Turn::query()->where('ulid', $ids['turn_ulid'])->update(['status' => Turn::STATUS_COMPLETED]);
-    $response = (new ChatController)->cancelTurn($ids['turn_ulid'], new TurnService($progress));
+    $response = (new ChatController)->cancelTurn(chatRequest('u1'), $ids['turn_ulid'], new TurnService($progress));
     expect($response->getStatusCode())->toBe(409);
 });
 
 it('turnEvents passes cursor and returns events', function () {
     $progress = bootHttpSqlite();
     $conversations = new ConversationService(static fn ($j) => null, $progress);
-    $ids = $conversations->createUserMessage('e');
+    $ids = $conversations->createUserMessage('e', userId: 'u1');
     $progress->append($ids['turn_ulid'], ['kind' => 'token', 'data' => ['t' => 1]]);
-    $request = Request::create('/events', 'GET', ['cursor' => 0]);
+    $request = chatRequest('u1', 'GET', ['cursor' => 0]);
     $response = (new ChatController)->turnEvents($request, $ids['turn_ulid'], new TurnService($progress));
     expect($response->getStatusCode())->toBe(200)
         ->and($response->getData(true)['events'])->not->toBeEmpty();
@@ -178,14 +255,17 @@ it('turnEvents passes cursor and returns events', function () {
 it('destroyConversation 409 when active turns and 200 when closed', function () {
     $progress = bootHttpSqlite();
     $conversations = new ConversationService(static fn ($j) => null, $progress);
-    $ids = $conversations->createUserMessage('active');
+    $ids = $conversations->createUserMessage('active', userId: 'u1');
     $controller = new ChatController;
 
-    expect($controller->destroyConversation($ids['conversation_ulid'], $conversations)->getStatusCode())
+    expect($controller->destroyConversation(chatRequest('u1'), $ids['conversation_ulid'], $conversations)->getStatusCode())
         ->toBe(409);
 
     Turn::query()->where('ulid', $ids['turn_ulid'])->update(['status' => Turn::STATUS_COMPLETED]);
-    $ok = $controller->destroyConversation($ids['conversation_ulid'], $conversations);
+    expect($controller->destroyConversation(chatRequest('u2'), $ids['conversation_ulid'], $conversations)->getStatusCode())
+        ->toBe(404);
+
+    $ok = $controller->destroyConversation(chatRequest('u1'), $ids['conversation_ulid'], $conversations);
     expect($ok->getStatusCode())->toBe(200)
         ->and($ok->getData(true)['status'])->toBe('closed')
         ->and($ok->getData(true)['closed'] ?? null)->toBeTrue();

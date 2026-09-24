@@ -54,10 +54,7 @@ final class ConversationService
 
         // A given $userId must own an existing conversation: the owner is the turn's bus actor.
         $conversation = $conversationUlid
-            ? Conversation::query()
-                ->where('ulid', $conversationUlid)
-                ->when($userId !== null, static fn ($q) => $q->where('user_id', $userId))
-                ->firstOrFail()
+            ? Conversation::query()->where('ulid', $conversationUlid)->where('user_id', $userId)->firstOrFail()
             : Conversation::query()->create([
                 'ulid' => $this->ulid(),
                 'app_id' => $appId,
@@ -99,7 +96,7 @@ final class ConversationService
     }
 
     /**
-     * Ordered messages for a conversation (HTTP history).
+     * Ordered messages for a conversation (HTTP history). Another owner's conversation is not found.
      *
      * @return array{
      *     conversation_ulid: string,
@@ -107,9 +104,9 @@ final class ConversationService
      *     proposals: list<array{ulid: string, status: string, type: string, target_capability: ?string}>
      * }
      */
-    public function history(string $conversationUlid): array
+    public function history(string $conversationUlid, string $ownerId): array
     {
-        $conversation = Conversation::query()->where('ulid', $conversationUlid)->firstOrFail();
+        $conversation = $this->owned($conversationUlid, $ownerId);
 
         $messages = Message::query()
             ->where('conversation_id', $conversation->id)
@@ -149,13 +146,13 @@ final class ConversationService
 
     /**
      * Close conversation (status=closed). Fail closed if any turn is queued or running.
-     * Idempotent when already closed and no active turns.
+     * Idempotent when already closed and no active turns. Another owner's conversation is not found.
      *
      * @return array{conversation_ulid: string, status: string, closed: bool}
      */
-    public function destroy(string $conversationUlid): array
+    public function destroy(string $conversationUlid, string $ownerId): array
     {
-        $conversation = Conversation::query()->where('ulid', $conversationUlid)->firstOrFail();
+        $conversation = $this->owned($conversationUlid, $ownerId);
 
         $active = Turn::query()
             ->where('conversation_id', $conversation->id)
@@ -194,6 +191,14 @@ final class ConversationService
         if ($active >= $this->maxConcurrentTurns) {
             throw new TurnCapacityExceededException($this->maxConcurrentTurns);
         }
+    }
+
+    private function owned(string $conversationUlid, string $ownerId): Conversation
+    {
+        return Conversation::query()
+            ->where('ulid', $conversationUlid)
+            ->where('user_id', $ownerId)
+            ->firstOrFail();
     }
 
     private function ulid(): string

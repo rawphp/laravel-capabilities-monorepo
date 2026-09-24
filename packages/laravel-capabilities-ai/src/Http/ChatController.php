@@ -17,13 +17,21 @@ use RuntimeException;
 
 /**
  * Thin HTTP adapters — domain logic lives in services.
+ *
+ * Conversation/turn routes act as the authenticated user only (D-022): no user → 401,
+ * another user's conversation or turn → 404. Body `user_id` is ignored.
  */
 final class ChatController
 {
-    public function history(string $conversationUlid, ConversationService $conversations): JsonResponse
+    public function history(Request $request, string $conversationUlid, ConversationService $conversations): JsonResponse
     {
+        $userId = $this->userId($request);
+        if ($userId === null) {
+            return $this->unauthenticated();
+        }
+
         try {
-            return new JsonResponse($conversations->history($conversationUlid));
+            return new JsonResponse($conversations->history($conversationUlid, $userId));
         } catch (ModelNotFoundException) {
             return new JsonResponse(['message' => 'Conversation not found'], 404);
         }
@@ -35,16 +43,16 @@ final class ChatController
      */
     public function storeMessage(Request $request, ConversationService $conversations): JsonResponse
     {
-        $user = $request->user();
-        if (! $user instanceof Authenticatable) {
-            return new JsonResponse(['message' => 'Unauthenticated'], 401);
+        $userId = $this->userId($request);
+        if ($userId === null) {
+            return $this->unauthenticated();
         }
 
         try {
             $ids = $conversations->createUserMessage(
                 content: (string) $request->input('content', ''),
                 conversationUlid: $request->input('conversation_ulid'),
-                userId: (string) $user->getAuthIdentifier(),
+                userId: $userId,
                 appId: $request->input('app_id'),
             );
         } catch (TurnCapacityExceededException $e) {
@@ -56,19 +64,29 @@ final class ChatController
         return new JsonResponse($ids, 201);
     }
 
-    public function showTurn(string $turnUlid, TurnService $turns): JsonResponse
+    public function showTurn(Request $request, string $turnUlid, TurnService $turns): JsonResponse
     {
+        $userId = $this->userId($request);
+        if ($userId === null) {
+            return $this->unauthenticated();
+        }
+
         try {
-            return new JsonResponse($turns->show($turnUlid));
+            return new JsonResponse($turns->show($turnUlid, $userId));
         } catch (ModelNotFoundException) {
             return new JsonResponse(['message' => 'Turn not found'], 404);
         }
     }
 
-    public function cancelTurn(string $turnUlid, TurnService $turns): JsonResponse
+    public function cancelTurn(Request $request, string $turnUlid, TurnService $turns): JsonResponse
     {
+        $userId = $this->userId($request);
+        if ($userId === null) {
+            return $this->unauthenticated();
+        }
+
         try {
-            return new JsonResponse($turns->cancel($turnUlid));
+            return new JsonResponse($turns->cancel($turnUlid, $userId));
         } catch (ModelNotFoundException) {
             return new JsonResponse(['message' => 'Turn not found'], 404);
         } catch (RuntimeException $e) {
@@ -78,9 +96,14 @@ final class ChatController
 
     public function turnEvents(Request $request, string $turnUlid, TurnService $turns): JsonResponse
     {
+        $userId = $this->userId($request);
+        if ($userId === null) {
+            return $this->unauthenticated();
+        }
+
         try {
             $cursor = (int) $request->query('cursor', 0);
-            $events = $turns->events($turnUlid, $cursor);
+            $events = $turns->events($turnUlid, $userId, $cursor);
 
             return new JsonResponse(['turn_ulid' => $turnUlid, 'events' => $events]);
         } catch (ModelNotFoundException) {
@@ -142,14 +165,35 @@ final class ChatController
         }
     }
 
-    public function destroyConversation(string $conversationUlid, ConversationService $conversations): JsonResponse
+    public function destroyConversation(Request $request, string $conversationUlid, ConversationService $conversations): JsonResponse
     {
+        $userId = $this->userId($request);
+        if ($userId === null) {
+            return $this->unauthenticated();
+        }
+
         try {
-            return new JsonResponse($conversations->destroy($conversationUlid));
+            return new JsonResponse($conversations->destroy($conversationUlid, $userId));
         } catch (ModelNotFoundException) {
             return new JsonResponse(['message' => 'Conversation not found'], 404);
         } catch (RuntimeException $e) {
             return new JsonResponse(['message' => $e->getMessage()], 409);
         }
+    }
+
+    private function userId(Request $request): ?string
+    {
+        $user = $request->user();
+        $id = $user instanceof Authenticatable ? $user->getAuthIdentifier() : null;
+        if (! is_string($id) && ! is_int($id)) {
+            return null;
+        }
+
+        return $id === '' ? null : (string) $id;
+    }
+
+    private function unauthenticated(): JsonResponse
+    {
+        return new JsonResponse(['message' => 'Unauthenticated'], 401);
     }
 }
