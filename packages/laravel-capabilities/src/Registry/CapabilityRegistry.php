@@ -198,12 +198,22 @@ final class CapabilityRegistry implements CapabilityBus
         $this->clock = $clock ?? new SystemClock;
         $this->definitionCatalog = new DefinitionCatalog;
         $this->observation = new InvokeObservation;
+        $auditStage = new InvokeAuditStage(
+            observation: $this->observation,
+            auditWriter: $auditWriter,
+            auditMode: $auditModeResolved,
+            auditEnabled: $auditEnabled,
+            auditRequired: $auditRequired,
+            auditDriver: $auditDriver,
+            auditOutbox: $auditOutbox,
+        );
         $this->toolSurfaceResolver = new ToolSurfaceResolver(
             definitions: $this->definitionCatalog,
             profileSelector: $this->profileSelector,
             observation: $this->observation,
             globallyEnabledSurfaces: $this->globallyEnabledSurfaces,
             toolSurfaceConfig: $this->toolSurfaceConfig,
+            auditStage: $auditStage,
         );
         $this->assertions = new RegistryAssertions($this, $this->observation);
         $this->pipeline = new InvokePipeline(
@@ -217,15 +227,7 @@ final class CapabilityRegistry implements CapabilityBus
             approvalManager: $approvalManager,
             outputValidator: $this->outputValidator,
             observation: $this->observation,
-            auditStage: new InvokeAuditStage(
-                observation: $this->observation,
-                auditWriter: $auditWriter,
-                auditMode: $auditModeResolved,
-                auditEnabled: $auditEnabled,
-                auditRequired: $auditRequired,
-                auditDriver: $auditDriver,
-                auditOutbox: $auditOutbox,
-            ),
+            auditStage: $auditStage,
             wrapRun: $wrapRun,
             eventsEnabled: $eventsEnabled,
             validateOutputEnabled: (bool) ($this->validationConfig['validate_output'] ?? true),
