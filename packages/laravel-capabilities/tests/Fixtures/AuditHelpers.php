@@ -39,7 +39,7 @@ final class AuditHelpers
         }
 
         $registry = new CapabilityRegistry(
-            globallyEnabledSurfaces: [
+            globallyEnabledSurfaces: array_merge([
                 'agent' => true,
                 'mcp' => true,
                 'http' => true,
@@ -47,7 +47,7 @@ final class AuditHelpers
                 'job' => true,
                 'artisan' => true,
                 'messaging' => false,
-            ],
+            ], $opts['surfaces'] ?? []),
             validationConfig: ['validate_output' => true],
             authorizer: $fakes->authorizer,
             approvalStore: $fakes->approvals,

@@ -63,6 +63,8 @@ composer update rawphp/laravel-capabilities-messaging
 php artisan vendor:publish --tag=capabilities-messaging-config
 ```
 
+Turn on the core messaging surface too (`CAPABILITIES_SURFACE_MESSAGING=true`). Chat tool calls reach the registry as `caller: agent`, and core refuses any invoke carrying messaging metadata while `surfaces.messaging` is off.
+
 Install policy: monorepo [`docs/versioning.md`](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versioning.md). How-to: [docs/user-guide.md](docs/user-guide.md).
 
 ## Production bindings (L-004)

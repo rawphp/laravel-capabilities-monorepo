@@ -32,7 +32,7 @@ it('edge: audit entry messaging is null without messaging context [D-010]', func
 
 it('happy: registry invoke writes messaging context into the audit entry [D-010]', function () {
     $messaging = ['channel' => 'telegram', 'chat_id' => '99', 'user_link_id' => 3];
-    $h = AuditHelpers::harness(['name' => 'audit-messaging-wired']);
+    $h = AuditHelpers::harness(['name' => 'audit-messaging-wired', 'surfaces' => ['messaging' => true]]);
     $r = $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options('agent', ['messaging' => $messaging]));
 
     expect($r->isOk())->toBeTrue()

@@ -1302,7 +1302,7 @@ Every `run` receives a `CapabilityContext`:
 | `job` | Optional `{ queue, job_id, acting_as_type, acting_as_id }` when `caller=job` |
 | `credential` | Optional audit metadata: `{ type: oauth\|pat\|in_process, client_id?, ability? }` used to derive caller |
 
-Use this for policy differences (e.g. agents cannot void invoices without approval; staff UI can). Messaging-originated tool calls still use `caller: agent` at the registry; `messaging` metadata explains *which* front door started the turn.
+Use this for policy differences (e.g. agents cannot void invoices without approval; staff UI can). Messaging-originated tool calls still use `caller: agent` at the registry; `messaging` metadata explains *which* front door started the turn. The registry also refuses an invoke that carries `messaging` metadata while `surfaces.messaging.enabled` is off, so the global flag gates chat turns even though the caller is `agent`.
 
 **Caller is not a client-chosen header.** Approvals and rate limits that branch on `$ctx->caller()` are only meaningful if the bus sets caller from **credential class** or **in-process adapter code**. See [D-022](#d-022--server-derived-caller-not-client-spoofable-header).
 
