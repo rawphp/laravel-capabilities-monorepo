@@ -7,6 +7,7 @@ use Rawphp\Capabilities\Pipeline\ResolveActor;
 use Rawphp\Capabilities\Support\CapabilityContext;
 use Rawphp\Capabilities\Support\CapabilityData;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\Redactor;
 
 /**
  * Builds structured audit entries for capability lifecycle events (D-010).
@@ -18,9 +19,6 @@ final class AuditLogger
 
     /** @var list<string> */
     public const SUPPORTED_MODES = ['best_effort', 'strict'];
-
-    /** @var list<string> Matched as substrings of the normalized key. */
-    private const SENSITIVE_KEYS = ['password', 'secret', 'token', 'apikey', 'authorization'];
 
     /**
      * @return array<string, mixed>
@@ -168,8 +166,8 @@ final class AuditLogger
         foreach ($data as $key => $value) {
             $fieldSchema = $items ?? (is_array($properties[$key] ?? null) ? $properties[$key] : []);
 
-            if (self::isSensitiveKey((string) $key) || ($fieldSchema['writeOnly'] ?? false) === true) {
-                $data[$key] = '[REDACTED]';
+            if (Redactor::isSensitiveKey((string) $key) || ($fieldSchema['writeOnly'] ?? false) === true) {
+                $data[$key] = Redactor::PLACEHOLDER;
 
                 continue;
             }
@@ -180,18 +178,6 @@ final class AuditLogger
         }
 
         return $data;
-    }
-
-    private static function isSensitiveKey(string $key): bool
-    {
-        $normalized = str_replace(['_', '-', '.', ' '], '', strtolower($key));
-        foreach (self::SENSITIVE_KEYS as $sensitive) {
-            if (str_contains($normalized, $sensitive)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static function resultSummary(mixed $output): mixed
