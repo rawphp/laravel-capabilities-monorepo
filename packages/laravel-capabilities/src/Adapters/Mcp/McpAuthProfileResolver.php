@@ -20,6 +20,7 @@ final class McpAuthProfileResolver
      *     default_profile?: string,
      *     allow_integration_credentials?: bool,
      *     integration_actors?: array<string, string>,
+     *     integration_profiles?: array<string, string|list<string>>,
      *     audit_client_id?: bool
      * }  $authConfig
      */
@@ -28,6 +29,7 @@ final class McpAuthProfileResolver
             'default_profile' => 'user_pat',
             'allow_integration_credentials' => false,
             'integration_actors' => [],
+            'integration_profiles' => [],
             'audit_client_id' => true,
         ],
     ) {}
@@ -45,6 +47,23 @@ final class McpAuthProfileResolver
     public function auditClientId(): bool
     {
         return (bool) ($this->authConfig['audit_client_id'] ?? true);
+    }
+
+    /**
+     * Whether an integration client may run inside a tool profile (D-023 / D-008).
+     *
+     * Fail closed: a client with no integration_profiles entry, or no profile in play,
+     * is refused. User principals are not bound here.
+     */
+    public function integrationAllowsProfile(string $clientId, ?string $profile): bool
+    {
+        if ($profile === null) {
+            return false;
+        }
+
+        $allowed = (array) ($this->authConfig['integration_profiles'][$clientId] ?? []);
+
+        return in_array($profile, $allowed, true);
     }
 
     /**

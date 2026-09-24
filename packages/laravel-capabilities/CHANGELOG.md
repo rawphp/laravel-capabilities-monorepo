@@ -32,6 +32,18 @@ contract was never checked.
   your authorizer needs a real user model, bind your own with
   `ApprovalManager::withExecutor(...)`.
 
+#### MCP integration clients are bound to configured profiles (D-023)
+
+An `integration` MCP principal could previously run inside any profile the host
+passed. It now runs only inside profiles listed for its `client_id` under
+`surfaces.mcp.auth.integration_profiles` (`client_id => list<profile>`). Any other
+profile — or no profile — returns `forbidden` with `normalized_code`
+`integration_profile_forbidden`, before the registry is invoked. User principals
+(`user_pat`, `user_delegated`) are unchanged.
+
+**Upgrade:** add an `integration_profiles` entry for every client in
+`integration_actors`, or its tool calls will be refused.
+
 ### Changed
 
 - **Discovery fails closed on half-written capability classes (D-017).** A class carrying

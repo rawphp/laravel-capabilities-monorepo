@@ -30,6 +30,7 @@ it('happy: integration credentials map to SystemActor or bot when allowlisted [D
         'mcp_auth' => [
             'allow_integration_credentials' => true,
             'integration_actors' => ['mcp-billing-service' => 'billing-bot'],
+            'integration_profiles' => ['mcp-billing-service' => ['billing']],
         ],
     ]);
     $h['mcp']->register('billing');
@@ -63,6 +64,7 @@ it('fail: integration without allowSystemCallers on capability fails [D-023]', f
         'mcp_auth' => [
             'allow_integration_credentials' => true,
             'integration_actors' => ['mcp-billing-service' => 'billing-bot'],
+            'integration_profiles' => ['mcp-billing-service' => ['billing']],
         ],
         'caps' => [[
             'name' => 'create-invoice',
@@ -147,6 +149,7 @@ it('happy: integration tenant from trusted session config not tool input [D-023]
         'mcp_auth' => [
             'allow_integration_credentials' => true,
             'integration_actors' => ['mcp-billing-service' => 'billing-bot'],
+            'integration_profiles' => ['mcp-billing-service' => ['billing']],
         ],
     ]);
     $h['mcp']->register('billing');
@@ -202,6 +205,7 @@ it('fail: auth profile integration cannot set actor from tool JSON [D-023]', fun
         'mcp_auth' => [
             'allow_integration_credentials' => true,
             'integration_actors' => ['mcp-billing-service' => 'billing-bot'],
+            'integration_profiles' => ['mcp-billing-service' => ['billing']],
         ],
     ]);
     $h['mcp']->register('billing');
