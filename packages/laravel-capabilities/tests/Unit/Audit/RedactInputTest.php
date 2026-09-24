@@ -4,6 +4,7 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Attributes\Field;
 use Rawphp\Capabilities\Audit\AuditLogger;
 use Rawphp\Capabilities\Pipeline\InvokeState;
 use Rawphp\Capabilities\Registry\CapabilityDefinition;
@@ -101,4 +102,65 @@ it('fail: sensitive messaging metadata never reaches the audit entry verbatim [D
 
     expect(AuditLogger::entry($state, true)['messaging'])
         ->toBe(['channel' => 'telegram', 'chat_id' => '4242', 'bot_token' => '[REDACTED]']);
+});
+
+final class RedactCardStub extends CapabilityData
+{
+    public function __construct(
+        #[Field(sensitive: true)]
+        public string $number,
+        public string $brand,
+    ) {}
+}
+
+final class RedactApplicantStub extends CapabilityData
+{
+    /** @param  list<RedactCardStub>  $cards */
+    public function __construct(
+        #[Field(sensitive: true)]
+        public string $ssn,
+        public string $email,
+        public ?RedactCardStub $primary = null,
+        #[Field(items: RedactCardStub::class)]
+        public array $cards = [],
+    ) {}
+}
+
+function applicantInput(): array
+{
+    return [
+        'ssn' => '123-45-6789',
+        'email' => 'a@example.com',
+        'primary' => ['number' => '4111', 'brand' => 'visa'],
+        'cards' => [['number' => '5500', 'brand' => 'mc']],
+    ];
+}
+
+function applicantRedacted(): array
+{
+    return [
+        'ssn' => '[REDACTED]',
+        'email' => 'a@example.com',
+        'primary' => ['number' => '[REDACTED]', 'brand' => 'visa'],
+        'cards' => [['number' => '[REDACTED]', 'brand' => 'mc']],
+    ];
+}
+
+function applicantDefinition(): CapabilityDefinition
+{
+    return new CapabilityDefinition(name: 'apply', description: 'd', input: RedactApplicantStub::class);
+}
+
+it('fail: fields the input DTO marks sensitive never reach the audit entry verbatim [D-010]', function () {
+    $state = new InvokeState(applicantDefinition(), applicantInput(), 'http');
+    $state->input = RedactApplicantStub::fromArray(applicantInput());
+
+    expect(AuditLogger::entry($state, true)['redacted_input'])->toBe(applicantRedacted());
+});
+
+it('edge: sensitive fields stay redacted when the input never hydrated [D-010]', function () {
+    $raw = applicantInput() + ['unexpected' => 'x'];
+
+    expect(AuditLogger::entry(new InvokeState(applicantDefinition(), $raw, 'http'), false)['redacted_input'])
+        ->toBe(applicantRedacted() + ['unexpected' => 'x']);
 });

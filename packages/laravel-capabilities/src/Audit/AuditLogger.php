@@ -138,7 +138,7 @@ final class AuditLogger
             return null;
         }
 
-        return self::redact($raw);
+        return self::redact($raw, $state->definition->inputSchema() ?? []);
     }
 
     /**
@@ -152,29 +152,46 @@ final class AuditLogger
 
     /**
      * Recursively redacts values whose key contains a sensitive word, ignoring case
-     * and separators (Authorization, user_password, apiKey, Access-Token).
+     * and separators (Authorization, user_password, apiKey, Access-Token), and values
+     * the input schema marks `writeOnly` (#[Field(sensitive: true)]), including nested
+     * objects and array items.
      *
      * @param  array<array-key, mixed>  $data
+     * @param  array<array-key, mixed>  $schema
      * @return array<array-key, mixed>
      */
-    private static function redact(array $data): array
+    private static function redact(array $data, array $schema = []): array
     {
-        foreach ($data as $key => $value) {
-            $normalized = str_replace(['_', '-', '.', ' '], '', strtolower((string) $key));
-            foreach (self::SENSITIVE_KEYS as $sensitive) {
-                if (str_contains($normalized, $sensitive)) {
-                    $data[$key] = '[REDACTED]';
+        $properties = is_array($schema['properties'] ?? null) ? $schema['properties'] : [];
+        $items = is_array($schema['items'] ?? null) ? $schema['items'] : null;
 
-                    continue 2;
-                }
+        foreach ($data as $key => $value) {
+            $fieldSchema = $items ?? (is_array($properties[$key] ?? null) ? $properties[$key] : []);
+
+            if (self::isSensitiveKey((string) $key) || ($fieldSchema['writeOnly'] ?? false) === true) {
+                $data[$key] = '[REDACTED]';
+
+                continue;
             }
 
             if (is_array($value)) {
-                $data[$key] = self::redact($value);
+                $data[$key] = self::redact($value, $fieldSchema);
             }
         }
 
         return $data;
+    }
+
+    private static function isSensitiveKey(string $key): bool
+    {
+        $normalized = str_replace(['_', '-', '.', ' '], '', strtolower($key));
+        foreach (self::SENSITIVE_KEYS as $sensitive) {
+            if (str_contains($normalized, $sensitive)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static function resultSummary(mixed $output): mixed
