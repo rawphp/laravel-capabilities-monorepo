@@ -41,6 +41,8 @@ final class IdentityLinker implements ConversationIdentity
             tenantId: $tenantId,
         );
 
+        $this->config->requireUniqueAllowlist();
+
         foreach ($this->config->allowlist() as $entry) {
             $tg = (string) ($entry['telegram_user_id'] ?? '');
             $uid = (string) ($entry['laravel_user_id'] ?? '');

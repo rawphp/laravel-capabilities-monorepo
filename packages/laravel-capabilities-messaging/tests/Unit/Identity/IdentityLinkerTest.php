@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Rawphp\CapabilitiesMessaging\Boot\TelegramSetup;
 use Rawphp\CapabilitiesMessaging\Support\LinkedUser;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers as H;
 
@@ -89,4 +90,48 @@ it('fail: unrecognized identity mode refuses code link binding [MSG-002]', funct
     $code = $id->issueLinkCode('user-9');
     expect($id->bindWithCode('tg-1', $code))->toBeNull()
         ->and($id->isLinked('tg-1'))->toBeFalse();
+});
+
+it('fail: allowlist with a duplicated telegram_user_id fails loudly instead of last-wins [MSG-002]', function () {
+    expect(fn () => H::identity([
+        'identity' => [
+            'mode' => 'allowlist',
+            'allowlist' => [
+                ['telegram_user_id' => 'tg-dup', 'laravel_user_id' => 'user-a'],
+                ['telegram_user_id' => 'tg-ok', 'laravel_user_id' => 'user-b'],
+                ['telegram_user_id' => 'tg-dup', 'laravel_user_id' => 'user-c'],
+            ],
+        ],
+    ]))->toThrow(RuntimeException::class, 'tg-dup');
+});
+
+it('fail: telegram-setup rejects an allowlist with a duplicated telegram_user_id [MSG-002]', function () {
+    $cfg = H::config(['identity' => ['allowlist' => [
+        ['telegram_user_id' => '42', 'laravel_user_id' => 'user-a'],
+        ['telegram_user_id' => 42, 'laravel_user_id' => 'user-b'],
+    ]]]);
+    $result = TelegramSetup::validate($cfg);
+    expect($result['ok'])->toBeFalse()
+        ->and($result['message'])->toContain('42');
+});
+
+it('edge: telegram-setup rejects a duplicated allowlist even when secret checks are skipped [MSG-002]', function () {
+    $cfg = H::config([
+        'skip_boot_checks' => true,
+        'identity' => ['allowlist' => [
+            ['telegram_user_id' => 'tg-1', 'laravel_user_id' => 'user-a'],
+            ['telegram_user_id' => 'tg-1', 'laravel_user_id' => 'user-a'],
+        ]],
+    ]);
+    expect(TelegramSetup::validate($cfg)['ok'])->toBeFalse();
+});
+
+it('edge: distinct allowlist telegram_user_ids pass telegram-setup [MSG-002]', function () {
+    $cfg = H::config(['identity' => ['allowlist' => [
+        ['telegram_user_id' => 'tg-1', 'laravel_user_id' => 'user-a'],
+        ['telegram_user_id' => 'tg-2', 'laravel_user_id' => 'user-a'],
+        ['telegram_user_id' => '', 'laravel_user_id' => 'user-x'],
+        ['telegram_user_id' => '', 'laravel_user_id' => 'user-y'],
+    ]]]);
+    expect(TelegramSetup::validate($cfg)['ok'])->toBeTrue();
 });
