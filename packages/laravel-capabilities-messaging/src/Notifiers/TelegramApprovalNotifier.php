@@ -16,6 +16,7 @@ use Throwable;
  *
  * Sends signed accept/reject buttons. Never executes capabilities or domain services.
  * Bot API delivery failures are audited as `approval.notify_failed`, then rethrown (D-010).
+ * telegram.enabled=false is a kill switch: nothing is sent, even with secrets set.
  */
 final class TelegramApprovalNotifier implements ApprovalNotifier
 {
@@ -41,6 +42,10 @@ final class TelegramApprovalNotifier implements ApprovalNotifier
      */
     public function notifyPending(array $approval): void
     {
+        if (! $this->config->telegramEnabled()) {
+            return;
+        }
+
         $this->config->requireTelegramSecrets();
 
         $chatId = $this->resolveChatId($approval);
@@ -97,6 +102,10 @@ final class TelegramApprovalNotifier implements ApprovalNotifier
      */
     public function editMessage(array $approval, string $text): void
     {
+        if (! $this->config->telegramEnabled()) {
+            return;
+        }
+
         $chatId = $this->resolveChatId($approval);
         $messageId = $approval['messaging']['message_id']
             ?? $approval['sent_message_id']
