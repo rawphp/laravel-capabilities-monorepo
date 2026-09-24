@@ -171,10 +171,17 @@ final class McpToolAdapterV1 implements McpToolAdapter
         // Caller always mcp; actor and mcp meta from credential resolver only (D-023).
         unset($options['caller'], $options['actor']);
 
+        $profile = $options['profile'] ?? $this->activeProfile;
+        $mcp = $resolved['mcp'];
+        // Audit which D-008 tool profile gated the call, beside the D-023 auth profile.
+        if (is_string($profile)) {
+            $mcp['tool_profile'] = $profile;
+        }
+
         $invokeOptions = array_merge($options, [
             'caller' => 'mcp',
             'actor' => $resolved['actor'],
-            'mcp' => $resolved['mcp'],
+            'mcp' => $mcp,
         ]);
 
         if (isset($resolved['tenant_id'])) {

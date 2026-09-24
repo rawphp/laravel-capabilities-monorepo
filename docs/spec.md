@@ -1297,7 +1297,7 @@ Every `run` receives a `CapabilityContext`:
 | `tenantId` / `teamId` / `organizationId` | Convenience accessors when the app uses those dimensions |
 | `requestId` / `traceId` | Correlation ids |
 | `agent` | Optional agent name / thread id when `caller=agent` |
-| `mcp` | When `caller=mcp`: `{ client_id?, auth_profile: user_pat\|integration\|user_delegated, host?, session? }` (D-023) |
+| `mcp` | When `caller=mcp`: `{ client_id?, auth_profile: user_pat\|integration\|user_delegated, host?, session?, tool_profile? }` (D-023; `tool_profile` = D-008 profile that gated the call, set by the adapter) |
 | `messaging` | Optional `{ channel: telegram, chat_id, … }` when the agent turn originated from chat |
 | `job` | Optional `{ queue, job_id, acting_as_type, acting_as_id }` when `caller=job` |
 | `credential` | Optional audit metadata: `{ type: oauth\|pat\|in_process, client_id?, ability? }` used to derive caller |
