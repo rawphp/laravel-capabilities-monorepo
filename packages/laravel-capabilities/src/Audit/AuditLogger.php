@@ -79,6 +79,8 @@ final class AuditLogger
             'request_id' => $state->requestId,
             // D-023: MCP auth profile + client_id on every MCP invoke when present.
             'mcp' => $ctx?->mcp(),
+            // Messaging ingress metadata (channel, chat_id, user_link_id) when present.
+            'messaging' => $ctx?->messaging(),
         ];
     }
 
