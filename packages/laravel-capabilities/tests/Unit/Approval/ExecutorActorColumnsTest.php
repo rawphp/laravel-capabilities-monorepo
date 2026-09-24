@@ -43,7 +43,7 @@ it('new approval rows have no executor actor until execution', function () {
 });
 
 it('records a user executor on successful execution', function () {
-    [$store, $row, $executor] = executorActorFixture();
+    [$store, $row, $executor] = executorActorFixture([fn () => CapabilityResult::ok(['ran' => true])]);
     $approver = new stdClass;
     $approver->id = 99;
 
