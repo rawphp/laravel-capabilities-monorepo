@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Rawphp\CapabilitiesAi\Domain\AcceptOutcome;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
+use Rawphp\CapabilitiesAi\Domain\TurnCapacityExceededException;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
 use RuntimeException;
 
@@ -29,12 +30,16 @@ final class ChatController
 
     public function storeMessage(Request $request, ConversationService $conversations): JsonResponse
     {
-        $ids = $conversations->createUserMessage(
-            content: (string) $request->input('content', ''),
-            conversationUlid: $request->input('conversation_ulid'),
-            userId: $request->input('user_id'),
-            appId: $request->input('app_id'),
-        );
+        try {
+            $ids = $conversations->createUserMessage(
+                content: (string) $request->input('content', ''),
+                conversationUlid: $request->input('conversation_ulid'),
+                userId: $request->input('user_id'),
+                appId: $request->input('app_id'),
+            );
+        } catch (TurnCapacityExceededException $e) {
+            return new JsonResponse(['message' => $e->getMessage(), 'outcome' => AcceptOutcome::KIND_RETRYABLE], 429);
+        }
 
         return new JsonResponse($ids, 201);
     }

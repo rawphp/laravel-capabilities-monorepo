@@ -140,6 +140,22 @@ it('destroyConversation 409 when active turns and 200 when closed', function () 
         ->and($ok->getData(true)['closed'] ?? null)->toBeTrue();
 });
 
+it('storeMessage returns 201 with ids, then 429 retryable at the turn ceiling', function () {
+    $progress = bootHttpSqlite();
+    $conversations = new ConversationService(static fn ($j) => null, $progress, maxConcurrentTurns: 1);
+    $controller = new ChatController;
+
+    $created = $controller->storeMessage(Request::create('/', 'POST', ['content' => 'one']), $conversations);
+    expect($created->getStatusCode())->toBe(201)
+        ->and($created->getData(true))->toHaveKey('turn_ulid');
+
+    $busy = $controller->storeMessage(Request::create('/', 'POST', ['content' => 'two']), $conversations);
+    expect($busy->getStatusCode())->toBe(429)
+        ->and($busy->getData(true)['outcome'])->toBe('retryable')
+        ->and($busy->getData(true)['message'])->toContain('retry later')
+        ->and($busy->getData(true))->not->toHaveKey('turn_ulid');
+});
+
 it('controller source delegates without Eloquent creates', function () {
     $src = file_get_contents(dirname(__DIR__, 3).'/src/Http/ChatController.php') ?: '';
     expect($src)->toContain('TurnService')

@@ -19,12 +19,14 @@ final class ConversationService
 {
     /**
      * @param  callable(object): mixed  $dispatch  Bus dispatch callable (never runs job inline in tests)
+     * @param  int  $maxConcurrentTurns  Ceiling on queued + running turns across all conversations; 0 = unlimited
      */
     public function __construct(
         private readonly mixed $dispatch,
         private readonly ProgressStore $progress,
         private readonly int $claimTtl = Package::DEFAULT_CLAIM_TTL,
         private readonly bool $proposalsEnabled = true,
+        private readonly int $maxConcurrentTurns = 0,
     ) {
         if (! is_callable($this->dispatch)) {
             throw new \InvalidArgumentException('dispatch must be callable');
@@ -32,10 +34,15 @@ final class ConversationService
         if ($this->claimTtl <= 0) {
             throw new \InvalidArgumentException('claimTtl must be positive');
         }
+        if ($this->maxConcurrentTurns < 0) {
+            throw new \InvalidArgumentException('maxConcurrentTurns must be zero (unlimited) or positive');
+        }
     }
 
     /**
      * @return array{conversation_ulid: string, message_ulid: string, turn_ulid: string}
+     *
+     * @throws TurnCapacityExceededException when queued + running turns are at the ceiling (nothing persisted)
      */
     public function createUserMessage(
         string $content,
@@ -43,6 +50,8 @@ final class ConversationService
         ?string $userId = null,
         ?string $appId = null,
     ): array {
+        $this->assertTurnCapacity();
+
         $conversation = $conversationUlid
             ? Conversation::query()->where('ulid', $conversationUlid)->firstOrFail()
             : Conversation::query()->create([
@@ -163,6 +172,24 @@ final class ConversationService
             'status' => 'closed',
             'closed' => true,
         ];
+    }
+
+    /**
+     * Soft ceiling: count-then-insert is not atomic, so concurrent creates may overshoot slightly.
+     */
+    private function assertTurnCapacity(): void
+    {
+        if ($this->maxConcurrentTurns === 0) {
+            return;
+        }
+
+        $active = Turn::query()
+            ->whereIn('status', [Turn::STATUS_QUEUED, Turn::STATUS_RUNNING])
+            ->count();
+
+        if ($active >= $this->maxConcurrentTurns) {
+            throw new TurnCapacityExceededException($this->maxConcurrentTurns);
+        }
     }
 
     private function ulid(): string

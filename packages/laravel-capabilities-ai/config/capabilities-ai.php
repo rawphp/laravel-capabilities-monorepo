@@ -100,6 +100,13 @@ return [
         'stale_running_grace_seconds' => (int) $env('CAPABILITIES_AI_REAPER_RUNNING_GRACE', 60),
     ],
 
+    /**
+     * Pressure valve: ceiling on queued + running turns across all conversations.
+     * At the ceiling, new messages are refused (HTTP 429, outcome=retryable) with
+     * nothing persisted or dispatched. 0 = unlimited (default).
+     */
+    'max_concurrent_turns' => (int) $env('CAPABILITIES_AI_MAX_CONCURRENT_TURNS', 0),
+
     /** Max tool-call rounds per turn before force-complete/fail. */
     'max_tool_rounds' => (int) $env('CAPABILITIES_AI_MAX_TOOL_ROUNDS', 8),
 

@@ -238,7 +238,7 @@ final class ContainerBindings
 
     /**
      * @param  callable(object): mixed  $dispatch
-     * @param  array<string, mixed>  $config  capabilities-ai config slice (optional proposals.enabled)
+     * @param  array<string, mixed>  $config  capabilities-ai config slice (optional proposals.enabled, max_concurrent_turns)
      */
     public static function makeConversationService(
         callable $dispatch,
@@ -251,6 +251,7 @@ final class ContainerBindings
             $progress,
             $claimTtl,
             proposalsEnabled: (bool) ($config['proposals']['enabled'] ?? true),
+            maxConcurrentTurns: self::maxConcurrentTurnsFromConfig($config),
         );
     }
 
@@ -286,5 +287,18 @@ final class ContainerBindings
         $ttl = is_numeric($raw) ? (int) $raw : Package::DEFAULT_CLAIM_TTL;
 
         return $ttl > 0 ? $ttl : Package::DEFAULT_CLAIM_TTL;
+    }
+
+    /**
+     * Ceiling on queued + running turns; 0 (unlimited) when missing, non-numeric, or negative.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    public static function maxConcurrentTurnsFromConfig(array $config): int
+    {
+        $raw = $config['max_concurrent_turns'] ?? 0;
+        $max = is_numeric($raw) ? (int) $raw : 0;
+
+        return max($max, 0);
     }
 }

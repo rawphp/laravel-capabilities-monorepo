@@ -168,6 +168,7 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 |------------------|------|----------------|
 | `ModelNotFoundException` | **404** | history, showTurn, cancelTurn, turnEvents, destroyConversation |
 | `RuntimeException` (domain conflict) | **409** + `message` | cancelTurn, destroyConversation |
+| `TurnCapacityExceededException` (`max_concurrent_turns` reached) | **429** + `message`, `outcome: retryable` | storeMessage — nothing persisted or dispatched; resend later |
 | Success | **200** (message create **201**) | real service payload — not an empty stub |
 
 **turnEvents shape (high level):**
