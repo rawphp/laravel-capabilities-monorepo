@@ -619,7 +619,8 @@ final class InvokePipeline
         // tool-call count (agent tools, AI turns as caller=job). Only ever narrows.
         if (array_key_exists('agent_turn_tool_calls', $state->options)) {
             $calls = (int) $state->options['agent_turn_tool_calls'];
-            $budget = $this->agentTurnBudget();
+            $perTurn = $state->definition->rateLimit['max_tool_calls_per_turn'] ?? null;
+            $budget = $this->agentTurnBudget()->narrowedTo(is_numeric($perTurn) ? (int) $perTurn : null);
             if ($budget->exhausted($calls)) {
                 $stop = $budget->stopMessage($calls);
 
