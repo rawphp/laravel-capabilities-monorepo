@@ -120,17 +120,19 @@ func Logout(store *Store, profile string) error {
 	return store.DeleteToken(profile)
 }
 
-// CommandsRequiringAuth lists subcommands that must have a token.
-var CommandsRequiringAuth = []string{"run", "catalog", "describe", "approvals"}
+// CommandsWithoutAuth lists subcommands that never need a token. Every other
+// command requires one (fail closed), so a new server-touching subcommand is
+// guarded unless it is deliberately exempted here.
+var CommandsWithoutAuth = []string{"help", "version", "self-update", "auth"}
 
 // RequiresAuth reports whether command needs a stored token.
 func RequiresAuth(command string) bool {
-	for _, c := range CommandsRequiringAuth {
+	for _, c := range CommandsWithoutAuth {
 		if c == command {
-			return true
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 // GuardAuth returns ErrNoToken when the profile lacks credentials.
