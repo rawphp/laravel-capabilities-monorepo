@@ -203,12 +203,10 @@ final class ApprovalExecutor
         }
 
         $this->runCount++;
-        $raw = null;
-        if ($this->domainExecutor !== null) {
-            $raw = ($this->domainExecutor)($row, $actor);
-        } else {
-            $raw = CapabilityResult::ok(['executed' => true, 'approval_id' => $id]);
-        }
+        // No executor bound → fail closed; never report a run that did not happen.
+        $raw = $this->domainExecutor !== null
+            ? ($this->domainExecutor)($row, $actor)
+            : CapabilityResult::failure('not_configured', 'No approval executor bound; capability was not run.');
 
         $result = $raw instanceof CapabilityResult
             ? $raw

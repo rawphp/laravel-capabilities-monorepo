@@ -166,9 +166,48 @@ it('accept fails closed when conversation has no user_id', function () {
     $proposal = seedPendingProposal(withUser: false);
     $bus = proposalBus();
     $service = makeProposalService($bus);
+    $out = $service->accept($proposal->ulid);
+    expect($out->kind)->toBe(AcceptOutcome::KIND_REFUSE)
+        ->and($out->httpStatus)->toBe(403)
+        ->and($out->error['code'] ?? null)->toBe('forbidden')
+        ->and($out->message)->toContain('user_id')
+        ->and($out->proposal->status)->toBe(Proposal::STATUS_FAILED)
+        ->and($bus->invokes)->toBe(0);
+});
+
+it('accept marks failed (not stuck accepting) when conversation user was deleted after proposal', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    ProposalServiceTestUser::query()->delete();
+    $bus = proposalBus();
+    $service = makeProposalService($bus);
+
+    $out = $service->accept($proposal->ulid);
+    expect($out->kind)->toBe(AcceptOutcome::KIND_REFUSE)
+        ->and($out->httpStatus)->toBe(403)
+        ->and($out->proposal->status)->toBe(Proposal::STATUS_FAILED)
+        ->and($out->proposal->last_error)->toContain('does not resolve to a user')
+        ->and($bus->invokes)->toBe(0);
+
+    $again = $service->accept($proposal->ulid);
+    expect($again->kind)->toBe(AcceptOutcome::KIND_FAILED)
+        ->and($bus->invokes)->toBe(0);
+});
+
+it('actor resolver misconfiguration leaves proposal accepting for re-drive after config fix', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $bus = proposalBus();
+    $service = new ProposalService($bus, new AlwaysReadyIdempotency, new ResolveConversationActor('NoSuchUserModel'));
+
     expect(fn () => $service->accept($proposal->ulid))
-        ->toThrow(RuntimeException::class, 'user_id');
-    expect($bus->invokes)->toBe(0);
+        ->toThrow(RuntimeException::class, 'does not exist');
+    expect(Proposal::query()->where('ulid', $proposal->ulid)->value('status'))->toBe(Proposal::STATUS_ACCEPTING)
+        ->and($bus->invokes)->toBe(0);
+
+    $fixed = makeProposalService($bus)->accept($proposal->ulid);
+    expect($fixed->kind)->toBe(AcceptOutcome::KIND_ACCEPTED)
+        ->and($bus->invokes)->toBe(1);
 });
 
 it('re-accept is idempotent without second bus invoke', function () {
