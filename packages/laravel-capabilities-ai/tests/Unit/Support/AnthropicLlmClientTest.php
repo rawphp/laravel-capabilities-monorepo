@@ -14,6 +14,7 @@ use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Support\AnthropicLlmClient;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 use Rawphp\CapabilitiesAi\Support\LlmClientDefaults;
+use Rawphp\CapabilitiesAi\Support\RetryableLlmException;
 
 function bootAnthropicHttp(): void
 {
@@ -201,6 +202,81 @@ it('maxRetries 0 turns 429 retry off', function () {
 
     Http::assertSentCount(1);
     Sleep::assertNeverSlept();
+});
+
+it('throws RetryableLlmException for transient statuses with Retry-After seconds', function (int $status) {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'error' => ['message' => 'slow down'],
+        ], $status, ['Retry-After' => '17']),
+    ]);
+
+    $client = new AnthropicLlmClient('test-key');
+    try {
+        $client->complete([['role' => 'user', 'content' => 'hi']]);
+        $this->fail('expected RetryableLlmException');
+    } catch (RetryableLlmException $e) {
+        expect($e->getMessage())->toBe("Anthropic API error: {$status} (slow down)")
+            ->and($e->status)->toBe($status)
+            ->and($e->retryAfterSeconds)->toBe(17);
+    }
+})->with([408, 409, 429, 500, 503, 529]);
+
+it('leaves retryAfterSeconds null when Retry-After is missing or not seconds', function (array $headers) {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response(['error' => ['message' => 'overloaded']], 529, $headers),
+    ]);
+
+    $client = new AnthropicLlmClient('test-key');
+    try {
+        $client->complete([['role' => 'user', 'content' => 'hi']]);
+        $this->fail('expected RetryableLlmException');
+    } catch (RetryableLlmException $e) {
+        expect($e->retryAfterSeconds)->toBeNull();
+    }
+})->with([
+    'missing' => [[]],
+    'http-date' => [['Retry-After' => 'Wed, 21 Oct 2026 07:28:00 GMT']],
+]);
+
+it('keeps permanent HTTP errors as plain RuntimeException (not retryable)', function (int $status) {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response(['error' => ['message' => 'nope']], $status),
+    ]);
+
+    $client = new AnthropicLlmClient('test-key');
+    try {
+        $client->complete([['role' => 'user', 'content' => 'hi']]);
+        $this->fail('expected RuntimeException');
+    } catch (RuntimeException $e) {
+        expect($e)->not->toBeInstanceOf(RetryableLlmException::class)
+            ->and($e->getMessage())->toBe("Anthropic API error: {$status} (nope)");
+    }
+})->with([400, 401, 403, 404, 413]);
+
+it('wraps connection failures as RetryableLlmException without a status', function () {
+    bootAnthropicHttp();
+
+    Http::fake(function (): never {
+        throw new ConnectionException('cURL error 28: timed out');
+    });
+
+    $client = new AnthropicLlmClient('test-key');
+    try {
+        $client->complete([['role' => 'user', 'content' => 'hi']]);
+        $this->fail('expected RetryableLlmException');
+    } catch (RetryableLlmException $e) {
+        expect($e->getMessage())->toBe('Anthropic API connection error: cURL error 28: timed out')
+            ->and($e->status)->toBeNull()
+            ->and($e->retryAfterSeconds)->toBeNull()
+            ->and($e->getPrevious())->toBeInstanceOf(ConnectionException::class);
+    }
 });
 
 it('maps package tool defs to Anthropic tools with input_schema and parses tool_use id', function () {
@@ -706,7 +782,7 @@ it('counts an HTTP error as a failure and ends the span with error before throwi
         ->and($spans[0]['attributes'])->toMatchArray(['http_status' => 429]);
 });
 
-it('counts a transport failure and rethrows it unchanged', function () {
+it('counts a transport failure and rethrows it as retryable', function () {
     bootAnthropicHttp();
 
     Http::fake(function () {
@@ -717,8 +793,13 @@ it('counts a transport failure and rethrows it unchanged', function () {
     $tracer = new InMemoryTracer;
     $client = new AnthropicLlmClient('test-key', model: 'claude-test', metrics: $metrics, tracer: $tracer);
 
-    expect(fn () => $client->complete([['role' => 'user', 'content' => 'hi']]))
-        ->toThrow(ConnectionException::class, 'connection refused');
+    try {
+        $client->complete([['role' => 'user', 'content' => 'hi']]);
+        $this->fail('expected RetryableLlmException');
+    } catch (RetryableLlmException $e) {
+        expect($e->getPrevious())->toBeInstanceOf(ConnectionException::class)
+            ->and($e->getPrevious()->getMessage())->toBe('connection refused');
+    }
 
     expect($metrics->get(AnthropicLlmClient::METRIC_FAILURES, [
         'provider' => 'anthropic',

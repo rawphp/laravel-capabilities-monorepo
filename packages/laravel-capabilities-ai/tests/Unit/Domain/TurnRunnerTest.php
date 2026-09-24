@@ -23,6 +23,7 @@ use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
+use Rawphp\CapabilitiesAi\Support\RetryableLlmException;
 
 /**
  * Minimal user model for TurnRunner principal resolution unit tests.
@@ -960,4 +961,102 @@ it('records usage on a turn cancelled mid-run without overwriting cancelled', fu
         ->and($stored->status)->toBe(Turn::STATUS_CANCELLED)
         ->and($stored->usage[0]['input_tokens'])->toBe(7)
         ->and($stored->usage[0]['output_tokens'])->toBe(3);
+});
+
+/**
+ * LlmClient that always throws the given exception from complete().
+ */
+function throwingLlm(Throwable $e): LlmClient
+{
+    return new class($e) implements LlmClient
+    {
+        public function __construct(private readonly Throwable $e) {}
+
+        public function supportsToolRounds(): bool
+        {
+            return true;
+        }
+
+        public function complete(array $messages, array $tools = []): array
+        {
+            throw $this->e;
+        }
+    };
+}
+
+function runnerFor(LlmClient $llm, ArrayProgressStore $progress): TurnRunner
+{
+    return new TurnRunner(
+        claim: new TurnClaim,
+        llm: $llm,
+        context: new class implements ConversationContextProvider
+        {
+            public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+            {
+                return [['role' => 'user', 'content' => 'hi']];
+            }
+        },
+        tools: new class implements ToolCatalog
+        {
+            public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+            {
+                return [];
+            }
+        },
+        progress: $progress,
+    );
+}
+
+it('marks a retryable LLM failure distinguishably and rethrows the typed exception', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurn();
+    $progress = new ArrayProgressStore;
+    $e = new RetryableLlmException('Anthropic API error: 529 (Overloaded)', status: 529, retryAfterSeconds: 30);
+
+    expect(fn () => runnerFor(throwingLlm($e), $progress)->run($turnUlid))
+        ->toThrow(RetryableLlmException::class, 'Anthropic API error: 529');
+
+    $turn = Turn::query()->where('ulid', $turnUlid)->firstOrFail();
+    $errors = array_values(array_filter(
+        $progress->since($turnUlid, 0),
+        static fn (array $ev): bool => ($ev['kind'] ?? '') === 'error'
+    ));
+    expect($turn->status)->toBe(Turn::STATUS_FAILED)
+        ->and($turn->error)->toBe('Anthropic API error: 529 (Overloaded)')
+        ->and($errors)->toHaveCount(1)
+        ->and($errors[0]['data'])->toBe([
+            'message' => 'Anthropic API error: 529 (Overloaded)',
+            'retryable' => true,
+            'retry_after_seconds' => 30,
+        ]);
+});
+
+it('omits retry_after_seconds on a retryable failure without a hint', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurn();
+    $progress = new ArrayProgressStore;
+
+    expect(fn () => runnerFor(throwingLlm(new RetryableLlmException('timed out')), $progress)->run($turnUlid))
+        ->toThrow(RetryableLlmException::class);
+
+    $error = array_values(array_filter(
+        $progress->since($turnUlid, 0),
+        static fn (array $ev): bool => ($ev['kind'] ?? '') === 'error'
+    ))[0];
+    expect($error['data'])->toBe(['message' => 'timed out', 'retryable' => true]);
+});
+
+it('marks a permanent LLM failure as not retryable', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurn();
+    $progress = new ArrayProgressStore;
+
+    expect(fn () => runnerFor(throwingLlm(new RuntimeException('Anthropic API error: 400 (bad)')), $progress)->run($turnUlid))
+        ->toThrow(RuntimeException::class, 'Anthropic API error: 400');
+
+    $error = array_values(array_filter(
+        $progress->since($turnUlid, 0),
+        static fn (array $ev): bool => ($ev['kind'] ?? '') === 'error'
+    ))[0];
+    expect($error['data'])->toBe(['message' => 'Anthropic API error: 400 (bad)', 'retryable' => false]);
 });

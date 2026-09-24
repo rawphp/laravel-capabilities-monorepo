@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rawphp\CapabilitiesAi\Contracts;
 
 use Rawphp\CapabilitiesAi\Support\LlmClientDefaults;
+use Rawphp\CapabilitiesAi\Support\RetryableLlmException;
 
 /**
  * Pluggable LLM client. Hosts may resolve without a Conversation (MVS jobs).
@@ -20,6 +21,11 @@ use Rawphp\CapabilitiesAi\Support\LlmClientDefaults;
  * - TurnRunner appends follow-up messages with `role=tool`, `content` (JSON result),
  *   and matching `tool_call_id` (+ `id`) for each invoke so providers can correlate
  *   tool_result blocks with the original tool_use / tool_call.
+ *
+ * Failures: throw {@see RetryableLlmException} for transient provider errors (rate limit,
+ * overload, 5xx, connection) once the client's own retries are spent. TurnRunner still fails
+ * the turn but flags its progress `error` event `retryable: true` so callers can try again
+ * instead of treating it as dead. Any other throwable is permanent (`retryable: false`).
  */
 interface LlmClient
 {
@@ -54,6 +60,8 @@ interface LlmClient
      *         (required for multi-round correlation; FakeLlmClient always normalizes it).
      *         `usage` is optional provider token accounting for this call; TurnRunner
      *         stores it per round on the Turn alongside its own measured `latency_ms`.
+     *
+     * @throws RetryableLlmException transient provider failure (caller may try again later)
      */
     public function complete(array $messages, array $tools = []): array;
 }

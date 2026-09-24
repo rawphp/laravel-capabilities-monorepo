@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Support;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
@@ -133,7 +134,11 @@ final class AnthropicLlmClient implements LlmClient
             $payload['tools'] = $this->mapTools($tools);
         }
 
-        $response = $this->send($payload);
+        try {
+            $response = $this->send($payload);
+        } catch (ConnectionException $e) {
+            throw new RetryableLlmException('Anthropic API connection error: '.$e->getMessage(), previous: $e);
+        }
 
         if (! $response->successful()) {
             $detail = '';
@@ -144,10 +149,18 @@ final class AnthropicLlmClient implements LlmClient
             if ($detail === '') {
                 $detail = substr($response->body(), 0, 200);
             }
-            throw new RuntimeException(
-                'Anthropic API error: '.$response->status()
-                .($detail !== '' ? ' ('.$detail.')' : '')
-            );
+            $status = $response->status();
+            $message = 'Anthropic API error: '.$status.($detail !== '' ? ' ('.$detail.')' : '');
+            // Timeout, lock conflict, rate limit, and server/overload (529) errors may clear on re-drive.
+            if (in_array($status, [408, 409, 429], true) || $status >= 500) {
+                $retryAfter = trim($response->header('Retry-After'));
+                throw new RetryableLlmException(
+                    $message,
+                    status: $status,
+                    retryAfterSeconds: ctype_digit($retryAfter) ? (int) $retryAfter : null,
+                );
+            }
+            throw new RuntimeException($message);
         }
 
         $json = $response->json();

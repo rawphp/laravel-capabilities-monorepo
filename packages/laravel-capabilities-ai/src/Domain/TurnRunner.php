@@ -17,6 +17,7 @@ use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\ProposalFenceExtractor;
 use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
+use Rawphp\CapabilitiesAi\Support\RetryableLlmException;
 use RuntimeException;
 
 /**
@@ -205,10 +206,12 @@ final class TurnRunner
             $turn->usage = $usage ?? null;
             $turn->finished_at = Carbon::now();
             $turn->save();
-            $this->progress->append($turnUlid, [
-                'kind' => 'error',
-                'data' => ['message' => $e->getMessage()],
-            ]);
+            // retryable=true: transient LLM failure; the turn stays failed, but a caller may try again later.
+            $error = ['message' => $e->getMessage(), 'retryable' => $e instanceof RetryableLlmException];
+            if ($e instanceof RetryableLlmException && $e->retryAfterSeconds !== null) {
+                $error['retry_after_seconds'] = $e->retryAfterSeconds;
+            }
+            $this->progress->append($turnUlid, ['kind' => 'error', 'data' => $error]);
             $this->progress->append($turnUlid, [
                 'kind' => 'terminal',
                 'data' => ['status' => Turn::STATUS_FAILED],
