@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 use Illuminate\Database\Capsule\Manager as Capsule;
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Database\QueryException;
 use Rawphp\Capabilities\Persistence\QueryTableGateway;
 use Rawphp\Capabilities\Persistence\TableGateway;
 
@@ -313,4 +314,31 @@ it('updateWhereLeaseFree claims only when lease null empty or expired', function
         ->and($secondOnFree)->toBeNull()
         ->and($gateway->find('lease-1')['execution_attempt'])->toBe(1)
         ->and($gateway->find('lease-2')['execution_attempt'])->toBe(0);
+});
+
+it('insertIfAbsent inserts once and returns null when the unique identity is already held', function () {
+    [, $gateway] = queryTableGatewayFixture(table: 'capabilities_idempotency');
+    $identity = [
+        'tenant_id' => 't1',
+        'actor_type' => 'user',
+        'actor_id' => '7',
+        'capability_name' => 'create-invoice',
+        'idempotency_key' => 'k1',
+    ];
+
+    $first = $gateway->insertIfAbsent($identity, ['status' => 'processing']);
+    $second = $gateway->insertIfAbsent($identity, ['status' => 'completed']);
+
+    expect($first)->not->toBeNull()
+        ->and($first['status'])->toBe('processing')
+        ->and($second)->toBeNull()
+        ->and($gateway->findWhere($identity))->toHaveCount(1)
+        ->and($gateway->findWhere($identity)[0]['status'])->toBe('processing');
+});
+
+it('insertIfAbsent rethrows database errors other than a unique violation', function () {
+    [, $gateway] = queryTableGatewayFixture(table: 'capabilities_idempotency');
+
+    expect(fn () => $gateway->insertIfAbsent(['idempotency_key' => 'k1'], ['no_such_column' => 'x']))
+        ->toThrow(QueryException::class);
 });

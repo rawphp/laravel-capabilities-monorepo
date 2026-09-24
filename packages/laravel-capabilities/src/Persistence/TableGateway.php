@@ -19,6 +19,16 @@ interface TableGateway
     public function insert(array $row): array;
 
     /**
+     * Insert unless a row already holds the composite $identity (the unique
+     * index is the arbiter in production — no read-then-write window).
+     *
+     * @param  array<string, mixed>  $identity
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>|null null when the identity is already held
+     */
+    public function insertIfAbsent(array $identity, array $row): ?array;
+
+    /**
      * @return array<string, mixed>|null
      */
     public function find(string $id): ?array;

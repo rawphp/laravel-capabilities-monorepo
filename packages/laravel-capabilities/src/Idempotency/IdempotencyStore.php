@@ -64,6 +64,34 @@ final class IdempotencyStore implements IdempotencyStoreContract
 
     public function put(array $record): array
     {
+        [$identity, $row] = $this->rowFrom($record);
+        $this->rows[$identity] = $row;
+
+        return $row;
+    }
+
+    /**
+     * In-process, so the check and the write cannot interleave with another claim.
+     */
+    public function claim(array $record): bool
+    {
+        [$identity, $row] = $this->rowFrom($record);
+        $holder = $this->rows[$identity] ?? null;
+        if ($holder !== null && ! $this->isExpired($holder)) {
+            return false;
+        }
+
+        $this->rows[$identity] = $row;
+
+        return true;
+    }
+
+    /**
+     * @param  array<string, mixed>  $record
+     * @return array{0: string, 1: array<string, mixed>}
+     */
+    private function rowFrom(array $record): array
+    {
         $tenantId = array_key_exists('tenant_id', $record)
             ? (is_string($record['tenant_id']) || $record['tenant_id'] === null
                 ? $record['tenant_id']
@@ -98,9 +126,7 @@ final class IdempotencyStore implements IdempotencyStoreContract
             'expires_at' => is_string($expiresAt) ? $expiresAt : null,
         ];
 
-        $this->rows[$this->identity($tenantId, $actorType, $actorId, $capabilityName, $key)] = $row;
-
-        return $row;
+        return [$this->identity($tenantId, $actorType, $actorId, $capabilityName, $key), $row];
     }
 
     public function update(
