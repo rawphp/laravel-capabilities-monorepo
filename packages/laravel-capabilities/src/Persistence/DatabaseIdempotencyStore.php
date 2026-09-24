@@ -10,7 +10,8 @@ use Rawphp\Capabilities\Contracts\IdempotencyStore;
  * Production-oriented IdempotencyStore via {@see TableGateway} (D-005).
  *
  * Identity: (tenant_id, actor_type, actor_id, capability_name, idempotency_key).
- * Null tenant is stored as empty string for unique-index safety.
+ * Null tenant is stored as empty string for unique-index safety, so a literal
+ * '' tenant is rejected rather than merged into the null-tenant row.
  */
 final class DatabaseIdempotencyStore implements IdempotencyStore
 {
@@ -131,6 +132,10 @@ final class DatabaseIdempotencyStore implements IdempotencyStore
         string $capabilityName,
         string $key,
     ): array {
+        if ($tenantId === '') {
+            throw new \InvalidArgumentException('Idempotency tenant id must be null or non-empty; \'\' would share the null-tenant row (D-005).');
+        }
+
         return [
             'tenant_id' => $tenantId ?? '',
             'actor_type' => $actorType,

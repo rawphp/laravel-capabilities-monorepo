@@ -6,6 +6,8 @@ namespace Rawphp\Capabilities\Contracts;
  * Stores mutating invoke outcomes by composite key (D-005).
  *
  * Identity: (tenant/scope, actor, capability, idempotency_key).
+ * Tenant is null (no tenant) or non-empty; drivers reject '' so it can never
+ * share the null-tenant row.
  *
  * Note: the production scaffold class
  * {@see \Rawphp\Capabilities\Idempotency\IdempotencyStore} is a separate type
