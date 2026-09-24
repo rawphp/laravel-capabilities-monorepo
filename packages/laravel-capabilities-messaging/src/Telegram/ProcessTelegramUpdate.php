@@ -3,6 +3,7 @@
 namespace Rawphp\CapabilitiesMessaging\Telegram;
 
 use Rawphp\Capabilities\Contracts\CapabilityBus;
+use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Support\CapabilityContext;
 use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
 use Rawphp\CapabilitiesMessaging\MessagingConfig;
@@ -19,6 +20,9 @@ use Throwable;
  * → tool_calls_registry → conversation_reply
  *
  * Webhook verify + queue happen earlier (controller). Never domain run outside registry.
+ *
+ * D-013: an optional core RateLimiter caps agent turns per chat_id per minute
+ * (telegram.turns_per_minute), checked before identity so a flooding chat costs nothing.
  */
 final class ProcessTelegramUpdate
 {
@@ -60,6 +64,7 @@ final class ProcessTelegramUpdate
         private readonly ?TelegramBotClient $bot = null,
         ?callable $profileResolver = null,
         ?callable $agentRunner = null,
+        private readonly ?RateLimiter $turnLimiter = null,
     ) {
         $this->profileResolver = $profileResolver;
         $this->agentRunner = $agentRunner;
@@ -189,6 +194,8 @@ final class ProcessTelegramUpdate
         if ($failAt === 'unknown_chat' || $chatId === null) {
             throw new RuntimeException('unknown_chat');
         }
+
+        $this->enforceChatTurnLimit((string) $chatId);
 
         $telegramUserId = TelegramUpdateParser::telegramUserId($update);
         $topicId = TelegramUpdateParser::topicId($update);
@@ -345,6 +352,23 @@ final class ProcessTelegramUpdate
     }
 
     /**
+     * D-013: cap agent turns per chat per minute, separate from the in-turn tool budget.
+     */
+    private function enforceChatTurnLimit(string $chatId): void
+    {
+        $max = $this->config->turnsPerMinute();
+        if ($this->turnLimiter === null || $max <= 0) {
+            return;
+        }
+
+        $key = 'rl:telegram:chat:'.$chatId;
+        if ($this->turnLimiter->tooManyAttempts($key, $max)) {
+            throw new RuntimeException('rate_limited');
+        }
+        $this->turnLimiter->hit($key, 60);
+    }
+
+    /**
      * @return list<string>
      */
     private function resolveProfileTools(string $profile): array
@@ -388,6 +412,7 @@ final class ProcessTelegramUpdate
         foreach ([
             'invalid_update_shape',
             'unknown_chat',
+            'rate_limited',
             'identity_unresolved',
             'thread_store',
             'ingress_failure',

@@ -65,6 +65,7 @@ Config file: `config/capabilities-messaging.php` (merged from the package).
 | `telegram.webhook_secret` | Webhook verification secret | `TELEGRAM_WEBHOOK_SECRET` |
 | `telegram.callback_secret` | Callback signing secret | `TELEGRAM_CALLBACK_SECRET` or webhook secret |
 | `telegram.callback_ttl_seconds` | Callback freshness | `TELEGRAM_CALLBACK_TTL_SECONDS` (900) |
+| `telegram.turns_per_minute` | D-013 agent turns per chat per minute (core `RateLimiter`; `0` disables). Over the cap → `rate_limited`, no reply | `CAPABILITIES_MESSAGING_TURNS_PER_MINUTE` (20) |
 | `agent_profile` | D-008 profile for bot tool list — **never full catalog** | `CAPABILITIES_MESSAGING_AGENT_PROFILE` (default `support`) |
 | `identity.mode` | `code_link` or `allowlist` | `CAPABILITIES_MESSAGING_IDENTITY_MODE` |
 | `identity.code_ttl_seconds` | Link code lifetime | `CAPABILITIES_MESSAGING_LINK_CODE_TTL` (600) |
