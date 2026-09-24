@@ -53,6 +53,9 @@ final class CapabilityDefinitionBuilder
 
     private bool|string|null $idempotent = null;
 
+    /** @var list<string> */
+    private array $idempotencyKeyFields = [];
+
     /** @var array<string, mixed>|bool|null */
     private array|bool|null $audit = null;
 
@@ -234,6 +237,18 @@ final class CapabilityDefinitionBuilder
     }
 
     /**
+     * Input fields hashed into an idempotency key when the caller supplies none (D-005).
+     *
+     * @param  list<string>  $fields
+     */
+    public function idempotencyKeyFields(array $fields): self
+    {
+        $this->idempotencyKeyFields = $fields;
+
+        return $this;
+    }
+
+    /**
      * @param  array<string, mixed>|bool|null  $audit
      */
     public function audit(array|bool|null $audit): self
@@ -306,6 +321,7 @@ final class CapabilityDefinitionBuilder
             canDiscover: $this->canDiscover,
             cliDomain: $this->cliDomain,
             cliVerb: $this->cliVerb,
+            idempotencyKeyFields: $this->idempotencyKeyFields,
         );
     }
 

@@ -2314,6 +2314,8 @@ Default **TTL**: 24 hours (config: `capabilities.idempotency.ttl_hours`). Expire
 
 Catalog metadata may expose `"idempotent": "optional" | "required" | "none"` so CLI/agents know policy.
 
+**Natural-key opt-in:** a capability may declare `idempotencyKeyFields: ['external_ref', …]` (attribute or `->idempotencyKeyFields([...])`). When the caller sends no key and every named field is present, the server derives `derived:<sha256 of those fields>` and follows the normal keyed path (replay / 409 on a different payload); this also satisfies `'required'`. An explicit key always wins; a missing field falls back to the no-key path. This is per-capability and author-declared, not the refused global input-only dedupe. Not allowed with `readOnly` or `'none'`.
+
 **Default documentation stance:** mutating capabilities are **non-idempotent unless a key is supplied**. Prefer CLI always supplying a key; prefer agents generating one key per user-visible intent.
 
 #### CLI rules

@@ -202,6 +202,7 @@ final class IdempotencyHelpers
             ->input($opts['input'] ?? CreateInvoiceInput::class)
             ->output($opts['output'] ?? CreateInvoiceResult::class)
             ->idempotent($opts['idempotent'] ?? 'optional')
+            ->idempotencyKeyFields($opts['idempotencyKeyFields'] ?? [])
             ->allowSystemCallers($opts['allowSystemCallers'] ?? true)
             ->audit(true);
 
