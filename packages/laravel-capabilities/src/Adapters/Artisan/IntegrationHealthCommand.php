@@ -20,7 +20,7 @@ class IntegrationHealthCommand extends Command
 {
     protected $signature = 'capabilities:integration-health';
 
-    protected $description = 'Diagnose host product readiness (bindings, AI-chat, MCP tools).';
+    protected $description = 'Diagnose host product readiness (bindings, audit writer, AI-chat, MCP tools).';
 
     public function __construct(
         private readonly ?IntegrationHealthChecker $checker = null,
@@ -38,6 +38,7 @@ class IntegrationHealthCommand extends Command
             $this->mcpToolCountCallback(),
             $this->idempotencyReadinessClassCallback(),
             $this->progressStoreReadyCallback(),
+            $this->auditWriterWiredCallback(),
         );
 
         $this->render($report);
@@ -179,6 +180,26 @@ class IntegrationHealthCommand extends Command
             } catch (Throwable) {
                 return false;
             }
+        };
+    }
+
+    /**
+     * True when the live registry has an AuditWriter (not merely a container binding).
+     *
+     * @return callable(): bool
+     */
+    private function auditWriterWiredCallback(): callable
+    {
+        return function (): bool {
+            $app = $this->laravel;
+            if (! $app->bound(CapabilityRegistry::class)) {
+                return false;
+            }
+
+            /** @var CapabilityRegistry $registry */
+            $registry = $app->make(CapabilityRegistry::class);
+
+            return $registry->audit() !== null;
         };
     }
 
