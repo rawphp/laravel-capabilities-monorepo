@@ -39,6 +39,8 @@ function messagingCoreImportAllowed(string $fqcn): bool
         'Rawphp\\Capabilities\\Support\\CapabilityResult',
         'Rawphp\\Capabilities\\Support\\CapabilityContext',
         'Rawphp\\Capabilities\\Support\\CapabilityData',
+        // D-018 error-code vocabulary (static, no state) — shared by inbound API and outbound Bot API.
+        'Rawphp\\Capabilities\\Support\\ErrorCodeMap',
     ];
 
     return in_array($fqcn, $publicDtos, true);
