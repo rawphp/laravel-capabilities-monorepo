@@ -736,6 +736,8 @@ final class CapabilityRegistry implements CapabilityBus
         }
 
         $options['caller'] = $options['caller'] ?? $surface;
+        // The enforced profile, not a caller claim, is what audit records (D-008 / D-010).
+        $options['tool_profile'] = $profile;
 
         return $this->invoke($name, $input, $options);
     }

@@ -128,6 +128,14 @@ Documentation honesty (monorepo `docs/spec.md` + package user-guide alignment): 
 
 ### Added
 
+#### Audit entry `tool_profile` (D-008 / D-010)
+
+Every audit entry now carries `tool_profile`: the tool profile the surface gated the invoke under.
+`runCapabilityInProfile()` stamps the **enforced** profile (overwriting any caller-supplied
+`tool_profile` option), so agent and MCP adapter invokes record it; sibling surfaces that gate
+tools themselves (messaging) pass it as an invoke option. `null` for invokes outside a profile
+(HTTP, CLI, job).
+
 #### Host integration diagnostics + MCP fail policy (UR-062 / D-024)
 
 Package seams for host product readiness (companion AI package owns queue/reaper/proposals/readiness defaults):
