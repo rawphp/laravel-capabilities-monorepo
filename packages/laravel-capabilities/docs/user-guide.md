@@ -92,7 +92,7 @@ Full teaching sample (monorepo): [First capability tutorial](https://github.com/
 
 ### Input / output DTOs
 
-Extend `Rawphp\Capabilities\Support\CapabilityData`. Use `#[Field(...)]` attributes for JSON Schema-facing constraints. Schema on the wire comes from types (portable for CLI/catalog), not from Laravel rule strings alone.
+Extend `Rawphp\Capabilities\Support\CapabilityData`. Use `#[Field(...)]` attributes for JSON Schema-facing constraints. Schema on the wire comes from types (portable for CLI/catalog), not from Laravel rule strings alone. Mark personal or secret fields with `#[Field(sensitive: true)]` (emitted as `writeOnly: true`); the audit log stores `[REDACTED]` for them, including inside nested DTOs and array items, in addition to keys that contain `password`, `secret`, `token`, `apikey` or `authorization`.
 
 ## Invoke
 

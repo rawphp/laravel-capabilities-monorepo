@@ -52,7 +52,7 @@ final class InvokeResultFinalizer
         }
 
         if ($auditDeny || $afterRun || $outputInvalid) {
-            $this->recordAudit($state, success: false, failure: $result);
+            $this->recordAudit($state, success: false, failure: $result, force: $outputInvalid);
             $this->emitEvents($state, success: false, failure: $result);
         } elseif ($outputInvalid || $afterRun) {
             // already handled
@@ -194,8 +194,8 @@ final class InvokeResultFinalizer
         ];
     }
 
-    private function recordAudit(InvokeState $state, bool $success, ?CapabilityResult $failure = null): ?CapabilityResult
+    private function recordAudit(InvokeState $state, bool $success, ?CapabilityResult $failure = null, bool $force = false): ?CapabilityResult
     {
-        return $this->auditStage->record($state, $success, $failure);
+        return $this->auditStage->record($state, $success, $failure, $force);
     }
 }

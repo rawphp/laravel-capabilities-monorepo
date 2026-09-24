@@ -417,6 +417,9 @@ abstract class CapabilityData implements SchemaProvider
         if ($field->format !== null) {
             $schema['format'] = $field->format;
         }
+        if ($field->sensitive) {
+            $schema['writeOnly'] = true;
+        }
 
         return $schema;
     }
