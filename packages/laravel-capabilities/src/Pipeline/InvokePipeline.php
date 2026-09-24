@@ -134,7 +134,7 @@ final class InvokePipeline
 
             $early = $this->stageRateLimit($state, $forced);
             if ($early !== null) {
-                return $this->results()->finishFailure($state, $early);
+                return $this->results()->finishFailure($state, $early, auditDeny: true);
             }
 
             // ── run ─────────────────────────────────────────────────────

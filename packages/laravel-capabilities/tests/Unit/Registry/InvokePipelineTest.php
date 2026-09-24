@@ -239,6 +239,23 @@ it('happy: correct error envelope when stage rate_limit fails [PIPE-002]', funct
     expect($result->isOk())->toBeFalse()->and($result->errorCode())->toBe('rate_limited')->and($result->error)->toHaveKeys(['code', 'message', 'violations', 'approval_id', 'request_id', 'retryable']);
 });
 
+it('happy: rate_limit deny writes audit row and CapabilityFailed like authorize deny [D-013]', function (string $caller) {
+    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'rateLimit' => ['per_minute' => 0]]);
+    $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options($caller));
+    $audit = $h['fakes']->audit->all();
+    $failed = $h['registry']->failedEvents();
+    expect($result->errorCode())->toBe('rate_limited')
+        ->and($h['runCount']->value)->toBe(0)
+        ->and($audit)->toHaveCount(1)
+        ->and($audit[0]['event'] ?? null)->toBe('capability.failed')
+        ->and($audit[0]['result']['code'] ?? null)->toBe('rate_limited')
+        ->and($audit[0]['caller'] ?? null)->toBe($caller)
+        ->and($failed)->toHaveCount(1)
+        ->and($failed[0]->code)->toBe('rate_limited')
+        ->and($failed[0]->caller)->toBe($caller)
+        ->and($h['registry']->lastStages())->toContain(PipelineStages::RECORD_AUDIT, PipelineStages::EMIT_EVENTS);
+})->with(['agent', 'mcp', 'http', 'cli', 'job']);
+
 it('happy: successful invoke via caller agent hits same registry pipeline [PIPE-003]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('agent'));
