@@ -135,10 +135,9 @@ it('happy: job failure at rate_limited is auditable [D-010]', function () {
     $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'rateLimit' => ['per_minute' => 0]]);
     $h['registry']->forceFailStages(PipelineStages::RATE_LIMIT);
     $r = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('job'));
-    expect($r->isOk())->toBeFalse()->and($h['runCount']->value)->toBe(0);
-    $h = PipelineHelpers::harness(['authorize' => false, 'allowSystemCallers' => true]);
-    $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('job'));
-    expect($h['fakes']->audit->all())->not->toBeEmpty();
+    expect($r->isOk())->toBeFalse()->and($h['runCount']->value)->toBe(0)
+        ->and($h['fakes']->audit->all())->toHaveCount(1)
+        ->and($h['fakes']->audit->all()[0]['result']['code'] ?? null)->toBe('rate_limited');
 });
 
 it('fail: job fails closed at output_invalid without silent superuser [D-002]', function () {
