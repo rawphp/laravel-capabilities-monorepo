@@ -23,6 +23,9 @@ use RuntimeException;
  */
 final class ChatController
 {
+    /** Crockford base32; ConversationService mints uppercase hex, a subset. */
+    private const ULID_PATTERN = '/^[0-9A-HJKMNP-TV-Z]{26}$/';
+
     public function history(Request $request, string $conversationUlid, ConversationService $conversations): JsonResponse
     {
         $userId = $this->userId($request);
@@ -48,9 +51,14 @@ final class ChatController
             return $this->unauthenticated();
         }
 
+        $errors = $this->storeMessageErrors($request);
+        if ($errors !== []) {
+            return new JsonResponse(['message' => 'The given data was invalid.', 'errors' => $errors], 422);
+        }
+
         try {
             $ids = $conversations->createUserMessage(
-                content: (string) $request->input('content', ''),
+                content: $request->input('content'),
                 conversationUlid: $request->input('conversation_ulid'),
                 userId: $userId,
                 appId: $request->input('app_id'),
@@ -62,6 +70,27 @@ final class ChatController
         }
 
         return new JsonResponse($ids, 201);
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    private function storeMessageErrors(Request $request): array
+    {
+        $errors = [];
+
+        $content = $request->input('content');
+        if (! is_string($content) || trim($content) === '') {
+            $errors['content'] = ['The content field must be a non-empty string.'];
+        }
+
+        $conversationUlid = $request->input('conversation_ulid');
+        if ($conversationUlid !== null
+            && (! is_string($conversationUlid) || preg_match(self::ULID_PATTERN, $conversationUlid) !== 1)) {
+            $errors['conversation_ulid'] = ['The conversation_ulid field must be a 26-character uppercase ULID.'];
+        }
+
+        return $errors;
     }
 
     public function showTurn(Request $request, string $turnUlid, TurnService $turns): JsonResponse

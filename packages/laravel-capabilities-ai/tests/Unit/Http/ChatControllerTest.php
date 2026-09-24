@@ -217,6 +217,69 @@ it('showTurn, cancelTurn and turnEvents return 404 for another user\'s turn', fu
         ->and(Turn::query()->where('ulid', $ids['turn_ulid'])->value('status'))->toBe(Turn::STATUS_QUEUED);
 });
 
+it('storeMessage creates a turn and appends to an existing conversation', function () {
+    bootHttpSqlite();
+    $dispatched = [];
+    $conversations = new ConversationService(static function ($job) use (&$dispatched): void {
+        $dispatched[] = $job;
+    }, new ArrayProgressStore);
+    $controller = new ChatController;
+
+    $first = $controller->storeMessage(Request::create('/messages', 'POST', ['content' => 'hi']), $conversations);
+    expect($first->getStatusCode())->toBe(201);
+    $conversationUlid = $first->getData(true)['conversation_ulid'];
+
+    $second = $controller->storeMessage(
+        Request::create('/messages', 'POST', ['content' => 'again', 'conversation_ulid' => $conversationUlid]),
+        $conversations,
+    );
+    expect($second->getStatusCode())->toBe(201)
+        ->and($second->getData(true)['conversation_ulid'])->toBe($conversationUlid)
+        ->and(Conversation::query()->count())->toBe(1)
+        ->and(Turn::query()->count())->toBe(2)
+        ->and($dispatched)->toHaveCount(2);
+});
+
+it('storeMessage rejects invalid input with 422 before creating rows or dispatching', function (array $input, string $field) {
+    bootHttpSqlite();
+    $dispatched = 0;
+    $conversations = new ConversationService(static function () use (&$dispatched): void {
+        $dispatched++;
+    }, new ArrayProgressStore);
+
+    $response = (new ChatController)->storeMessage(Request::create('/messages', 'POST', $input), $conversations);
+
+    expect($response->getStatusCode())->toBe(422)
+        ->and($response->getData(true)['errors'])->toHaveKey($field)
+        ->and(Conversation::query()->count())->toBe(0)
+        ->and(Message::query()->count())->toBe(0)
+        ->and(Turn::query()->count())->toBe(0)
+        ->and($dispatched)->toBe(0);
+})->with([
+    'missing content' => [[], 'content'],
+    'empty content' => [['content' => ''], 'content'],
+    'whitespace content' => [['content' => "  \n\t"], 'content'],
+    'non-string content' => [['content' => ['x']], 'content'],
+    'malformed conversation_ulid' => [['content' => 'hi', 'conversation_ulid' => 'not-a-ulid'], 'conversation_ulid'],
+    'short conversation_ulid' => [['content' => 'hi', 'conversation_ulid' => str_repeat('A', 25)], 'conversation_ulid'],
+    'lowercase conversation_ulid' => [['content' => 'hi', 'conversation_ulid' => str_repeat('a', 26)], 'conversation_ulid'],
+    'non-string conversation_ulid' => [['content' => 'hi', 'conversation_ulid' => ['x']], 'conversation_ulid'],
+]);
+
+it('storeMessage returns 404 for a well-formed but unknown conversation_ulid', function () {
+    bootHttpSqlite();
+    $conversations = new ConversationService(static fn ($j) => null, new ArrayProgressStore);
+
+    $response = (new ChatController)->storeMessage(
+        Request::create('/messages', 'POST', ['content' => 'hi', 'conversation_ulid' => str_repeat('0', 26)]),
+        $conversations,
+    );
+
+    expect($response->getStatusCode())->toBe(404)
+        ->and($response->getData(true)['message'])->toBe('Conversation not found')
+        ->and(Message::query()->count())->toBe(0);
+});
+
 it('showTurn and cancelTurn happy path', function () {
     $progress = bootHttpSqlite();
     $conversations = new ConversationService(static fn ($j) => null, $progress);
