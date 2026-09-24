@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Adapters\Mcp\McpCredential;
 use Rawphp\Capabilities\Adapters\StructuredToolResponse;
 use Rawphp\Capabilities\Pipeline\PipelineStages;
 use Rawphp\Capabilities\Support\CapabilityResult;
@@ -189,3 +190,30 @@ it('happy: ai tool handle failure caller_spoof_attempt returns structured tool e
     );
     expect($s['error']['code'])->toBe('caller_spoof_attempt')->and($s['error']['structured'])->toBeTrue();
 });
+
+it('fail: ai tool handle rejects model-authored tenant_id without mutating [D-003]', function () {
+    $h = ai_failure_harness();
+    $r = $h['ai']->handle(
+        'create-invoice',
+        AdapterHelpers::input(['tenant_id' => 'tenant-from-model']),
+        $h['user'],
+        ['profile' => 'billing'],
+    );
+    expect($r->isOk())->toBeFalse()
+        ->and($r->error['normalized_code'])->toBe('caller_spoof_attempt')
+        ->and($r->error['spoof_keys'])->toBe(['tenant_id'])
+        ->and($h['runs']['create-invoice']->value)->toBe(0);
+});
+
+it('edge: agent and mcp reject the same identity key in tool input [D-022]', function (string $key) {
+    $h = ai_failure_harness();
+    $h['mcp']->register('billing');
+    $input = AdapterHelpers::input([$key => 'spoofed']);
+
+    $agent = $h['ai']->handle('create-invoice', $input, $h['user'], ['profile' => 'billing']);
+    $mcp = $h['mcp']->handle('create-invoice', $input, McpCredential::userPat($h['user']), ['profile' => 'billing']);
+
+    expect($agent->error['spoof_keys'] ?? null)->toBe([$key])
+        ->and($mcp->error['spoof_keys'] ?? null)->toBe([$key])
+        ->and($h['runs']['create-invoice']->value)->toBe(0);
+})->with(['actor', 'user_id', 'caller', 'client_id', 'auth_profile', 'tenant_id']);

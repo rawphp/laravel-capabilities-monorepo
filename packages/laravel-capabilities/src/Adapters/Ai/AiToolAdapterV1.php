@@ -22,7 +22,7 @@ use RuntimeException;
 final class AiToolAdapterV1 implements AiToolAdapter
 {
     /** @var list<string> */
-    private const SPOOF_KEYS = ['actor', 'user_id', 'caller', 'client_id', 'auth_profile'];
+    private const SPOOF_KEYS = ['actor', 'user_id', 'caller', 'client_id', 'auth_profile', 'tenant_id'];
 
     private int $turnToolCalls = 0;
 
