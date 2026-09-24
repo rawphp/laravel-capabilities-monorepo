@@ -3,6 +3,7 @@
 namespace Rawphp\Capabilities\Registry;
 
 use InvalidArgumentException;
+use Rawphp\Capabilities\Audit\AuditLogger;
 use Rawphp\Capabilities\Contracts\SchemaProvider;
 use Rawphp\Capabilities\Support\SystemActor;
 
@@ -91,6 +92,7 @@ final class CapabilityDefinition
         }
 
         self::assertValidCliRouting($this->cliDomain, $this->cliVerb, $name);
+        self::assertValidAuditMode($this->audit, $name);
     }
 
     public function isMutating(): bool
@@ -158,6 +160,19 @@ final class CapabilityDefinition
         }
 
         return true;
+    }
+
+    /**
+     * Effective audit mode for this capability (D-010). `audit: ['mode' => 'strict']`
+     * tightens the global default; a capability can never loosen it.
+     */
+    public function auditMode(string $globalMode): string
+    {
+        if (is_array($this->audit) && ($this->audit['mode'] ?? null) === 'strict') {
+            return 'strict';
+        }
+
+        return $globalMode;
     }
 
     /**
@@ -275,6 +290,29 @@ final class CapabilityDefinition
         }
 
         throw new InvalidArgumentException(sprintf('Invalid idempotent flag: %s', var_export($value, true)));
+    }
+
+    /**
+     * Per-capability audit mode may only tighten to strict (D-010).
+     *
+     * @param  array<string, mixed>|bool|null  $audit
+     *
+     * @throws InvalidArgumentException
+     */
+    private static function assertValidAuditMode(array|bool|null $audit, string $name): void
+    {
+        if (! is_array($audit) || ! array_key_exists('mode', $audit)) {
+            return;
+        }
+
+        $mode = AuditLogger::assertValidMode(is_string($audit['mode']) ? $audit['mode'] : get_debug_type($audit['mode']));
+        if ($mode !== 'strict') {
+            throw new InvalidArgumentException(sprintf(
+                'Capability "%s" audit mode "%s" is not allowed; a capability can only tighten the global audit mode to strict (D-010).',
+                $name,
+                $mode,
+            ));
+        }
     }
 
     /**

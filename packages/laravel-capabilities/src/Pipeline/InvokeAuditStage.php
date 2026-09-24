@@ -54,7 +54,7 @@ final class InvokeAuditStage
 
             $this->auditWriter->write($entry);
         } catch (Throwable $e) {
-            if ($this->auditMode === 'strict' && $success) {
+            if ($state->definition->auditMode($this->auditMode) === 'strict' && $success) {
                 $this->observation->logs[] = [
                     'level' => 'error',
                     'message' => 'Audit failed in strict mode: '.$e->getMessage(),
