@@ -1912,6 +1912,8 @@ No intermediate status: under row lock, re-validate + `run` + write `result_json
 
 Optional sub-status on `executed`: `result_status` = `ok` | `failed` (domain/validation after re-validate).
 
+Executor identity on `executed`: `executor_actor_type` (`user` | `system`) + `executor_actor_id` record the principal that ran the domain — the deciding user on accept, the `SystemActor` on resume (D-002). Written in the same conditional update as `result_status`; null until execution.
+
 #### Transitions (enforced in DB + app)
 
 | From | To | Rule |
