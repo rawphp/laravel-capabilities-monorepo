@@ -6,6 +6,7 @@ package flagschema
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -27,6 +28,7 @@ var (
 	ErrInvalidScalar   = fmt.Errorf("invalid scalar flag value")
 	ErrInvalidBaseJSON = fmt.Errorf("invalid base JSON")
 	ErrInvalidSchema   = fmt.Errorf("invalid input schema")
+	ErrAmbiguousFlag   = fmt.Errorf("ambiguous flag")
 )
 
 // Field describes one schema property for flags + help.
@@ -43,8 +45,9 @@ type Field struct {
 type Schema struct {
 	Fields []Field
 
-	byFlag map[string]*Field // kebab flag name → field
-	byName map[string]*Field // property name → field
+	byFlag    map[string]*Field   // kebab flag name → field
+	byName    map[string]*Field   // property name → field
+	ambiguous map[string][]string // kebab flag name → colliding property names (sorted)
 }
 
 // FromJSONSchema parses a JSON Schema document (object with properties)
@@ -90,10 +93,25 @@ func FromSchemaMap(schema map[string]any) (*Schema, error) {
 		f := fieldFromProp(name, ps, required[name])
 		s.Fields = append(s.Fields, f)
 	}
+	// Properties that kebab-case to the same flag (customer_id vs customer-id)
+	// would shadow each other by map order; demote them all to json-only.
+	claims := map[string][]string{}
+	for _, f := range s.Fields {
+		claims[f.FlagName] = append(claims[f.FlagName], f.Name)
+	}
 	// Rebuild pointers into maps after append (slice growth safe).
 	for i := range s.Fields {
 		fp := &s.Fields[i]
 		s.byName[fp.Name] = fp
+		if names := claims[fp.FlagName]; len(names) > 1 {
+			fp.Pass = PassJSONOnly
+			sort.Strings(names)
+			if s.ambiguous == nil {
+				s.ambiguous = map[string][]string{}
+			}
+			s.ambiguous[fp.FlagName] = names
+			continue
+		}
 		s.byFlag[fp.FlagName] = fp
 	}
 	return s, nil
@@ -314,6 +332,9 @@ func (s *Schema) Merge(baseJSON []byte, flags map[string]string) (map[string]any
 	}
 
 	for flagName, raw := range flags {
+		if names, ok := s.ambiguous[flagName]; ok {
+			return nil, fmt.Errorf(`%w: --%s (properties "%s"; pass via --input/--input-file)`, ErrAmbiguousFlag, flagName, strings.Join(names, `", "`))
+		}
 		f, ok := s.byFlag[flagName]
 		if !ok {
 			return nil, fmt.Errorf("%w: --%s", ErrUnknownFlag, flagName)
