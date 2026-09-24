@@ -74,7 +74,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 }
             }
 
-            return new PeerVersionProbe(supportedVersions: $support);
+            return PeerVersionProbe::fromComposer(supportedVersions: $support);
         });
 
         $this->app->singleton(Metrics::class, function ($app) {

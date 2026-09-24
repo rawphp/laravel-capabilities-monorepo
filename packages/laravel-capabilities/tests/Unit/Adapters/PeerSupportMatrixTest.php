@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Composer\InstalledVersions;
 use Rawphp\Capabilities\Adapters\PeerIncompatibleException;
 use Rawphp\Capabilities\Adapters\PeerSupportMatrix;
 use Rawphp\Capabilities\Adapters\PeerSurfaceBootstrap;
@@ -112,4 +113,49 @@ it('happy: published config peers.support mirrors PeerSupportMatrix [D-011]', fu
     expect($config)->toHaveKey('peers')
         ->and($config['peers'])->toHaveKey('support')
         ->and($config['peers']['support'])->toBe(PeerSupportMatrix::constraints());
+});
+
+it('happy: PeerVersionProbe::fromComposer reads installed peer versions into the matrix gate [D-011]', function () {
+    $lookedUp = [];
+    $probe = PeerVersionProbe::fromComposer(
+        versionLookup: function (string $package) use (&$lookedUp): ?string {
+            $lookedUp[] = $package;
+
+            return $package === PeerVersionProbe::PEER_AI ? 'v1.2.0' : null;
+        },
+        classExists: static fn (string $class): bool => true,
+    );
+
+    expect($lookedUp)->toBe([PeerVersionProbe::PEER_AI, PeerVersionProbe::PEER_MCP])
+        ->and($probe->installedVersion(PeerVersionProbe::PEER_AI))->toBe('v1.2.0')
+        ->and($probe->installedVersion(PeerVersionProbe::PEER_MCP))->toBeNull()
+        ->and($probe->supports(PeerVersionProbe::PEER_AI))->toBeTrue()
+        ->and($probe->supportedVersions())->toBe(PeerSupportMatrix::constraints());
+});
+
+it('fail: PeerVersionProbe::fromComposer marks an out-of-matrix installed peer incompatible [D-011]', function () {
+    $probe = PeerVersionProbe::fromComposer(
+        versionLookup: static fn (string $package): ?string => '9.0.0',
+        classExists: static fn (string $class): bool => true,
+    );
+
+    expect($probe->isInstalled(PeerVersionProbe::PEER_MCP))->toBeTrue()
+        ->and($probe->isCompatible(PeerVersionProbe::PEER_MCP))->toBeFalse()
+        ->and($probe->supports(PeerVersionProbe::PEER_AI))->toBeFalse();
+});
+
+it('edge: PeerVersionProbe::fromComposer honours host supportedVersions overrides [D-011]', function () {
+    $probe = PeerVersionProbe::fromComposer(
+        supportedVersions: [PeerVersionProbe::PEER_AI => ['^9.0']],
+        versionLookup: static fn (string $package): ?string => '9.0.0',
+        classExists: static fn (string $class): bool => true,
+    );
+
+    expect($probe->supports(PeerVersionProbe::PEER_AI))->toBeTrue();
+});
+
+it('happy: PeerVersionProbe::composerVersion reads Composer installed versions [D-011]', function () {
+    expect(PeerVersionProbe::composerVersion('pestphp/pest'))
+        ->toBe(InstalledVersions::getPrettyVersion('pestphp/pest'))
+        ->and(PeerVersionProbe::composerVersion('rawphp/not-installed-peer'))->toBeNull();
 });
