@@ -186,3 +186,53 @@ it('provider bootRoutes gates proposal routes on proposals.enabled', function ()
         ->and($src)->toContain('capabilities-ai-proposals.php')
         ->and($src)->toContain('public static function proposalsEnabled');
 });
+
+function runProposalGateTurn(string $content, bool $proposalsEnabled): ArrayProgressStore
+{
+    bootProposalsGateSqlite();
+    $seeded = enqueueProposalGateTurn();
+    $progress = new ArrayProgressStore;
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: new FakeLlmClient([['content' => $content]]),
+        progress: $progress,
+        context: emptyContextProvider(),
+        tools: emptyToolCatalog(),
+        proposalsEnabled: $proposalsEnabled,
+    );
+    expect($runner->run($seeded['turn_ulid'])->status)->toBe(Turn::STATUS_COMPLETED);
+
+    return $progress;
+}
+
+function progressKinds(ArrayProgressStore $progress): array
+{
+    $turnUlid = Turn::query()->value('ulid');
+
+    return array_column($progress->since((string) $turnUlid), 'kind');
+}
+
+it('emits proposal_invalid progress when the proposal fence JSON does not decode', function () {
+    $progress = runProposalGateTurn("ok\n```proposal\n{\"type\":\"action\",}\n```", proposalsEnabled: true);
+
+    $kinds = progressKinds($progress);
+
+    expect(Proposal::query()->count())->toBe(0)
+        ->and($kinds)->toContain('proposal_invalid')
+        ->and(end($kinds))->toBe('terminal');
+});
+
+it('does not emit proposal_invalid when the fence is absent or valid', function (string $content) {
+    $progress = runProposalGateTurn($content, proposalsEnabled: true);
+
+    expect(progressKinds($progress))->not->toContain('proposal_invalid');
+})->with([
+    'absent' => 'plain answer',
+    'valid' => proposalFenceContent(),
+]);
+
+it('does not emit proposal_invalid when proposals are disabled', function () {
+    $progress = runProposalGateTurn("ok\n```proposal\n{bad}\n```", proposalsEnabled: false);
+
+    expect(progressKinds($progress))->not->toContain('proposal_invalid');
+});

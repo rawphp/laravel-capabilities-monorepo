@@ -7,7 +7,7 @@ namespace Rawphp\CapabilitiesAi\Contracts;
 /**
  * Turn progress event stream (not MySQL product DB).
  *
- * Event kinds: status | token | tool | error | terminal
+ * Event kinds: status | token | tool | proposal_invalid | error | terminal
  */
 interface ProgressStore
 {

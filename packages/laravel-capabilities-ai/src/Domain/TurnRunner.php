@@ -78,7 +78,7 @@ final class TurnRunner
                         'content' => $content,
                         'meta' => null,
                     ]);
-                    $this->maybeCreateProposalsFromFence($conversation->id, $turn->id, $content);
+                    $this->maybeCreateProposalsFromFence($conversation->id, $turn->id, $turnUlid, $content);
                     break;
                 }
 
@@ -123,7 +123,7 @@ final class TurnRunner
                         'content' => $content,
                         'meta' => null,
                     ]);
-                    $this->maybeCreateProposalsFromFence($conversation->id, $turn->id, $content);
+                    $this->maybeCreateProposalsFromFence($conversation->id, $turn->id, $turnUlid, $content);
                     break;
                 }
 
@@ -217,13 +217,21 @@ final class TurnRunner
         return json_encode($wire, JSON_THROW_ON_ERROR);
     }
 
-    private function maybeCreateProposalsFromFence(int $conversationId, int $turnId, string $content): void
+    private function maybeCreateProposalsFromFence(int $conversationId, int $turnId, string $turnUlid, string $content): void
     {
         if (! $this->proposalsEnabled) {
             return;
         }
 
-        $data = $this->proposalExtractor->extract($content);
+        $fence = $this->proposalExtractor->parse($content);
+        if ($fence->isInvalid()) {
+            // Surface provider/prompt format drift instead of silently dropping the proposal.
+            $this->progress->append($turnUlid, ['kind' => 'proposal_invalid', 'data' => null]);
+
+            return;
+        }
+
+        $data = $fence->data;
         if ($data === null) {
             return;
         }
