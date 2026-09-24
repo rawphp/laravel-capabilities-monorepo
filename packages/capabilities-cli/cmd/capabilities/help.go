@@ -72,13 +72,13 @@ func CommandHelp(cmd string) string {
 		return `auth — authenticate the CLI against a deployment
 
 USAGE:
-  capabilities auth login --base-url=URL [--token=PAT] [--code=OAUTH] [--profile=NAME]
+  capabilities auth login --base-url=URL [--token=PAT] [--code=OAUTH] [--profile=NAME] [--json]
   capabilities auth logout [--profile=NAME]
   capabilities auth status [--profile=NAME] [--json]
   capabilities auth list [--json]            list profiles (never prints tokens)
 
 Tokens are stored in the OS config/keychain dir — never printed to stdout by default.
-  --json   D-018 envelope (status: one profile; list: {profiles:[…]}) — never includes tokens
+  --json   D-018 envelope (login: result or {ok:false,error}; status: one profile; list: {profiles:[…]}) — never includes tokens
 `
 	case "catalog":
 		return `catalog — discover capabilities from GET /capabilities

@@ -43,6 +43,9 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 - **Unauthenticated domain/unknown argv** — exit **3** with `not authenticated` (was exit **5**
   “unknown domain”, which hid the need to login). Authenticated unknown domain remains exit **5**.
 - **Domain catalog load uses active `--profile`** (no longer always loads with `default`).
+- **`auth login` failures** — server errors exit with their D-018 CLI exit (e.g. rejected
+  credentials → **3**, was always **1**). New `auth login --json` writes the D-018 envelope
+  on stdout (success data or `{ok:false,error:{code,message,…}}`); never includes tokens.
 
 - **Root command exit code** — bare `capabilities` (no subcommand) prints usage and
   exits **0** (was exit **2** / `validation_failed`). Update scripts that treated a
