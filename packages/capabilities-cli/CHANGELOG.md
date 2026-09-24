@@ -21,6 +21,11 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   `approvals`. The token **`mcp` stays reserved forever** and cannot be a
   synthesis domain. Use server product MCP or the HTTP CLI (`catalog` /
   `run` / `--json`) instead of `capabilities mcp`.
+- **Profile names must be filesystem-safe** — `--profile` accepts letters,
+  digits, `-` and `_` only. Other names (e.g. `prod.eu`) used to be rewritten
+  to `prod_eu`, so they read, overwrote, or logged out another profile's token.
+  They are now rejected with an error that suggests the safe name; `auth logout`
+  exits 2 instead of claiming success. Rename by passing the suggested name.
 
 ### Added
 

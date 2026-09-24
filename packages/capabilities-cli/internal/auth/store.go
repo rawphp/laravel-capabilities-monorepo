@@ -19,6 +19,10 @@ var ErrNoToken = errors.New("not authenticated: run `capabilities auth login`")
 // ErrInvalidBaseURL is returned for empty/malformed base URLs.
 var ErrInvalidBaseURL = errors.New("invalid base URL")
 
+// ErrInvalidProfile is returned for profile names that are not filesystem-safe.
+// Names are never rewritten, so two distinct names cannot share one token file.
+var ErrInvalidProfile = errors.New("invalid profile name")
+
 // Profile holds non-secret profile metadata (base URL, labels).
 // Token is stored separately and never echoed in status by default.
 type Profile struct {
@@ -41,31 +45,45 @@ func NewStore(root string) *Store {
 	return &Store{Root: root}
 }
 
-func (s *Store) profileDir(profile string) string {
-	profile = sanitizeProfile(profile)
-	return filepath.Join(s.Root, "profiles", profile)
+func (s *Store) profileDir(profile string) (string, error) {
+	name, err := profileName(profile)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(s.Root, "profiles", name), nil
 }
 
-func sanitizeProfile(p string) string {
+// profileName trims the name ("" → "default") and rejects anything outside
+// [A-Za-z0-9_-], so each accepted name is its own directory.
+func profileName(p string) (string, error) {
 	p = strings.TrimSpace(p)
 	if p == "" {
-		return "default"
+		return "default", nil
 	}
-	// Keep filesystem-safe names.
-	p = strings.Map(func(r rune) rune {
+	if safe := sanitizeProfile(p); safe != p {
+		return "", fmt.Errorf("%w %q: use letters, digits, '-' or '_' (e.g. %q)", ErrInvalidProfile, p, safe)
+	}
+	return p, nil
+}
+
+// sanitizeProfile maps unsafe characters to '_'. Lossy, so it only suggests a name.
+func sanitizeProfile(p string) string {
+	return strings.Map(func(r rune) rune {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
 			return r
 		}
 		return '_'
 	}, p)
-	return p
 }
 
 // SetToken stores a token for profile with restrictive permissions.
 func (s *Store) SetToken(profile, token string) error {
+	dir, err := s.profileDir(profile)
+	if err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	dir := s.profileDir(profile)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
@@ -73,12 +91,15 @@ func (s *Store) SetToken(profile, token string) error {
 	return os.WriteFile(path, []byte(token), 0o600)
 }
 
-// GetToken reads the token or returns ErrNoToken.
+// GetToken reads the token, or returns ErrNoToken (ErrInvalidProfile for an unsafe name).
 func (s *Store) GetToken(profile string) (string, error) {
+	dir, err := s.profileDir(profile)
+	if err != nil {
+		return "", err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	path := filepath.Join(s.profileDir(profile), "token")
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(filepath.Join(dir, "token"))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", ErrNoToken
@@ -95,10 +116,13 @@ func (s *Store) GetToken(profile string) (string, error) {
 
 // DeleteToken removes the stored token (logout). Idempotent.
 func (s *Store) DeleteToken(profile string) error {
+	dir, err := s.profileDir(profile)
+	if err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	path := filepath.Join(s.profileDir(profile), "token")
-	err := os.Remove(path)
+	err = os.Remove(filepath.Join(dir, "token"))
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -120,9 +144,12 @@ func (s *Store) SetBaseURL(profile, baseURL string) error {
 	if err != nil {
 		return err
 	}
+	dir, err := s.profileDir(profile)
+	if err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	dir := s.profileDir(profile)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
@@ -134,10 +161,13 @@ func (s *Store) SetBaseURL(profile, baseURL string) error {
 
 // GetBaseURL returns the profile base URL.
 func (s *Store) GetBaseURL(profile string) (string, error) {
+	dir, err := s.profileDir(profile)
+	if err != nil {
+		return "", err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	path := filepath.Join(s.profileDir(profile), "config.json")
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(filepath.Join(dir, "config.json"))
 	if err != nil {
 		return "", err
 	}
@@ -150,7 +180,10 @@ func (s *Store) GetBaseURL(profile string) (string, error) {
 
 // Status returns non-secret profile status (never includes raw token).
 func (s *Store) Status(profile string) Profile {
-	p := Profile{Name: sanitizeProfile(profile)}
+	p := Profile{Name: strings.TrimSpace(profile)}
+	if name, err := profileName(profile); err == nil {
+		p.Name = name
+	}
 	if u, err := s.GetBaseURL(profile); err == nil {
 		p.BaseURL = u
 	}
@@ -197,12 +230,21 @@ func (s *Store) HasToken(profile string) bool {
 	return err == nil
 }
 
-// SchemaCacheDir is where catalog schemas live for a profile.
+// SchemaCacheDir is where catalog schemas live for a profile ("" for an invalid name).
 func (s *Store) SchemaCacheDir(profile string) string {
-	return filepath.Join(s.profileDir(profile), "schemas")
+	dir, err := s.profileDir(profile)
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(dir, "schemas")
 }
 
-// LastRunPath is where last invoke metadata (idempotency key) is stored for --retry-last.
+// LastRunPath is where last invoke metadata (idempotency key) is stored for --retry-last
+// ("" for an invalid name).
 func (s *Store) LastRunPath(profile string) string {
-	return filepath.Join(s.profileDir(profile), "last_run.json")
+	dir, err := s.profileDir(profile)
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(dir, "last_run.json")
 }

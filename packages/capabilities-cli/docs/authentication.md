@@ -23,7 +23,7 @@ Default config root:
 
 | Item | Purpose |
 |------|---------|
-| **Profile name** | Isolates credentials per product/deployment (`default` if omitted) |
+| **Profile name** | Isolates credentials per product/deployment (`default` if omitted). Letters, digits, `-` and `_` only; other names are rejected, never rewritten, so two names can't share one token |
 | **Base URL** | Deployment root used by the HTTP client |
 | **Token** | Bearer credential; server derives `caller: cli` and authorization |
 
