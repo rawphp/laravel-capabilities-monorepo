@@ -601,7 +601,7 @@ it('not-found branches use the D-018 not_found envelope', function () {
         [$controller->showTurn(chatRequest('u1'), $missingTurn, $turns), 'Turn not found'],
         [$controller->cancelTurn(chatRequest('u1'), $missingTurn, $turns), 'Turn not found'],
         [$controller->turnEvents(chatRequest('u1'), $missingTurn, $turns), 'Turn not found'],
-        [$controller->rejectProposal('PROPDOESNOTEXIST0001', $proposals), 'Proposal not found'],
+        [$controller->rejectProposal(chatRequest('u1'), 'PROPDOESNOTEXIST0001', $proposals), 'Proposal not found'],
     ];
 
     foreach ($cases as [$response, $message]) {
@@ -747,9 +747,9 @@ it('acceptProposal and rejectProposal return 404 for another user\'s proposal wi
     $reject = $controller->rejectProposal($asIntruder, $proposal->ulid, httpProposalService($bus));
 
     expect($accept->getStatusCode())->toBe(404)
-        ->and($accept->getData(true)['message'])->toBe('Proposal not found')
+        ->and($accept->getData(true)['error']['message'])->toBe('Proposal not found')
         ->and($reject->getStatusCode())->toBe(404)
-        ->and($reject->getData(true)['message'])->toBe('Proposal not found')
+        ->and($reject->getData(true)['error']['message'])->toBe('Proposal not found')
         ->and($bus->invokes)->toBe(0)
         ->and($proposal->fresh()->status)->toBe(Proposal::STATUS_PENDING);
 });
