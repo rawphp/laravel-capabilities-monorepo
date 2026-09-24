@@ -225,12 +225,12 @@ it('storeMessage creates a turn and appends to an existing conversation', functi
     }, new ArrayProgressStore);
     $controller = new ChatController;
 
-    $first = $controller->storeMessage(Request::create('/messages', 'POST', ['content' => 'hi']), $conversations);
+    $first = $controller->storeMessage(chatRequest('u1', 'POST', ['content' => 'hi']), $conversations);
     expect($first->getStatusCode())->toBe(201);
     $conversationUlid = $first->getData(true)['conversation_ulid'];
 
     $second = $controller->storeMessage(
-        Request::create('/messages', 'POST', ['content' => 'again', 'conversation_ulid' => $conversationUlid]),
+        chatRequest('u1', 'POST', ['content' => 'again', 'conversation_ulid' => $conversationUlid]),
         $conversations,
     );
     expect($second->getStatusCode())->toBe(201)
@@ -247,7 +247,7 @@ it('storeMessage rejects invalid input with 422 before creating rows or dispatch
         $dispatched++;
     }, new ArrayProgressStore);
 
-    $response = (new ChatController)->storeMessage(Request::create('/messages', 'POST', $input), $conversations);
+    $response = (new ChatController)->storeMessage(chatRequest('u1', 'POST', $input), $conversations);
 
     expect($response->getStatusCode())->toBe(422)
         ->and($response->getData(true)['errors'])->toHaveKey($field)
@@ -271,7 +271,7 @@ it('storeMessage returns 404 for a well-formed but unknown conversation_ulid', f
     $conversations = new ConversationService(static fn ($j) => null, new ArrayProgressStore);
 
     $response = (new ChatController)->storeMessage(
-        Request::create('/messages', 'POST', ['content' => 'hi', 'conversation_ulid' => str_repeat('0', 26)]),
+        chatRequest('u1', 'POST', ['content' => 'hi', 'conversation_ulid' => str_repeat('0', 26)]),
         $conversations,
     );
 
