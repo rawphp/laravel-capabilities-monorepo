@@ -46,14 +46,28 @@ func TestDescribefailswithexit3whennotoken(t *testing.T) {
 	}
 }
 
-func TestMcpDoesNotRequireAuthAsCommand(t *testing.T) {
-	// mcp is not a runnable command; GuardAuth should not treat it as auth-gated meta.
-	if RequiresAuth("mcp") {
-		t.Fatal("mcp must not be in CommandsRequiringAuth")
+func TestUnlistedCommandRequiresAuth(t *testing.T) {
+	// Fail closed: any command not explicitly exempted needs a token,
+	// including reserved-but-not-runnable tokens like mcp and future subcommands.
+	for _, cmd := range []string{"mcp", "some-new-command", ""} {
+		if !RequiresAuth(cmd) {
+			t.Fatalf("%q must require auth", cmd)
+		}
+		st := tempStore(t)
+		if ExitCodeForAuthError(GuardAuth(st, "default", cmd)) != api.ExitAuth {
+			t.Fatalf("%q without token must exit %d", cmd, api.ExitAuth)
+		}
 	}
-	st := tempStore(t)
-	if err := GuardAuth(st, "default", "mcp"); err != nil {
-		t.Fatalf("unexpected: %v", err)
+}
+
+func TestExemptCommandsDoNotRequireAuth(t *testing.T) {
+	for _, cmd := range []string{"help", "version", "self-update", "auth"} {
+		if RequiresAuth(cmd) {
+			t.Fatalf("%q must not require auth", cmd)
+		}
+		if err := GuardAuth(tempStore(t), "default", cmd); err != nil {
+			t.Fatalf("%q: unexpected %v", cmd, err)
+		}
 	}
 }
 
