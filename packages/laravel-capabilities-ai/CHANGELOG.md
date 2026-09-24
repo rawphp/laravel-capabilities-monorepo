@@ -11,6 +11,10 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Security
+
+- **Turn routes are owner-only:** `TurnService::show` / `cancel` / `events` take the caller's actor id and only see turns whose `conversation.user_id` matches it; `ChatController` passes the authenticated user's id (`$request->user()`), never a client-supplied one. Someone else's turn, an ownerless conversation, or an unauthenticated request all answer **404** (same as a missing ulid), so turn ulids cannot be probed or cancelled across users. **Breaking:** the `TurnService` signatures gained the `?string $actorId` argument (`events($ulid, $actorId, $cursor)`), and turns on conversations created without `user_id` are no longer reachable over HTTP.
+
 ### Changed
 
 - **Proposal accept stays inside the tool profile (D-008):** `ProposalService` takes an optional host `ToolCatalog` (SP passes the bound one) and, on every accept execute, requires `target_capability` to be in `toolsForTurn(conversation, turn)`. Outside the profile — including a profile narrowed after the proposal was made — or no `ToolCatalog` bound → proposal `failed`, `AcceptOutcome::refuse` **403** `capability_not_in_profile`, no bus invoke. **Hosts:** a capability the model may propose must be in that turn's tool list; proposal-only targets outside it now refuse.

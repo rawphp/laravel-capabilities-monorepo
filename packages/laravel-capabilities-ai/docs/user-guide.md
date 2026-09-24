@@ -175,6 +175,8 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 - Query: `cursor` integer, default **0** when omitted
 - Body: `{ "turn_ulid": "<ulid>", "events": [ … ] }` from `TurnService::events`
 
+**Turn ownership:** showTurn, cancelTurn, and turnEvents only serve the conversation owner: `conversation.user_id` must equal the authenticated user's id (`$request->user()->getAuthIdentifier()`). Another user's turn, a conversation with no `user_id`, or a request with no user answers **404**, the same as a missing turn. Create conversations with the owner's `user_id` if you want their turns reachable over HTTP.
+
 **Host action:** if you enable routes, stop assuming always-**200** empty bodies. Handle **404** for missing conversation/turn and **409** for cancel/destroy conflicts. Leave `routes.enabled` false until clients are ready.
 
 **Cooperative cancel (mid-run):** `TurnService::cancel` CAS-marks the turn cancelled and emits a terminal progress event. If `TurnRunner` observes `cancelled` mid-loop, it does **not** overwrite status with completed/failed and does **not** emit a failed terminal progress event — the cancelled terminal stands.
