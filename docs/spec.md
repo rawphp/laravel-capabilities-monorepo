@@ -3588,6 +3588,8 @@ capability has agent|mcp surface
 
 Guidance is for **one agent turn’s tool list**, not total capabilities in the app.
 
+Boundary events are logged and, when an `AuditWriter` is bound and audit is enabled, also written to the audit trail (best effort — an audit failure never blocks the tool list): `tool_surface.unfiltered_refused` → surface; `tool_surface.warn_threshold_exceeded` → surface, count, warn, profile.
+
 Keep descriptions short and non-overlapping (same as agent-native “keep the action surface small”).
 
 ### Progressive disclosure (advanced, large products) — P2-007

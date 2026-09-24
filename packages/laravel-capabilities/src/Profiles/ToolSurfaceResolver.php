@@ -2,15 +2,20 @@
 
 namespace Rawphp\Capabilities\Profiles;
 
+use Rawphp\Capabilities\Pipeline\InvokeAuditStage;
 use Rawphp\Capabilities\Pipeline\InvokeObservation;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Registry\DefinitionCatalog;
+use Throwable;
 
 /**
  * Profile-filtered tool lists for agent/MCP surfaces (D-008 / P2-007).
  *
  * Extracted from {@see CapabilityRegistry} so
  * discovery filtering stays independent of the invoke pipeline.
+ *
+ * Boundary events (unfiltered refusal, warn threshold) go to the observation
+ * log and, when bound and enabled, the host's durable AuditWriter (D-010).
  */
 final class ToolSurfaceResolver
 {
@@ -22,6 +27,7 @@ final class ToolSurfaceResolver
         private array $globallyEnabledSurfaces = [],
         /** @var array<string, mixed> */
         private array $toolSurfaceConfig = [],
+        private ?InvokeAuditStage $auditStage = null,
     ) {}
 
     /**
@@ -65,11 +71,11 @@ final class ToolSurfaceResolver
                 throw ProfileRequiredException::forSurface($surface);
             }
             // Loud deprecation path: empty list, not full catalog dump (D-008).
-            $this->observation->logs[] = [
-                'level' => 'warning',
-                'message' => sprintf('Unfiltered %s tools requested; returning empty list (D-008).', $surface),
-                'context' => ['surface' => $surface],
-            ];
+            $this->recordBoundary(
+                'tool_surface.unfiltered_refused',
+                sprintf('Unfiltered %s tools requested; returning empty list (D-008).', $surface),
+                ['surface' => $surface],
+            );
 
             return [];
         }
@@ -101,16 +107,12 @@ final class ToolSurfaceResolver
             throw new TooManyToolsException($count, $hard);
         }
         if ($count > $warn) {
-            $this->observation->logs[] = [
-                'level' => 'warning',
-                'message' => sprintf(
-                    'Profile expanded to %d tools (warn threshold %d) for surface %s.',
-                    $count,
-                    $warn,
-                    $surface,
-                ),
-                'context' => ['surface' => $surface, 'count' => $count, 'warn' => $warn],
-            ];
+            $this->recordBoundary(
+                'tool_surface.warn_threshold_exceeded',
+                sprintf('Profile expanded to %d tools (warn threshold %d) for surface %s.', $count, $warn, $surface),
+                ['surface' => $surface, 'count' => $count, 'warn' => $warn],
+                ['profile' => $profile],
+            );
         }
 
         return $tools;
@@ -156,5 +158,32 @@ final class ToolSurfaceResolver
                 'allowlist' => $allowlist,
             ],
         ];
+    }
+
+    /**
+     * Log a D-008 boundary event; also write it to the audit trail when a writer is
+     * bound and audit is enabled. Audit failure never blocks tool listing.
+     *
+     * @param  array<string, mixed>  $context
+     * @param  array<string, mixed>  $auditExtra
+     */
+    private function recordBoundary(string $event, string $message, array $context, array $auditExtra = []): void
+    {
+        $this->observation->logs[] = ['level' => 'warning', 'message' => $message, 'context' => $context];
+
+        $writer = $this->auditStage?->auditEnabled ? $this->auditStage->auditWriter : null;
+        if ($writer === null) {
+            return;
+        }
+
+        try {
+            $writer->write(['event' => $event, 'payload' => $context + $auditExtra]);
+        } catch (Throwable $e) {
+            $this->observation->logs[] = [
+                'level' => 'warning',
+                'message' => sprintf('Audit failed for %s: %s', $event, $e->getMessage()),
+                'context' => $context,
+            ];
+        }
     }
 }
