@@ -2,11 +2,15 @@
 
 namespace Rawphp\Capabilities\Schema;
 
+use InvalidArgumentException;
 use Rawphp\Capabilities\Registry\CapabilityDefinition;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 
 /**
  * Catalog list/describe with JSON Schema only (D-004, CAT-001, D-012).
+ *
+ * Applies the same canDiscover filter as agent/MCP tool lists (D-008): an
+ * undiscoverable capability is absent from list and reads as unknown on describe.
  */
 final class CatalogPresenter
 {
@@ -25,7 +29,8 @@ final class CatalogPresenter
      * @param  array{
      *     include_schemas?: bool,
      *     caller?: string|null,
-     *     surface?: string|null
+     *     surface?: string|null,
+     *     actor?: mixed
      * }  $options
      * @return list<array<string, mixed>>
      */
@@ -33,6 +38,7 @@ final class CatalogPresenter
     {
         $includeSchemas = $includeSchemas || (bool) ($options['include_schemas'] ?? false);
         $callerSurface = $options['caller'] ?? $options['surface'] ?? null;
+        $actor = $options['actor'] ?? null;
 
         $entries = [];
         foreach ($this->registry->definitions() as $definition) {
@@ -45,8 +51,11 @@ final class CatalogPresenter
                     continue;
                 }
             }
+            if (! $definition->isDiscoverable($actor)) {
+                continue;
+            }
             $entries[] = $includeSchemas
-                ? $this->describe($definition->name)
+                ? $this->fullEntry($definition)
                 : $this->compactEntry($definition);
         }
 
@@ -74,10 +83,15 @@ final class CatalogPresenter
      * Full describe with input_schema / output_schema (JSON Schema only).
      *
      * @return array<string, mixed>
+     *
+     * @throws InvalidArgumentException when unknown or not discoverable by $actor
      */
-    public function describe(string $nameOrAlias): array
+    public function describe(string $nameOrAlias, mixed $actor = null): array
     {
         $definition = $this->registry->get($nameOrAlias);
+        if (! $definition->isDiscoverable($actor)) {
+            throw new InvalidArgumentException(sprintf('Unknown capability "%s".', $nameOrAlias));
+        }
 
         return $this->fullEntry($definition);
     }
