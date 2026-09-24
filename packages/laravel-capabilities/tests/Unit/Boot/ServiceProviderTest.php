@@ -383,6 +383,8 @@ it('D-006: container ApprovalManager accept runs the capability through the regi
         'approval' => ['store' => 'memory'],
         'idempotency' => ['driver' => 'memory'],
     ]));
+    // Accept re-authorizes the original requester, so the default guard must rehydrate them.
+    $app->instance('auth', oaaProviderAuth(oaaRehydratingGuard()));
 
     $registry = $app->make(CapabilityRegistry::class);
     $runs = 0;
@@ -450,6 +452,26 @@ function oaaProviderAuth(?object $guard): object
         public function guard(): ?object
         {
             return $this->guard;
+        }
+    };
+}
+
+function oaaRehydratingGuard(): object
+{
+    return new class
+    {
+        public function getProvider(): object
+        {
+            return new class
+            {
+                public function retrieveById(mixed $id): object
+                {
+                    $user = new stdClass;
+                    $user->id = (string) $id;
+
+                    return $user;
+                }
+            };
         }
     };
 }
