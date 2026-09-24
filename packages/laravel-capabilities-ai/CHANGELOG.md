@@ -13,6 +13,7 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Changed
 
+- **BREAKING — chat message owner is the authenticated user (D-022):** `ChatController::storeMessage` sets `conversation.user_id` from `$request->user()->getAuthIdentifier()` and ignores any body `user_id`. No authenticated user → **401**, nothing created. Posting to a `conversation_ulid` owned by another user → **404** (`ConversationService::createUserMessage` scopes an existing conversation to `userId` when one is given). Previously any authenticated caller could name another user as owner, and every turn tool call / proposal accept then ran as that user. **Hosts** that create conversations for another user (integrations, back-office) call `ConversationService::createUserMessage(userId: …)` from server code instead of the package route.
 - **Proposal accept stays inside the tool profile (D-008):** `ProposalService` takes an optional host `ToolCatalog` (SP passes the bound one) and, on every accept execute, requires `target_capability` to be in `toolsForTurn(conversation, turn)`. Outside the profile — including a profile narrowed after the proposal was made — or no `ToolCatalog` bound → proposal `failed`, `AcceptOutcome::refuse` **403** `capability_not_in_profile`, no bus invoke. **Hosts:** a capability the model may propose must be in that turn's tool list; proposal-only targets outside it now refuse.
 
 ### Fixed

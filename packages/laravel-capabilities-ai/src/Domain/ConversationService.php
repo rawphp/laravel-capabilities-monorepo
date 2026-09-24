@@ -52,8 +52,12 @@ final class ConversationService
     ): array {
         $this->assertTurnCapacity();
 
+        // A given $userId must own an existing conversation: the owner is the turn's bus actor.
         $conversation = $conversationUlid
-            ? Conversation::query()->where('ulid', $conversationUlid)->firstOrFail()
+            ? Conversation::query()
+                ->where('ulid', $conversationUlid)
+                ->when($userId !== null, static fn ($q) => $q->where('user_id', $userId))
+                ->firstOrFail()
             : Conversation::query()->create([
                 'ulid' => $this->ulid(),
                 'app_id' => $appId,

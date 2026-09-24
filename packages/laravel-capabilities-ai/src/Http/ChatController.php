@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Http;
 
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -28,17 +29,28 @@ final class ChatController
         }
     }
 
+    /**
+     * Conversation owner is the authenticated user — never a body `user_id` (D-022).
+     * The owner becomes the bus actor for every turn and proposal accept.
+     */
     public function storeMessage(Request $request, ConversationService $conversations): JsonResponse
     {
+        $user = $request->user();
+        if (! $user instanceof Authenticatable) {
+            return new JsonResponse(['message' => 'Unauthenticated'], 401);
+        }
+
         try {
             $ids = $conversations->createUserMessage(
                 content: (string) $request->input('content', ''),
                 conversationUlid: $request->input('conversation_ulid'),
-                userId: $request->input('user_id'),
+                userId: (string) $user->getAuthIdentifier(),
                 appId: $request->input('app_id'),
             );
         } catch (TurnCapacityExceededException $e) {
             return new JsonResponse(['message' => $e->getMessage(), 'outcome' => AcceptOutcome::KIND_RETRYABLE], 429);
+        } catch (ModelNotFoundException) {
+            return new JsonResponse(['message' => 'Conversation not found'], 404);
         }
 
         return new JsonResponse($ids, 201);

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Container\Container;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Capsule\Manager as Capsule;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Events\Dispatcher as EventDispatcher;
@@ -17,6 +18,8 @@ use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
 use Rawphp\CapabilitiesAi\Http\ChatController;
+use Rawphp\CapabilitiesAi\Models\Conversation;
+use Rawphp\CapabilitiesAi\Models\Message;
 use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\AlwaysReadyIdempotency;
@@ -30,6 +33,54 @@ class ChatControllerTestUser extends Model
     public $timestamps = false;
 
     protected $guarded = [];
+}
+
+final class ChatControllerAuthUser implements Authenticatable
+{
+    public function __construct(private readonly int|string $id) {}
+
+    public function getAuthIdentifierName(): string
+    {
+        return 'id';
+    }
+
+    public function getAuthIdentifier(): mixed
+    {
+        return $this->id;
+    }
+
+    public function getAuthPasswordName(): string
+    {
+        return 'password';
+    }
+
+    public function getAuthPassword(): string
+    {
+        return '';
+    }
+
+    public function getRememberToken(): string
+    {
+        return '';
+    }
+
+    public function setRememberToken($value): void {}
+
+    public function getRememberTokenName(): string
+    {
+        return '';
+    }
+}
+
+/**
+ * @param  array<string, mixed>  $body
+ */
+function messageRequest(array $body, ?Authenticatable $user): Request
+{
+    $request = Request::create('/messages', 'POST', $body);
+    $request->setUserResolver(static fn () => $user);
+
+    return $request;
 }
 
 function bootHttpSqlite(): ArrayProgressStore
@@ -309,4 +360,54 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse / unresolv
     );
     expect($missing->getStatusCode())->toBe(404)
         ->and($missing->getData(true)['message'])->toBe('Proposal not found');
+});
+
+it('storeMessage owns the conversation as the authenticated user and ignores body user_id', function () {
+    $progress = bootHttpSqlite();
+    $conversations = new ConversationService(static fn ($j) => null, $progress);
+
+    $response = (new ChatController)->storeMessage(
+        messageRequest(['content' => 'hi', 'user_id' => '999'], new ChatControllerAuthUser(7)),
+        $conversations,
+    );
+
+    expect($response->getStatusCode())->toBe(201);
+    $conversation = Conversation::query()->where('ulid', $response->getData(true)['conversation_ulid'])->firstOrFail();
+    expect((string) $conversation->user_id)->toBe('7');
+});
+
+it('storeMessage returns 401 without an authenticated user and creates nothing', function () {
+    $progress = bootHttpSqlite();
+    $conversations = new ConversationService(static fn ($j) => null, $progress);
+
+    $response = (new ChatController)->storeMessage(
+        messageRequest(['content' => 'hi', 'user_id' => '7'], null),
+        $conversations,
+    );
+
+    expect($response->getStatusCode())->toBe(401)
+        ->and(Conversation::query()->count())->toBe(0)
+        ->and(Message::query()->count())->toBe(0);
+});
+
+it('storeMessage returns 404 when appending to another user\'s conversation', function () {
+    $progress = bootHttpSqlite();
+    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    $owned = $conversations->createUserMessage('mine', userId: '7');
+    $messagesBefore = Message::query()->count();
+
+    $response = (new ChatController)->storeMessage(
+        messageRequest(['content' => 'as you', 'conversation_ulid' => $owned['conversation_ulid']], new ChatControllerAuthUser(8)),
+        $conversations,
+    );
+
+    expect($response->getStatusCode())->toBe(404)
+        ->and(Message::query()->count())->toBe($messagesBefore);
+
+    $ownerReply = (new ChatController)->storeMessage(
+        messageRequest(['content' => 'still me', 'conversation_ulid' => $owned['conversation_ulid']], new ChatControllerAuthUser(7)),
+        $conversations,
+    );
+    expect($ownerReply->getStatusCode())->toBe(201)
+        ->and($ownerReply->getData(true)['conversation_ulid'])->toBe($owned['conversation_ulid']);
 });

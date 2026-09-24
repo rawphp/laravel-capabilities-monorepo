@@ -156,6 +156,7 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 
 | Route action | Old expectation | Current wire |
 |--------------|-----------------|--------------|
+| **storeMessage** | Body `user_id` set the conversation owner | Owner = authenticated user (body `user_id` ignored); unauthenticated → **HTTP 401**; `conversation_ulid` owned by another user → **HTTP 404** |
 | **history** | Empty messages / always **200** | Real history from `ConversationService`; missing conversation → **HTTP 404** |
 | **showTurn** | Stub body `{turn_ulid}` | Real turn from `TurnService`; missing → **HTTP 404** |
 | **cancelTurn** | Always **200** cancelled stub | Real cancel; missing → **HTTP 404**; conflict (not cancellable) → **HTTP 409** + `message` |
@@ -166,7 +167,7 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 
 | Exception / case | HTTP | Typical routes |
 |------------------|------|----------------|
-| `ModelNotFoundException` | **404** | history, showTurn, cancelTurn, turnEvents, destroyConversation |
+| `ModelNotFoundException` | **404** | storeMessage (foreign `conversation_ulid`), history, showTurn, cancelTurn, turnEvents, destroyConversation |
 | `RuntimeException` (domain conflict) | **409** + `message` | cancelTurn, destroyConversation |
 | `TurnCapacityExceededException` (`max_concurrent_turns` reached) | **429** + `message`, `outcome: retryable` | storeMessage — nothing persisted or dispatched; resend later |
 | Success | **200** (message create **201**) | real service payload — not an empty stub |
