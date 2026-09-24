@@ -15,6 +15,7 @@ function matrix_case(string $profile, bool $allowInt, bool|array $allowSys): arr
         'mcp_auth' => [
             'allow_integration_credentials' => $allowInt,
             'integration_actors' => ['mcp-billing-service' => 'billing-bot'],
+            'integration_profiles' => ['mcp-billing-service' => ['billing']],
         ],
         'caps' => [[
             'name' => 'create-invoice',

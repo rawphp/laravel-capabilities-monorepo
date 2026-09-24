@@ -458,6 +458,9 @@ return [
                 'integration_actors' => [
                     // 'mcp-billing-bot' => SystemActor name or bot user id mapping
                 ],
+                'integration_profiles' => [
+                    // 'mcp-billing-bot' => ['billing'], // profiles this client may use; unlisted → forbidden
+                ],
                 'audit_client_id' => true, // always record mcp.client_id when present
             ],
         ],
@@ -1294,7 +1297,7 @@ Every `run` receives a `CapabilityContext`:
 | `tenantId` / `teamId` / `organizationId` | Convenience accessors when the app uses those dimensions |
 | `requestId` / `traceId` | Correlation ids |
 | `agent` | Optional agent name / thread id when `caller=agent` |
-| `mcp` | When `caller=mcp`: `{ client_id?, auth_profile: user_pat\|integration\|user_delegated, host?, session? }` (D-023) |
+| `mcp` | When `caller=mcp`: `{ client_id?, auth_profile: user_pat\|integration\|user_delegated, host?, session?, tool_profile? }` (D-023; `tool_profile` = D-008 profile that gated the call, set by the adapter) |
 | `messaging` | Optional `{ channel: telegram, chat_id, … }` when the agent turn originated from chat |
 | `job` | Optional `{ queue, job_id, acting_as_type, acting_as_id }` when `caller=job` |
 | `credential` | Optional audit metadata: `{ type: oauth\|pat\|in_process, client_id?, ability? }` used to derive caller |
@@ -4003,7 +4006,7 @@ MCP host  ──credentials──► laravel/mcp adapter
 | **Named tool profiles** | `Capability::mcpTools(profile: …)` **required** when `surfaces.mcp.require_profile` is true (default). Unfiltered mount is error or loud deprecation — same spirit as D-008 for agents. |
 | **Not full UI powers** | Document and enforce: an MCP server is **not** “every capability the user could invoke in the staff UI.” Profile ⊆ user permissions ∩ product intent for that host. |
 | **Separate servers** | Prefer `Mcp::web('billing', …)` / `Mcp::web('support', …)` over one god server. |
-| **Integration tokens** | Fail closed unless `allow_integration_credentials` is true; map `client_id` → registered `SystemActor` or bot user; capabilities must allow that system name. |
+| **Integration tokens** | Fail closed unless `allow_integration_credentials` is true; map `client_id` → registered `SystemActor` or bot user; capabilities must allow that system name. The client may only run inside profiles listed under `integration_profiles[client_id]` — any other (or no) profile is `forbidden` / `integration_profile_forbidden`. |
 | **Delegated OAuth** | Store and audit `client_id`; do not collapse “Cursor’s client” and “the human” into one id. |
 | **Host multi-user** | Product user = **token subject** (PAT or delegated resource owner), not “whoever is signed into the host OS account.” Family/shared host seats are out of band; our audit row is the product principal. |
 
@@ -4057,6 +4060,9 @@ See `surfaces.mcp.auth` and `surfaces.mcp.profiles` under [Configuration](#confi
     'allow_integration_credentials' => env('CAPABILITIES_MCP_INTEGRATION', false),
     'integration_actors' => [
         'mcp-billing-service' => 'billing-bot', // → SystemActor::named('billing-bot')
+    ],
+    'integration_profiles' => [
+        'mcp-billing-service' => ['billing'], // only the billing profile; others → forbidden
     ],
     'audit_client_id' => true,
 ],
