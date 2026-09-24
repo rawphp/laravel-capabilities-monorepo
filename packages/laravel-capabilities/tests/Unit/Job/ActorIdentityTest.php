@@ -22,8 +22,10 @@ it('happy: dispatch with actingAs user id loads User and sets caller job [D-002]
         'actingAs' => 7,
         'tenantId' => 'tenant-a',
         'tenancy_required' => false,
+        'user_resolver' => fn ($id) => H::user($id),
     ]);
     expect($result->isOk())->toBeTrue();
+    expect($h['registry']->lastState()?->context?->user()?->id)->toBe(7);
     expect($h['registry']->lastState()?->context?->caller())->toBe('job');
 });
 
@@ -54,6 +56,18 @@ it('fail: missing user id for actingAs int fails job without run [D-002]', funct
         'tenantId' => 'tenant-a',
         'user_resolver' => fn () => null,
     ]))->toThrow(RuntimeException::class);
+});
+
+it('fail: actingAs user id without user_resolver fails closed without run [D-002]', function () {
+    $h = H::scopeHarness(['allowSystemCallers' => true]);
+    expect(fn () => RunCapabilityJob::dispatchSync($h['registry'], [
+        'name' => $h['name'],
+        'input' => H::homeInput(),
+        'actingAs' => 7,
+        'tenantId' => 'tenant-a',
+        'tenancy_required' => false,
+    ]))->toThrow(MissingJobActorException::class, 'user_resolver');
+    expect($h['runCount']->value)->toBe(0);
 });
 
 it('fail: SystemActor not in allowSystemCallers fails before authorize [D-002]', function () {
