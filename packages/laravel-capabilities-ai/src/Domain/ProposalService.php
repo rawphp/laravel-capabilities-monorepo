@@ -12,6 +12,7 @@ use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Support\DatabaseConnection;
 use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
+use Rawphp\CapabilitiesAi\Support\UnresolvedConversationActorException;
 use RuntimeException;
 
 /**
@@ -20,7 +21,7 @@ use RuntimeException;
  * Accept state machine (strong fail-closed SM → AcceptOutcome wire results):
  * - pending → accepting (atomic CAS claim) before bus invoke
  * - accepting → accepted on success / idempotent replay (clear last_error)
- * - accepting → failed + last_error on hard non-retryable (or missing target)
+ * - accepting → failed + last_error on hard non-retryable (or missing target / unresolvable actor)
  * - accepting stays accepting on isRetryable() / isApprovalRequired() (D-005 resume)
  * - Bus invoke always passes idempotency_key=proposal:{ulid} (D-005)
  * - Live IdempotencyReadiness probe (fail closed) — not a constructor stamp
@@ -169,7 +170,22 @@ final class ProposalService
         $payload = is_array($proposal->payload) ? $proposal->payload : [];
         $conversation = Conversation::query()->findOrFail($proposal->conversation_id);
         // Same principal shape as TurnRunner tool invokes (caller=job + conversation user).
-        $actor = $this->actors->resolve($conversation->user_id);
+        try {
+            $actor = $this->actors->resolve($conversation->user_id);
+        } catch (UnresolvedConversationActorException $e) {
+            $this->markFailed($proposal, 'forbidden', $e->getMessage());
+
+            return AcceptOutcome::refuse(
+                $proposal->refresh(),
+                message: $e->getMessage(),
+                httpStatus: 403,
+                error: [
+                    'code' => 'forbidden',
+                    'message' => $e->getMessage(),
+                    'retryable' => false,
+                ],
+            );
+        }
         $result = $this->bus->invoke(
             $target,
             $payload,
