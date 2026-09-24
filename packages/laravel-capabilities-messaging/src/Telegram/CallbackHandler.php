@@ -74,9 +74,11 @@ final class CallbackHandler
         }
 
         // Server loads input only from approval row — never from callback.
+        // Audit which chat identity decided — the id that resolved the link.
+        $options = ['decided_via' => ['channel' => 'telegram', 'channel_user_id' => $telegramUserId]];
         $result = $action === 'accept'
-            ? $this->approvals->accept($approvalId, $user)
-            : $this->approvals->reject($approvalId, $user);
+            ? $this->approvals->accept($approvalId, $user, $options)
+            : $this->approvals->reject($approvalId, $user, null, $options);
 
         return [
             'status' => 'ok',
