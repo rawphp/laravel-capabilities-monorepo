@@ -50,6 +50,11 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   `#[Capability]` that does not implement `DefinesCapability` now throws `BootException`
   during discovery instead of being silently dropped from the catalog. Add
   `implements DefinesCapability` or remove the attribute.
+- **MCP handle requires a profile after multi-profile register (D-008).** Once
+  `McpToolAdapterV1` has registered more than one distinct profile, `handle()` /
+  `handleStructured()` without `options['profile']` return `not_runnable`
+  (`normalized_code: profile_required`, plus `registered_profiles`) instead of silently
+  running under the last-registered profile. Single-profile hosts are unchanged.
 
 ## [0.5.2] - 2026-08-27
 
