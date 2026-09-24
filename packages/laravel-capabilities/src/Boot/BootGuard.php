@@ -92,8 +92,7 @@ final class BootGuard
         $logs = [];
         $statuses = [];
 
-        $this->assertCliRequiresHttp($surfaces);
-        $this->assertMessagingRules($surfaces);
+        $this->assertSurfaceRules();
         $this->assertSkipBootChecksPolicy();
 
         $bootstrap = new PeerSurfaceBootstrap($probe);
@@ -130,6 +129,22 @@ final class BootGuard
             'logs' => $logs,
             'skipped_deferred' => $skipDeferred,
         ];
+    }
+
+    /**
+     * Surface config invariants enforced on every provider boot (SURF-004 / D-007).
+     *
+     * Config-only: no peer probes (those stay with each surface's registrar, ORI-801).
+     * Not a deferred-style check, so CAPABILITIES_SKIP_BOOT_CHECKS does not bypass it (D-021).
+     *
+     * @throws BootException
+     */
+    public function assertSurfaceRules(): void
+    {
+        $surfaces = $this->config['surfaces'] ?? CapabilitiesConfig::defaults()['surfaces'];
+
+        $this->assertCliRequiresHttp($surfaces);
+        $this->assertMessagingRules($surfaces);
     }
 
     /**

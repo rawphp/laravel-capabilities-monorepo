@@ -418,6 +418,12 @@ class CapabilitiesServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Misconfigured surfaces fail boot before any route/tool registers (SURF-004 / D-007).
+        (new BootGuard(
+            config: self::configFromApp($this->app),
+            messagingPackageInstalled: $this->messagingPackageInstalled(),
+        ))->assertSurfaceRules();
+
         $this->bootHttpRoutes();
         $this->bootCapabilityDiscovery();
         $this->bootArtisanCommands();
@@ -432,6 +438,14 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 __DIR__.'/../database/migrations' => database_path('migrations'),
             ], 'capabilities-migrations');
         }
+    }
+
+    /**
+     * Presence check only — core never depends on the messaging package (D-007).
+     */
+    protected function messagingPackageInstalled(): bool
+    {
+        return class_exists('Rawphp\\CapabilitiesMessaging\\MessagingServiceProvider');
     }
 
     /**
