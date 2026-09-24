@@ -5,8 +5,12 @@ namespace Rawphp\Capabilities\Schema;
 /**
  * Lightweight portable JSON Schema (draft 2020-12 subset) validator for wire payloads.
  *
- * Supports: type, required, properties, additionalProperties, enum, format (date),
- * minLength/maxLength, minimum/maximum, minItems/maxItems, items.
+ * Supports: type, required, properties, additionalProperties, enum,
+ * format (date, date-time, time, email, uri, uuid), minLength/maxLength,
+ * minimum/maximum, minItems/maxItems, items.
+ *
+ * Format checks mirror the product CLI's local validator so the CLI never
+ * rejects input the server would accept (server is law, D-004).
  */
 final class JsonSchemaValidator
 {
@@ -34,11 +38,12 @@ final class JsonSchemaValidator
             }
         }
 
-        if (isset($schema['format']) && is_string($data)) {
-            if ($schema['format'] === 'date' && ! $this->isDate($data)) {
+        if (isset($schema['format']) && is_string($schema['format']) && is_string($data)) {
+            $format = $this->formatViolation($schema['format'], $data);
+            if ($format !== null) {
                 $violations[] = [
                     'field' => $path === '' ? '(root)' : $path,
-                    'message' => 'invalid date format',
+                    'message' => sprintf('invalid %s format', $format),
                 ];
             }
         }
@@ -192,9 +197,26 @@ final class JsonSchemaValidator
         return array_keys($value) === range(0, count($value) - 1);
     }
 
+    /**
+     * Returns the canonical format name when $value fails it, else null.
+     * Unknown formats are annotations and always pass.
+     */
+    private function formatViolation(string $format, string $value): ?string
+    {
+        return match (strtolower(trim($format))) {
+            'date' => $this->isDate($value) ? null : 'date',
+            'date-time', 'datetime' => preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/D', $value) === 1 ? null : 'date-time',
+            'time' => preg_match('/^\d{2}:\d{2}:\d{2}(?:\.\d+)?$/D', $value) === 1 ? null : 'time',
+            'email' => preg_match('/^[^@\s]+@[^@\s]+\.[^@\s]+$/D', $value) === 1 ? null : 'email',
+            'uri', 'url' => str_contains($value, '://') || str_starts_with($value, '/') ? null : 'uri',
+            'uuid' => preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/Di', $value) === 1 ? null : 'uuid',
+            default => null,
+        };
+    }
+
     private function isDate(string $value): bool
     {
-        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value)) {
             return false;
         }
         $parts = explode('-', $value);
