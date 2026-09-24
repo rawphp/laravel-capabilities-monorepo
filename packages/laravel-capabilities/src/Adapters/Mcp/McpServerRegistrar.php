@@ -20,7 +20,7 @@ use Throwable;
  *
  * Multi-profile: sequential adapter register overwrites active profile/tools (last profile wins);
  * the adapter's handle() then requires an explicit options['profile'] (profile_required).
- * Optional registry validates profile allowlists before adapter register (D-024).
+ * Optional registry validates all profile allowlists before any adapter register (D-024).
  * {@see on_register_error}: throw (default) or disable (soft-empty) on mid-mount adapter failure.
  *
  * Pure / unit-testable: never requires live laravel/mcp.
@@ -82,8 +82,8 @@ final class McpServerRegistrar
      * Does not push into laravel/mcp. Multi-profile sequential register overwrites the
      * adapter's active profile/tools (last profile wins).
      *
-     * When {@see $registry} is non-null, each profile allowlist is validated (existence +
-     * mcp surface) before {@see McpToolAdapter::register}. Null skips validation (BC for
+     * When {@see $registry} is non-null, every profile allowlist is validated (existence +
+     * mcp surface) before any {@see McpToolAdapter::register} call. Null skips validation (BC for
      * pure adapter fakes). Adapter {@see Throwable}s honour {@code on_register_error}
      * (`throw` default | `disable` → fail-closed empty, no partial multi-profile output).
      *
@@ -109,13 +109,17 @@ final class McpServerRegistrar
             return [];
         }
 
-        $out = [];
-        foreach ($rows as $row) {
-            if ($registry !== null) {
+        // Validate every allowlist before any adapter register, so a bad later
+        // profile cannot leave an earlier one already mounted (D-024).
+        if ($registry !== null) {
+            foreach ($rows as $row) {
                 $names = self::allowlistForProfile($mcpConfig, $row['profile']);
                 McpProfileValidator::assertAllowlist($registry, $row['profile'], $names);
             }
+        }
 
+        $out = [];
+        foreach ($rows as $row) {
             try {
                 $tools = $adapter->register($row['profile']);
             } catch (Throwable $e) {
