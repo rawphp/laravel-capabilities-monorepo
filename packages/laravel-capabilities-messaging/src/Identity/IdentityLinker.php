@@ -68,10 +68,15 @@ final class IdentityLinker implements ConversationIdentity
     }
 
     /**
-     * Bind Telegram user via previously issued code. Rejects expired/reused/forged codes.
+     * Bind Telegram user via previously issued code. Rejects expired/reused/forged codes,
+     * and refuses outright unless identity.mode is code_link (allowlist must not be bypassed).
      */
     public function bindWithCode(string $telegramUserId, string $code, ?int $now = null): ?object
     {
+        if ($this->config->identityMode() !== 'code_link') {
+            return null;
+        }
+
         $now ??= time();
         $entry = $this->codes[$code] ?? null;
         if ($entry === null || $entry['used'] || $entry['exp'] < $now) {

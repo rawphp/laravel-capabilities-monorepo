@@ -18,6 +18,7 @@ final class TelegramSetup
         try {
             $config->requireTelegramSecrets();
             $config->requireAgentProfile();
+            $config->requireIdentityMode();
         } catch (RuntimeException $e) {
             return ['ok' => false, 'message' => $e->getMessage()];
         }

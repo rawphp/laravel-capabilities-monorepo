@@ -75,3 +75,18 @@ it('happy: linked identity resolves to User for ConversationIngress [MSG-002]', 
     $user = $identity->resolve(['telegram_user_id' => '42']);
     expect($user)->toBeInstanceOf(LinkedUser::class)->and($user->id)->toBe('user-1');
 });
+
+it('fail: allowlist mode refuses code link binding [MSG-002]', function () {
+    $id = H::identity(['identity' => ['mode' => 'allowlist']]);
+    $code = $id->issueLinkCode('user-9', 'tenant-a');
+    expect($id->bindWithCode('tg-1', $code))->toBeNull()
+        ->and($id->isLinked('tg-1'))->toBeFalse()
+        ->and($id->resolve(['telegram_user_id' => 'tg-1']))->toBeNull();
+});
+
+it('fail: unrecognized identity mode refuses code link binding [MSG-002]', function () {
+    $id = H::identity(['identity' => ['mode' => 'allow_list']]);
+    $code = $id->issueLinkCode('user-9');
+    expect($id->bindWithCode('tg-1', $code))->toBeNull()
+        ->and($id->isLinked('tg-1'))->toBeFalse();
+});
