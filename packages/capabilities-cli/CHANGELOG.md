@@ -37,6 +37,10 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   `--flat`, `--include-schemas`, `--no-cache`, `--refresh`) may appear before the subcommand
   (e.g. `capabilities --profile=P --json catalog`).
 - **Typo hints** on unknown domain/command (e.g. `catalg` → `did you mean: catalog`).
+- **`error.retry_after` on rate-limited runs** — a 429 `Retry-After` header (seconds or HTTP-date)
+  is surfaced as `error.retry_after` (whole seconds) in the stdout envelope, with a
+  `(retry after Ns)` stderr hint. A non-envelope 429 body with `Retry-After` is replaced by a
+  D-018 `rate_limited` envelope. Exit code stays **6**.
 
 ### Changed (0.x agent/script contract)
 
