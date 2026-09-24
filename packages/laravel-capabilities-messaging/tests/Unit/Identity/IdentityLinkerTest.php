@@ -130,8 +130,14 @@ it('edge: distinct allowlist telegram_user_ids pass telegram-setup [MSG-002]', f
     $cfg = H::config(['identity' => ['allowlist' => [
         ['telegram_user_id' => 'tg-1', 'laravel_user_id' => 'user-a'],
         ['telegram_user_id' => 'tg-2', 'laravel_user_id' => 'user-a'],
+    ]]]);
+    expect(TelegramSetup::validate($cfg)['ok'])->toBeTrue();
+});
+
+it('edge: blank allowlist telegram_user_ids are not counted as duplicates [MSG-002]', function () {
+    $cfg = H::config(['identity' => ['allowlist' => [
         ['telegram_user_id' => '', 'laravel_user_id' => 'user-x'],
         ['telegram_user_id' => '', 'laravel_user_id' => 'user-y'],
     ]]]);
-    expect(TelegramSetup::validate($cfg)['ok'])->toBeTrue();
+    expect(fn () => $cfg->requireUniqueAllowlist())->not->toThrow(RuntimeException::class);
 });
