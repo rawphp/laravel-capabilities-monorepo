@@ -134,42 +134,60 @@ final class AttributeDiscoverer
             if (! is_string($filePath) || ! is_file($filePath)) {
                 continue;
             }
-            $declared = $this->classFromFile($filePath);
-            if ($declared !== null) {
-                $classes[] = $declared;
-            }
+            $classes = array_merge($classes, $this->classesFromFile($filePath));
         }
 
         return $classes;
     }
 
     /**
-     * @return class-string|null
+     * Every named class declared in the file, parsed from tokens so docblocks,
+     * `Foo::class`, anonymous classes and a leading base class do not hide it.
+     *
+     * @return list<class-string>
      */
-    private function classFromFile(string $filePath): ?string
+    private function classesFromFile(string $filePath): array
     {
         $contents = file_get_contents($filePath);
         if ($contents === false) {
-            return null;
+            return [];
         }
 
-        $namespace = null;
-        if (preg_match('/namespace\s+([^;]+);/', $contents, $m)) {
-            $namespace = trim($m[1]);
+        $tokens = array_values(array_filter(
+            token_get_all($contents),
+            fn ($token) => ! is_array($token) || ! in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true),
+        ));
+
+        $namespace = '';
+        $declared = [];
+        foreach ($tokens as $i => $token) {
+            if (! is_array($token)) {
+                continue;
+            }
+
+            if ($token[0] === T_NAMESPACE) {
+                $next = $tokens[$i + 1] ?? null;
+                $namespace = is_array($next) && in_array($next[0], [T_STRING, T_NAME_QUALIFIED], true) ? $next[1].'\\' : '';
+
+                continue;
+            }
+
+            $name = $tokens[$i + 1] ?? null;
+            if ($token[0] === T_CLASS && is_array($name) && $name[0] === T_STRING) {
+                $declared[] = $namespace.$name[1];
+            }
         }
 
-        if (! preg_match('/\bclass\s+(\w+)/', $contents, $m)) {
-            return null;
+        if ($declared === []) {
+            return [];
         }
 
-        $class = $m[1];
-        $fqcn = $namespace !== null ? $namespace.'\\'.$class : $class;
-
-        // Ensure file is loaded for reflection.
-        if (! class_exists($fqcn, false)) {
+        // Ensure file is loaded for reflection (unless the autoloader already included it).
+        $loaded = array_filter($declared, fn (string $class) => class_exists($class, false));
+        if ($loaded === []) {
             require_once $filePath;
         }
 
-        return class_exists($fqcn) ? $fqcn : null;
+        return array_values(array_filter($declared, fn (string $class) => class_exists($class)));
     }
 }
