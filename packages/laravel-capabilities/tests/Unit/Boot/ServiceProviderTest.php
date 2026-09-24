@@ -5,6 +5,7 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Adapters\Http\CapabilityController;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Boot\CapabilitiesConfig;
 use Rawphp\Capabilities\Boot\SurfaceNames;
@@ -13,6 +14,8 @@ use Rawphp\Capabilities\Capability;
 use Rawphp\Capabilities\Contracts\ApprovalGateway;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
+use Rawphp\Capabilities\Contracts\Metrics;
+use Rawphp\Capabilities\Observability\InvokeTelemetry;
 use Rawphp\Capabilities\Persistence\ArrayTableGateway;
 use Rawphp\Capabilities\Persistence\DatabaseApprovalStore;
 use Rawphp\Capabilities\Persistence\DatabaseIdempotencyStore;
@@ -23,6 +26,7 @@ use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
 use Rawphp\Capabilities\Tests\Fixtures\BootHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
+use Rawphp\Capabilities\Tests\Fixtures\HttpHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
 it('happy: registers config merge [BOOT-001]', function () {
@@ -531,4 +535,21 @@ it('happy: provider-wired accept re-authorizes the requester via the default aut
 
     expect($result->isOk())->toBeTrue()
         ->and($looked)->toBe(['7']);
+});
+
+// --- D-019: provider-built CapabilityController counts unauthenticated denials on the bound Metrics ---
+
+it('D-019: container CapabilityController records unauthenticated denials on the Metrics singleton', function () {
+    $app = req048FakeApp(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+    ]));
+
+    $controller = $app->make(CapabilityController::class);
+    $controller->list(HttpHelpers::guestRequest());
+
+    expect($app->make(Metrics::class)->get(
+        InvokeTelemetry::METRIC_UNAUTHENTICATED,
+        ['route' => 'list', 'auth' => 'none'],
+    ))->toBe(1);
 });

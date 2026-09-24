@@ -3145,7 +3145,7 @@ CLI `--json` prints the same envelope; exit code maps from `error.code`.
 
 | Signal | What |
 |---|---|
-| **Metrics** | `capabilities_invoke_total{capability,caller,status}`, latency histogram, `approval_required_total`, `approvals_stuck_approved_total` (D-006 / P2-004), `approvals_resume_total{result}`, `authz_deny_total`, `rate_limited_total`, `idempotent_replay_total` |
+| **Metrics** | `capabilities_invoke_total{capability,caller,status}`, latency histogram, `approval_required_total`, `approvals_stuck_approved_total` (D-006 / P2-004), `approvals_resume_total{result}`, `authz_deny_total`, `http_unauthenticated_total{route,auth}` (HTTP 401 before the bus; no caller label because none is derived), `rate_limited_total`, `idempotent_replay_total` |
 | **OpenTelemetry** | Span `capabilities.invoke` attributes: `capability`, `caller`, `surface`, `tenant_id`, `actor_type`, `approval_id`, `idempotency_key` (hashed if needed) |
 | **Failed jobs** | `RunCapability` + messaging `ProcessTelegramUpdate` use Laravel failed-job hooks; tag with capability/channel |
 | **Driver** | Laravel Pulse / OTel exporter optional; package emits via contracts `Metrics` / `Tracer` with log fallback |
