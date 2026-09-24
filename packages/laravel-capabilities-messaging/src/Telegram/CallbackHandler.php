@@ -12,6 +12,10 @@ use RuntimeException;
  *
  * Never executes domain run() itself — only accept/reject on the shared SM via
  * the core port (not concrete ApprovalManager).
+ *
+ * A non-empty signed approver_hint binds the buttons to one product principal id:
+ * a different linked user clicking a forwarded/leaked callback is forbidden.
+ * An empty hint leaves the decision to the approval policy alone.
  */
 final class CallbackHandler
 {
@@ -53,6 +57,11 @@ final class CallbackHandler
             return ['status' => 'forbidden', 'message' => 'unlinked_approver'];
         }
 
+        $approverHint = (string) ($callbackPayload['approver_hint'] ?? '');
+        if ($approverHint !== '' && $approverHint !== $this->principalId($user)) {
+            return ['status' => 'forbidden', 'message' => 'approver_mismatch'];
+        }
+
         if ($this->approvals === null) {
             throw new RuntimeException('ApprovalGateway is required to process callbacks.');
         }
@@ -86,5 +95,21 @@ final class CallbackHandler
             'callback_had_input' => array_key_exists('input', $callbackPayload)
                 || array_key_exists('input_json', $callbackPayload),
         ];
+    }
+
+    /**
+     * Same id core records as decided_by: `id`, then getAuthIdentifier(); null fails closed.
+     */
+    private function principalId(object $user): ?string
+    {
+        if (isset($user->id)) {
+            return (string) $user->id;
+        }
+
+        if (method_exists($user, 'getAuthIdentifier')) {
+            return (string) $user->getAuthIdentifier();
+        }
+
+        return null;
     }
 }
