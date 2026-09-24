@@ -252,7 +252,7 @@ Two different readiness signals — do not merge:
 | Surface | What | Purpose |
 |---------|------|---------|
 | **Artisan** `php artisan capabilities:integration-health` | `IntegrationHealthChecker` / `IntegrationHealthCommand` | Host **product** readiness: bindings, AI-chat mode, MCP tool counts, proposals + AlwaysReady safety, progress/queue ops checks when AI package config is present |
-| **HTTP** `GET /{prefix}/health` (default `/capabilities/health`) | `CatalogHealth` / controller | **Surface/catalog** peer health for HTTP clients (D-011 / D-021) |
+| **HTTP** `GET /{prefix}/health` (default `/capabilities/health`) | `CatalogHealth` / controller | **Surface/catalog** peer health for HTTP clients (D-011 / D-021), plus `api_version` (`RouteTable::API_VERSION`) that the product CLI checks before `run` |
 
 **AI-chat mode** (integration-health only): `capabilities-ai.routes.enabled === true` **OR** non-empty `capabilities-ai.queue.name`. Core does not require the AI package to boot; AI rows appear when `capabilities-ai` config is present.
 

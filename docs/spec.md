@@ -3324,7 +3324,7 @@ capabilities.surface.disabled peer=laravel/ai reason=incompatible
   installed=0.12.0 supported=^0.10 || ^0.11 adapter_api=1
 ```
 
-Health endpoint (optional): `GET /capabilities/health` reports surface status (`up` / `disabled_incompatible` / `disabled_config`) for ops.
+Health endpoint (optional): `GET /capabilities/health` reports surface status (`up` / `disabled_incompatible` / `disabled_config`) for ops, plus `api_version` (HTTP wire version, `RouteTable::API_VERSION`). The product CLI probes it before `run` and refuses a mismatched server with an upgrade hint; an unknown version does not block. This is the HTTP API version, not `AdapterApi` (which versions the laravel/ai / laravel/mcp bridge).
 
 ### Contract tests (CI)
 

@@ -8,6 +8,7 @@ use Rawphp\Capabilities\Http\DetectsCaller;
 use Rawphp\Capabilities\Http\HttpAuthGate;
 use Rawphp\Capabilities\Http\HttpRequestContext;
 use Rawphp\Capabilities\Http\HttpResponse;
+use Rawphp\Capabilities\Http\RouteTable;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Throwable;
 
@@ -141,6 +142,7 @@ final class CapabilityController
         }
 
         $report = $this->registry->catalog()->health();
+        $report['api_version'] = RouteTable::API_VERSION;
 
         return HttpResponse::ok($report, headers: $this->presentationHeaders($request));
     }

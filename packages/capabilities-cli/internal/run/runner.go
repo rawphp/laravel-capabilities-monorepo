@@ -61,7 +61,7 @@ func EnsureIdempotencyKey(manual string) string {
 	return uuid.NewString()
 }
 
-// Run executes: load input → local schema validate → ensure key → POST invoke.
+// Run executes: load input → local schema validate → ensure key → API version probe → POST invoke.
 // No domain logic. Does not skip server re-validation.
 func Run(ctx context.Context, opts Options) *Result {
 	res := &Result{ExitCode: ExitInternal}
@@ -160,6 +160,14 @@ func Run(ctx context.Context, opts Options) *Result {
 			m["_tenant_hint"] = opts.TenantHint
 			body, _ = json.Marshal(m)
 		}
+	}
+
+	// Wire-version preflight: refuse before POST when the server speaks another API version.
+	if verr := opts.Client.CheckAPIVersion(ctx); verr != nil {
+		res.ExitCode = ExitInternal
+		res.Stderr = verr.Error()
+		res.Envelope = localFailEnvelope(api.CodeInternal, verr.Error(), nil)
+		return res
 	}
 
 	res.HTTPCalled = true

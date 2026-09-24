@@ -24,6 +24,13 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Added
 
+- **API version preflight on `run`** — before the invoke POST, `run` reads
+  `data.api_version` from `GET /capabilities/health` and refuses (exit 1, no
+  POST) when the server speaks a different capability API version, with an
+  upgrade hint (`capabilities self-update`, or upgrade the server package).
+  An unknown version (older server, gated health, transport error) does not
+  block the run; unhealthy surfaces are ignored.
+
 - **`capabilities self-update`** — install the latest GitHub Release of this binary in place
   (`rawphp/capabilities-cli`; darwin/linux only). Verifies `checksums.txt` (fail closed),
   already-up-to-date exits **0**, unwritable path fails closed with `install.sh` /
