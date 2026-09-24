@@ -44,6 +44,10 @@ profile — or no profile — returns `forbidden` with `normalized_code`
 **Upgrade:** add an `integration_profiles` entry for every client in
 `integration_actors`, or its tool calls will be refused.
 
+### Added
+
+- **`capabilities:integration-health` pings the AI progress store:** in AI-chat mode a new `ai_progress_ready` row resolves `Rawphp\CapabilitiesAi\Contracts\ProgressStoreReadiness` by class-string and fails when the store is unreachable (or cannot be resolved, e.g. `progress.driver=redis` with no Redis client); skips when the AI package does not bind it. `IntegrationHealthChecker::check()` takes an optional sixth `$progressStoreReady` callable.
+
 ### Changed
 
 - **Discovery fails closed on half-written capability classes (D-017).** A class carrying

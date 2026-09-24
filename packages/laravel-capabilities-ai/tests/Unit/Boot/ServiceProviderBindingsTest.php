@@ -24,6 +24,7 @@ use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
+use Rawphp\CapabilitiesAi\Contracts\ProgressStoreReadiness;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
@@ -33,6 +34,7 @@ use Rawphp\CapabilitiesAi\Support\AnthropicLlmClient;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 use Rawphp\CapabilitiesAi\Support\StoreBoundIdempotencyReadiness;
+use Rawphp\CapabilitiesAi\Support\StoreBoundProgressStoreReadiness;
 
 function aiFakeBus(): CapabilityBus
 {
@@ -308,4 +310,73 @@ it('wires container-bound core Metrics and Tracer into the anthropic LlmClient',
 
     expect(array_column($metrics->emissions(), 'name'))->toContain(AnthropicLlmClient::METRIC_FAILURES)
         ->and($tracer->spans()[0]['status'])->toBe('error');
+});
+
+it('defaults ProgressStoreReadiness to a live ping of the bound ProgressStore', function () {
+    $app = bootAiProviderContainer();
+
+    $ready = $app->make(ProgressStoreReadiness::class);
+    expect($ready)->toBeInstanceOf(StoreBoundProgressStoreReadiness::class)
+        ->and($ready->isReady())->toBeTrue();
+});
+
+it('ProgressStoreReadiness records not-ready on core Metrics when bound', function () {
+    $app = new class extends Container
+    {
+        public function runningInConsole(): bool
+        {
+            return true;
+        }
+    };
+
+    $down = new class implements ProgressStore
+    {
+        public function append(string $turnUlid, array $event): void {}
+
+        public function since(string $turnUlid, int $cursor = 0): array
+        {
+            throw new RuntimeException('redis down');
+        }
+    };
+    $metrics = new InMemoryMetrics;
+    $app->instance(ProgressStore::class, $down);
+    $app->instance(Metrics::class, $metrics);
+
+    $base = require dirname(__DIR__, 3).'/config/capabilities-ai.php';
+    $app->instance('config', aiConfigRepo(['capabilities-ai' => $base]));
+    $app->instance(CapabilityBus::class, aiFakeBus());
+
+    (new CapabilitiesAiServiceProvider($app))->register();
+
+    expect($app->make(ProgressStoreReadiness::class)->isReady())->toBeFalse()
+        ->and($metrics->get(StoreBoundProgressStoreReadiness::METRIC_NOT_READY, [
+            'store' => $down::class,
+        ]))->toBe(1);
+});
+
+it('does not overwrite host-prebound ProgressStoreReadiness', function () {
+    $app = new class extends Container
+    {
+        public function runningInConsole(): bool
+        {
+            return true;
+        }
+    };
+
+    $host = new class implements ProgressStoreReadiness
+    {
+        public function isReady(): bool
+        {
+            return false;
+        }
+    };
+    $app->instance(ProgressStoreReadiness::class, $host);
+
+    $base = require dirname(__DIR__, 3).'/config/capabilities-ai.php';
+    $app->instance('config', aiConfigRepo(['capabilities-ai' => $base]));
+    $app->instance(CapabilityBus::class, aiFakeBus());
+
+    (new CapabilitiesAiServiceProvider($app))->register();
+
+    expect($app->make(ProgressStoreReadiness::class))->toBe($host);
 });

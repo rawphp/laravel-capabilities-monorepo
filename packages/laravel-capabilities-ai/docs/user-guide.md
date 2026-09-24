@@ -328,6 +328,10 @@ Config `capabilities-ai.queue.{name,connection}` is applied to `RunTurnJob` **be
 | **`StoreBoundIdempotencyReadiness`** | **Production SP default** — if core `IdempotencyStore` is bound, readiness pings it; else `isReady()=false` |
 | **`AlwaysReadyIdempotency`** | **Unit tests only** — never production default or host prod bind |
 
+### Progress store readiness
+
+`ProgressStoreReadiness` (SP default **`StoreBoundProgressStoreReadiness`**) pings the bound `ProgressStore` with a read-only `since()` on a reserved turn id — never appends. A throw → `isReady()=false` and, when core `Metrics` is bound, `ai_progress_store_not_ready_total{store=<class>}` is incremented. Core `capabilities:integration-health` reads it as the `ai_progress_ready` row (fail when down; skip when unbound). Evaluated per call, not at boot.
+
 ### Stale-turn reaper
 
 ```bash
@@ -369,7 +373,7 @@ After cutting over to package AI-chat, track and delete host leftovers:
 
 | Command / endpoint | Package | Purpose |
 |--------------------|---------|---------|
-| `php artisan capabilities:integration-health` | **core** | Host product readiness (bindings, AI-chat mode, MCP tools, AlwaysReady when proposals on) |
+| `php artisan capabilities:integration-health` | **core** | Host product readiness (bindings, AI-chat mode, MCP tools, AlwaysReady when proposals on, live progress-store ping) |
 | `GET /{prefix}/health` (default `/capabilities/health`) | **core** | Surface/catalog peer health for HTTP clients |
 
 Do not merge them. AI-chat mode for integration-health = `capabilities-ai.routes.enabled === true` **OR** non-empty `capabilities-ai.queue.name`.

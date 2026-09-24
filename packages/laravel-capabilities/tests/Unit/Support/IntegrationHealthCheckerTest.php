@@ -350,3 +350,53 @@ it('report failed is true only for fail levels', function () {
     expect($fail->failed())->toBeTrue()
         ->and($fail->exitCode())->toBe(1);
 });
+
+it('AI-chat ai_progress_ready: ok when live, fail when down or probe throws, skip when unprobed', function () {
+    $run = static fn (?callable $probe) => (new IntegrationHealthChecker)->check(
+        ihCapabilities(),
+        ihAi(['queue' => ['name' => 'capabilities-ai']]),
+        ihBound([
+            Authorizer::class,
+            'Rawphp\\CapabilitiesAi\\Contracts\\ConversationContextProvider',
+            'Rawphp\\CapabilitiesAi\\Contracts\\ToolCatalog',
+        ]),
+        null,
+        null,
+        $probe,
+    );
+
+    $ok = $run(static fn (): ?bool => true);
+    $down = $run(static fn (): ?bool => false);
+    $throws = $run(static function (): ?bool {
+        throw new RuntimeException('redis client missing');
+    });
+    $unbound = $run(static fn (): ?bool => null);
+    $noProbe = $run(null);
+
+    expect(ihLevel($ok, 'ai_progress_ready'))->toBe('ok')
+        ->and($ok->failed())->toBeFalse()
+        ->and(ihLevel($down, 'ai_progress_ready'))->toBe('fail')
+        ->and($down->failed())->toBeTrue()
+        ->and(ihLevel($throws, 'ai_progress_ready'))->toBe('fail')
+        ->and(ihLevel($unbound, 'ai_progress_ready'))->toBe('skip')
+        ->and(ihLevel($noProbe, 'ai_progress_ready'))->toBe('skip');
+});
+
+it('bus-only mode never probes progress store readiness', function () {
+    $probed = false;
+    $report = (new IntegrationHealthChecker)->check(
+        ihCapabilities(),
+        null,
+        ihBound([Authorizer::class]),
+        null,
+        null,
+        static function () use (&$probed): ?bool {
+            $probed = true;
+
+            return false;
+        },
+    );
+
+    expect($probed)->toBeFalse()
+        ->and(ihCodes($report))->not->toContain('ai_progress_ready');
+});

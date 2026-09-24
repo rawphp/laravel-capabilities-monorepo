@@ -30,6 +30,7 @@ final class IntegrationHealthChecker
      * @param  callable(class-string): bool  $bound
      * @param  (callable(): int)|null  $mcpToolCount  null to skip live tool count
      * @param  (callable(): string|null)|null  $idempotencyReadinessClass  resolved class or null
+     * @param  (callable(): bool|null)|null  $progressStoreReady  live ping; null when readiness unbound
      */
     public function check(
         array $capabilitiesConfig,
@@ -37,6 +38,7 @@ final class IntegrationHealthChecker
         callable $bound,
         ?callable $mcpToolCount = null,
         ?callable $idempotencyReadinessClass = null,
+        ?callable $progressStoreReady = null,
     ): IntegrationHealthReport {
         $checks = [];
         $aiChat = $this->isAiChat($aiConfig);
@@ -46,6 +48,7 @@ final class IntegrationHealthChecker
 
         if ($aiChat) {
             array_push($checks, ...$this->checkAiChat($aiConfig ?? [], $bound, $idempotencyReadinessClass));
+            $checks[] = $this->checkProgressReady($progressStoreReady);
         }
 
         $checks[] = $this->checkMcp($capabilitiesConfig, $mcpToolCount);
@@ -205,6 +208,25 @@ final class IntegrationHealthChecker
         }
 
         return $out;
+    }
+
+    /**
+     * @param  (callable(): bool|null)|null  $progressStoreReady
+     * @return array{level: 'fail'|'warn'|'ok'|'skip', code: string, message: string}
+     */
+    private function checkProgressReady(?callable $progressStoreReady): array
+    {
+        try {
+            $ready = $progressStoreReady === null ? null : $progressStoreReady();
+        } catch (Throwable) {
+            $ready = false;
+        }
+
+        return match ($ready) {
+            true => ['level' => 'ok', 'code' => 'ai_progress_ready', 'message' => 'Progress store answered the readiness ping.'],
+            false => ['level' => 'fail', 'code' => 'ai_progress_ready', 'message' => 'Progress store is not reachable (readiness ping failed); turn progress cannot be streamed.'],
+            default => ['level' => 'skip', 'code' => 'ai_progress_ready', 'message' => 'ProgressStoreReadiness is not bound; live progress ping skipped.'],
+        };
     }
 
     private function isAlwaysReadyClass(string $class): bool
