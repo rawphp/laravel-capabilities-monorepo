@@ -3,11 +3,13 @@
 namespace Rawphp\Capabilities\Adapters\Http;
 
 use Rawphp\Capabilities\Contracts\CapabilityBus;
+use Rawphp\Capabilities\Contracts\Metrics;
 use Rawphp\Capabilities\Http\CallerDeriver;
 use Rawphp\Capabilities\Http\DetectsCaller;
 use Rawphp\Capabilities\Http\HttpAuthGate;
 use Rawphp\Capabilities\Http\HttpRequestContext;
 use Rawphp\Capabilities\Http\HttpResponse;
+use Rawphp\Capabilities\Observability\InvokeTelemetry;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Throwable;
 
@@ -32,6 +34,7 @@ final class CapabilityController
         private readonly array $clientsConfig = [],
         private readonly array $httpConfig = [],
         private readonly ?HttpAuthGate $authGate = null,
+        private readonly ?Metrics $metrics = null,
     ) {}
 
     /**
@@ -128,15 +131,8 @@ final class CapabilityController
 
     public function health(HttpRequestContext $request): HttpResponse
     {
-        $gate = $this->authGate();
-        $authType = $request->authKind ?? ($request->authenticated ? HttpAuthGate::AUTH_USER : HttpAuthGate::AUTH_NONE);
-        if (! $gate->allowsHealth($authType, $request)) {
-            return HttpResponse::failure(
-                'unauthenticated',
-                'Authentication required.',
-                headers: $this->presentationHeaders($request),
-                cliEnvelope: $request->wantsCliEnvelope(),
-            );
+        if ($deny = $this->denyIfUnauthenticated($request, 'health')) {
+            return $deny;
         }
 
         $report = $this->registry->catalog()->health();
@@ -217,6 +213,12 @@ final class CapabilityController
     {
         $authType = $request->authKind ?? ($request->authenticated ? HttpAuthGate::AUTH_USER : HttpAuthGate::AUTH_NONE);
         if (! $this->authGate()->allows($routeKey, $authType, $request)) {
+            // Leave a trace of repeated missing/bad credentials (D-019).
+            $this->metrics?->increment(InvokeTelemetry::METRIC_UNAUTHENTICATED, 1, [
+                'route' => $routeKey,
+                'auth' => $authType,
+            ]);
+
             return HttpResponse::failure(
                 'unauthenticated',
                 'Authentication required.',

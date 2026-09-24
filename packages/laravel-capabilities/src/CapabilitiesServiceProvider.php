@@ -195,6 +195,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 $clients,
                 $http,
                 new HttpAuthGate(['health_public' => (bool) ($http['health_public'] ?? false)]),
+                $app->make(Metrics::class),
             );
         });
 
