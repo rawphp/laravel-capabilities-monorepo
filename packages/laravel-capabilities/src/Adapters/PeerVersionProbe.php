@@ -2,6 +2,8 @@
 
 namespace Rawphp\Capabilities\Adapters;
 
+use Composer\InstalledVersions;
+
 /**
  * Feature-detect installed laravel/ai and laravel/mcp (D-011).
  *
@@ -81,6 +83,41 @@ final class PeerVersionProbe
                 self::PEER_MCP => false,
             ],
         );
+    }
+
+    /**
+     * Production probe: class feature-detect plus installed versions from Composer,
+     * so the matrix constraint gate runs against real peer versions.
+     *
+     * @param  array<string, list<string>>|null  $supportedVersions  peer => constraints; null = PeerSupportMatrix
+     * @param  (callable(string): (string|null))|null  $versionLookup  package => version; null = Composer
+     * @param  (callable(string): bool)|null  $classExists
+     */
+    public static function fromComposer(
+        ?array $supportedVersions = null,
+        ?callable $versionLookup = null,
+        ?callable $classExists = null,
+    ): self {
+        $lookup = $versionLookup ?? self::composerVersion(...);
+        $versions = [];
+        foreach (array_keys(self::PEER_CLASSES) as $peer) {
+            $versions[$peer] = $lookup($peer);
+        }
+
+        return new self(
+            classExists: $classExists,
+            versions: $versions,
+            supportedVersions: $supportedVersions,
+        );
+    }
+
+    public static function composerVersion(string $package): ?string
+    {
+        if (! InstalledVersions::isInstalled($package)) {
+            return null;
+        }
+
+        return InstalledVersions::getPrettyVersion($package);
     }
 
     /**
