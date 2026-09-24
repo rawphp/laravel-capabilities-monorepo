@@ -136,7 +136,7 @@ Global switches live in published `config/capabilities.php` under `surfaces.*`:
 | CLI | `surfaces.cli` | Marks capabilities available to product CLI **HTTP** callers (not an MCP bridge) |
 | Job | `surfaces.job` | Queue/job invokes need an explicit actor (not “null user = allow”) |
 | Artisan | `surfaces.artisan` | Optional **in-server** ops — not the downloadable product CLI |
-| Messaging | `surfaces.messaging` | Conversation channel flag; implementation is the **sibling** package |
+| Messaging | `surfaces.messaging` | Conversation channel flag; implementation is the **sibling** package. Invokes carrying messaging metadata stay `caller: agent` but are refused while this is off |
 
 A capability’s `->surfaces([...])` list only **narrows** what global config already allows.
 

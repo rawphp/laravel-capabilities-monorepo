@@ -94,7 +94,7 @@ it('fail: authorization deny through ai does not mutate [D-011]', function () {
 });
 
 it('edge: messaging agent turn still caller agent with messaging metadata [D-007]', function () {
-    $h = AdapterHelpers::harness();
+    $h = AdapterHelpers::harness(['surfaces' => ['messaging' => true]]);
     $r = $h['ai']->handle('create-invoice', AdapterHelpers::input(), $h['user'], [
         'profile' => 'billing',
         'messaging' => ['channel' => 'telegram', 'chat_id' => '99'],

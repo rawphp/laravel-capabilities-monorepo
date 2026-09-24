@@ -892,6 +892,14 @@ final class CapabilityRegistry implements CapabilityBus
             ), null);
         }
 
+        // Chat turns keep caller=agent; the global messaging flag still has to allow them.
+        if ($this->isMessagingOriginated($options) && ($this->globallyEnabledSurfaces['messaging'] ?? false) !== true) {
+            return $this->pipeline->finishEarly(CapabilityResult::failure(
+                code: 'forbidden',
+                message: sprintf('Capability "%s" is not invokable via surface "messaging".', $definition->name),
+            ), null);
+        }
+
         $state = new InvokeState(
             definition: $definition,
             rawInput: $input,
@@ -930,6 +938,19 @@ final class CapabilityRegistry implements CapabilityBus
     public function logs(): array
     {
         return $this->observation->logs;
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     */
+    private function isMessagingOriginated(array $options): bool
+    {
+        $context = $options['context'] ?? null;
+        if ($context instanceof CapabilityContext && $context->messaging() !== null) {
+            return true;
+        }
+
+        return ($options['messaging'] ?? null) !== null;
     }
 
     private function toolsForSurface(string $surface, string|array|null $profile, mixed $actor = null): array
