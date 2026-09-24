@@ -33,7 +33,9 @@ use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\InMemoryRateLimiter;
 use Rawphp\Capabilities\Support\RegistryAssertions;
 use Rawphp\Capabilities\Support\StubAuthorizer;
+use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Support\SystemClock;
+use stdClass;
 
 /**
  * Central choke point: definition store + ordered invoke pipeline (PIPE-001).
@@ -166,9 +168,9 @@ final class CapabilityRegistry implements CapabilityBus
         $authorizer = $authorizer ?? StubAuthorizer::deny();
         $rateLimiter = $rateLimiter ?? new InMemoryRateLimiter;
         $this->approvalStore = $approvalStore;
-        $approvalManager = $approvalStore !== null
+        $approvalManager = ($approvalStore !== null
             ? new ApprovalManager($approvalStore)
-            : ApprovalManager::inMemory();
+            : ApprovalManager::inMemory())->withExecutor($this->executeApproval(...));
         $mode = $validationConfig['audit_mode'] ?? $auditConfig['mode'] ?? $auditMode;
         $auditModeResolved = AuditLogger::assertValidMode((string) $mode);
         $auditEnabled = (bool) ($auditConfig['enabled'] ?? true);
@@ -475,7 +477,7 @@ final class CapabilityRegistry implements CapabilityBus
     public function withApprovalStore(ApprovalStore $store): self
     {
         $this->approvalStore = $store;
-        $this->pipeline->approvalManager = new ApprovalManager($store);
+        $this->pipeline->approvalManager = (new ApprovalManager($store))->withExecutor($this->executeApproval(...));
 
         return $this;
     }
@@ -570,6 +572,39 @@ final class CapabilityRegistry implements CapabilityBus
         }
 
         return $this->pipeline->authorizes($this->get($nameOrAlias), $rawInput, $context);
+    }
+
+    /**
+     * Default approval executor (D-006): re-run the stored invoke through this pipeline
+     * as the original requester — re-validate, re-scope, authorize, run once, check output.
+     *
+     * @param  array<mixed>  $row  approval store row
+     */
+    public function executeApproval(array $row): CapabilityResult
+    {
+        $str = static fn (string $key, ?string $default): ?string => is_scalar($row[$key] ?? null)
+            ? (string) $row[$key]
+            : $default;
+        $tenantId = $str('tenant_id', null);
+        $actorId = (string) $str('requester_actor_id', '');
+
+        if ($str('requester_actor_type', 'user') === 'system') {
+            $actor = SystemActor::named($actorId);
+        } else {
+            $actor = new stdClass;
+            $actor->id = $actorId;
+            $actor->tenant_id = $tenantId;
+        }
+
+        /** @var array<string, mixed> $input */
+        $input = is_array($row['input_json'] ?? null) ? $row['input_json'] : [];
+
+        return $this->invoke((string) $str('capability_name', ''), $input, [
+            'caller' => $str('original_caller', 'http'),
+            'actor' => $actor,
+            'tenant_id' => $tenantId,
+            'job' => ['tenant_id' => $tenantId],
+        ]);
     }
 
     public function audit(): ?AuditWriter

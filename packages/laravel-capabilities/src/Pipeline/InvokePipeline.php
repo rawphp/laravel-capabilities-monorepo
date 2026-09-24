@@ -146,13 +146,17 @@ final class InvokePipeline
 
             $this->stageStoreIdempotency($state);
             $auditFailure = $this->stageRecordAudit($state, success: true);
-            $this->results()->emitEvents($state, success: true);
 
             // Strict audit failure after successful domain run: surface error without
             // rolling back domain-owned commits (D-010 footgun when domain already committed).
+            // Listeners see the same outcome the caller does.
             if ($auditFailure !== null) {
+                $this->results()->emitEvents($state, success: false, failure: $auditFailure);
+
                 return $this->results()->wireResponse($state, $auditFailure);
             }
+
+            $this->results()->emitEvents($state, success: true);
 
             $successMeta = [
                 'request_id' => $state->requestId,
@@ -633,8 +637,9 @@ final class InvokePipeline
             return $this->rateLimitedResult('Forced failure at rate_limit.');
         }
 
-        // Agent turn budget (D-013) — checked when caller is agent and option is set.
-        if ($state->caller === 'agent' && array_key_exists('agent_turn_tool_calls', $state->options)) {
+        // Agent turn budget (D-013) — checked whenever an in-process adapter supplies the turn's
+        // tool-call count (agent tools, AI turns as caller=job). Only ever narrows.
+        if (array_key_exists('agent_turn_tool_calls', $state->options)) {
             $calls = (int) $state->options['agent_turn_tool_calls'];
             $budget = $this->agentTurnBudget();
             if ($budget->exhausted($calls)) {

@@ -46,6 +46,7 @@ use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\Capabilities\Observability\LogFallbackMetrics;
 use Rawphp\Capabilities\Persistence\TableGateway;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
+use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\DefaultScopeResolver;
 use Rawphp\Capabilities\Support\IlluminateRateLimitCache;
 
@@ -121,13 +122,19 @@ class CapabilitiesServiceProvider extends ServiceProvider
         $this->app->singleton(ApprovalManager::class, function ($app) {
             $config = self::configFromApp($app);
 
-            // Accept re-authorizes the original requester (re-validation step 4). Resolved
-            // lazily: the registry singleton itself depends on this manager's store.
+            // Accept / resume run the stored invoke through the registry (D-006), after
+            // re-authorizing the original requester (re-validation step 4). Both resolved
+            // lazily: the registry itself is built from this manager's store.
             return ContainerBindings::makeApprovalManager(
                 $config,
                 self::boundTableGatewayOrNull($app),
                 self::boundConnectionOrNull($app, $config, 'approval'),
-            )->withOriginalAuthorizer(static fn (array $row): bool => self::originalActorAllows($app, $row));
+            )->withExecutor(static function (array $row) use ($app): CapabilityResult {
+                /** @var CapabilityRegistry $registry */
+                $registry = $app->make(CapabilityRegistry::class);
+
+                return $registry->executeApproval($row);
+            })->withOriginalAuthorizer(static fn (array $row): bool => self::originalActorAllows($app, $row));
         });
         $this->app->alias(ApprovalManager::class, 'ApprovalManager');
         // Hosts with custom actor lookup rebind this; default resolves users through

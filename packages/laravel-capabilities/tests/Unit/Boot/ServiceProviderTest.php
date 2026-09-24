@@ -9,6 +9,7 @@ use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Boot\CapabilitiesConfig;
 use Rawphp\Capabilities\Boot\SurfaceNames;
 use Rawphp\Capabilities\CapabilitiesServiceProvider;
+use Rawphp\Capabilities\Capability;
 use Rawphp\Capabilities\Contracts\ApprovalGateway;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
@@ -21,6 +22,8 @@ use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
 use Rawphp\Capabilities\Tests\Fixtures\BootHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
+use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
+use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
 it('happy: registers config merge [BOOT-001]', function () {
     $plan = CapabilitiesServiceProvider::registrationPlan();
@@ -371,6 +374,38 @@ it('REQ-057: CapabilityBus resolves to the same singleton instance as Capability
         ->and($bus)->toBeInstanceOf(CapabilityBus::class)
         ->and($app->aliases[CapabilityBus::class] ?? null)->toBe(CapabilityRegistry::class)
         ->and($app->aliases['CapabilityBus'] ?? null)->toBe(CapabilityRegistry::class);
+});
+
+// --- D-006: container ApprovalManager (HTTP approve route, messaging gateway) runs the capability ---
+
+it('D-006: container ApprovalManager accept runs the capability through the registry', function () {
+    $app = req048FakeApp(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+    ]));
+
+    $registry = $app->make(CapabilityRegistry::class);
+    $runs = 0;
+    Capability::define('ship-order')
+        ->description('ship an order')
+        ->input(CreateInvoiceInput::class)
+        ->output(CreateInvoiceResult::class)
+        ->authorize(fn () => true)
+        ->run(function () use (&$runs) {
+            $runs++;
+
+            return new CreateInvoiceResult(invoice_id: 5);
+        })
+        ->register($registry);
+
+    $pending = $registry->invoke('ship-order', PipelineHelpers::validInput(), PipelineHelpers::options('http', [
+        'needs_approval' => true,
+    ]));
+    $result = $app->make(ApprovalManager::class)->accept((string) $pending->approvalId(), PipelineHelpers::userActor(7));
+
+    expect($result->isOk())->toBeTrue()
+        ->and($runs)->toBe(1)
+        ->and($app->make(ApprovalManager::class)->store()->find((string) $pending->approvalId())['result_status'])->toBe('ok');
 });
 
 // --- Re-validation on accept: provider wires the original-actor re-check ---
