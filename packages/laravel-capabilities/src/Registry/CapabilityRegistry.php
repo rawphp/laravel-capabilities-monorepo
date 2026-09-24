@@ -857,18 +857,25 @@ final class CapabilityRegistry implements CapabilityBus
         }
 
         if ($this->resolveName($nameOrAlias) === null) {
-            return $this->pipeline->finishEarly(CapabilityResult::failure(
+            return $this->pipeline->finishUnknown($nameOrAlias, $caller, CapabilityResult::failure(
                 code: 'not_found',
                 message: sprintf('Unknown capability "%s".', $nameOrAlias),
-            ), null);
+            ));
         }
 
         $definition = $this->get($nameOrAlias);
+        $state = new InvokeState(
+            definition: $definition,
+            rawInput: $input,
+            caller: $caller,
+            options: $options,
+            requestId: isset($options['request_id']) ? (string) $options['request_id'] : null,
+        );
 
         // D-012: after sunset_at, canonical and aliases return gone (410) without run().
         $now = $this->clock->now();
         if ($definition->isSunset($now instanceof \DateTimeInterface ? $now : null)) {
-            return $this->pipeline->finishEarly(CapabilityResult::failure(
+            return $this->pipeline->finishGateDeny($state, CapabilityResult::failure(
                 code: 'gone',
                 message: sprintf(
                     'Capability "%s" is past sunset_at (%s).',
@@ -879,26 +886,18 @@ final class CapabilityRegistry implements CapabilityBus
                     'successor' => $definition->successor,
                     'deprecated' => true,
                 ], static fn ($v) => $v !== null),
-            ), null);
+            ));
         }
 
         // Surface gate (PIPE-005): capability not invokable as that surface.
         $effective = $definition->effectiveSurfaces($this->globallyEnabledSurfaces);
         $surface = $caller === 'artisan' ? 'artisan' : $caller;
         if (! in_array($surface, $effective, true)) {
-            return $this->pipeline->finishEarly(CapabilityResult::failure(
+            return $this->pipeline->finishGateDeny($state, CapabilityResult::failure(
                 code: 'forbidden',
                 message: sprintf('Capability "%s" is not invokable via surface "%s".', $definition->name, $surface),
-            ), null);
+            ));
         }
-
-        $state = new InvokeState(
-            definition: $definition,
-            rawInput: $input,
-            caller: $caller,
-            options: $options,
-            requestId: isset($options['request_id']) ? (string) $options['request_id'] : null,
-        );
 
         return $this->pipeline->execute($state, $forced);
     }
