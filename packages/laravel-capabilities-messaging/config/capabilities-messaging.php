@@ -11,6 +11,8 @@ return [
         'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET'),
         'callback_secret' => env('TELEGRAM_CALLBACK_SECRET', env('TELEGRAM_WEBHOOK_SECRET')),
         'callback_ttl_seconds' => (int) env('TELEGRAM_CALLBACK_TTL_SECONDS', 900),
+        /** D-013: agent turns per chat per minute (0 disables). Uses core RateLimiter. */
+        'turns_per_minute' => (int) env('CAPABILITIES_MESSAGING_TURNS_PER_MINUTE', 20),
     ],
 
     /**
