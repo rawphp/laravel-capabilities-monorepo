@@ -145,14 +145,23 @@ final class TurnRunner
                         $payload = [];
                     }
                     $toolCallId = (string) $call['id'];
-                    $result = in_array($name, $offeredNames, true)
-                        ? $this->bus->invoke($name, $payload, array_merge($invokeOptions, [
+                    // D-005: optional tool arg idempotency_key is transport, not capability input.
+                    $idempotencyKey = $payload['idempotency_key'] ?? null;
+                    unset($payload['idempotency_key']);
+                    if (in_array($name, $offeredNames, true)) {
+                        $callOptions = array_merge($invokeOptions, [
                             'agent_turn_tool_calls' => ++$toolCallCount,
-                        ]))
-                        : CapabilityResult::failure(
+                        ]);
+                        if (is_scalar($idempotencyKey) && (string) $idempotencyKey !== '') {
+                            $callOptions['idempotency_key'] = (string) $idempotencyKey;
+                        }
+                        $result = $this->bus->invoke($name, $payload, $callOptions);
+                    } else {
+                        $result = CapabilityResult::failure(
                             'capability_not_in_profile',
                             "Tool {$name} was not offered for this turn",
                         );
+                    }
                     $toolContent = $this->encodeToolResult($name, $result);
                     $this->progress->append($turnUlid, [
                         'kind' => 'tool',

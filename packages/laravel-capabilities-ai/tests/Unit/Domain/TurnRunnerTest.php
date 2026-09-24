@@ -272,6 +272,55 @@ it('tool invokes carry a 1-based per-turn tool-call count across rounds for the 
         ->and(array_unique(array_column($first->allOptions, 'caller')))->toBe([ResolveConversationActor::CALLER_JOB]);
 });
 
+it('lifts tool arg idempotency_key into bus options and strips it from capability input (D-005)', function () {
+    bootTurnSqlite();
+    $seeded = enqueueTurnWithUser('use tools');
+    $bus = recordingBus();
+    $progress = new ArrayProgressStore;
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: new FakeLlmClient([
+            ['tool_calls' => [
+                ['name' => 'demo.tool', 'arguments' => ['x' => 1, 'idempotency_key' => 'invoice-create-001']],
+                ['name' => 'demo.tool', 'input' => ['x' => 2]],
+                ['name' => 'demo.tool', 'arguments' => ['x' => 3, 'idempotency_key' => '']],
+            ]],
+            ['content' => 'done'],
+        ]),
+        context: new class implements ConversationContextProvider
+        {
+            public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+            {
+                return [['role' => 'user', 'content' => 'use tools']];
+            }
+        },
+        tools: new class implements ToolCatalog
+        {
+            public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+            {
+                return [['name' => 'demo.tool']];
+            }
+        },
+        bus: $bus,
+        progress: $progress,
+        actors: turnActors(),
+    );
+
+    $runner->run($seeded['turn_ulid']);
+
+    expect($bus->invokes)->toBe(3)
+        ->and($bus->allOptions[0]['idempotency_key'] ?? null)->toBe('invoice-create-001')
+        ->and(array_key_exists('idempotency_key', $bus->allOptions[1]))->toBeFalse()
+        ->and(array_key_exists('idempotency_key', $bus->allOptions[2]))->toBeFalse()
+        ->and($bus->lastInput)->toBe(['x' => 3]);
+
+    $payloads = array_map(
+        static fn (array $e): mixed => $e['data']['payload'] ?? null,
+        array_values(array_filter($progress->since($seeded['turn_ulid']), static fn (array $e): bool => ($e['kind'] ?? null) === 'tool')),
+    );
+    expect($payloads)->toBe([['x' => 1], ['x' => 2], ['x' => 3]]);
+});
+
 it('tool call path fails closed when conversation has no user_id', function () {
     bootTurnSqlite();
     $turnUlid = enqueueTurn('use tool'); // no userId
