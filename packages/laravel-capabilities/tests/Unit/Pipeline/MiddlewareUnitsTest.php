@@ -23,6 +23,27 @@ it('fail: ResolveActor refuses null principal [PIPE-010]', function () {
         ->toThrow(RuntimeException::class);
 });
 
+it('fail: ResolveActor refuses job caller with omitted actor, no opt-in needed [D-002]', function () {
+    expect(fn () => (new ResolveActor)->resolve('job', []))
+        ->toThrow(RuntimeException::class, 'Job invokes require an explicit SystemActor');
+});
+
+it('fail: bus invoke as job with omitted actor fails closed before run [D-002]', function () {
+    $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
+    $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), [
+        'caller' => 'job',
+        'tenant_id' => 't-1',
+    ]);
+    expect($result->isOk())->toBeFalse()
+        ->and($result->error['code'])->toBe('unauthenticated')
+        ->and($h['runCount']->value)->toBe(0);
+});
+
+it('happy: non-job caller with omitted actor still gets the in-process default user [PIPE-010]', function () {
+    $actor = (new ResolveActor)->resolve('http', []);
+    expect($actor->id)->toBe(1);
+});
+
 it('happy: ResolveTenantFromCaller attaches scope [D-003]', function () {
     $ctx = CapabilityContext::make([
         'caller' => 'http',

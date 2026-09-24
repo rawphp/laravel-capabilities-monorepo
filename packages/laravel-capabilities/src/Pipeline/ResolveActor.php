@@ -29,10 +29,10 @@ final class ResolveActor
             return $options['actor'];
         }
 
-        // Explicit null is always refused (D-002). Omitting actor falls back to a
-        // default user principal so schema/in-process paths stay usable; adapters
-        // must set actor (job → SystemActor) in production.
-        if ($caller === 'job' && ($options['require_actor'] ?? false) === true) {
+        // Explicit null is always refused (D-002). Jobs never fall back to the
+        // default user: they must carry a SystemActor or real user. Other callers
+        // omitting actor get a default user so schema/in-process paths stay usable.
+        if ($caller === 'job') {
             throw new RuntimeException('Job invokes require an explicit SystemActor (or User) principal (D-002).');
         }
 
