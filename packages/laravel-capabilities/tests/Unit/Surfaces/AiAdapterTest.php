@@ -48,6 +48,19 @@ it('happy: max_tool_calls_per_turn enforced on agent loop budget [D-013]', funct
         ->and($h['ai']->turnToolCalls())->toBe(3);
 });
 
+it('fail: spoofed tool calls count toward the agent turn budget [D-013]', function () {
+    $h = AdapterHelpers::harness(['max_tool_calls' => 2]);
+    $user = $h['user'];
+    $spoof1 = $h['ai']->handle('create-invoice', AdapterHelpers::input(['actor' => 'x']), $user, ['profile' => 'billing']);
+    $spoof2 = $h['ai']->handle('create-invoice', AdapterHelpers::input(['caller' => 'http']), $user, ['profile' => 'billing']);
+    $limited = $h['ai']->handle('create-invoice', AdapterHelpers::input(), $user, ['profile' => 'billing']);
+    expect($spoof1->errorCode())->toBe('forbidden')
+        ->and($spoof2->errorCode())->toBe('forbidden')
+        ->and($limited->errorCode())->toBe('rate_limited')
+        ->and($h['ai']->turnToolCalls())->toBe(3)
+        ->and($h['runs']['create-invoice']->value)->toBe(0);
+});
+
 it('edge: tool input_schema equals catalog input_schema [D-004]', function () {
     $h = AdapterHelpers::harness();
     $tool = collect($h['ai']->toolsFor('billing'))->firstWhere('name', 'create-invoice');

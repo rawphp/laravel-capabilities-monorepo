@@ -124,6 +124,10 @@ final class AiToolAdapterV1 implements AiToolAdapter
             );
         }
 
+        // Every attempt spends turn budget (D-013), including rejected spoofs — otherwise a
+        // model could loop on spoofed calls without ever tripping rate_limited.
+        $this->turnToolCalls++;
+
         $spoof = $this->detectSpoof($input);
         $clean = $this->stripSpoofKeys($input);
 
@@ -137,7 +141,6 @@ final class AiToolAdapterV1 implements AiToolAdapter
 
         // Caller is always server-derived agent — never from model JSON (D-022).
         unset($options['caller']);
-        $this->turnToolCalls++;
 
         $invokeOptions = array_merge($options, [
             'caller' => 'agent',
