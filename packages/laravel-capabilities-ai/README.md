@@ -96,7 +96,7 @@ Full greenfield checklist, kill-list template, and extend snippet: [docs/user-gu
 Bind before running turns:
 
 - `Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider` — messages for the model
-- `Rawphp\CapabilitiesAi\Contracts\ToolCatalog` — tools the model may call (names = capability names)
+- `Rawphp\CapabilitiesAi\Contracts\ToolCatalog` — tools the model may call (names = capability names). TurnRunner resolves the list once per turn; a `tool_call` for a name outside it is answered with a `capability_not_in_profile` tool result and never reaches the bus (D-008)
 - `Rawphp\Capabilities\Contracts\CapabilityBus` — already provided by core
 
 ```php

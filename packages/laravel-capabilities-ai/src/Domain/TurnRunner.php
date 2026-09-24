@@ -58,6 +58,8 @@ final class TurnRunner
             $toolDefs = $this->llm->supportsToolRounds()
                 ? $this->tools->toolsForTurn($conversation->ulid, $turnUlid)
                 : [];
+            // Snapshot of what the model was shown; tool_calls outside it never reach the bus.
+            $offeredNames = array_column($toolDefs, 'name');
 
             $rounds = 0;
             // 1-based tool-call count across all rounds of this turn → core D-013 agent turn budget.
@@ -139,9 +141,14 @@ final class TurnRunner
                         $payload = [];
                     }
                     $toolCallId = (string) $call['id'];
-                    $result = $this->bus->invoke($name, $payload, array_merge($invokeOptions, [
-                        'agent_turn_tool_calls' => ++$toolCallCount,
-                    ]));
+                    $result = in_array($name, $offeredNames, true)
+                        ? $this->bus->invoke($name, $payload, array_merge($invokeOptions, [
+                            'agent_turn_tool_calls' => ++$toolCallCount,
+                        ]))
+                        : CapabilityResult::failure(
+                            'capability_not_in_profile',
+                            "Tool {$name} was not offered for this turn",
+                        );
                     $toolContent = $this->encodeToolResult($name, $result);
                     $this->progress->append($turnUlid, [
                         'kind' => 'tool',

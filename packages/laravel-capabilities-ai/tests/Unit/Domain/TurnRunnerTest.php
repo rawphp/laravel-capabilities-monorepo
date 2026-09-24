@@ -758,3 +758,86 @@ it('does not overwrite cancelled status with completed (cooperative cancel)', fu
     ));
     expect($terminals)->toBeEmpty();
 });
+
+it('tool call for a name outside the turn tool list is refused without a bus invoke', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurnWithUser('use tool')['turn_ulid'];
+    $bus = recordingBus();
+    $captured = [];
+    $llm = new class($captured) implements LlmClient
+    {
+        private int $calls = 0;
+
+        /** @param list<list<array<string, mixed>>> $captured */
+        public function __construct(private array &$captured) {}
+
+        public function complete(array $messages, array $tools = []): array
+        {
+            $this->captured[] = $messages;
+            $this->calls++;
+
+            return $this->calls === 1
+                ? ['tool_calls' => [
+                    ['id' => 'call_hidden', 'name' => 'admin.wipe', 'arguments' => ['all' => true]],
+                    ['id' => 'call_offered', 'name' => 'demo.tool', 'arguments' => ['x' => 1]],
+                ]]
+                : ['content' => 'done'];
+        }
+
+        public function supportsToolRounds(): bool
+        {
+            return true;
+        }
+    };
+    $context = new class implements ConversationContextProvider
+    {
+        public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['role' => 'user', 'content' => 'use tool']];
+        }
+    };
+    $tools = new class implements ToolCatalog
+    {
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['name' => 'demo.tool']];
+        }
+    };
+    $progress = new ArrayProgressStore;
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        bus: $bus,
+        progress: $progress,
+        actors: turnActors(),
+    );
+
+    $turn = $runner->run($turnUlid);
+
+    expect($turn->status)->toBe(Turn::STATUS_COMPLETED)
+        ->and($bus->invokes)->toBe(1)
+        ->and($bus->lastName)->toBe('demo.tool')
+        ->and($bus->lastOptions['agent_turn_tool_calls'] ?? null)->toBe(1);
+
+    $toolEvents = array_values(array_filter(
+        $progress->since($turnUlid),
+        static fn (array $e): bool => ($e['kind'] ?? null) === 'tool',
+    ));
+    expect($toolEvents)->toHaveCount(2)
+        ->and($toolEvents[0]['data']['name'] ?? null)->toBe('admin.wipe')
+        ->and($toolEvents[0]['data']['ok'] ?? null)->toBeFalse()
+        ->and($toolEvents[0]['data']['error_code'] ?? null)->toBe('capability_not_in_profile')
+        ->and($toolEvents[0]['data']['tool_call_id'] ?? null)->toBe('call_hidden');
+
+    $toolMessages = array_values(array_filter(
+        $captured[1] ?? [],
+        static fn (array $m): bool => ($m['role'] ?? null) === 'tool',
+    ));
+    $refused = json_decode((string) ($toolMessages[0]['content'] ?? ''), true);
+    expect($toolMessages[0]['tool_call_id'] ?? null)->toBe('call_hidden')
+        ->and($refused['ok'] ?? null)->toBeFalse()
+        ->and($refused['error']['code'] ?? null)->toBe('capability_not_in_profile')
+        ->and($refused['name'] ?? null)->toBe('admin.wipe');
+});
