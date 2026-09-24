@@ -195,6 +195,29 @@ final class MessagingConfig
         return is_array($list) ? array_values($list) : [];
     }
 
+    /**
+     * Two allowlist entries for one Telegram user would silently bind it to whichever
+     * entry came last, so a duplicate fails loudly (MSG-002).
+     *
+     * @throws RuntimeException
+     */
+    public function requireUniqueAllowlist(): void
+    {
+        $seen = [];
+        foreach ($this->allowlist() as $entry) {
+            $tg = (string) ($entry['telegram_user_id'] ?? '');
+            if ($tg === '') {
+                continue;
+            }
+            if (isset($seen[$tg])) {
+                throw new RuntimeException(
+                    "capabilities-messaging.identity.allowlist lists telegram_user_id {$tg} more than once (MSG-002)."
+                );
+            }
+            $seen[$tg] = true;
+        }
+    }
+
     public function skipBootChecksRequested(): bool
     {
         return (bool) ($this->config['skip_boot_checks'] ?? false);
