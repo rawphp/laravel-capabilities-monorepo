@@ -1,11 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/rawphp/capabilities-cli/internal/api"
+	"github.com/rawphp/capabilities-cli/internal/auth"
 	"github.com/rawphp/capabilities-cli/internal/synth"
 )
 
@@ -81,5 +85,36 @@ func TestMcpUnauthenticatedAlsoNonZero(t *testing.T) {
 	code, _, _ := CaptureExecute([]string{"mcp"}, t.TempDir(), nil)
 	if code == 0 {
 		t.Fatal("unauthenticated bare mcp must exit non-zero")
+	}
+}
+
+func TestCmdMcpGoneNotHappyPath(t *testing.T) {
+	// MCP stdio hard-removed (ORI-791): bare mcp never starts a bridge success path.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"ok":true,"data":{"capabilities":[{"name":"t1"}]}}`))
+	}))
+	t.Cleanup(srv.Close)
+	root := t.TempDir()
+	st := auth.NewStore(root)
+	seedLogin(t, st, "default", srv.URL, "tok")
+	var out, errb bytes.Buffer
+	in := bytes.NewBufferString(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}` + "\n")
+	code := Execute(Env{
+		Args:       []string{"mcp"},
+		Stdout:     &out,
+		Stderr:     &errb,
+		Stdin:      in,
+		ConfigRoot: root,
+		NewClient: func(base, token string) *api.Client {
+			c := api.NewClient(base, token)
+			c.HTTP = srv.Client()
+			return c
+		},
+	})
+	if code == 0 {
+		t.Fatal("mcp must not succeed as stdio bridge")
+	}
+	if strings.Contains(out.String(), `"tools"`) || strings.Contains(out.String(), "t1") {
+		t.Fatalf("must not return MCP tools/list payload: %s", out.String())
 	}
 }

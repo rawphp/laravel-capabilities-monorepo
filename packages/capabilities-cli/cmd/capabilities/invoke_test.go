@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/rawphp/capabilities-cli/internal/api"
+	"github.com/rawphp/capabilities-cli/internal/auth"
 )
 
 func invoiceSchemaJSON() string {
@@ -159,5 +160,98 @@ func TestRunRetryLastWithoutInputResendsPriorBody(t *testing.T) {
 	}
 	if gotKey != "k1" || string(gotBody) != first {
 		t.Fatalf("retry-last must resend prior invoke: key=%s body=%s want=%s", gotKey, gotBody, first)
+	}
+}
+
+// --tenant was removed: the server never read the hint, and DTO schemas
+// (additionalProperties:false) rejected the injected body key. It is now an
+// unknown flag like any other — exit 2 before any POST (D-003: scope is server-derived).
+func TestFlagtenantremoved(t *testing.T) {
+	posts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			posts++
+		}
+		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/capabilities/") {
+			w.Write([]byte(`{"ok":true,"data":{"name":"create-invoice","schema_version":"1","input_schema":{"type":"object","required":["customer_id"],"properties":{"customer_id":{"type":"integer"}}}}}`))
+			return
+		}
+		w.Write([]byte(`{"ok":true,"data":{"invoice_id":1}}`))
+	}))
+	t.Cleanup(srv.Close)
+	root := t.TempDir()
+	st := auth.NewStore(root)
+	seedLogin(t, st, "default", srv.URL, "tok")
+	code, _, errb := CaptureExecute([]string{
+		"run", "create-invoice",
+		"--input={\"customer_id\":1}",
+		"--tenant=acme",
+		"--no-cache",
+	}, root, newClientFactory(srv))
+	if code != api.ExitValidation {
+		t.Fatalf("want exit 2 got %d stderr=%s", code, errb)
+	}
+	if !strings.Contains(errb, "unknown flag") {
+		t.Fatalf("want unknown flag, got %s", errb)
+	}
+	if posts != 0 {
+		t.Fatalf("must not POST, got %d", posts)
+	}
+	if strings.Contains(CommandHelp("run"), "--tenant") {
+		t.Fatal("run help must not document --tenant")
+	}
+}
+
+func TestRunInputProblemsExitValidationWithoutPost(t *testing.T) {
+	posts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			posts++
+		}
+		w.Write([]byte(`{"ok":true,"data":{"name":"create-invoice","schema_version":"1","input_schema":` + invoiceSchemaJSON() + `}}`))
+	}))
+	t.Cleanup(srv.Close)
+	root := t.TempDir()
+	seedLogin(t, auth.NewStore(root), "default", srv.URL, "tok")
+	cases := map[string][]string{
+		"unreadable input file": {"run", "create-invoice", "--input-file=" + root + "/missing.json"},
+		"empty flag name":       {"run", "create-invoice", "--=5"},
+		"stray positional":      {"run", "create-invoice", "--customer-id=1", "stray"},
+	}
+	for name, args := range cases {
+		code, _, errb := CaptureExecute(args, root, newClientFactory(srv))
+		if code != api.ExitValidation || errb == "" {
+			t.Fatalf("%s: exit %d stderr %q", name, code, errb)
+		}
+	}
+	if posts != 0 {
+		t.Fatalf("posted %d times", posts)
+	}
+}
+
+func TestMergeInputRejectsUnreadableSchema(t *testing.T) {
+	if _, _, msg := mergeInput("x", []byte(`{`), nil, nil); !strings.Contains(msg, "invalid input schema") {
+		t.Fatalf("msg %q", msg)
+	}
+}
+
+// Describe failing is not fatal: the server stays the validator (D-004).
+func TestRunInvokesWhenDescribeFails(t *testing.T) {
+	var posted []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			posted, _ = io.ReadAll(r.Body)
+			w.Write([]byte(`{"ok":true,"data":{"invoice_id":7}}`))
+			return
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte(`{"ok":false,"error":{"code":"internal","message":"describe down"}}`))
+	}))
+	t.Cleanup(srv.Close)
+	root := t.TempDir()
+	seedLogin(t, auth.NewStore(root), "default", srv.URL, "tok")
+	code, out, errb := CaptureExecute([]string{"run", "create-invoice", `--input={"customer_id":1}`}, root, newClientFactory(srv))
+	if code != api.ExitOK || !strings.Contains(out, `"invoice_id":7`) || string(posted) != `{"customer_id":1}` {
+		t.Fatalf("exit %d out %q err %q posted %s", code, out, errb, posted)
 	}
 }
