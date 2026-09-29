@@ -347,7 +347,7 @@ These shipped in 0.5.3 and had no callers inside the package:
 ### Fixed
 
 - **Approved executions run under the scope stamped on the approval row (D-003 / D-006,
-  L-401 / L-501).** `CapabilityRegistry::executeApproval()` — the default executor behind
+  L-401 / L-501 / L-601).** `CapabilityRegistry::executeApproval()` — the default executor behind
   accept and resume — re-invoked the capability as the real requester and let the
   `ScopeResolver` place them again, so a requester who had switched tenant between request
   and decision (for example a new `current_tenant_id`) had the stored input run in the *new*
@@ -362,9 +362,12 @@ These shipped in 0.5.3 and had no callers inside the package:
   row's `tenant_id` is the tenant authority; team / organization / attributes are never
   taken from a fresh resolution of the requester (which could sit in another tenant). A
   rebuilt scope regains `query()` through the container-bound `ScopedQueryFactory`, the same
-  route as any resolver-produced scope. Rows written before this change (`scope` a bare
-  tenant string) rebuild tenant-only; rows without a tenant (global system work) resolve
-  scope at execution time as before.
+  route as any resolver-produced scope. Untenanted rows are not unscoped: a team-only or
+  org-only host whose `ScopeResolver` leaves the tenant null, and global system work with
+  team / organization dimensions, rebuild the stamp with a null tenant, so a requester who
+  switched team still runs under the stamped team. Rows written before this change (`scope`
+  a bare tenant string) rebuild tenant-only; only rows with neither a tenant nor a `scope`
+  array resolve scope at execution time.
 - **Approver placement fails closed on any ScopeResolver error (D-003 / D-006, L-402).**
   `ResolveTenantFromCaller::tenantOfPrincipal()` only treated the package's own scope
   exceptions as "not placed"; a host resolver that threw anything else (a `DomainException`

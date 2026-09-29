@@ -215,4 +215,8 @@ it('edge: re-checks authorize under the row\'s full stamped scope, tenant-only f
 
     expect($authorizer(oaaRow(['scope' => 't1'])))->toBeTrue()
         ->and($seen)->toBe(['t1', null, null]);
+
+    // L-601: an untenanted row re-checks under its stamped team too, not a fresh resolution.
+    expect($authorizer(oaaRow(['tenant_id' => null, 'scope' => ['tenant_id' => null, 'team_id' => 'team-A', 'organization_id' => null, 'attributes' => []]])))->toBeTrue()
+        ->and($seen)->toBe([null, 'team-A', null]);
 });
