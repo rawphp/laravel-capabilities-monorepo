@@ -40,3 +40,35 @@ func TestCanonicalpreferredinlist(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+func TestNoWarningForMissingEntryOrFutureSunset(t *testing.T) {
+	if w := DeprecationWarning(nil, time.Now()); w != "" {
+		t.Fatal(w)
+	}
+	if w := DeprecationWarning(&CacheEntry{Name: "x", SunsetAt: "2099-01-01"}, time.Now()); w != "" {
+		t.Fatal(w)
+	}
+}
+
+func TestSunsetWarningNamesSuccessor(t *testing.T) {
+	w := DeprecationWarning(&CacheEntry{Name: "x", SunsetAt: "2000-01-01", Successor: "y"}, time.Now())
+	if !strings.Contains(w, "past sunset") || !strings.Contains(w, "use y") {
+		t.Fatal(w)
+	}
+}
+
+func TestAliasResolutionWithoutCanonicalFallsBackToName(t *testing.T) {
+	e := &CacheEntry{Name: "n", Aliases: []string{"a"}}
+	if got := ResolveAlias(e, "a"); got != "n" {
+		t.Fatal(got)
+	}
+	if got := ResolveAlias(e, "n"); got != "n" {
+		t.Fatal(got)
+	}
+	if got := ResolveAlias(e, "other"); got != "other" {
+		t.Fatal(got)
+	}
+	if got := ResolveAlias(nil, "x"); got != "x" {
+		t.Fatal(got)
+	}
+}

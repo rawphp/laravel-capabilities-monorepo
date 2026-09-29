@@ -163,3 +163,54 @@ func TestCachewriteatomic(t *testing.T) {
 		}
 	}
 }
+
+func TestInvalidateMissingCacheIsNoop(t *testing.T) {
+	c := NewCache(filepath.Join(t.TempDir(), "nope"))
+	if err := c.Invalidate(""); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Invalidate("x"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCacheReportsFilesystemFailures(t *testing.T) {
+	// Cache dir is a regular file: writes and full invalidation fail.
+	file := filepath.Join(t.TempDir(), "file")
+	_ = os.WriteFile(file, []byte("x"), 0o600)
+	c := NewCache(file)
+	if err := c.Put(&CacheEntry{Name: "n", InputSchema: json.RawMessage(`{}`)}); err == nil {
+		t.Fatal("Put into a file must fail")
+	}
+	if err := c.Invalidate(""); err == nil {
+		t.Fatal("Invalidate all on a file must fail")
+	}
+
+	// Entry path is a non-empty directory: write and single invalidation fail.
+	dir := t.TempDir()
+	c = NewCache(dir)
+	_ = os.MkdirAll(filepath.Join(dir, "n.json.tmp", "x"), 0o700)
+	_ = os.MkdirAll(filepath.Join(dir, "m.json", "x"), 0o700)
+	if err := c.Put(&CacheEntry{Name: "n", InputSchema: json.RawMessage(`{}`)}); err == nil {
+		t.Fatal("Put over a directory must fail")
+	}
+	if err := c.Invalidate("m"); err == nil {
+		t.Fatal("Invalidate of an unremovable entry must fail")
+	}
+}
+
+func TestCacheRefusesMalformedSchema(t *testing.T) {
+	c := NewCache(t.TempDir())
+	if err := c.Put(&CacheEntry{Name: "n", InputSchema: json.RawMessage(`{`)}); err == nil {
+		t.Fatal("malformed schema must not be written")
+	}
+	if _, ok := c.Get("n", ""); ok {
+		t.Fatal("nothing should be cached")
+	}
+}
+
+func TestGetByETagMissesAbsentEntry(t *testing.T) {
+	if _, ok := NewCache(t.TempDir()).GetByETag("n", "a"); ok {
+		t.Fatal("absent entry must miss")
+	}
+}
