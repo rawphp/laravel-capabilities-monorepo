@@ -33,8 +33,10 @@
 # --squash: collapse BASE..HEAD into one clean commit (default message
 # "Release $NEW_TAG", override with -m/--message), then
 # git push --force-with-lease origin $BRANCH so origin tip matches.
-# BASE = prior v* tag when one exists; otherwise origin/$BRANCH (first-release /
-# unpushed-stack squash). Never force-pushes tags.
+# BASE = nearest v* tag reachable from HEAD when one exists; otherwise
+# origin/$BRANCH (first-release / unpushed-stack squash). Never force-pushes tags.
+# The version bump still starts from the global max tag, so a hotfix tag cut off
+# this branch is never re-used, but it is never the range or squash base either.
 #
 # Quality gates (when not skipped; skip flags are dry-run only):
 #   1. composer format:test   (Pint)
@@ -74,7 +76,8 @@ Options:
                        commits since that tag (default: hard refuse empty range)
   --squash             Soft-reset BASE..HEAD into one clean commit, then
                        git push --force-with-lease origin <branch> before gates.
-                       BASE = latest v* tag, or origin/<branch> when no tag yet.
+                       BASE = latest v* tag reachable from HEAD, or
+                       origin/<branch> when none is.
                        Never force-pushes tags.
   -m, --message MSG    Commit message for --squash (default: "Release <tag>")
   -h, --help           Show this help
@@ -273,6 +276,15 @@ next_version() {
   printf 'v%s.%s.%s' "$major" "$minor" "$patch"
 }
 
+# Max strict vX.Y.Z tag reachable from HEAD. Empty if none. Commit range and
+# squash base: a tag cut on another branch (hotfix) is not in HEAD's history.
+reachable_tag() {
+  git tag --merged HEAD -l 'v[0-9]*.[0-9]*.[0-9]*' \
+    | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+    | sort -V \
+    | tail -1 || true
+}
+
 # True (exit 0) when $1 is strictly greater than $2 (vX.Y.Z form).
 version_strictly_greater() {
   local candidate="$1" base="$2"
@@ -309,6 +321,11 @@ else
   log "Latest tag (local+origin max): $CURRENT_TAG"
 fi
 
+RANGE_TAG="$(reachable_tag)"
+if [[ -n "$CURRENT_TAG" && "$RANGE_TAG" != "$CURRENT_TAG" ]]; then
+  log "Latest tag reachable from HEAD: ${RANGE_TAG:-none} (range / squash base)"
+fi
+
 NEW_TAG="$(next_version "$CURRENT_TAG" "$BUMP")"
 [[ "$NEW_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "invalid version: $NEW_TAG"
 
@@ -342,11 +359,11 @@ if [[ "$SQUASH" -eq 1 && -z "$SQUASH_MESSAGE" ]]; then
   SQUASH_MESSAGE="Release $NEW_TAG"
 fi
 
-# Squash base: prior tag, or origin/$BRANCH for first-release / unpushed stack.
+# Squash base: prior reachable tag, or origin/$BRANCH for first-release / unpushed stack.
 SQUASH_BASE=""
 if [[ "$SQUASH" -eq 1 ]]; then
-  if [[ -n "$CURRENT_TAG" ]]; then
-    SQUASH_BASE="$CURRENT_TAG"
+  if [[ -n "$RANGE_TAG" ]]; then
+    SQUASH_BASE="$RANGE_TAG"
   elif git rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1; then
     SQUASH_BASE="origin/$BRANCH"
   else
@@ -384,7 +401,7 @@ fi
 printf '  after tag: split-packages.yml → package remotes + CLI GitHub Release\n'
 
 commit_count=0
-RANGE_BASE="${CURRENT_TAG:-}"
+RANGE_BASE="${RANGE_TAG:-}"
 if [[ -n "$RANGE_BASE" ]]; then
   commit_count="$(git rev-list --count "${RANGE_BASE}..HEAD" 2>/dev/null || echo 0)"
   printf '  commits since %s:\n' "$RANGE_BASE"

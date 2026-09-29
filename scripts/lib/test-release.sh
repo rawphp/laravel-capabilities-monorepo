@@ -324,12 +324,46 @@ assert_eq "squash fixture collapses to 1 commit since tag" "1" "$(cat "$_tmp_sq/
 assert_eq "squash fixture preserves tree" "$(cat "$_tmp_sq/tree_before")" "$(cat "$_tmp_sq/tree_after")"
 assert_eq "squash fixture clean message" "Release v0.2.0" "$(cat "$_tmp_sq/msg")"
 
+printf '\n-- temp git fixture (range/squash base = tag reachable from HEAD) --\n'
+# A tag cut on a side branch (hotfix) is the global max but not in main's
+# history: bump from it, but range/squash from the nearest reachable tag.
+# shellcheck disable=SC1090
+eval "$(extract_fn reachable_tag)" 2>/dev/null || true
+_tmp_rt="$(mktemp -d "${TMPDIR:-/tmp}/test-release-reachable.XXXXXX")"
+cleanup_tmp_rt() { rm -rf "$_tmp_rt"; }
+trap 'cleanup_tmp; cleanup_tmp_sq; cleanup_tmp_rt' EXIT
+(
+  cd "$_tmp_rt"
+  git init -q -b main
+  git config user.email "test@example.com"
+  git config user.name "test-release"
+  echo a > file.txt && git add file.txt && git commit -q -m "base"
+  git tag v0.1.0
+  git tag v0.1.1-rc1
+  git checkout -q -b hotfix
+  echo fix >> file.txt && git commit -q -am "hotfix"
+  git tag v0.1.1
+  git checkout -q main
+  echo b >> file.txt && git commit -q -am "main work"
+)
+if declare -F reachable_tag >/dev/null; then
+  assert_eq "reachable_tag skips side-branch tag v0.1.1" "v0.1.0" "$(cd "$_tmp_rt" && reachable_tag)"
+  assert_eq "reachable_tag on hotfix branch sees v0.1.1" "v0.1.1" "$(cd "$_tmp_rt" && git checkout -q hotfix && reachable_tag)"
+else
+  fail_case "reachable_tag skips side-branch tag v0.1.1" "reachable_tag() missing from release.sh"
+fi
+if grep -q 'SQUASH_BASE="\$RANGE_TAG"' "$RELEASE_SH" && grep -q 'RANGE_BASE="\${RANGE_TAG:-}"' "$RELEASE_SH"; then
+  pass "range + squash base use the reachable tag, not the global max"
+else
+  fail_case "range + squash base use the reachable tag, not the global max" "SQUASH_BASE/RANGE_BASE not wired to RANGE_TAG"
+fi
+
 printf '\n-- CHANGELOG readiness (one [Unreleased] + section per tag) --\n'
 # shellcheck disable=SC1090
 eval "$(extract_fn changelog_problems)"
 _tmp_cl="$(mktemp -d "${TMPDIR:-/tmp}/test-release-changelog.XXXXXX")"
 cleanup_tmp_cl() { rm -rf "$_tmp_cl"; }
-trap 'cleanup_tmp; cleanup_tmp_sq; cleanup_tmp_cl' EXIT
+trap 'cleanup_tmp; cleanup_tmp_sq; cleanup_tmp_rt; cleanup_tmp_cl' EXIT
 mkdir -p "$_tmp_cl/packages/a" "$_tmp_cl/packages/b"
 printf '## [Unreleased]\n\n## [0.6.0] - 2026-10-01\n\n- x\n' > "$_tmp_cl/packages/a/CHANGELOG.md"
 printf '## [Unreleased]\n\n## [0.6.0] - 2026-10-01\n\nNo changes.\n' > "$_tmp_cl/packages/b/CHANGELOG.md"

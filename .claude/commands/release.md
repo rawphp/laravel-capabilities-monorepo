@@ -7,7 +7,7 @@ argument-hint: "[patch|minor|major|vX.Y.Z] [--dry-run] [--squash] [-m MSG] [--ye
 
 Create a release for the **laravel-capabilities monorepo**.
 
-**Ship path:** local gates → optional `--squash` (clean commit + force-with-lease branch) → annotated `v*` tag → `git push` tag → GitHub Actions `split-packages.yml` mirrors `packages/*` to public remotes and the CLI GoReleaser path builds GitHub Release binaries.
+**Ship path:** promote package CHANGELOGs (commit + push) → local gates → optional `--squash` (clean commit + force-with-lease branch) → annotated `v*` tag → `git push` tag → GitHub Actions `split-packages.yml` mirrors `packages/*` to public remotes and the CLI GoReleaser path builds GitHub Release binaries.
 
 **Sole gate implementation:** `scripts/release.sh` is the only executable source of truth for quality gates, versioning, squash, tag, and push. This command only orchestrates UX (confirm with the user, pass an explicit bump, invoke the script, report). Do not re-run gates by hand and do not invent a second gate recipe.
 
@@ -17,13 +17,13 @@ Parse `$ARGUMENTS` (may be empty). Tokens map to `scripts/release.sh` flags:
 
 | Token | Meaning |
 |---|---|
-| `patch` / `minor` / `major` | Semver bump from latest `v*` tag |
+| `patch` / `minor` / `major` | Semver bump from latest `v*` tag (local + origin max, even if cut off `main`) |
 | `vX.Y.Z` | Explicit tag — must be strictly greater than latest when a latest exists |
 | `--dry-run` | Preflight + gates only; do not tag or push |
-| `--skip-php` | Skip `composer test` — **only with `--dry-run`** |
-| `--skip-cli` | Skip `composer test:cli` — **only with `--dry-run`** |
+| `--skip-php` | Skip PHP gates (Pint, PHPStan, Pest) — **only with `--dry-run`** |
+| `--skip-cli` | Skip CLI gates — **only with `--dry-run`** |
 | `--yes` | Non-interactive after you have already confirmed with the user |
-| `--squash` | Soft-reset BASE..HEAD into **one clean commit**, then `git push --force-with-lease` the branch, then gates/tag. BASE = prior `v*` tag, or `origin/<branch>` when no tag yet (first release). Rewrites branch history — only use when intended. |
+| `--squash` | Soft-reset BASE..HEAD into **one clean commit**, then `git push --force-with-lease` the branch, then gates/tag. BASE = latest `v*` tag reachable from HEAD (a hotfix tag cut off `main` is skipped), or `origin/<branch>` when none is. Rewrites branch history — only use when intended. |
 | `-m` / `--message MSG` | Squash commit message (requires `--squash`). Default: `Release <tag>`. |
 
 ### Version policy (explicit bump only)
@@ -68,13 +68,25 @@ Tell the user:
 
 - latest tag (or "none — first release")
 - proposed new tag
-- gates: `composer test` + `composer test:cli` (see `./scripts/release.sh --help`)
+- gates: whatever `./scripts/release.sh --help` lists (Pint, PHPStan, Pest, Go) — do not restate them from memory
 - that the tag push triggers **package split** + **CLI GitHub Release** (not Forge)
 - whether `--squash` will rewrite history
 
 If they have not already approved shipping, ask once and wait.
 
-### 3. Run the release script
+### 3. Promote package CHANGELOGs (required)
+
+`scripts/release.sh` refuses a real release unless **every** `packages/*/CHANGELOG.md` has exactly one `## [Unreleased]` and a `## [X.Y.Z] - YYYY-MM-DD` section for the new tag (no leading `v`). See `docs/versioning.md` → "CHANGELOG ↔ tag handoff".
+
+For each of the four package CHANGELOGs:
+
+1. Move the `## [Unreleased]` bullets into a new `## [X.Y.Z] - YYYY-MM-DD` section directly below it (today's date).
+2. If the package has no entries, write `No changes.` under the new section — every package gets one (lockstep tags).
+3. Leave one empty `## [Unreleased]` on top.
+
+Then commit (`docs: promote CHANGELOGs for vX.Y.Z`) and push `main`, so HEAD == `origin/main` before the script runs (or let `--squash` fold the promotion into the release commit). `./scripts/release.sh --dry-run` warns about any CHANGELOG that is not ready.
+
+### 4. Run the release script
 
 Always invoke the in-repo script:
 
@@ -90,7 +102,7 @@ Always invoke the in-repo script:
 ./scripts/release.sh --yes --squash patch
 ```
 
-### 4. Report
+### 5. Report
 
 On success:
 
@@ -103,12 +115,11 @@ Released vX.Y.Z
 
 On gate failure: paste failing output, stop, do not tag.
 
-### 5. Optional follow-ups (do not block)
+### 6. Optional follow-ups (do not block)
 
 - Watch GitHub Actions: Tests + Split packages.
 - Confirm `rawphp/capabilities-cli` Releases has assets after tag mirror.
 - Packagist remains a **human** checklist (`docs/versioning.md`) — do not claim Packagist publish from this command.
-- CHANGELOG `[Unreleased]` → dated section is maintainer polish; only edit if the user asked in the same breath.
 
 ## Quality gates
 
@@ -120,7 +131,7 @@ On gate failure: paste failing output, stop, do not tag.
 bash scripts/lib/test-release.sh   # ship-path self-test (no full suite)
 ```
 
-CI parity: `.github/workflows/tests.yml` (`composer test`, `go test` via `composer test:cli`).
+CI parity: `.github/workflows/tests.yml` runs the same gates.
 
 ## Out of scope
 

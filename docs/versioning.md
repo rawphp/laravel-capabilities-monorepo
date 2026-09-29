@@ -64,7 +64,7 @@ Setup (repo secrets / empty package remotes) is documented in the workflow file 
 |---|---|
 | Preflight | `main`/`master` only, clean tree, fetch tags, `HEAD` vs `origin` rules |
 | Version | `patch` / `minor` / `major` / explicit `vX.Y.Z` (first release: patch/minor → `v0.1.0`) |
-| Optional `--squash` | Soft-reset BASE..HEAD into one clean commit (`-m` message), `git push --force-with-lease` branch. BASE = prior `v*` tag, or `origin/<branch>` when no tag yet |
+| Optional `--squash` | Soft-reset BASE..HEAD into one clean commit (`-m` message), `git push --force-with-lease` branch. BASE = latest `v*` tag reachable from HEAD, or `origin/<branch>` when none is |
 | Gates | `composer format:test` (Pint) + `composer analyse` (PHPStan) + `composer test` (core + messaging + AI Pest) + `composer test:cli` (`go test ./...`) — same gates as CI |
 | Tag + push | Annotated monorepo `v*` tag → `git push origin refs/tags/…` → split workflow + CLI GoReleaser |
 
@@ -224,6 +224,8 @@ Per package `CHANGELOG.md`:
 5. Update footer compare/release links only after the tag exists on the **package** remote.
 
 `scripts/release.sh` checks the structure before tagging: a real release refuses when any `packages/*/CHANGELOG.md` does not have exactly one `## [Unreleased]` or has no `## [0.Y.Z]` section for the tag it is about to cut (`--dry-run` only warns). Commit and push the promotion first.
+
+**Hotfix tags:** a tag cut off `main` (e.g. `v0.5.3` on a fix branch) is outside `scripts/release.sh`. The split publishes it as a tag only; package `main` does not move. `release.sh` still bumps from the global max tag (so the next patch after `v0.5.3` is `v0.5.4`), but takes the commit range and `--squash` base from the latest tag reachable from HEAD (`v0.5.2`), since the hotfix tag is not in `main`'s history.
 
 **History:** tags `v0.1.0`–`v0.5.0` were cut before this rule, so their entries sit in one cumulative `[0.5.0]` section per package (`[0.5.1]` for AI). Tags with no section recorded no entries for that package.
 
