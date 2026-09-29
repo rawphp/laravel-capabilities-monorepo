@@ -185,6 +185,9 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   `access_denied`, `expired_token` — **inside the `ok: true` envelope**, then the token shape.
   The package's fake issuer fixture and the user guide follow the same contract. Host
   implementations of `issueToken()` must handle the device-code grant this way.
+- **`surfaces.http.prefix` documents the CLI constraint (C-009).** The Go CLI hardcodes
+  `/capabilities/...` after `--base-url`, so the prefix's last segment must be `capabilities`
+  (config comment + user guide). No behaviour change.
 - **Pipeline `rate_limited` sends a backoff hint (D-013, C-007).** The envelope now carries
   `error.retry_after` (seconds until the tripped per-minute / per-capability window frees)
   and `HttpResponse::fromResult` adds `Retry-After` on 429 when it is present (an explicit
