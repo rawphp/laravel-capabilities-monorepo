@@ -75,10 +75,11 @@ return [
 
     /**
      * Escape hatch: allow progress.driver=array and llm.driver=fake outside testing.
-     * CAPABILITIES_AI_ALLOW_UNSAFE=1 for local demos only. Default closed (false).
+     * CAPABILITIES_AI_ALLOW_UNSAFE=1|true|yes|on for local demos only; any other value
+     * (0, no, off, …) stays closed. Default closed (false).
      * Prefer redis progress + real LlmClient (or host binding) in any real deploy.
      */
-    'allow_unsafe' => (bool) $env('CAPABILITIES_AI_ALLOW_UNSAFE', false),
+    'allow_unsafe' => filter_var($env('CAPABILITIES_AI_ALLOW_UNSAFE', false), FILTER_VALIDATE_BOOLEAN),
 
     /** Turn claim TTL seconds (worker heartbeat window). */
     'claim_ttl' => (int) $env('CAPABILITIES_AI_CLAIM_TTL', Package::DEFAULT_CLAIM_TTL),
