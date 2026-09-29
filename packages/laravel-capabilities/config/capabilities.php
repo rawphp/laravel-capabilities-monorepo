@@ -80,6 +80,10 @@ return [
             'enabled' => $env('CAPABILITIES_SURFACE_HTTP', true),
             'prefix' => 'capabilities',
             'middleware' => ['api', 'auth:sanctum'],
+            // Stack for the unauthenticated auth/token, auth/device and auth/callback routes.
+            // null → `middleware` minus auth:* plus 'throttle:6,1,capabilities-auth'.
+            // Set a list to replace it (e.g. a looser throttle for device-code polling).
+            'auth_middleware' => null,
         ],
         'cli' => [
             'enabled' => $env('CAPABILITIES_SURFACE_CLI', true),

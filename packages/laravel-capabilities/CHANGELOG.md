@@ -84,6 +84,32 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   to `pending` until it has used `maxAttempts` (new constructor argument, default `3`).
   Before, one failed write left the row `failed` forever. Rows at the cap stay `failed`.
 
+### Fixed (HTTP surface)
+
+- **Sanctum CLI tokens now run as `caller: cli` (D-022).** `IlluminateHttpBridge` added
+  `adapter: http` to every authenticated credential, which shadowed
+  `clients.token_abilities` / `clients.oauth` in `CallerDeriver`, so a
+  `capabilities:cli` token always ran as `http`. The bridge now sets `adapter: http`
+  only for a session user with no token abilities or OAuth client. CLI tokens are now
+  subject to `surfaces.cli.enabled` and per-capability `surfaces` (a CLI token against an
+  `http`-only capability gets `forbidden`). Unmapped abilities still derive `http`.
+- **Auth issuance routes are throttled by default.** `POST auth/token`, `POST auth/device`
+  and `GET auth/callback` accept no credentials, and Laravel 11+ `api` has no throttle, so
+  they took unlimited attempts. They now get `throttle:6,1,capabilities-auth` (6 per
+  minute per client IP) after `auth:*` is stripped. New `surfaces.http.auth_middleware`
+  (default `null`) replaces that whole stack when set, e.g. for device-code polling.
+- **HTTP describe honours the caller's surfaces (D-008).** `GET /{prefix}/{name}` returned
+  the full input/output schema of capabilities the caller's surface cannot see (e.g.
+  `mcp`-only), although list hid them. `CatalogPresenter::describe()` takes an optional
+  third `$caller` and reads as unknown when the capability is not in that caller's
+  effective surfaces; the controller passes the derived caller, so HTTP now returns
+  `not_found`, matching list.
+- **`CapabilityController` no longer keeps the last request's actor.** The container
+  singleton stored every invoke's options (including the authenticated user) for a test
+  hook, which leaked across requests on Octane / long-lived workers. The
+  `lastInvokeOptions()` method is removed; assert invoke options through a recording
+  `CapabilityBus` instead.
+
 ## [0.5.3] - 2026-09-29
 
 ### Changed

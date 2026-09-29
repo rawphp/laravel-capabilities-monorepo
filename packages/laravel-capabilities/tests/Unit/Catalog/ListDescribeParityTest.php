@@ -69,3 +69,13 @@ it('edge: describe has full schemas list may omit [CAT-001]', function () {
         ->and($desc)->toHaveKey('input_schema')
         ->and($desc)->toHaveKey('output_schema');
 });
+
+// L-019: describe applies the same caller-surface filter as list (D-008).
+it('fail: describe hides a capability the caller surface cannot see, like list [L-019]', function () {
+    $h = CatalogHelpers::harness(['cap_surfaces' => ['mcp']]);
+
+    expect($h['catalog']->list(false, ['caller' => 'http']))->toBe([])
+        ->and($h['catalog']->describe($h['name'], null, 'mcp')['name'])->toBe($h['name'])
+        ->and(fn () => $h['catalog']->describe($h['name'], null, 'http'))
+        ->toThrow(InvalidArgumentException::class, 'Unknown capability');
+});

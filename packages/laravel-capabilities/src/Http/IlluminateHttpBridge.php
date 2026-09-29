@@ -307,7 +307,11 @@ final class IlluminateHttpBridge
             $credential['oauth_client_type'] = $oauthClientType;
         }
 
-        if ($authenticated || $tokenAbilities !== [] || $oauthClientId !== null || $oauthClientType !== null) {
+        // Default adapter=http only for a bare session user. Token abilities / OAuth
+        // facts must reach CallerDeriver unshadowed so e.g. capabilities:cli → cli (D-022);
+        // unmapped abilities or clients still derive http there.
+        $hasClientFacts = $tokenAbilities !== [] || $oauthClientId !== null || $oauthClientType !== null;
+        if ($authenticated && ! $hasClientFacts) {
             if (! isset($credential['adapter']) && ! isset($credential['source']) && ! isset($credential['server_caller'])) {
                 $credential['adapter'] = 'http';
             }

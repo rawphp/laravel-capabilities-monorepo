@@ -460,7 +460,6 @@ it('covers CapabilityController describe not_found, health deny, non-array body'
         'headers' => ['idempotency-key' => str_repeat('k', 16)],
     ]), 'listed');
     expect($inv)->toBeInstanceOf(HttpResponse::class);
-    expect($ctrl->lastInvokeOptions())->toBeArray();
 });
 
 // ── CapabilitiesServiceProvider register/boot via minimal app fake ──────────
