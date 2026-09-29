@@ -124,7 +124,7 @@ return [
      */
     'turns_per_minute' => (int) $env('CAPABILITIES_AI_TURNS_PER_MINUTE', 20),
 
-    /** Max tool-call rounds per turn before force-complete/fail. */
+    /** Max LLM rounds per turn; a turn still asking for tools after the last round fails (not retryable). */
     'max_tool_rounds' => (int) $env('CAPABILITIES_AI_MAX_TOOL_ROUNDS', 8),
 
     /**

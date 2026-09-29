@@ -73,6 +73,7 @@ final class TurnRunner
             $rounds = 0;
             // 1-based tool-call count across all rounds of this turn → core D-013 agent turn budget.
             $toolCallCount = 0;
+            $replied = false;
             while ($rounds < $this->maxToolRounds) {
                 // Cooperative cancel: no further LLM call once the owner cancelled.
                 if ($this->claim->isCancelled($turnUlid)) {
@@ -88,6 +89,7 @@ final class TurnRunner
                     $content = (string) ($response['content'] ?? '');
                     $this->store->createMessage($conversation, $this->ulid(), 'assistant', $content);
                     $this->maybeCreateProposalsFromFence($conversation, $turn, $content);
+                    $replied = true;
                     break;
                 }
 
@@ -129,6 +131,7 @@ final class TurnRunner
                     $content = (string) ($response['content'] ?? '');
                     $this->store->createMessage($conversation, $this->ulid(), 'assistant', $content);
                     $this->maybeCreateProposalsFromFence($conversation, $turn, $content);
+                    $replied = true;
                     break;
                 }
 
@@ -186,6 +189,12 @@ final class TurnRunner
                         'id' => $toolCallId,
                     ];
                 }
+            }
+
+            // D-013 loop protection: every round asked for tools and none replied — fail loudly,
+            // never a silent `completed` with no assistant message.
+            if (! $replied) {
+                throw new RuntimeException("max_tool_rounds ({$this->maxToolRounds}) reached without a final reply");
             }
 
             // CAS running→completed: a cancel (or reap) that landed first wins; no completed terminal.

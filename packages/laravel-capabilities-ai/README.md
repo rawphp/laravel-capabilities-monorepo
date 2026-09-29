@@ -73,7 +73,7 @@ Key defaults (`config/capabilities-ai.php`):
 | `allow_unsafe` | `false` (`CAPABILITIES_AI_ALLOW_UNSAFE`) — local demos only |
 | `turns_per_minute` | `20` (`CAPABILITIES_AI_TURNS_PER_MINUTE`) — D-013 per-user message (turn) budget via core `RateLimiter`; over it, message create returns **429** `rate_limited` and persists/dispatches nothing; `0` disables |
 | `max_concurrent_turns` | `0` = unlimited (`CAPABILITIES_AI_MAX_CONCURRENT_TURNS`) — at the ceiling of queued + running turns, message create returns **429** `rate_limited` (D-018 envelope, `retryable: true`) and persists/dispatches nothing |
-| `max_tool_rounds` | `8` |
+| `max_tool_rounds` | `8` (`CAPABILITIES_AI_MAX_TOOL_ROUNDS`) — LLM rounds per turn; a turn still asking for tools after the last round **fails** (`max_tool_rounds (N) reached without a final reply`, `retryable: false`) |
 | `routes.enabled` | `false` |
 
 Progress events live in array/Redis — **not** MySQL product tables.
