@@ -98,6 +98,12 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   they took unlimited attempts. They now get `throttle:6,1,capabilities-auth` (6 per
   minute per client IP) after `auth:*` is stripped. New `surfaces.http.auth_middleware`
   (default `null`) replaces that whole stack when set, e.g. for device-code polling.
+- **HTTP describe honours the caller's surfaces (D-008).** `GET /{prefix}/{name}` returned
+  the full input/output schema of capabilities the caller's surface cannot see (e.g.
+  `mcp`-only), although list hid them. `CatalogPresenter::describe()` takes an optional
+  third `$caller` and reads as unknown when the capability is not in that caller's
+  effective surfaces; the controller passes the derived caller, so HTTP now returns
+  `not_found`, matching list.
 
 ## [0.5.3] - 2026-09-29
 

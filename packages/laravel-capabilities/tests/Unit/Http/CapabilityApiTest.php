@@ -187,3 +187,12 @@ it('fail: second invoke controller tree for CLI is refused [D-009]', function ()
         ->and(array_values($invokeActions)[0]['action'])->toBe('CapabilityController@invoke')
         ->and(class_exists('Rawphp\\Capabilities\\Adapters\\Http\\CliCapabilityController'))->toBeFalse();
 });
+
+it('fail: HTTP describe of an mcp-only capability is not_found for caller http [L-019]', function () {
+    $h = HttpHelpers::harness(['cap_surfaces' => ['mcp']]);
+
+    $res = $h['controller']->describe(HttpHelpers::authedRequest(), $h['name']);
+
+    expect($res->errorCode())->toBe('not_found')
+        ->and($res->body)->not->toHaveKey('data');
+});

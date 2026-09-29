@@ -76,7 +76,7 @@ final class CapabilityController
         $caller = $this->resolveCaller($request);
 
         try {
-            $detail = $this->registry->catalog()->describe($name, $request->user);
+            $detail = $this->registry->catalog()->describe($name, $request->user, $caller['caller']);
         } catch (Throwable) {
             return HttpResponse::failure(
                 'not_found',

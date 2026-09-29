@@ -84,12 +84,20 @@ final class CatalogPresenter
      *
      * @return array<string, mixed>
      *
-     * @throws InvalidArgumentException when unknown or not discoverable by $actor
+     * When $caller is given, a capability outside that caller's effective surfaces
+     * reads as unknown — the same filter {@see list()} applies (D-008).
+     *
+     * @throws InvalidArgumentException when unknown, not visible to $caller, or not discoverable by $actor
      */
-    public function describe(string $nameOrAlias, mixed $actor = null): array
+    public function describe(string $nameOrAlias, mixed $actor = null, ?string $caller = null): array
     {
         $definition = $this->registry->get($nameOrAlias);
-        if (! $definition->isDiscoverable($actor)) {
+        $hiddenFromCaller = $caller !== null && $caller !== '' && ! in_array(
+            $caller,
+            $definition->effectiveSurfaces($this->registry->globallyEnabledSurfaces()),
+            true,
+        );
+        if ($hiddenFromCaller || ! $definition->isDiscoverable($actor)) {
             throw new InvalidArgumentException(sprintf('Unknown capability "%s".', $nameOrAlias));
         }
 
