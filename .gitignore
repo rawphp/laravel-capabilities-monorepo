@@ -27,5 +27,3 @@ build/
 __pycache__/
 *.pyc
 
-# Local go build output of the CLI entrypoint
-packages/capabilities-cli/cmd/capabilities/capabilities

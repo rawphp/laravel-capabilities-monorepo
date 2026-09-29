@@ -1,0 +1,71 @@
+{
+  "auditor": "control-plane-auditor",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-audit3/packages/capabilities-cli",
+  "stack_summary": {
+    "go_module": "github.com/rawphp/capabilities-cli",
+    "role": "product CLI, HTTP client only (D-009, D-016)",
+    "server_contract": "rawphp/laravel-capabilities RouteTable / AuthController / CapabilityController / ApprovalController / CatalogPresenter / CallerDeriver / HttpResponse / ErrorCodeMap",
+    "audited_head": "d460a24",
+    "testing": "go test ./... green, go vet clean, gofmt -l empty (run in the snapshot tree)"
+  },
+  "scanned_files_count": 34,
+  "findings": [
+    {
+      "id": "C-201",
+      "title": "Untrack the 10 MB Mach-O binary committed by the X-001 CLI coverage commit",
+      "category": "structure",
+      "severity": "high",
+      "effort": "trivial",
+      "impact": ["maintainability", "dx"],
+      "locations": [
+        { "file": "packages/capabilities-cli/cmd/capabilities/capabilities", "line": 1, "snippet": "Mach-O 64-bit executable arm64, 10288930 bytes, mode 100755 (added in 1971187)" },
+        { "file": "packages/capabilities-cli/.gitignore", "line": 2, "snippet": "dist/" },
+        { "file": ".gitignore", "line": 13, "snippet": "packages/capabilities-cli/**/bin/" }
+      ],
+      "current_state": "Commit 1971187 ('test: cover CLI dispatch suggestions…', X-001) added `packages/capabilities-cli/cmd/capabilities/capabilities`, a 10.3 MB arm64 Mach-O file. It is what `go build` writes when run inside cmd/capabilities. It is tracked at HEAD on arch/analyst-loop-2026-09-29 but is not on main yet. Neither .gitignore covers it: the package ignores only `dist/` and the root ignores only `**/bin/`.",
+      "recommended_state": "Remove the binary from the index before the branch merges, and ignore the in-package `go build` output path so it cannot come back.",
+      "rationale": "Once this reaches main, split-packages.yml pushes packages/capabilities-cli into rawphp/capabilities-cli, and the 10 MB blob is in that remote's history for good. It also goes into every Go module zip that `go install`/the module proxy serves for later tags, and a stale local dev build sits next to the sources as if it were a release. Cleaning it up after the split push needs a history rewrite on two repos. Cleaning it up now takes one commit.",
+      "implementation_hint": "`git rm --cached packages/capabilities-cli/cmd/capabilities/capabilities`, then append `/cmd/capabilities/capabilities` to packages/capabilities-cli/.gitignore. The package .gitignore travels with the split, so the remote is covered too. Optionally squash or amend before merge so the blob never enters main's history. The monorepo uses merge commits, so a follow-up rm still leaves the blob reachable from 1971187 if the branch is merged as-is."
+    },
+    {
+      "id": "C-202",
+      "title": "Keep describe's description/readOnly/idempotent; describe --json and --help drop them",
+      "category": "wire_contract",
+      "severity": "medium",
+      "effort": "small",
+      "impact": ["dx", "reliability"],
+      "locations": [
+        { "file": "packages/capabilities-cli/internal/catalog/cache.go", "line": 17, "snippet": "type CacheEntry struct { Name, SchemaVersion, ETag, InputSchema, OutputSchema, Deprecated, Successor, SunsetAt, Aliases, Canonical, CLI }" },
+        { "file": "packages/capabilities-cli/cmd/capabilities/cmd_domain.go", "line": 236, "snippet": "// Describe carries no description; domain/verb come from the index." },
+        { "file": "packages/capabilities-cli/cmd/capabilities/cmd_run.go", "line": 55, "snippet": "b, _ := json.MarshalIndent(entry, \"\", \"  \")" },
+        { "file": "packages/capabilities-cli/docs/user-guide.md", "line": 315, "snippet": "JSON Schema / description for one capability." },
+        { "file": "packages/laravel-capabilities/src/Schema/CatalogPresenter.php", "line": 174, "snippet": "'description' => $definition->description,  // metadataFields(), shared by list and describe" }
+      ],
+      "current_state": "Core's describe response is `fullEntry` = `metadataFields` + schemas, so it includes `description`, `readOnly`, `idempotent`, `surfaces`, `groups` and `tags`. The CLI decodes describe into `CacheEntry`, which has none of these fields. That struct is also what `describe --json` prints (cmd_run.go:55). So `capabilities describe X --json`, `capabilities run X --help` and `capabilities <domain> <verb> --help` never show the description or the read-only/idempotent flags. The coverage commit 1971187 replaced the old blanking line with a comment claiming describe has no description, which is false against the core presenter.",
+      "recommended_state": "CacheEntry decodes and keeps `description`, `readOnly` and `idempotent`, at least. writeCapabilityHelp sets `info.Description = entry.Description`, so help after `run X --help` / `<domain> <verb> --help` is complete. The misleading comment is gone.",
+      "rationale": "docs/agents.md makes `describe --json` and `<domain> <verb> --help --json` the agent's per-capability discovery step, and the user guide promises a description. `readOnly`/`idempotent` are exactly what an agent needs to decide whether a retry or speculative call is safe, and the server already sends them. Today the CLI's cache struct silently strips them, so the only way to see them is `catalog --json` over the whole list. This is a CLI-side decode gap, not a server change.",
+      "implementation_hint": "Add `Description string `json:\"description,omitempty\"``, `ReadOnly bool `json:\"readOnly,omitempty\"`` and `Idempotent bool `json:\"idempotent,omitempty\"`` to CacheEntry in internal/catalog/cache.go. In cmd_domain.go, replace the comment at 236 with `info.Description = entry.Description`. Old cache files decode with empty fields and fill in on the next live describe; no migration is needed. One catalog test decodes a describe body carrying description/readOnly, and one cmd test asserts `run X --help --json` includes the description."
+    },
+    {
+      "id": "C-203",
+      "title": "Warn at --token login when the server derives a caller other than cli",
+      "category": "auth_flow",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": ["dx", "reliability"],
+      "locations": [
+        { "file": "packages/capabilities-cli/internal/auth/session.go", "line": 40, "snippet": "res, err := client.ListCapabilities(ctx)" },
+        { "file": "packages/capabilities-cli/internal/api/errors.go", "line": 112, "snippet": "type Meta struct { RequestID, Capability, IdempotentReplay }  // no caller" },
+        { "file": "packages/laravel-capabilities/src/Adapters/Http/CapabilityController.php", "line": 53, "snippet": "return HttpResponse::ok($envelope, ['caller' => $caller['caller'], 'derived_caller' => $caller['derived']], ...)" },
+        { "file": "packages/laravel-capabilities/src/Http/CallerDeriver.php", "line": 78, "snippet": "return 'http';" },
+        { "file": "packages/capabilities-cli/docs/authentication.md", "line": 60, "snippet": "return `not_found` on `run`, with no auth error to explain why." }
+      ],
+      "current_state": "C-103 was fixed in docs only (authentication.md, AuthTokenIssuer docblock), and L-110 now derives `cli` strictly from `clients.token_abilities`. LoginWithToken already makes an authenticated GET /capabilities to verify the PAT, and the server's reply carries `meta.caller`. The CLI ignores it. A PAT minted without `capabilities:cli` logs in cleanly, and the user only finds out later through a filtered catalog or `not_found`. The docs call this failure silent.",
+      "recommended_state": "When the verification response has `meta.caller` and it is not `cli`, --token login still stores the token (the host may intend it) but prints one stderr warning. The warning names the derived caller and points at the `capabilities:cli` ability section. With --json, it also adds `caller` to the success payload.",
+      "rationale": "This is the cheapest runtime guard for the failure mode C-103 documents, and the data is already in a response the CLI receives and discards. It turns a later, misleading not_found into an immediate, named cause at login time. Older servers without meta.caller are unaffected: no field means no warning.",
+      "implementation_hint": "Add `Caller string `json:\"caller,omitempty\"`` to api.Meta. In LoginWithToken, after the OK check, return the caller on LoginResult (for example `Caller string`). In cmd_auth.go, if `r.Caller != \"\" && r.Caller != \"cli\"`, print `warning: server treats this token as caller %q, not cli; capabilities exposed only to cli will be hidden (mint it with the capabilities:cli ability)` to stderr. Leave the device/OAuth flows alone: they make no verification GET, and adding one is out of scope. One auth test with meta.caller=http asserts the warning and that the token is stored."
+    }
+  ],
+  "notes": "Iteration 3. Scope: packages/capabilities-cli and its wire contract with core as of d460a24. The CLI source changed since iteration 2 only through 09f515a (C-101), 76d7bea (C-102), 9312d7f (C-103 docs), 8e1d50f (C-104) and the X-001 coverage/dead-code commits. Iteration-2 fixes checked, correct and complete, not re-raised. C-101: api.Client disables redirects both in NewClient and in httpClient(), which copies injected clients and forces CheckRedirect, so test factories cannot opt out. do() maps every 3xx to a StructuredError(internal) naming the Location before envelope parsing. The health preflight treats a 3xx as unknown and the invoke then fails, so a redirected invoke can no longer read as success. No code path sends If-None-Match, so a 304 cannot be misclassified. C-102: loginTarget() validates the profile and normalises the URL before any network call in the token, device and OAuth paths. C-103: the AuthTokenIssuer docblock, the CLI authentication.md and the user-guide troubleshooting row all state the ability, and core L-110 now classifies authKind from the same token_abilities map CallerDeriver uses. C-203 is a small runtime follow-up, not a regression. C-104: the prefetch block and its doc sentences are gone. Wire compat re-checked against changed core: L-109 removed auth_token/auth_device from HttpAuthGate::PROTECTED, which matches the CLI sending no Authorization on device/token polls. L-102's idempotent replay of a pending approval returns approval_required 202, which the CLI maps to exit 4. Core idempotency lookups are scoped by capability (ApprovalExecutor:338), so --retry-last reusing the last key on a different capability is harmless. Approval accept/reject and describe/list envelopes still decode. Dead-code removals in 1971187 (profile=='' guards, CommandExists top-level switch) are sound: profileAndBase always defaults to 'default', and the reserved list already covers those names. Checked and not raised: the hardcoded User-Agent 'capabilities-cli/0.2' and default Version '0.4.0' vs tag v0.5.3 (ldflags set the release Version, and the UA is informational); cmd_auth echoes the raw --base-url rather than the normalised one in its success line (cosmetic); describe --json prints a bare object rather than an {ok,data} envelope (pre-existing, documented only loosely; folded into C-202's scope only as far as fields go). deferred_do_not_report honoured: ResolveAlias/GetByETag unused (owner decision). Categories reconcile, registry_handles, capture_depth, plugin_shape and dual_path do not apply to a stateless HTTP client. Custom category slugs: wire_contract, auth_flow."
+}
