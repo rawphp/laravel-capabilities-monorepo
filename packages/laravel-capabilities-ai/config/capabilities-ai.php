@@ -111,7 +111,7 @@ return [
 
     /**
      * Pressure valve: ceiling on queued + running turns across all conversations.
-     * At the ceiling, new messages are refused (HTTP 429, outcome=retryable) with
+     * At the ceiling, new messages are refused (HTTP 429 rate_limited) with
      * nothing persisted or dispatched. 0 = unlimited (default).
      */
     'max_concurrent_turns' => (int) $env('CAPABILITIES_AI_MAX_CONCURRENT_TURNS', 0),

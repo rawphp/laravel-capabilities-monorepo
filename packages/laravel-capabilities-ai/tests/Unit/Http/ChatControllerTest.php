@@ -242,6 +242,7 @@ it('every chat route returns 401 without an authenticated user and touches nothi
 
     foreach ($responses as $response) {
         expect($response->getStatusCode())->toBe(401);
+        expectChatErrorEnvelope($response->getData(true), 'unauthenticated', 'Unauthenticated');
     }
     expect(Turn::query()->count())->toBe(1)
         ->and(Turn::query()->value('status'))->toBe(Turn::STATUS_QUEUED);
@@ -293,8 +294,15 @@ it('storeMessage rejects invalid input with 422 before creating rows or dispatch
 
     $response = (new ChatController)->storeMessage(chatRequest('u1', 'POST', $input), $conversations);
 
+    $body = $response->getData(true);
     expect($response->getStatusCode())->toBe(422)
-        ->and($response->getData(true)['errors'])->toHaveKey($field)
+        ->and($body['ok'])->toBeFalse()
+        ->and($body['error']['code'])->toBe('validation_failed')
+        ->and($body['error']['message'])->toBe('The given data was invalid.')
+        ->and($body['error']['http_status'])->toBe(422)
+        ->and(array_column($body['error']['violations'], 'field'))->toBe([$field])
+        ->and($body['error']['violations'][0]['message'])->toBeString()->not->toBe('')
+        ->and($body)->not->toHaveKeys(['message', 'errors'])
         ->and(Conversation::query()->count())->toBe(0)
         ->and(Message::query()->count())->toBe(0)
         ->and(Turn::query()->count())->toBe(0)
@@ -378,7 +386,7 @@ it('destroyConversation 409 when active turns and 200 when closed', function () 
         ->and($ok->getData(true)['closed'] ?? null)->toBeTrue();
 });
 
-it('storeMessage returns 201 with ids, then 429 retryable at the turn ceiling', function () {
+it('storeMessage returns 201 with ids, then a 429 rate_limited envelope at the turn ceiling', function () {
     $progress = bootHttpSqlite();
     $conversations = new ConversationService(static fn ($j) => null, $progress, maxConcurrentTurns: 1);
     $controller = new ChatController;
@@ -388,10 +396,14 @@ it('storeMessage returns 201 with ids, then 429 retryable at the turn ceiling', 
         ->and($created->getData(true))->toHaveKey('turn_ulid');
 
     $busy = $controller->storeMessage(messageRequest(['content' => 'two'], new ChatControllerAuthUser('u1')), $conversations);
+    $body = $busy->getData(true);
     expect($busy->getStatusCode())->toBe(429)
-        ->and($busy->getData(true)['outcome'])->toBe('retryable')
-        ->and($busy->getData(true)['message'])->toContain('retry later')
-        ->and($busy->getData(true))->not->toHaveKey('turn_ulid');
+        ->and($body['ok'])->toBeFalse()
+        ->and($body['error']['code'])->toBe('rate_limited')
+        ->and($body['error']['retryable'])->toBeTrue()
+        ->and($body['error']['http_status'])->toBe(429)
+        ->and($body['error']['message'])->toContain('retry later')
+        ->and($body)->not->toHaveKeys(['outcome', 'message', 'turn_ulid']);
 });
 
 it('controller source delegates without Eloquent creates', function () {
