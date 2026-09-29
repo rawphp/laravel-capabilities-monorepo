@@ -30,7 +30,7 @@ The ALTER is idempotent (no-op if the column already exists). Greenfield install
 
 ### Bus principal (job + conversation user)
 
-`TurnRunner` (tool invokes) and `ProposalService` (accept) resolve the conversation’s Laravel user and pass **`caller=job`** plus that user as **`actor`** on every `CapabilityBus::invoke`. Missing or unresolvable `conversation.user_id` fails closed. Tool invokes still omit `idempotency_key` (only proposal accept sets `proposal:{ulid}`).
+`TurnRunner` (tool invokes) and `ProposalService` (accept) resolve the conversation’s Laravel user and pass **`caller=job`** plus that user as **`actor`** on every `CapabilityBus::invoke`. Missing or unresolvable `conversation.user_id` fails closed. Tool invokes carry `idempotency_key` only when the model passes it as a tool argument (D-005); the key is stripped from capability input. Proposal accept always sets `proposal:{ulid}`.
 
 ### Upgrade for hosts (manual DI / constructor / job handle)
 
@@ -107,12 +107,16 @@ Each tool invoke appends a progress event:
 | Field | Type | Notes |
 |-------|------|--------|
 | `name` | string | Capability name / alias invoked |
-| `payload` | object | Invoke input (may contain host PII — treat progress as sensitive if streamed) |
+| `payload` | object | Invoke input with sensitive keys (`password`, `secret`, `token`, `apikey`, `authorization`, any case/separator, nested) replaced by `[REDACTED]` — same rule as the audit log. Other host PII passes through; treat progress as sensitive if streamed |
 | `ok` | bool | From `CapabilityResult::$ok` — **not** always true |
 | `error_code` | string \| null | From `CapabilityResult::errorCode()`; null when `ok` is true |
 | `tool_call_id` | string | Correlates to the model `tool_calls[].id` for this round (multi-round tools) |
 
 **Host action:** branch on `data.ok` / `data.error_code`. Do not treat every `kind=tool` event as success.
+
+#### Progress `kind=proposal_invalid` events
+
+With `proposals.enabled`, a ```` ```proposal ```` fence whose body is not a decodable JSON object appends `{ "kind": "proposal_invalid", "data": null }` before `terminal`. No proposal is created and the turn still completes. Treat it as a signal of provider/prompt format drift (log or count it), not as a turn failure.
 
 #### Tool-role message content
 
@@ -328,6 +332,10 @@ Config `capabilities-ai.queue.{name,connection}` is applied to `RunTurnJob` **be
 | **`StoreBoundIdempotencyReadiness`** | **Production SP default** — if core `IdempotencyStore` is bound, readiness pings it; else `isReady()=false` |
 | **`AlwaysReadyIdempotency`** | **Unit tests only** — never production default or host prod bind |
 
+### Progress store readiness
+
+`ProgressStoreReadiness` (SP default **`StoreBoundProgressStoreReadiness`**) pings the bound `ProgressStore` with a read-only `since()` on a reserved turn id — never appends. A throw → `isReady()=false` and, when core `Metrics` is bound, `ai_progress_store_not_ready_total{store=<class>}` is incremented. Core `capabilities:integration-health` reads it as the `ai_progress_ready` row (fail when down; skip when unbound). Evaluated per call, not at boot.
+
 ### Stale-turn reaper
 
 ```bash
@@ -338,6 +346,8 @@ php artisan capabilities-ai:reap-stale-turns
 |--------|---------|------|
 | `reaper.stale_queued_minutes` | 30 | Queued turns older than threshold → reaped |
 | `reaper.stale_running_grace_seconds` | 60 | Running turns: age(`claimed_at`) > max(`claim_ttl`, grace) |
+
+Each reaped turn is marked `failed` and gets `error` then `terminal` (`status: failed`) progress events, so clients replaying its progress see the stream end.
 
 Host schedules the command (cron / scheduler). No package auto-schedule config.
 
@@ -369,7 +379,7 @@ After cutting over to package AI-chat, track and delete host leftovers:
 
 | Command / endpoint | Package | Purpose |
 |--------------------|---------|---------|
-| `php artisan capabilities:integration-health` | **core** | Host product readiness (bindings, AI-chat mode, MCP tools, AlwaysReady when proposals on) |
+| `php artisan capabilities:integration-health` | **core** | Host product readiness (bindings, AI-chat mode, MCP tools, AlwaysReady when proposals on, live progress-store ping) |
 | `GET /{prefix}/health` (default `/capabilities/health`) | **core** | Surface/catalog peer health for HTTP clients |
 
 Do not merge them. AI-chat mode for integration-health = `capabilities-ai.routes.enabled === true` **OR** non-empty `capabilities-ai.queue.name`.

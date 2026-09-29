@@ -60,3 +60,16 @@ it('edge: health includes messaging readiness when surface on [D-021]', function
     expect($health)->toHaveKeys(['ready', 'telegram_enabled', 'secrets_configured', 'agent_profile']);
     expect($health['ready'])->toBeTrue();
 });
+
+it('fail: messaging:telegram-setup rejects unrecognized identity.mode [MSG-002]', function () {
+    $cfg = H::config(['identity' => ['mode' => 'allow_list']]);
+    $result = TelegramSetup::validate($cfg);
+    expect($result['ok'])->toBeFalse()
+        ->and($result['message'])->toContain('identity.mode')
+        ->and($result['message'])->toContain('allow_list');
+});
+
+it('happy: messaging:telegram-setup accepts allowlist identity.mode [MSG-002]', function () {
+    $result = TelegramSetup::validate(H::config(['identity' => ['mode' => 'allowlist']]));
+    expect($result['ok'])->toBeTrue();
+});

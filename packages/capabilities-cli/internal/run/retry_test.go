@@ -62,33 +62,37 @@ func TestNewrunwithoutretrylastgetsnewkey(t *testing.T) {
 	}
 }
 
-func TestRetrylastwithoutinputresendsstoredinput(t *testing.T) {
+func TestRetrylastreplayslastinputwhennonegiven(t *testing.T) {
 	opts, rec := harness(t, nil)
-	opts.IdempotencyKey = "k-prev"
-	_ = Run(context.Background(), opts)
-	want := string(rec.Body)
-
+	opts.IdempotencyKey = "replay-key"
+	first := Run(context.Background(), opts)
+	if first.ExitCode != 0 {
+		t.Fatal(first.Stderr)
+	}
+	sent := string(rec.Body)
 	opts.RetryLast = true
 	opts.IdempotencyKey = ""
 	opts.InputJSON = nil
 	res := Run(context.Background(), opts)
-	if res.ExitCode != ExitOK {
+	if res.ExitCode != 0 {
 		t.Fatal(res.ExitCode, res.Stderr)
 	}
-	if rec.Key != "k-prev" || string(rec.Body) != want {
-		t.Fatalf("retry must resend prior invoke: key=%s body=%s want=%s", rec.Key, rec.Body, want)
+	if string(rec.Body) != sent || rec.Key != "replay-key" {
+		t.Fatalf("retry body %s key %s, want %s replay-key", rec.Body, rec.Key, sent)
 	}
 }
 
-func TestRetrylastexplicitinputwins(t *testing.T) {
+func TestRetrylastexplicitinputwinsoverlastinput(t *testing.T) {
 	opts, rec := harness(t, nil)
 	_ = Run(context.Background(), opts)
-
 	opts.RetryLast = true
 	opts.InputJSON = []byte(`{"customer_id":7}`)
-	_ = Run(context.Background(), opts)
+	res := Run(context.Background(), opts)
+	if res.ExitCode != 0 {
+		t.Fatal(res.ExitCode, res.Stderr)
+	}
 	if string(rec.Body) != `{"customer_id":7}` {
-		t.Fatalf("explicit input must be sent: %s", rec.Body)
+		t.Fatal(string(rec.Body))
 	}
 }
 

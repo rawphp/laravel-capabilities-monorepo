@@ -6,10 +6,12 @@ use Illuminate\Contracts\Bus\Dispatcher as BusDispatcher;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\ServiceProvider;
 use Rawphp\Capabilities\Contracts\ApprovalNotifier;
+use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\ConversationIdentity;
 use Rawphp\Capabilities\Contracts\ConversationIngress;
 use Rawphp\Capabilities\Contracts\ConversationReply;
+use Rawphp\Capabilities\Contracts\Metrics;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\CapabilitiesMessaging\Boot\MessagingBindings;
 use Rawphp\CapabilitiesMessaging\Boot\MessagingRegistration;
@@ -98,7 +100,10 @@ class MessagingServiceProvider extends ServiceProvider
 
         $this->app->singleton(ThreadStore::class, static fn () => new ThreadStore);
         $this->app->singleton(IdentityLinker::class, function ($app) {
-            return new IdentityLinker($app->make(MessagingConfig::class));
+            return new IdentityLinker(
+                $app->make(MessagingConfig::class),
+                metrics: $app->bound(Metrics::class) ? $app->make(Metrics::class) : null,
+            );
         });
         $this->app->alias(IdentityLinker::class, ConversationIdentity::class);
 
@@ -121,6 +126,7 @@ class MessagingServiceProvider extends ServiceProvider
                 $app->make(MessagingConfig::class),
                 $app->make(TelegramBotClient::class),
                 $app->make(TelegramCallbackSigner::class),
+                $app->bound(AuditWriter::class) ? $app->make(AuditWriter::class) : null,
             );
         });
         $this->app->alias(TelegramApprovalNotifier::class, ApprovalNotifier::class);

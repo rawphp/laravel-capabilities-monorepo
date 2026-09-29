@@ -71,20 +71,20 @@ func Run(ctx context.Context, opts Options) *Result {
 		return res
 	}
 
-	// --retry-last replays the previous invoke: same key and, unless new input
-	// is given, the same body (a new body under an old key is not a retry).
-	key := opts.IdempotencyKey
+	// --retry-last reuses the stored key; with no fresh input it also replays the
+	// stored body, so the server sees the same request hash and replays (no 409).
+	var last *LastRun
 	if opts.RetryLast {
-		last, lerr := loadLastRun(opts)
-		if lerr != nil || last == nil || last.IdempotencyKey == "" {
+		l, lerr := loadLastRun(opts)
+		if lerr != nil || l == nil || l.IdempotencyKey == "" {
 			res.ExitCode = ExitValidation
 			res.Stderr = "no previous run to retry"
 			res.Envelope = localFailEnvelope(api.CodeValidationFailed, res.Stderr, nil)
 			return res
 		}
-		key = last.IdempotencyKey
-		if opts.InputFile == "" && len(opts.InputJSON) == 0 && last.Capability == opts.Capability {
-			opts.InputJSON = []byte(last.InputJSON)
+		last = l
+		if len(opts.InputJSON) == 0 && opts.InputFile == "" && l.InputJSON != "" && l.Capability == opts.Capability {
+			opts.InputJSON = []byte(l.InputJSON)
 		}
 	}
 
@@ -141,6 +141,11 @@ func Run(ctx context.Context, opts Options) *Result {
 		return res
 	}
 
+	// Idempotency key
+	key := opts.IdempotencyKey
+	if last != nil {
+		key = last.IdempotencyKey
+	}
 	key = EnsureIdempotencyKey(key)
 	res.IdempotencyKey = key
 
