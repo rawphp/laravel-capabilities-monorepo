@@ -3,7 +3,7 @@
 #
 # Source of truth for day-to-day work is this monorepo. Publication path:
 #   monorepo tag v*  →  .github/workflows/split-packages.yml
-#     → mirrors packages/* to public remotes (core, messaging, CLI)
+#     → mirrors packages/* to public remotes (core, messaging, AI, CLI)
 #     → capabilities-cli package-owned GoReleaser builds GitHub Release binaries
 #
 # Without --squash this script never force-pushes a branch. Real releases require
@@ -584,7 +584,7 @@ Released $NEW_TAG → origin
 
 Next:
   - GitHub Actions: Tests (via split) → Split packages
-  - Package remotes: rawphp/laravel-capabilities, -messaging, capabilities-cli
+  - Package remotes: rawphp/laravel-capabilities, -messaging, -ai, capabilities-cli
   - CLI binaries: rawphp/capabilities-cli Releases (GoReleaser after tag mirror)
   - Packagist: still human checklist (docs/versioning.md) — not automated here
 EOF

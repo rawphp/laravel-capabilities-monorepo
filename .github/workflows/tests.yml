@@ -1,4 +1,4 @@
-# Monorepo unit suites (PHP core + messaging, Go CLI).
+# Monorepo unit suites (PHP core + messaging + AI, Go CLI).
 # Unit-only: no feature/DB services, no Redis, no full app boot.
 # Reusable via workflow_call so split-packages can gate mirrors on green tests.
 
@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   php:
-    name: PHP unit (core + messaging)
+    name: PHP unit (core + messaging + AI)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

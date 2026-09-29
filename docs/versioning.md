@@ -44,7 +44,7 @@ The PHP job also runs two static gates before the suites, and `scripts/release.s
 
 Level 1 is the highest level that passes today without a baseline. Level 2 mostly reports Eloquent magic attributes on package models. The intent is to raise the level one step at a time as those are typed, toward the `max` target in `AGENTS.md`. Each raise must pass cleanly; do not add a baseline to climb.
 
-Tag concurrency uses `cancel-in-progress: false` for tags so a release mirror is not aborted mid-matrix (partial package remotes). Branch runs may still cancel superseded work.
+All split runs (`main`, `v*` tags, `workflow_dispatch`) share one concurrency group, `split-packages`, with `cancel-in-progress: false`. Runs queue one after another and are never cancelled mid-matrix, so a main push and a tag push cannot race on the same package remote or leave it partially mirrored.
 
 **Implications:**
 
@@ -64,7 +64,7 @@ Setup (repo secrets / empty package remotes) is documented in the workflow file 
 | Preflight | `main`/`master` only, clean tree, fetch tags, `HEAD` vs `origin` rules |
 | Version | `patch` / `minor` / `major` / explicit `vX.Y.Z` (first release: patch/minor → `v0.1.0`) |
 | Optional `--squash` | Soft-reset BASE..HEAD into one clean commit (`-m` message), `git push --force-with-lease` branch. BASE = prior `v*` tag, or `origin/<branch>` when no tag yet |
-| Gates | `composer test` (core + messaging Pest) + `composer test:cli` (`go test ./...`) — same suites as CI |
+| Gates | `composer format:test` (Pint) + `composer analyse` (PHPStan) + `composer test` (core + messaging + AI Pest) + `composer test:cli` (`go test ./...`) — same gates as CI |
 | Tag + push | Annotated monorepo `v*` tag → `git push origin refs/tags/…` → split workflow + CLI GoReleaser |
 
 ```bash

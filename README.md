@@ -153,7 +153,7 @@ Tests live **inside each package**, not at the monorepo root. The inventory and 
 
 ```bash
 python3 tools/generate_requirement_stubs.py   # after extending the catalog
-composer test              # core + messaging unit suite
+composer test              # core + messaging + AI unit suites
 composer test:core
 composer test:messaging
 composer test:ai
