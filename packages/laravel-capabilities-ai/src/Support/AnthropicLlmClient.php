@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Http;
 use InvalidArgumentException;
 use Rawphp\Capabilities\Contracts\Metrics;
 use Rawphp\Capabilities\Contracts\Tracer;
-use Rawphp\CapabilitiesAi\Contracts\LlmClient;
+use Rawphp\CapabilitiesAi\Contracts\DeadlineAwareLlmClient;
 use Rawphp\CapabilitiesAi\Package;
 use RuntimeException;
 use stdClass;
@@ -29,11 +29,12 @@ use Throwable;
  *
  * Rate limits: a 429 is retried up to $maxRetries times via Laravel's Http retry,
  * waiting Retry-After seconds (capped) or 1s, 2s, 4s… when the header is unusable.
- * A retry is skipped when elapsed + wait + one more timeout would reach
- * $deadlineSeconds (the turn job timeout); the 429 then surfaces as a
+ * A retry is skipped when now + wait + one more timeout would reach the deadline:
+ * $deadlineSeconds after the call started, or the turn deadline TurnRunner passes
+ * via withDeadline() when that is sooner. The 429 then surfaces as a
  * RetryableLlmException carrying its Retry-After.
  */
-final class AnthropicLlmClient implements LlmClient
+final class AnthropicLlmClient implements DeadlineAwareLlmClient
 {
     use LlmClientDefaults;
 
@@ -50,6 +51,9 @@ final class AnthropicLlmClient implements LlmClient
     /** Per-request transport timeout; below the default claim_ttl (120s) so one call fits a turn job. */
     public const DEFAULT_TIMEOUT_SECONDS = 110;
 
+    /** Absolute turn deadline (hrtime ns) from withDeadline(); null = per-call deadline only. */
+    private ?int $turnDeadlineNs = null;
+
     public function __construct(
         private readonly string $apiKey,
         private readonly string $model = 'claude-sonnet-4-6',
@@ -59,7 +63,7 @@ final class AnthropicLlmClient implements LlmClient
         private readonly ?Tracer $tracer = null,
         private readonly int $maxRetries = 2,
         private readonly int $timeoutSeconds = self::DEFAULT_TIMEOUT_SECONDS,
-        /** Whole complete() call, 429 waits included, must end before this (claim_ttl). */
+        /** Whole complete() call, 429 waits included, must end this long after it starts (claim_ttl). */
         private readonly int $deadlineSeconds = Package::DEFAULT_CLAIM_TTL,
     ) {
         if ($this->timeoutSeconds <= 0) {
@@ -70,6 +74,19 @@ final class AnthropicLlmClient implements LlmClient
     public function supportsToolRounds(): bool
     {
         return true;
+    }
+
+    public function requestTimeoutSeconds(): int
+    {
+        return $this->timeoutSeconds;
+    }
+
+    public function withDeadline(int $deadlineNs): static
+    {
+        $copy = clone $this;
+        $copy->turnDeadlineNs = $deadlineNs;
+
+        return $copy;
     }
 
     public function complete(array $messages, array $tools = []): array
@@ -291,11 +308,17 @@ final class AnthropicLlmClient implements LlmClient
 
     /**
      * True when waiting $delayMs and then one more full-timeout request still ends
-     * before the deadline, so the worker is not killed mid-request.
+     * before the deadline (per call, or the turn's when sooner), so the worker is not
+     * killed mid-request.
      */
     private function retryFitsDeadline(int $started, int $delayMs): bool
     {
-        return self::elapsedMs($started) + $delayMs + $this->timeoutSeconds * 1000 < $this->deadlineSeconds * 1000;
+        $deadlineNs = $started + $this->deadlineSeconds * 1_000_000_000;
+        if ($this->turnDeadlineNs !== null) {
+            $deadlineNs = min($deadlineNs, $this->turnDeadlineNs);
+        }
+
+        return hrtime(true) + ($delayMs + $this->timeoutSeconds * 1000) * 1_000_000 < $deadlineNs;
     }
 
     /**

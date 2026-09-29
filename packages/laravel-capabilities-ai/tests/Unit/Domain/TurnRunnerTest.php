@@ -8,6 +8,7 @@ use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
+use Rawphp\CapabilitiesAi\Contracts\DeadlineAwareLlmClient;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
@@ -16,6 +17,7 @@ use Rawphp\CapabilitiesAi\Domain\TurnRunner;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
+use Rawphp\CapabilitiesAi\Support\ContainerBindings;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
 use Rawphp\CapabilitiesAi\Support\RetryableLlmException;
@@ -1371,4 +1373,157 @@ it('fails the turn when max_tool_rounds is reached without a final reply (D-013)
         ->and($errors[0]['data'])->toBe(['message' => 'max_tool_rounds (2) reached without a final reply', 'retryable' => false])
         ->and($terminal)->toHaveCount(1)
         ->and($terminal[0]['data']['status'])->toBe(Turn::STATUS_FAILED);
+});
+
+/**
+ * Deadline-aware client on a fake monotonic clock: each complete() advances the clock by the
+ * next scripted duration; records the turn deadline the runner handed it.
+ *
+ * @param  list<array<string, mixed>>  $responses
+ * @param  list<int>  $roundSeconds
+ */
+function budgetedLlm(object $clock, int $requestTimeoutSeconds, array $responses, array $roundSeconds): DeadlineAwareLlmClient
+{
+    return new class($clock, $requestTimeoutSeconds, $responses, $roundSeconds) implements DeadlineAwareLlmClient
+    {
+        public int $callCount = 0;
+
+        public ?int $deadlineNs = null;
+
+        /**
+         * @param  list<array<string, mixed>>  $responses
+         * @param  list<int>  $roundSeconds
+         */
+        public function __construct(
+            private readonly object $clock,
+            private readonly int $timeout,
+            private readonly array $responses,
+            private readonly array $roundSeconds,
+        ) {}
+
+        public function supportsToolRounds(): bool
+        {
+            return true;
+        }
+
+        public function requestTimeoutSeconds(): int
+        {
+            return $this->timeout;
+        }
+
+        public function withDeadline(int $deadlineNs): static
+        {
+            // Shared recorder instead of a copy, so the test can read calls and deadline.
+            $this->deadlineNs = $deadlineNs;
+
+            return $this;
+        }
+
+        public function complete(array $messages, array $tools = []): array
+        {
+            $this->clock->ns += ($this->roundSeconds[$this->callCount] ?? 0) * 1_000_000_000;
+
+            return $this->responses[$this->callCount++];
+        }
+    };
+}
+
+it('fails the turn as retryable instead of starting a round that cannot finish before claim_ttl', function () {
+    $seeded = enqueueTurnWithUser('use tool');
+    [$context, $tools] = usageContextAndTools();
+    $progress = new ArrayProgressStore;
+    $bus = recordingBus();
+    $clock = (object) ['ns' => 1_000_000_000];
+    // Round 1 takes 80s; round 2 could take its full 50s timeout: 130s > the 120s job.
+    $llm = budgetedLlm($clock, 50, [
+        ['tool_calls' => [['id' => 't1', 'name' => 'demo.tool', 'arguments' => []]]],
+        ['content' => 'too late'],
+    ], [80]);
+    $runner = new TurnRunner(
+        claim: turnClaim(),
+        store: turnStore(),
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        bus: $bus,
+        progress: $progress,
+        actors: turnActors(),
+        turnBudgetSeconds: 120,
+        clock: static fn (): int => $clock->ns,
+    );
+
+    expect(fn () => $runner->run($seeded['turn_ulid']))
+        ->toThrow(RetryableLlmException::class, 'Turn time budget');
+
+    $turn = turnStore()->turn($seeded['turn_ulid']);
+    $events = $progress->since($seeded['turn_ulid'], 0);
+    $errors = array_values(array_filter($events, static fn (array $ev): bool => $ev['kind'] === 'error'));
+    expect($llm->callCount)->toBe(1)
+        ->and($bus->invokes)->toBe(1)
+        ->and($turn->status)->toBe(Turn::STATUS_FAILED)
+        ->and($turn->usage)->toHaveCount(1)
+        ->and($errors)->toHaveCount(1)
+        ->and($errors[0]['data']['retryable'])->toBeTrue()
+        ->and(end($events)['kind'])->toBe('terminal')
+        ->and(end($events)['data']['status'])->toBe(Turn::STATUS_FAILED);
+});
+
+it('starts the next round while one more request timeout still fits the turn budget', function () {
+    $seeded = enqueueTurnWithUser('use tool');
+    [$context, $tools] = usageContextAndTools();
+    $clock = (object) ['ns' => 0];
+    // 60s + a 50s timeout = 110s < 120s: the second round may run.
+    $llm = budgetedLlm($clock, 50, [
+        ['tool_calls' => [['id' => 't1', 'name' => 'demo.tool', 'arguments' => []]]],
+        ['content' => 'done'],
+    ], [60, 30]);
+    $runner = new TurnRunner(
+        claim: turnClaim(),
+        store: turnStore(),
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        bus: recordingBus(),
+        progress: new ArrayProgressStore,
+        actors: turnActors(),
+        turnBudgetSeconds: 120,
+        clock: static fn (): int => $clock->ns,
+    );
+
+    expect($runner->run($seeded['turn_ulid'])->status)->toBe(Turn::STATUS_COMPLETED)
+        ->and($llm->callCount)->toBe(2)
+        // The client's retry deadline is the turn's, measured from the job start.
+        ->and($llm->deadlineNs)->toBe(120_000_000_000);
+});
+
+it('makeTurnRunner budgets the turn against claim_ttl', function () {
+    $clock = (object) ['ns' => 0];
+    $llm = budgetedLlm($clock, 10, [['content' => 'ok']], []);
+    $turnUlid = enqueueTurn();
+    $before = hrtime(true);
+    $runner = ContainerBindings::makeTurnRunner(
+        claim: turnClaim(),
+        llm: $llm,
+        progress: new ArrayProgressStore,
+        config: ['claim_ttl' => 60],
+        context: new class implements ConversationContextProvider
+        {
+            public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+            {
+                return [['role' => 'user', 'content' => 'hi']];
+            }
+        },
+        tools: new class implements ToolCatalog
+        {
+            public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+            {
+                return [];
+            }
+        },
+        store: turnStore(),
+    );
+    $runner->run($turnUlid);
+
+    expect($llm->deadlineNs - $before)->toBeGreaterThanOrEqual(60_000_000_000)
+        ->and($llm->deadlineNs - hrtime(true))->toBeLessThanOrEqual(60_000_000_000);
 });

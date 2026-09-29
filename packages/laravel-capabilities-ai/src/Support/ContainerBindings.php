@@ -11,6 +11,7 @@ use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
 use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
+use Rawphp\CapabilitiesAi\Contracts\DeadlineAwareLlmClient;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
@@ -131,7 +132,9 @@ final class ContainerBindings
     /**
      * One Anthropic request must finish inside the turn job (claim_ttl), or the worker is
      * killed mid-request instead of the turn failing as a retryable timeout.
-     * claim_ttl is also the client's retry deadline, so 429 waits cannot push it past the job.
+     * claim_ttl is also the client's per-call retry deadline. A turn makes several calls in
+     * one job, so TurnRunner (built with the same claim_ttl) holds later rounds and their
+     * 429 retries to the time left in the turn — see {@see DeadlineAwareLlmClient}.
      *
      * @param  array<string, mixed>  $config
      */
@@ -269,6 +272,7 @@ final class ContainerBindings
             actors: $actors,
             proposalsEnabled: (bool) ($config['proposals']['enabled'] ?? true),
             store: $store,
+            turnBudgetSeconds: self::claimTtlFromConfig($config),
         );
     }
 

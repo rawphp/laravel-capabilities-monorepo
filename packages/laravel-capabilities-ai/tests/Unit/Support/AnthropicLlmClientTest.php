@@ -219,6 +219,45 @@ it('counts the exponential backoff against the turn job deadline too', function 
     Sleep::assertSequence([Sleep::for(1)->seconds()]);
 });
 
+it('stops retrying a 429 that fits the request deadline but not the turn deadline', function () {
+    bootAnthropicHttp();
+    Sleep::fake();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::sequence()
+            ->push(['error' => ['message' => 'rate limited']], 429, ['retry-after' => '5'])
+            ->push(['content' => [['type' => 'text', 'text' => 'too late']]], 200),
+    ]);
+
+    // 5s + 10s fits the 120s per-call deadline, but a later round has only 12s of turn left.
+    $client = (new AnthropicLlmClient('test-key', timeoutSeconds: 10, deadlineSeconds: 120))
+        ->withDeadline(hrtime(true) + 12_000_000_000);
+
+    expect(fn () => $client->complete([['role' => 'user', 'content' => 'hi']]))
+        ->toThrow(RetryableLlmException::class, 'Anthropic API error: 429');
+    Http::assertSentCount(1);
+    Sleep::assertNeverSlept();
+});
+
+it('withDeadline returns a copy and leaves the original client unbounded by the turn', function () {
+    bootAnthropicHttp();
+    Sleep::fake();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::sequence()
+            ->push(['error' => ['message' => 'rate limited']], 429, ['retry-after' => '5'])
+            ->push(['content' => [['type' => 'text', 'text' => 'ok']]], 200),
+    ]);
+
+    $client = new AnthropicLlmClient('test-key', timeoutSeconds: 10, deadlineSeconds: 120);
+    $bounded = $client->withDeadline(hrtime(true));
+
+    expect($bounded)->not->toBe($client)
+        ->and($client->requestTimeoutSeconds())->toBe(10)
+        ->and($client->complete([['role' => 'user', 'content' => 'hi']])['content'])->toBe('ok');
+    Sleep::assertSequence([Sleep::for(5)->seconds()]);
+});
+
 it('does not retry non-429 errors', function () {
     bootAnthropicHttp();
     Sleep::fake();

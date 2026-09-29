@@ -59,9 +59,9 @@ Key defaults (`config/capabilities-ai.php`):
 | `llm.driver` | `fake` (set `CAPABILITIES_AI_LLM_DRIVER=anthropic` or bind `LlmClient` for production) — `fake` outside testing throws unless `CAPABILITIES_AI_ALLOW_UNSAFE=1` |
 | `llm.anthropic.model` | `claude-sonnet-4-6` (`CAPABILITIES_AI_ANTHROPIC_MODEL`) |
 | `llm.anthropic.max_tokens` | `64000` (`CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS`) — a ceiling, not a target. Requests are non-streaming, so a turn only gets what the model writes within `llm.anthropic.timeout`; a reply that needs longer fails the turn as a retryable timeout. For very long replies raise `timeout` and `claim_ttl` together |
-| `llm.anthropic.max_retries` | `2` (`CAPABILITIES_AI_ANTHROPIC_MAX_RETRIES`) — Anthropic 429 retries per request; waits `Retry-After` seconds (capped at 60) or 1s, 2s, 4s…; `0` disables. A retry only happens if the wait plus one more `timeout` still ends before `claim_ttl`; otherwise the 429 fails the turn as retryable |
+| `llm.anthropic.max_retries` | `2` (`CAPABILITIES_AI_ANTHROPIC_MAX_RETRIES`) — Anthropic 429 retries per request; waits `Retry-After` seconds (capped at 60) or 1s, 2s, 4s…; `0` disables. A retry only happens if the wait plus one more `timeout` still ends before the turn's `claim_ttl` (counted from the job start, across all rounds); otherwise the 429 fails the turn as retryable |
 | `user_model` | null → falls back to `auth.providers.users.model` (`CAPABILITIES_AI_USER_MODEL`) |
-| `llm.anthropic.timeout` | `110` (`CAPABILITIES_AI_ANTHROPIC_TIMEOUT`) — seconds per Anthropic request (Laravel's HTTP default is 30s). Must be below `claim_ttl`, or the anthropic `LlmClient` refuses to build (`InvalidArgumentException`); a turn with several tool rounds makes several requests inside one job timeout, so raise `claim_ttl` for long multi-round turns |
+| `llm.anthropic.timeout` | `110` (`CAPABILITIES_AI_ANTHROPIC_TIMEOUT`) — seconds per Anthropic request (Laravel's HTTP default is 30s). Must be below `claim_ttl`, or the anthropic `LlmClient` refuses to build (`InvalidArgumentException`); a turn with several tool rounds makes several requests inside one job timeout. A round starts only while one more `timeout` still fits in what is left of `claim_ttl`; otherwise the turn fails as retryable (`error` + `terminal` events) instead of the worker being killed mid-request. Raise `claim_ttl` for long multi-round turns |
 | `claim_ttl` | **`120`** (seconds; worker heartbeat / job timeout window) |
 | `queue.connection` | null (`CAPABILITIES_AI_QUEUE_CONNECTION`) — applied to default `RunTurnJob` dispatch when set |
 | `queue.name` | null (`CAPABILITIES_AI_QUEUE_NAME`) — applied to default dispatch; also marks **AI-chat** for core `capabilities:integration-health` when non-empty |
@@ -120,6 +120,8 @@ $app->bind(LlmClient::class, fn () => new AnthropicLlmClient(
 ```
 
 **Custom `LlmClient`:** implement `supportsToolRounds()`. Prefer `use LlmClientDefaults` (returns false) and override to `true` **only** if the client accepts tool-result messages on the next `complete()` (OpenAI-style `role=tool` or Anthropic `tool_result` blocks). Lying opens a bus-then-crash path. (PHP interfaces still cannot ship method bodies on supported PHP; the trait is the fail-closed default for hosts.) **Host upgrade callouts:** [user guide](docs/user-guide.md#upgrade-for-hosts-llmclient--tool-rounds) · [CHANGELOG Breaking](CHANGELOG.md).
+
+**Turn time budget:** a custom client can implement `Contracts\DeadlineAwareLlmClient` (`requestTimeoutSeconds()`, `withDeadline()`) so `TurnRunner` holds its rounds and retries to `claim_ttl` the way it does for `AnthropicLlmClient`. Clients without it get no turn budget: keep their total turn time under `claim_ttl` yourself.
 
 **Transient LLM errors:** throw `RetryableLlmException` (rate limit, overload, 5xx, connection) from `complete()`; `AnthropicLlmClient` already does. The turn still ends `failed`, but its progress `error` event carries `retryable: true` (+ `retry_after_seconds` when the provider sent one) so callers can try again; other errors report `retryable: false`.
 
