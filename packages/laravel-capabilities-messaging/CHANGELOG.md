@@ -133,6 +133,11 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
+- **Telegram misconfiguration no longer breaks HTTP / CLI approvals** — `TelegramApprovalNotifier`
+  checked the bot token and webhook secret before looking for a chat target, so with
+  `telegram.enabled=true` and a secret missing every approval threw, including ones requested
+  over HTTP or the CLI. Approvals with no chat target now return before the secret check.
+
 - **A failed reply retries only the send** — a transient Bot API failure (429/5xx) sending the
   reply used to fail the job and re-run the whole update on retry: the chat turn limit again,
   another LLM call through `AgentTurn`, and tool calls that only replayed if the new answer

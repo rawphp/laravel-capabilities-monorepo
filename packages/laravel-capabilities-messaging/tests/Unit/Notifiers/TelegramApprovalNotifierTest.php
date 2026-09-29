@@ -100,3 +100,19 @@ it('edge: an approval with no chat target (HTTP / CLI request) is skipped, not a
 
     expect($bot->calls())->toBe([]);
 });
+
+it('edge: a non-chat approval is skipped before the secret check, so Telegram misconfiguration cannot break HTTP / CLI approvals [M-201]', function () {
+    $bot = H::bot();
+    $missingSecrets = H::config(['telegram' => ['bot_token' => null, 'webhook_secret' => null]], 'production');
+
+    H::notifier($missingSecrets, $bot)->notifyPending(['id' => 'http-1', 'capability_name' => 'billing.void', 'messaging' => null]);
+
+    expect($bot->calls())->toBe([]);
+});
+
+it('fail: a chat approval still requires the Telegram secrets [M-201 / D-021]', function () {
+    $missingSecrets = H::config(['telegram' => ['bot_token' => null, 'webhook_secret' => null]], 'production');
+
+    expect(fn () => H::notifier($missingSecrets, H::bot())->notifyPending(['id' => 'a1', 'messaging' => ['chat_id' => '1']]))
+        ->toThrow(RuntimeException::class, 'TELEGRAM_BOT_TOKEN');
+});

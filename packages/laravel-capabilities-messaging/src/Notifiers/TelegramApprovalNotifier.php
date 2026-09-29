@@ -35,14 +35,15 @@ final class TelegramApprovalNotifier implements ApprovalNotifier
             return;
         }
 
-        $this->config->requireTelegramSecrets();
-
         // Only requests that came from a chat have somewhere to put the buttons; HTTP / CLI
-        // approvals are announced by their own channels (M-101 / D-006).
+        // approvals are announced by their own channels (M-101 / D-006). Skipped before the
+        // secret check so a Telegram misconfiguration never touches non-chat approvals (M-201).
         $chatId = $this->resolveChatId($approval);
         if ($chatId === null) {
             return;
         }
+
+        $this->config->requireTelegramSecrets();
 
         $approvalId = (string) ($approval['id'] ?? '');
         if ($approvalId === '') {
