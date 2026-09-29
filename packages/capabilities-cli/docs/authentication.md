@@ -53,6 +53,24 @@ capabilities auth status [--profile=NAME]
 redirect target in the message, so pass the final URL. Successful login best-effort prefetches the
 catalog into that profile’s schema cache.
 
+### Tokens must carry the `cli` ability
+
+The server treats a request as `caller: cli` only when its token carries the
+ability mapped to `cli` in the server's `clients.token_abilities` config
+(default `capabilities:cli`). Every other bearer token is an `http` caller.
+Capabilities exposed on `cli` but not `http` then drop out of `catalog` and
+return `not_found` on `run`, with no auth error to explain why.
+
+Device-code and OAuth tokens come from the host's issuer, which must attach
+that ability. For `--token`, mint the PAT with it. With Sanctum:
+
+```php
+$user->createToken('cli', ['capabilities:cli'])->plainTextToken;
+```
+
+If `catalog` is missing capabilities you expect, check the token's abilities
+first.
+
 ### Device-code login
 
 1. `POST /capabilities/auth/device` with `{"client_id":"capabilities-cli"}`

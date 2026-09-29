@@ -124,6 +124,10 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 - `docs/authentication.md` states the base-URL rule: the CLI appends
   `/capabilities/…`, so the server's `surfaces.http.prefix` must end in
   `capabilities` and `--base-url` is everything before it.
+- `docs/authentication.md` states that CLI tokens must carry the ability mapped
+  to `cli` (default `capabilities:cli`, with the Sanctum one-liner); without
+  it the server treats the CLI as an `http` caller and `cli`-only capabilities
+  silently vanish from `catalog`. The user guide troubleshooting table links it.
 
 ## [0.5.0] - 2026-08-07
 
