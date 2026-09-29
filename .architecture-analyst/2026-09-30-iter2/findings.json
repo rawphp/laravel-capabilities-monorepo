@@ -1,0 +1,1283 @@
+{
+  "generated_at": "2026-09-29T14:17:23Z",
+  "stack_summary": {
+    "laravel": {
+      "present": true,
+      "version": "11.x|12.x|13.x (illuminate/* components; three packages, not a full app)",
+      "php_version": "8.2+",
+      "key_packages": [
+        "illuminate/support",
+        "illuminate/http",
+        "illuminate/routing",
+        "illuminate/console",
+        "illuminate/bus",
+        "illuminate/events",
+        "illuminate/database",
+        "illuminate/validation",
+        "pestphp/pest",
+        "phpstan/phpstan"
+      ]
+    },
+    "frontend": {
+      "framework": "none",
+      "framework_version": null,
+      "inertia_version": null,
+      "typescript": false,
+      "state_library": "none",
+      "ui_library": "none",
+      "build_tool": "unknown",
+      "key_packages": []
+    },
+    "testing": {
+      "backend": "pest",
+      "frontend": "none"
+    },
+    "tooling": {
+      "linter_backend": "none",
+      "linter_frontend": "none",
+      "formatter_frontend": "none",
+      "types_php": "phpstan"
+    },
+    "infrastructure_hints": {
+      "queue_driver": "unknown",
+      "cache_driver": "unknown",
+      "ci": "github-actions (tests.yml, split-packages.yml)",
+      "deploy": "unknown"
+    },
+    "notes": "Monorepo: packages/laravel-capabilities (core bus, ~22.8k LOC), packages/laravel-capabilities-messaging (~3k), packages/laravel-capabilities-ai (~4.5k), packages/capabilities-cli (Go, ~5.5k). No root app/routes/package.json. Unit-test-only policy (no feature/DB tests), >=95% coverage. Design oracle: docs/spec.md (D-002..D-023). Standing decisions: /Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.do-work/decisions.md (primary checkout, untracked).",
+    "control_plane": {
+      "present": true,
+      "language": "go",
+      "path": "packages/capabilities-cli",
+      "notes": "Go product CLI, HTTP client only (D-016)"
+    }
+  },
+  "mode": "audit",
+  "iteration": 2,
+  "previous_run": "2026-09-29-iter1",
+  "buckets": {
+    "critical": [],
+    "high": [
+      {
+        "id": "C-101",
+        "title": "Stop following HTTP redirects; a 301'd invoke runs describe and exits 0",
+        "category": "wire_contract",
+        "severity": "high",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/capabilities-cli/internal/api/client.go",
+            "line": 49,
+            "snippet": "HTTP:      &http.Client{Timeout: 30 * time.Second},"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/api/client.go",
+            "line": 64,
+            "snippet": "return &http.Client{Timeout: timeout}"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/api/client.go",
+            "line": 262,
+            "snippet": "if res.Err == nil && !res.Envelope.OK {"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/auth/store.go",
+            "line": 135,
+            "snippet": "if baseURL == \"\" || !strings.HasPrefix(baseURL, \"http\") {"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/auth/session.go",
+            "line": 43,
+            "snippet": "res, err := client.ListCapabilities(ctx)"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Http/RouteTable.php",
+            "line": 107,
+            "snippet": "[self::ROUTE_DESCRIBE, 'GET', $prefix.'/{name}', ...]"
+          }
+        ],
+        "current_state": "The API client uses Go's default redirect policy. On a 301/302/303, Go replays a POST as a GET with no body and keeps the Bearer header on the same host. So with `--base-url=http://host` against an HTTPS-only host (nginx/Forge/Cloudflare 301), `run` / domain-verb POST /capabilities/{name} becomes GET /capabilities/{name}. That is the describe route, which returns `{\"ok\":true,...}`. InvokeCapability's fail-closed check passes, and the CLI prints the describe payload and exits 0 without running the capability. `auth login --token` accepts and stores that http:// URL because its verification GET follows the redirect. The token is also sent in cleartext on every first hop.",
+        "recommended_state": "The capability API client never follows redirects. Any 3xx becomes a structured error (exit 1, or a validation exit for login) that names the Location and tells the user to use that URL as --base-url. Login therefore refuses a redirecting base URL before storing it.",
+        "rationale": "This breaks the CLI's core promise: exit 0 plus an ok envelope on stdout means the capability ran (docs/agents.md: agents branch on exit code). Here an agent or script is told a mutating write succeeded when the server only returned catalog metadata. The capability API has no legitimate redirects: every route in RouteTable is terminal. Following them adds no value and turns a method downgrade into a silent false success. Verified with a probe using the same http.Client config: the POST arrived as `GET /capabilities/billing.charge` with the Bearer token and returned 200 with the describe body.",
+        "implementation_hint": "In api.NewClient and in the httpClient() fallback, set `CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }`. In do(), map `300 <= status < 400` to a StructuredError (code internal) with the message `base URL redirected to <Location>; re-run auth login with --base-url=<scheme://host[/path]>`. Add one api test (a 301 on POST invoke gives an error, not ok) and one auth test (LoginWithToken against a 301 stores nothing). Tests that inject env.NewClient get the same policy if they build clients through api.NewClient.",
+        "source_auditor": "control-plane-auditor",
+        "source_run": "2026-09-30-iter2",
+        "score": 34.0
+      },
+      {
+        "id": "L-102",
+        "title": "Idempotent retries of approval-gated invokes create duplicate approvals",
+        "category": "api",
+        "severity": "high",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/IdempotencyGuard.php",
+            "line": 248,
+            "snippet": "// pending_approval / unknown: ... else continue cautiously.\nreturn ['action' => 'continue', 'record' => $existing];"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+            "line": 228,
+            "snippet": "public function withIdempotency(?IdempotencyStore $store): self  // never called in src"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+            "line": 746,
+            "snippet": "return $this->invoke(..., ['caller' => ..., 'actor' => $actor, ..., 'executing_approval_id' => ...]); // no idempotency_key"
+          }
+        ],
+        "current_state": "When an invoke with Idempotency-Key K needs approval, the key row is stored as pending_approval. A retry with K and the same body gets lookup() \u2192 'continue', so it re-runs authorize and needsApproval and creates a second pending approval, overwriting the row's approval_id. Nothing ever completes the key: withIdempotency() is never called in production, so completeIdempotency() is a no-op, and executeApproval() does not pass the key either. Retries after execution also open fresh approvals instead of replaying the result.",
+        "recommended_state": "A pending_approval row with the same hash should replay the stored approval_required result (same approval_id). Approved execution should run under the row's idempotency key so the key moves to completed/failed and later retries replay the executed outcome.",
+        "rationale": "D-005 / principle 11: 'Retries must not double-apply \u2026 approval accepts are idempotent when a key is supplied'. Spec \u00a7D-006 step 5 says run under the original key. CLI --idempotency-key and agents retry on timeouts, so one logical high-stakes action becomes N pending approvals, and accepting each runs the domain N times. That defeats both the approval gate and the key.",
+        "implementation_hint": "IdempotencyGuard::lookup: for status pending_approval with a matching hash, return ['action' => 'replay', 'result' => hydrateResult(result_json, false)], unless $options['executing_approval_id'] equals the row's approval_id (then continue). executeApproval(): add 'idempotency_key' => $row['idempotency_key'] to the options. Alternatively wire withIdempotency($app->make(IdempotencyStore::class)) on the manager singleton. Unit test with InMemoryIdempotencyStore + InMemoryApprovalStore: two invokes with the same key produce one approval row; after accept, a third invoke replays the executed result.",
+        "source_auditor": "laravel-auditor",
+        "source_run": "2026-09-30-iter2",
+        "score": 34.0
+      },
+      {
+        "id": "L-101",
+        "title": "Approval requests use an unconfigured second ApprovalManager; notifiers never fire",
+        "category": "architecture",
+        "severity": "high",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+            "line": 550,
+            "snippet": "$this->pipeline->approvalManager = (new ApprovalManager($store))->withExecutor(...)->withAudit(...)->withEventDispatcher(...)"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Boot/ContainerBindings.php",
+            "line": 282,
+            "snippet": "$registry->withApprovalStore($approvalStore);"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+            "line": 733,
+            "snippet": "$record = $this->approvalManager->request([...])"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+            "line": 355,
+            "snippet": "foreach ($this->notifiers as $notifier) { $notifier->notifyPending($row); }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+            "line": 237,
+            "snippet": "public function addNotifier(ApprovalNotifier $notifier): self"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+            "line": 134,
+            "snippet": "$this->app->singleton(ApprovalManager::class, function ($app) { ... })"
+          }
+        ],
+        "current_state": "The provider builds a configured ApprovalManager singleton, but makeRegistry passes only its store, and withApprovalStore() builds a fresh `new ApprovalManager($store)` with default config. Every approval_required from any surface goes through that second instance. It has no notifiers: nothing in core, messaging or AI ever calls addNotifier(), and a host that adds one to the singleton still never sees it fire. It also ignores approval.ttl_hours (request() caps expires_at at the default 24 h), and Capability::approvals() hands out this unconfigured instance.",
+        "recommended_state": "Build one ApprovalManager and use it everywhere: the registry pipeline should take the provider's configured singleton, not a store. The provider should attach every bound ApprovalNotifier (the messaging package already binds TelegramApprovalNotifier to the contract) plus the core HTTP/CLI notifiers the spec promises.",
+        "rationale": "L-002 made approvals reachable, so this path is now live. Spec D-006 / \u00a7Contracts: 'Core registers HTTP/CLI notifiers. Messaging package binds ApprovalNotifier channel for Telegram.' Today no approver is ever notified, so the Telegram approval-button flow is dead end to end. A host that sets approval.ttl_hours to 4 still gets 24 h pending rows, and with 72 a capability's approvalTtlHours of 48 is cut to 24.",
+        "implementation_hint": "Add CapabilityRegistry::withApprovalManager(ApprovalManager $m) that re-attaches the registry executor, audit and dispatcher, and have makeRegistry accept the manager, called from the provider with $app->make(ApprovalManager::class). In the ApprovalManager singleton closure, if $app->bound(ApprovalNotifier::class), call addNotifier($app->make(ApprovalNotifier::class)). Unit tests: a provider fake app with approval.ttl_hours=4 \u2192 the pipeline-requested row expires in 4 h; a bound recording notifier receives notifyPending on approval_required.",
+        "source_auditor": "laravel-auditor",
+        "source_run": "2026-09-30-iter2",
+        "score": 34.0
+      }
+    ],
+    "quick_wins": [
+      {
+        "id": "L-106",
+        "title": "Declared approvalPolicy is unvalidated; unknown values fall open to requester self-approve",
+        "category": "authorization",
+        "severity": "medium",
+        "effort": "trivial",
+        "impact": [
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalPolicy.php",
+            "line": 112,
+            "snippet": "default => $isRequester || $hasRole,"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalPolicy.php",
+            "line": 65,
+            "snippet": "public function forRow(array $row): self { ... return new self($declared, ...); }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Registry/CapabilityDefinitionBuilder.php",
+            "line": 210,
+            "snippet": "public function approvalPolicy(?string $policy): self { $this->approvalPolicy = $policy; ..."
+          }
+        ],
+        "current_state": "Since L-002 the capability's approvalPolicy string is stored on the row and enforced through forRow(). Nothing validates it: the #[Capability] attribute, the fluent builder and discovery all accept any string. A typo such as 'role-finance', 'Role:finance' or 'any-staff' hits the match default arm, which is requester_or_role with the default 'approver' role. So the requester can approve their own request on a capability whose author meant to require a finance role.",
+        "recommended_state": "Reject unknown policy strings when the definition is built: requester | requester_or_role | any_staff | custom | role:<name>. Make the ApprovalPolicy default arm deny.",
+        "rationale": "Approval is the governance gate for high-stakes capabilities, and an authoring typo should fail at boot, not quietly allow self-approval. The fail-open default was harmless while only the global config value reached it. Per-capability policies now reach it too.",
+        "implementation_hint": "Add ApprovalPolicy::isKnown(string): bool and throw InvalidArgumentException/BootException in CapabilityDefinition's constructor when approvalPolicy !== null && !isKnown(...). Change `default => false`. Unit tests: builder->approvalPolicy('role-finance') throws; a row with approval_policy 'bogus' denies the requester.",
+        "source_auditor": "laravel-auditor",
+        "source_run": "2026-09-30-iter2",
+        "score": 15.0
+      },
+      {
+        "id": "L-105",
+        "title": "Approved execution is rate-limited as the requester; rate_limited burns the approval",
+        "category": "architecture",
+        "severity": "medium",
+        "effort": "trivial",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+            "line": 169,
+            "snippet": "$early = $this->stageRateLimit($state, $forced); // runs before the executing_approval_id skip"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+            "line": 850,
+            "snippet": "return $this->rateLimitedResult('Rate limit exceeded (per_capability_per_minute).', ...);"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalExecutor.php",
+            "line": 235,
+            "snippet": "$resultStatus = $result->isOk() ? 'ok' : 'failed'; // then status=executed"
+          }
+        ],
+        "current_state": "executeApproval() re-invokes the pipeline as the requester with the original caller, so stageRateLimit spends the requester's per-minute and per-capability buckets. The original request already spent a hit on the same keys. Take a capability declaring rateLimit max=1 (typical for sensitive approval-gated operations) that is accepted within the decay window: execution returns rate_limited. ApprovalExecutor treats every non-ok result as terminal, so the row becomes executed/failed. It cannot be retried; accept replays the failure.",
+        "recommended_state": "Do not rate-limit the execution of an already-approved request. The request was counted when it was made, and the approver is not the requester. Alternatively, treat transient pipeline outcomes (rate_limited, busy) as non-terminal and leave the row approved for resume.",
+        "rationale": "D-013 places the rate limit before approval so requests cannot flood the store. It does not say to limit a decision that was already made. As it stands, a prompt approval of a low-limit capability silently discards the approved action, and the approver sees a retryable error that cannot be retried.",
+        "implementation_hint": "In InvokePipeline::stageRateLimit, return null when isset($state->options['executing_approval_id']), the same guard stageNeedsApproval already uses. Unit test: capability with rateLimit ['max' => 1], needsApproval true; invoke \u2192 approval_required; accept immediately \u2192 executed ok and run() called once.",
+        "source_auditor": "laravel-auditor",
+        "source_run": "2026-09-30-iter2",
+        "score": 15.0
+      },
+      {
+        "id": "L-104",
+        "title": "Audit write failures: silent under best_effort, raw in approvals, leaked in strict",
+        "category": "observability",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokeAuditStage.php",
+            "line": 90,
+            "snippet": "$this->observation->log(['level' => 'warning', 'message' => 'Audit failed (best_effort): '...])"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokeAuditStage.php",
+            "line": 96,
+            "snippet": "$this->ensureOutbox()->enqueue($entry); // AuditOutbox = in-process array"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokeAuditStage.php",
+            "line": 75,
+            "snippet": "message: 'Audit failed in strict mode: '.$e->getMessage(),"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+            "line": 789,
+            "snippet": "$this->audit->write(array_merge(['event' => $event], $payload)); // unguarded"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalExecutor.php",
+            "line": 397,
+            "snippet": "$this->audit->write(array_merge(['event' => $event], $payload)); // unguarded"
+          }
+        ],
+        "current_state": "L-006 now wires DatabaseAuditWriter into production, so its failures are real. Three problems follow. (1) best_effort, the default: a failed insert goes only to InvokeObservation::log(), a capped in-memory window. No PSR log, report() or metric. (2) required=true: the fallback 'durable outbox' is Audit\\AuditOutbox, a PHP array on the singleton, never drained and lost when the process exits. (3) strict: the wire message embeds $e->getMessage(), and a QueryException carries SQL plus bound values including payload_json. Approval audit writes (requested/decided/executed) are unguarded, so a failed write throws out of request(), accept() and execute() after state changed or run() committed.",
+        "recommended_state": "Report every audit write failure through the ExceptionHandler/logger and a metric. Make the required-mode fallback durable, or fail boot when required=true has no durable fallback. Return a fixed 'Audit failed.' message in strict mode. Route approval audit writes through the same best_effort/strict policy as invoke audit.",
+        "rationale": "D-010: best_effort means 'log error + metric', required means 'at-least-once via outbox \u2014 not silently drop'. Today the default config drops failed audits with no trace, for example when the outbox migration was never run. With required=true they are kept only in RAM, and the array grows without bound in workers during an outage. L-009 sanitized the outer catch but not this path.",
+        "implementation_hint": "In InvokeAuditStage::record catch: call report($e) via Container ExceptionHandler, increment an audit_write_failed_total metric, and replace $e->getMessage() on the wire with 'Audit failed.'. Give ApprovalManager/ApprovalExecutor::auditWrite a try/catch that applies the mode (best_effort \u2192 report and continue). For required=true, either retry into the same DatabaseAuditWriter later or throw BootException when audit.queue/outbox is not durable. Unit tests: a throwing writer plus a recording ExceptionHandler \u2192 reported once; strict wire message contains no exception text; accept() still returns the executed result when the writer throws under best_effort.",
+        "source_auditor": "laravel-auditor",
+        "source_run": "2026-09-30-iter2",
+        "score": 12.75
+      },
+      {
+        "id": "M-105",
+        "title": "Send only Bot API fields: reply into the forum topic, drop internal keys",
+        "category": "api",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/TelegramAdapter.php",
+            "line": 59,
+            "snippet": "$this->bot->sendMessage($chatId, $text, $data);"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 259,
+            "snippet": "$this->adapter->reply(['chat_id' => ..., 'text' => $replyText, 'thread_id' => $threadId]);"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Support/HttpTelegramBotClient.php",
+            "line": 36,
+            "snippet": "$params = array_merge($payload, ['chat_id' => $chatId, 'text' => $text]);"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Notifiers/TelegramApprovalNotifier.php",
+            "line": 75,
+            "snippet": "'signed_buttons' => true, 'accept_payload' => $accept, 'reject_payload' => $reject,"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/docs/user-guide.md",
+            "line": 166,
+            "snippet": "The approver hint is signed but not transmitted"
+          }
+        ],
+        "current_state": "HttpTelegramBotClient merges whatever payload it gets into the Bot API request. Replies pass the internal thread_id ('tg:<chat>:<topic>') but never message_thread_id, so in a forum supergroup the answer lands in the General topic, not the topic the user wrote in. The notifier sends signed_buttons, accept_payload and reject_payload (full signed payloads including approver_hint, the product user id) as request parameters to api.telegram.org. These are recorder fields for FakeTelegramBotClient left over from M-006.",
+        "recommended_state": "Reply params are built explicitly: chat_id, text, reply_markup and message_thread_id when the update had a topic. HttpTelegramBotClient forwards only known Bot API keys, and tests read button data from reply_markup.",
+        "rationale": "Topic isolation is a stated messaging guarantee (ThreadStore, ThreadIsolationMatrixTest), yet the reply path loses the topic. The docs promise the approver hint is not transmitted, and it is, just in a field Telegram ignores. It is also the last piece of test scaffolding in a production payload, which M-006 set out to remove.",
+        "implementation_hint": "ProcessTelegramUpdate passes 'topic_id' => $topicId; TelegramAdapter::reply maps it to ['message_thread_id' => (int) $topicId] and passes no other keys. Notifier sends only ['reply_markup' => \u2026]. Tests: FakeTelegramBotClient call for a topic update has message_thread_id; notifier call has no accept_payload key and decodes buttons via TelegramCallbackSigner::decode().",
+        "source_auditor": "laravel-auditor-siblings",
+        "source_run": "2026-09-30-iter2",
+        "score": 12.75
+      },
+      {
+        "id": "M-106",
+        "title": "Add a per-user unlink for code-bound Telegram identities",
+        "category": "security",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Identity/LinkStore.php",
+            "line": 12,
+            "snippet": "interface LinkStore { putCode, takeCode, putLink, findLink } // no removal"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Identity/CacheLinkStore.php",
+            "line": 47,
+            "snippet": "$this->cache->forever(self::PREFIX.'link:'.$telegramUserId, $link);"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Identity/IdentityLinker.php",
+            "line": 102,
+            "snippet": "$this->store->putLink($telegramUserId, [...]); // earlier links to the same user stay"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/docs/user-guide.md",
+            "line": 112,
+            "snippet": "clear the cache to drop them for good"
+          }
+        ],
+        "current_state": "Since M-008, code-bound links are durable (cache forever) and act as the product user on every tool call. There is no way to revoke one link: LinkStore and IdentityLinker have no unlink, relinking from another Telegram account adds a link without removing the old one, and the only documented revocations are switching the whole install to allowlist mode or flushing the cache.",
+        "recommended_state": "IdentityLinker::unlink(string $telegramUserId) and LinkStore::forgetLink(), so a host can offer 'disconnect Telegram' and revoke a lost or compromised Telegram account for one user without touching the others.",
+        "rationale": "A chat identity link is a long-lived credential for capability invokes (D-002/D-022). Offboarding, a lost phone or a hijacked Telegram account currently means leaving the link active or logging out every chat user. Iteration 1 treated links as in-memory, so revocation came for free; the durable store is what makes this necessary.",
+        "implementation_hint": "LinkStore::forgetLink(string $telegramUserId): void (CacheLinkStore \u2192 cache->forget, InMemoryLinkStore \u2192 unset). IdentityLinker::unlink() delegates. Optionally keep a reverse index 'link-user:<user_id>' so a host can revoke by product user id. Unit tests on both stores plus resolve() returning null after unlink.",
+        "source_auditor": "laravel-auditor-siblings",
+        "source_run": "2026-09-30-iter2",
+        "score": 12.75
+      },
+      {
+        "id": "L-103",
+        "title": "A throwing bus-event listener turns a committed run() into 'internal' and poisons the key",
+        "category": "queues_events",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+            "line": 203,
+            "snippet": "$this->results()->emitEvents($state, success: true);"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokeResultFinalizer.php",
+            "line": 31,
+            "snippet": "public function dispatch(object $event): void { $this->events?->dispatch($event); }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+            "line": 245,
+            "snippet": "return $this->results()->finishFailure($state, $failure); // finishUncaught"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokeResultFinalizer.php",
+            "line": 53,
+            "snippet": "$this->idempotencyGuard->storeResult(... $result) // overwrites the completed row with failed"
+          }
+        ],
+        "current_state": "Since L-007, CapabilityInvoked goes synchronously through the host Dispatcher after run(), the completed idempotency write and the success audit. A sync listener that throws, or a queued listener whose queue push fails, propagates to the L-009 outer catch. finishUncaught() then calls finishFailure(), which overwrites the stored 'completed' key with 'failed/internal', dispatches CapabilityFailed and returns 'internal' to the caller. For approvals, ApprovalExecutor records the executed row as result_status=failed although run() committed.",
+        "recommended_state": "Once run() has succeeded, listener failures must not change the invoke outcome or its stored idempotency result. Isolate host listener exceptions: report them, keep the success. Or make finishUncaught skip the idempotency overwrite when STORE_IDEMPOTENCY already completed.",
+        "rationale": "D-010: 'Domain state remains committed'. The failure matrix only allows an error after a successful run for strict audit. Failed rows replay for the whole TTL (IdempotencyGuard.php:200), so the client can never learn about the success. A client that retries with a new key double-applies the mutation. Before L-007 events never left the process, and before L-009 the catch did not rewrite the key, so this combination is new.",
+        "implementation_hint": "In InvokeResultFinalizer::dispatch (and the ApprovalManager/ApprovalExecutor dispatch sites), wrap $this->events->dispatch() in try/catch(Throwable) and report through ExceptionHandler, as InvokePipeline::reportThrowable does. Unit test: a Dispatcher fake whose dispatch() throws on CapabilityInvoked; with an idempotency key, the invoke returns ok, the store row stays 'completed', and the exception is reported.",
+        "source_auditor": "laravel-auditor",
+        "source_run": "2026-09-30-iter2",
+        "score": 12.75
+      },
+      {
+        "id": "L-107",
+        "title": "capability:run Artisan command calls a non-existent invoke() and always fails",
+        "category": "architecture",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/Artisan/RunCapabilityCommand.php",
+            "line": 56,
+            "snippet": "$result = $invoker->invoke([ 'name' => ..., 'acting_as' => $this->option('acting-as'), ... ]);"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/Artisan/ArtisanCapabilityInvoker.php",
+            "line": 82,
+            "snippet": "public function run(array $opts): CapabilityResult   // the only entry point; no invoke()/__call"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/Artisan/ArtisanCapabilityInvoker.php",
+            "line": 171,
+            "snippet": "$user = new stdClass; $user->id = ...; $user->name = 'artisan-user-'.$actingAs;"
+          }
+        ],
+        "current_state": "RunCapabilityCommand::handle() calls ArtisanCapabilityInvoker::invoke(), but the class only has run(). Every `php artisan capability:run \u2026` throws 'Call to undefined method', which the catch prints as an error before exiting 1. Tests cover only the registration table and the invoker, not handle(), and PHPStan level 1 does not check method calls on non-$this objects. With the call fixed, --acting-as would still build a fabricated stdClass user because the command passes no user_resolver. That is the same pattern L-005 and L-016 removed from approvals and jobs.",
+        "recommended_state": "Have the command call run() and resolve --acting-as through the registry's requester resolver (the host auth provider the provider wires), failing closed when the user is not found.",
+        "rationale": "This is the documented in-server ops surface (user-guide \u00a7errors, ArtisanCommandTable CMD_RUN), and it has never worked. When it does run, authorize() implementations that call $user->can() get a stdClass.",
+        "implementation_hint": "RunCapabilityCommand: `$invoker->run([... 'user_resolver' => $registry->hasRequesterResolver() ? fn ($id) => $registry->resolveRequester('user', (string) $id) : null])`. ArtisanCapabilityInvoker::resolveActor: drop the stdClass fallback and throw MissingArtisanActorException when no resolver is available. Unit test: construct the command with a registry (StubAuthorizer::allow + fluent capability), set input via ArrayInput and a BufferedOutput, and assert exit 0 and a run() call with the resolved user object.",
+        "source_auditor": "laravel-auditor",
+        "source_run": "2026-09-30-iter2",
+        "score": 12.75
+      },
+      {
+        "id": "M-103",
+        "title": "Retry only the failed Telegram reply, not the whole agent turn",
+        "category": "queues_events",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "performance"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 266,
+            "snippet": "if ($e instanceof TelegramBotApiException && $e->retryable) { throw new RetryableUpdateFailure($message, 0, $e); }"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 200,
+            "snippet": "$ingressResult = $this->adapter->handle($ingressMessage);"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 232,
+            "snippet": "$key = TelegramUpdateParser::idempotencyKey($update, count($toolResults));"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdateJob.php",
+            "line": 18,
+            "snippet": "public int $tries = 3;"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/IdempotencyGuard.php",
+            "line": 212,
+            "snippet": "Completed: same hash replays; different hash conflicts."
+          }
+        ],
+        "current_state": "A retryable failure anywhere (Bot API 429/5xx on the reply, a retryable registry result) fails the job, and the retry re-runs the whole update: the chat turn limit is hit again, AgentTurn::respond() calls the LLM again, and tool calls are re-issued. Idempotency keys are 'telegram:<chat>:<update>:<index>' and core scopes them per capability, so they only replay when the new LLM answer repeats the same capability and input at the same index. A different answer runs extra mutations under fresh keys, or conflicts (409) and the update ends silently.",
+        "recommended_state": "The agent turn and its tool invokes run at most once per update. A reply-send failure retries only the send, and a retryable tool result retries the same tool call list, not a new LLM answer.",
+        "rationale": "M-002's fix made the job retry (correct), but the unit of retry is the whole pipeline while only the tool invokes are idempotent. LLM output is not deterministic, so D-005 exactly-once holds only by luck on retry, and each retry pays for another LLM call and appends another turn to any host AgentTurn memory.",
+        "implementation_hint": "Option A: on reply failure, dispatch a small SendTelegramReplyJob(chatId, text, topic) with its own tries/backoff and return ok from the update job. Option B: cache the AgentTurn result under 'capabilities-messaging:turn:<chat>:<update_id>' (TTL a few minutes) before invoking tools and reuse it on retry. Unit test: second handle() of the same update after a retryable reply failure does not call AgentTurn::respond again.",
+        "source_auditor": "laravel-auditor-siblings",
+        "source_run": "2026-09-30-iter2",
+        "score": 12.75
+      },
+      {
+        "id": "M-104",
+        "title": "Size max_tokens and message storage to what a turn can actually deliver",
+        "category": "configuration",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php",
+            "line": 65,
+            "snippet": "'max_tokens' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS', 64000),"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php",
+            "line": 72,
+            "snippet": "'timeout' => (int) $env('CAPABILITIES_AI_ANTHROPIC_TIMEOUT', 110),"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Package.php",
+            "line": 16,
+            "snippet": "public const DEFAULT_CLAIM_TTL = 120; // also RunTurnJob::$timeout"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/database/migrations/2026_08_02_000002_create_capabilities_ai_messages_table.php",
+            "line": 22,
+            "snippet": "$blueprint->text('content');"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Domain/TurnRunner.php",
+            "line": 89,
+            "snippet": "$this->store->createMessage($conversation, $this->ulid(), 'assistant', $content);"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Http/ChatController.php",
+            "line": 93,
+            "snippet": "if (! is_string($content) || trim($content) === '') { // no max length"
+          }
+        ],
+        "current_state": "The M-012 fix added a 110s per-request timeout but left max_tokens at 64000, which a non-streaming request cannot produce in 110s (or inside the 120s job timeout). A long reply becomes a connection timeout and a failed turn. A reply that does arrive is stored in messages.content, a TEXT column (65,535 bytes on MySQL, about 16k tokens), so a longer reply fails the insert under MySQL strict mode after the tokens are paid for and any tool calls have run. POST messages accepts user content of any length into the same column, which surfaces as a 500 instead of a 422.",
+        "recommended_state": "max_tokens defaults to a value the default timeout can deliver (roughly 4-8k), with a note tying the three numbers together. messages.content is longText (or mediumText) via a new migration. ChatController rejects content above a configured max with 422 validation_failed.",
+        "rationale": "M-012 asked for 'a max_tokens default the timeout can actually deliver'; that half did not land. L-012 already made package SQL portable to MySQL. The column limit is the same kind of issue: it works on sqlite and Postgres and fails on the most common host database.",
+        "implementation_hint": "New migration 2026_09_30_000001_widen_capabilities_ai_messages_content: `$table->longText('content')->change();` (guarded like the usage migration). Config default `CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS` \u2192 8192. Add `capabilities-ai.max_message_chars` (e.g. 32000) checked in storeMessageViolations(). Unit tests: violation for oversize content; config default pinned.",
+        "source_auditor": "laravel-auditor-siblings",
+        "source_run": "2026-09-30-iter2",
+        "score": 12.75
+      },
+      {
+        "id": "X-101",
+        "title": "Split mirrors tag and workflow_dispatch trees onto package-remote main",
+        "category": "ci_cd",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": ".github/workflows/split-packages.yml",
+            "line": 19,
+            "snippet": "on:\n  push:\n    branches: [main]\n    tags: ['v*']\n  workflow_dispatch:"
+          },
+          {
+            "file": ".github/workflows/split-packages.yml",
+            "line": 125,
+            "snippet": "if git -C \"$work\" push origin \"HEAD:main\"; then"
+          },
+          {
+            "file": ".github/workflows/split-packages.yml",
+            "line": 149,
+            "snippet": "if [[ \"$SOURCE_REF_TYPE\" == \"tag\" ]]; then ... git -C \"$work\" tag -f \"$tag\""
+          },
+          {
+            "file": "docs/versioning.md",
+            "line": 137,
+            "snippet": "\"rawphp/laravel-capabilities\": \"dev-main\""
+          }
+        ],
+        "current_state": "Every split run clones package-remote main, replaces its tree with the triggering ref's package tree, and pushes it to main. It does this before it tags, whatever the ref. Tag v0.5.3 (351fea0) is on the hotfix branch fix/l004-bug-errors, not on main: it is v0.5.2 plus one fix and lacks 77 main commits (about 4.6k lines under packages/). The logic means its tag run fast-forwarded all four package remotes' main to that older tree. A workflow_dispatch from any branch does the same.",
+        "recommended_state": "Only a run for refs/heads/main advances package-remote main. A tag run builds its sync commit off to the side (parent: remote main, or no parent) and pushes only the tag. workflow_dispatch is limited to main (or it only re-tags).",
+        "rationale": "versioning.md tells app integrators to VCS-require package `dev-main`, so a regressed main reaches consumers. Nothing reverts it until the next monorepo main push, and cancel-in-progress:false queues runs in order, so a tag run queued after a main run leaves main regressed. The split is the only publication path (AGENTS.md ship model), and hotfix tags already exist in history.",
+        "implementation_hint": "In the sync step: `if [[ \"$SOURCE_REF\" == refs/heads/main ]]; then <existing push-to-main loop>; fi`. For tags: `git -C \"$work\" commit ...` on a detached HEAD, then `git -C \"$work\" push origin \"HEAD:refs/tags/${tag}\" --force` without touching main. Add a job-level guard: `if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')` so a dispatch from a feature branch is a no-op.",
+        "source_auditor": "cross-cutting-auditor",
+        "source_run": "2026-09-30-iter2",
+        "score": 12.75
+      },
+      {
+        "id": "X-102",
+        "title": "Release path out of sync: /release contradicts CHANGELOG gate; --squash fails",
+        "category": "git_workflow",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "dx",
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": ".claude/commands/release.md",
+            "line": 111,
+            "snippet": "CHANGELOG `[Unreleased]` \u2192 dated section is maintainer polish; only edit if the user asked in the same breath."
+          },
+          {
+            "file": ".claude/commands/release.md",
+            "line": 90,
+            "snippet": "./scripts/release.sh --yes --squash patch"
+          },
+          {
+            "file": ".claude/commands/release.md",
+            "line": 71,
+            "snippet": "- gates: `composer test` + `composer test:cli`"
+          },
+          {
+            "file": "scripts/release.sh",
+            "line": 330,
+            "snippet": "CHANGELOG_PROBLEMS=\"$(changelog_problems \"$ROOT\" \"${NEW_TAG#v}\")\""
+          },
+          {
+            "file": "scripts/release.sh",
+            "line": 349,
+            "snippet": "SQUASH_BASE=\"$CURRENT_TAG\""
+          },
+          {
+            "file": "scripts/release.sh",
+            "line": 424,
+            "snippet": "elif ! git merge-base --is-ancestor \"$SQUASH_BASE\" HEAD; then fail \"--squash base $SQUASH_BASE is not an ancestor of HEAD\""
+          },
+          {
+            "file": "docs/versioning.md",
+            "line": 226,
+            "snippet": "Commit and push the promotion first."
+          }
+        ],
+        "current_state": "The X-008 fix made release.sh refuse a real release unless every package CHANGELOG has a `## [X.Y.Z]` section, and versioning.md says to commit and push that promotion first. The /release agent command still calls the promotion optional polish that must not be done unless asked, has no promote-and-push step, and lists stale gates (no Pint/PHPStan). The command's default follow-up `--squash patch` takes the global max tag, v0.5.3, as its base. v0.5.3 was hand-tagged on a hotfix branch outside release.sh (the tag message has no gate block) and is not an ancestor of main, so that invocation hard-fails. The plan also lists 294 'commits since v0.5.3'.",
+        "recommended_state": "/release walks the agent through: promote [Unreleased] to [X.Y.Z] (or 'No changes.') in all four CHANGELOGs, commit, push, then run release.sh. Its gate list defers to `release.sh --help`. release.sh bumps from the global max tag, but takes the range/squash base from the nearest tag reachable from HEAD. versioning.md documents the hotfix path (or forbids it).",
+        "rationale": "The script and its agent wrapper now disagree. An agent following /release fails at the CHANGELOG gate while also being told not to edit CHANGELOGs, and the recommended squash command cannot succeed while the latest tag is off main. The first release after this fix loop will hit both problems.",
+        "implementation_hint": "release.md: replace the step-5 CHANGELOG bullet with a required step 1b. Change line 71 to 'gates: see ./scripts/release.sh --help (Pint, PHPStan, Pest, go test)'. release.sh: `RANGE_TAG=\"$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' HEAD 2>/dev/null || true)\"`, used for commit_count and SQUASH_BASE; keep latest_tag() for NEW_TAG. Add a case to scripts/lib/test-release.sh that tags a side branch above main and asserts --squash uses the reachable tag.",
+        "source_auditor": "cross-cutting-auditor",
+        "source_run": "2026-09-30-iter2",
+        "score": 12.75
+      },
+      {
+        "id": "L-015",
+        "title": "Capability discovery rescans and tokenizes app/Capabilities on every boot",
+        "category": "caching",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "performance",
+          "scalability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+            "line": 517,
+            "snippet": "$this->bootCapabilityDiscovery();"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Discovery/AttributeDiscoverer.php",
+            "line": 128,
+            "snippet": "new RegexIterator(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path)), ...)"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Discovery/AttributeDiscoverer.php",
+            "line": 158,
+            "snippet": "token_get_all($contents)  // per file, per boot"
+          }
+        ],
+        "current_state": "Every application boot (every FPM request, every queue job boot) resolves the CapabilityRegistry singleton with its stores, walks the capabilities directory, reads and tokenizes every PHP file, and reflects each attribute. No manifest or cache exists, unlike Laravel's event/package discovery.",
+        "recommended_state": "Add a capabilities:cache / capabilities:clear command that writes a class map (bootstrap/cache/capabilities.php). When the manifest exists, DefinitionCatalog::discover(classMap: ...) should use it, falling back to scanning in local environments. Hook it into `optimize` via $this->optimizes() on Laravel 11.27+.",
+        "rationale": "The cost grows with the number of capabilities and is paid on requests that never touch the bus. The package already supports classMap discovery (DefinitionCatalog::discover), so the fix is a small wiring change.",
+        "implementation_hint": "CapabilityDiscoveryBoot::run: `$map = DiscoveryManifest::load($path) ?? null; $registry->discover(paths: $paths, classMap: $map ?? [])`. The new command uses AttributeDiscoverer::fromPaths to write the list of class names. Unit tests: with a manifest present, the filesystem iterator is not invoked (inject a fake discoverer); the cache command output round-trips.",
+        "baseline": true,
+        "status": "still_open",
+        "source_run": "2026-09-29-iter1",
+        "source_auditor": "laravel-auditor",
+        "baseline_note": "Not addressed by any iteration-1 commit; iteration-2 laravel-auditor confirmed it is still open and asked to carry the iteration-1 id. Line numbers refreshed (provider 429 -> 517, discoverer 127 -> 128).",
+        "score": 12.75
+      },
+      {
+        "id": "X-103",
+        "title": "Spec D-018 envelope is stale vs code: stderr, 10 of 22 codes, no cli_exit",
+        "category": "documentation",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "maintainability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "docs/spec.md",
+            "line": 3090,
+            "snippet": "**Decision:** Every non-success response (and CLI stderr JSON) uses:"
+          },
+          {
+            "file": "docs/spec.md",
+            "line": 3109,
+            "snippet": "| `code` (normative set) | HTTP | CLI exit |"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Support/ErrorCodeMap.php",
+            "line": 13,
+            "snippet": "private const MAP = [ ... 'self_delete', 'confirmation_failed', 'last_super_admin', 'not_configured', 'not_supported', 'audit_failed', 'not_runnable', 'gone', 'capability_not_in_profile', 'expired' ..."
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Support/CapabilityResult.php",
+            "line": 68,
+            "snippet": "'http_status' => $wire['http_status'], 'cli_exit' => $wire['cli_exit'],"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/api/errors.go",
+            "line": 196,
+            "snippet": "// The server's cli_exit wins so codes added on the server keep their exit"
+          },
+          {
+            "file": "packages/capabilities-cli/docs/agents.md",
+            "line": 19,
+            "snippet": "**Stdout is machine; stderr is human** \u2014 parse **stdout** envelopes only."
+          }
+        ],
+        "current_state": "D-018 puts the CLI JSON envelope on stderr, lists 10 codes, and shows an error object with no `http_status`, `cli_exit` or `retry_after`. The code has 22 codes in ErrorCodeMap. Since C-002, C-006 and C-007, the CLI prints every structured failure on stdout, exits with the server's `error.cli_exit`, and reports `error.retry_after` on rate_limited. None of that is in the spec.",
+        "recommended_state": "D-018 matches the shipped contract: the envelope goes to stdout (human hints to stderr). ErrorCodeMap is named as the source of truth for the code set, or the table lists all codes. The error object documents `http_status`, `cli_exit` (the CLI's exit authority) and `retry_after`.",
+        "rationale": "AGENTS.md makes docs/spec.md the conflict oracle ('behaviour that conflicts with docs/spec.md is wrong until the spec is intentionally updated'). Right now the oracle says three fixes from this loop are violations, so the next agent may 'correct' the stdout envelope or the cli_exit handling back to the spec.",
+        "implementation_hint": "Edit docs/spec.md D-018: change '(and CLI stderr JSON)' to '(and CLI stdout JSON; stderr is human-only)'. Add http_status/cli_exit/retry_after to the example with one line each. Replace the table heading with 'normative core set; full map = packages/laravel-capabilities/src/Support/ErrorCodeMap.php (pinned by ErrorCodesUserGuideTest)'. Docs only, no code change.",
+        "source_auditor": "cross-cutting-auditor",
+        "source_run": "2026-09-30-iter2",
+        "score": 12.75
+      }
+    ],
+    "medium": [
+      {
+        "id": "M-101",
+        "title": "Wire the Telegram approval loop end to end (notifier never fires, taps reach the LLM)",
+        "category": "architecture",
+        "severity": "medium",
+        "effort": "medium",
+        "impact": [
+          "reliability",
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/src/MessagingServiceProvider.php",
+            "line": 149,
+            "snippet": "$this->app->alias(TelegramApprovalNotifier::class, ApprovalNotifier::class);"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+            "line": 237,
+            "snippet": "public function addNotifier(ApprovalNotifier $notifier): self"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+            "line": 355,
+            "snippet": "foreach ($this->notifiers as $notifier) { $notifier->notifyPending($row); }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+            "line": 733,
+            "snippet": "$record = $this->approvalManager->request([... no 'messaging' / chat target ...])"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Notifiers/TelegramApprovalNotifier.php",
+            "line": 43,
+            "snippet": "throw new RuntimeException('Approval notify requires messaging.chat_id.');"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/TelegramUpdateParser.php",
+            "line": 63,
+            "snippet": "?? $update['callback_query']['data']"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/docs/user-guide.md",
+            "line": 164,
+            "snippet": "not invoked by the default webhook \u2192 ProcessTelegramUpdate path yet"
+          }
+        ],
+        "current_state": "Messaging binds TelegramApprovalNotifier to the ApprovalNotifier contract, but core never resolves that binding: ApprovalManager only calls notifiers added through addNotifier(), and nothing in core or messaging calls it. The approval row core writes carries no messaging chat target, so even a registered notifier would throw 'requires messaging.chat_id' inside ApprovalManager::request() for every approval, including HTTP/CLI ones. A tapped button (callback_query) is treated as chat text: the signed token is sent to the host AgentTurn as the approver's message.",
+        "recommended_state": "Core gains one seam to collect container-bound ApprovalNotifier(s) when it builds ApprovalManager (siblings cannot call addNotifier through ApprovalGateway). The Telegram notifier skips rows with no chat target instead of throwing, and the approval row records where to notify (for example the requesting invoke's messaging meta). ProcessTelegramUpdate routes callback_query updates to CallbackHandler (decode, accept/reject, answerCallbackQuery) and never to the agent turn.",
+        "rationale": "D-006 step 4 and D-007 put chat approvals in the messaging package, and iteration-1 fixes M-003/M-004 invested in the button token. Today a governed capability requested from Telegram creates a pending approval that no chat user hears about, and the package's only approval affordance cannot be consumed by the default pipeline. Iteration 1 skipped the CallbackHandler gap as documented; the notifier half was not visible then and makes the whole loop dead, not just unfinished.",
+        "implementation_hint": "Core provider: after building ApprovalManager, `foreach ($app->tagged('capabilities.approval_notifiers') as $n) $manager->addNotifier($n)` (or resolve the bound ApprovalNotifier when present). Messaging provider tags TelegramApprovalNotifier. TelegramApprovalNotifier::notifyPending returns early when resolveChatId() is null. InvokePipeline::buildApprovalRequired adds 'messaging' => $ctx->messaging(). ProcessTelegramUpdate::process(): if isset($update['callback_query']) \u2192 CallbackHandler::handle($signer->decode($data), $from) and reply/answer, before the link-code and ingress steps. Unit tests: fake manager receives the notifier; callback update never calls AgentTurn.",
+        "source_auditor": "laravel-auditor-siblings",
+        "source_run": "2026-09-30-iter2",
+        "score": 9.0
+      },
+      {
+        "id": "M-102",
+        "title": "Tell the chat user what happened to their request (approval, forbidden, tool output)",
+        "category": "architecture",
+        "severity": "medium",
+        "effort": "medium",
+        "impact": [
+          "reliability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 245,
+            "snippet": "if ($code === 'approval_required') { throw new RuntimeException('approval_required'); }"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 99,
+            "snippet": "return ['ok' => false, 'error' => $e->getMessage(), ...]; // no reply sent"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 255,
+            "snippet": "$replyText = (string) ($ingressResult['text'] ?? 'ok');"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Contracts/AgentTurn.php",
+            "line": 12,
+            "snippet": "Tool calls are returned, not executed"
+          },
+          {
+            "file": "docs/spec.md",
+            "line": 1816,
+            "snippet": "Surfaces receive a structured `approval_required` result (approval id + summary)."
+          }
+        ],
+        "current_state": "AgentTurn::respond() returns its reply text and tool calls together, so the text is written before any tool runs; ProcessTelegramUpdate invokes the tools, collects their results into tool_results, and never shows them to the agent or the user. Any non-ok tool result (approval_required, forbidden, validation_failed, conflict) throws, so no reply is sent at all. The same silence applies to an unlinked user's plain '/start'.",
+        "recommended_state": "Governed outcomes reach the user: approval_required replies with 'waiting for approval' and the approval id, forbidden/validation reply with a fixed refusal, identity_unresolved replies with how to link. Either tool results feed back into the agent (a second respond() call carrying results, the way TurnRunner does rounds) before the reply, or the contract says plainly that tool output is never shown and the reply is sent regardless.",
+        "rationale": "Approval is the governance path the bus exists for (D-006); on the Telegram surface it currently looks identical to a crash from the user's side. Because the reply is authored before execution, read capabilities are useless over chat (the data never leaves tool_results) and success replies are guesses. This was introduced with the M-001 AgentTurn contract.",
+        "implementation_hint": "Smallest step: map terminal codes to fixed reply strings in handle()'s catch (skip rate_limited to avoid feeding floods) and send them through adapter->reply(). Larger step: extend AgentTurn with an optional `respondWithResults(array $message, array $toolResults): array{text}` and call it when tool_calls were non-empty. Unit-test with FakeTelegramBotClient that approval_required produces one sendMessage containing the approval id.",
+        "source_auditor": "laravel-auditor-siblings",
+        "source_run": "2026-09-30-iter2",
+        "score": 9.0
+      }
+    ],
+    "enhancements": [
+      {
+        "id": "L-110",
+        "title": "resolveAuthKind classifies any ability containing 'cli' as a CLI token",
+        "category": "authorization",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "security",
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Http/IlluminateHttpBridge.php",
+            "line": 336,
+            "snippet": "private static function resolveAuthKind(bool $authenticated, array $tokenAbilities): string"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Http/IlluminateHttpBridge.php",
+            "line": 88,
+            "snippet": "authKind: self::resolveAuthKind($authenticated, $tokenAbilities),"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Http/CallerDeriver.php",
+            "line": 67,
+            "snippet": "$map = $this->config['token_abilities'] ?? ['capabilities:cli' => 'cli'];"
+          }
+        ],
+        "current_state": "resolveAuthKind returns AUTH_CLI_TOKEN when any token ability contains the substring 'cli', so 'client:read', 'clinic:*' or 'decline' all mark the request as a CLI token, and the exact 'capabilities:cli' check beside it is dead. It ignores the clients.token_abilities map that CallerDeriver uses. Today authKind only feeds HttpAuthGate::allows(), which accepts user, cli_token and api_token alike, and the unauthenticated metric tag.",
+        "recommended_state": "authKind is CLI only for an exact match on an ability mapped to 'cli' in clients.token_abilities (default capabilities:cli), the same source CallerDeriver reads.",
+        "rationale": "Two classifiers of the same credential disagree, and the looser one is the one exposed on HttpRequestContext. It is harmless while no decision reads the distinction, but any cli-only gate or telemetry built on authKind would misclassify ordinary host tokens.",
+        "implementation_hint": "Drop the str_contains branch; compare lowercased abilities against the keys of the token_abilities map whose value is 'cli' (pass the map in, or default to ['capabilities:cli']). Unit test: IlluminateHttpBridge::fromArray(['authenticated'=>true,'token_abilities'=>['client:read']]) gives authKind user; ['capabilities:cli'] gives cli_token.",
+        "baseline": true,
+        "status": "open",
+        "source_run": "2026-09-30-iter2",
+        "source_auditor": "control-plane-auditor (notes)",
+        "baseline_note": "Raised in findings-control-plane.json notes as core-side and outside CLI scope; no L-1xx finding covers it. Related to C-103 (the capabilities:cli ability contract). Locations verified by the synthesizer.",
+        "score": 5.0
+      },
+      {
+        "id": "C-102",
+        "title": "Validate the profile name before starting device-code / OAuth login",
+        "category": "auth_flow",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "reliability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/capabilities-cli/internal/auth/session.go",
+            "line": 34,
+            "snippet": "if _, err := profileName(profile); err != nil {  // token path only"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/auth/session.go",
+            "line": 97,
+            "snippet": "func LoginDeviceCode(ctx context.Context, store *Store, client *api.Client, profile, baseURL string, flow DeviceFlow) (*LoginResult, error) {"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/auth/session.go",
+            "line": 158,
+            "snippet": "if err := store.SetBaseURL(profile, normalized); err != nil {"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/auth/session.go",
+            "line": 209,
+            "snippet": "func LoginBrowserOAuth(ctx context.Context, store *Store, client *api.Client, profile, baseURL, code string) (*LoginResult, error) {"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/auth/store.go",
+            "line": 63,
+            "snippet": "return \"\", fmt.Errorf(\"%w %q: use letters, digits, '-' or '_' (e.g. %q)\", ErrInvalidProfile, p, safe)"
+          }
+        ],
+        "current_state": "The C-005 fix added an upfront profileName check to LoginWithToken only. LoginDeviceCode and LoginBrowserOAuth reach the store for the first time after the host has issued a token. With `--profile='my prod'`, the user completes the whole browser approval (up to minutes of polling), and then SetBaseURL fails with ErrInvalidProfile. The issued token is discarded but stays valid on the server.",
+        "recommended_state": "All three login paths reject an invalid profile name before any network call, just as the token path does.",
+        "rationale": "This is a cheap fail-fast that the token path already has. Without it, the interactive device flow wastes the human approval step and leaves an orphaned live credential server-side. There is no revoke route to clean it up.",
+        "implementation_hint": "Move the `profileName(profile)` guard into a shared prelude (or call it at the top of LoginDeviceCode and LoginBrowserOAuth). Add one device_test case: an invalid profile makes zero HTTP calls.",
+        "source_auditor": "control-plane-auditor",
+        "source_run": "2026-09-30-iter2",
+        "score": 5.0
+      },
+      {
+        "id": "C-103",
+        "title": "State the capabilities:cli ability in the AuthTokenIssuer and CLI login contract",
+        "category": "wire_contract",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "reliability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Contracts/AuthTokenIssuer.php",
+            "line": 30,
+            "snippet": "* 4. Once approved, return the token shape (`access_token`, `token_type`, `expires_in`)."
+          },
+          {
+            "file": "docs/spec.md",
+            "line": 3958,
+            "snippet": "- Auth issuance for CLI always attaches `capabilities:cli` (or registered OAuth client)"
+          },
+          {
+            "file": "packages/laravel-capabilities/config/capabilities.php",
+            "line": 213,
+            "snippet": "'capabilities:cli' => 'cli',"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Http/IlluminateHttpBridge.php",
+            "line": 343,
+            "snippet": "if ($lower === 'capabilities:cli' || str_contains($lower, 'cli')) {"
+          },
+          {
+            "file": "packages/capabilities-cli/docs/authentication.md",
+            "line": 47,
+            "snippet": "| `--base-url` + `--token` | Verify a PAT / API token with one `GET /capabilities`, then store it |"
+          }
+        ],
+        "current_state": "The spec says CLI auth issuance always attaches `capabilities:cli`, and the server derives caller=cli only from that ability. Otherwise the caller is `http`. Core delegates issuance to the host's AuthTokenIssuer. The device-code contract docblock rewritten for C-001 describes the token shape but never mentions the ability, and the CLI's --token docs say nothing about how to mint the PAT. A host that follows the docblock issues tokens that make the product CLI an `http` caller. Capabilities exposed on `cli` but not `http` then disappear from `catalog` and return not_found on run, with no error explaining why.",
+        "recommended_state": "The AuthTokenIssuer docblock (device and token grants) and the CLI's authentication.md both state that tokens meant for the product CLI must carry the ability mapped to `cli` in `clients.token_abilities` (default `capabilities:cli`). They give the Sanctum one-liner.",
+        "rationale": "The spec rule lives in core's caller derivation, but the only contract a host implements (AuthTokenIssuer) leaves it out. The failure is silent (a filtered catalog) and looks like a missing capability rather than a credential problem. The contract docblock was just rewritten for C-001, so this is the moment to close the gap.",
+        "implementation_hint": "AuthTokenIssuer.php step 4: 'Mint the token with the ability mapped to caller `cli` (default `capabilities:cli`, e.g. `$user->createToken('cli', ['capabilities:cli'])`), or the CLI is treated as an `http` caller.' Mirror this in capabilities-cli/docs/authentication.md under Login modes (--token row) and in docs/troubleshooting.md.",
+        "source_auditor": "control-plane-auditor",
+        "source_run": "2026-09-30-iter2",
+        "score": 5.0
+      },
+      {
+        "id": "L-108",
+        "title": "Resume sweep is scheduled even when its command is not registered",
+        "category": "queues_events",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+            "line": 519,
+            "snippet": "$this->bootResumeSchedule();  // ignores surfaces.artisan.enabled"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+            "line": 676,
+            "snippet": "$classes = ArtisanCommandRegistrar::classes($config); // [] when surfaces.artisan.enabled=false"
+          },
+          {
+            "file": "packages/laravel-capabilities/config/capabilities.php",
+            "line": 99,
+            "snippet": "'enabled' => $env('CAPABILITIES_SURFACE_ARTISAN', true),"
+          }
+        ],
+        "current_state": "ResumeApprovalsCommand is registered only through ArtisanCommandTable, which returns nothing when surfaces.artisan.enabled is false (the env toggle for the ops invoke surface). bootResumeSchedule() still schedules capabilities:approvals-resume every minute. With the artisan surface disabled, schedule:run fails every minute with 'command not defined' and the L-014 crash-recovery sweep never runs.",
+        "recommended_state": "Register the resume command whenever ResumeSchedulePlan::fromConfig() returns a plan, independent of the artisan invoke surface. It is approval infrastructure, not the operator invoke surface.",
+        "rationale": "Disabling the ops `capability:run` surface is a reasonable hardening step. It should not silently switch off approval crash recovery.",
+        "implementation_hint": "In boot(): if bootResumeSchedule() returns a plan and ResumeApprovalsCommand is not in the registered classes, call $this->commands([ResumeApprovalsCommand::class]). Unit test with FakeProviderApp: artisan disabled + deferred/resume enabled \u2192 the command class is registered and scheduled.",
+        "source_auditor": "laravel-auditor",
+        "source_run": "2026-09-30-iter2",
+        "score": 5.0
+      },
+      {
+        "id": "L-109",
+        "title": "HttpAuthGate::PROTECTED lists the unauthenticated auth issuance routes",
+        "category": "authorization",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "reliability",
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Http/HttpAuthGate.php",
+            "line": 32,
+            "snippet": "RouteTable::ROUTE_AUTH_TOKEN,"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Http/HttpAuthGate.php",
+            "line": 33,
+            "snippet": "RouteTable::ROUTE_AUTH_DEVICE,"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Http/HttpAuthGate.php",
+            "line": 82,
+            "snippet": "public function isProtected(string $routeKey): bool"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Http/RouteTable.php",
+            "line": 143,
+            "snippet": "public static function isAuthIssuanceRoute(string $key): bool"
+          }
+        ],
+        "current_state": "HttpAuthGate::PROTECTED ('routes that always require authentication') includes auth_token and auth_device, so isProtected() returns true for them. Those are the issuance endpoints the CLI device flow calls with no token. Nothing in src reads PROTECTED or isProtected() today (AuthController does not go through the gate), so nothing breaks yet.",
+        "recommended_state": "PROTECTED lists only list/describe/invoke/approval routes, and isProtected() returns false for RouteTable::isAuthIssuanceRoute() keys, pinned by a unit test.",
+        "rationale": "The constant states a wrong contract. Any middleware or route wiring later built from isProtected() would put device-code and token-grant login behind authentication and lock out every CLI login (C-001 flow).",
+        "implementation_hint": "Delete lines 32-33 from PROTECTED (or early-return false in isProtected() when RouteTable::isAuthIssuanceRoute($routeKey)). Unit test: (new HttpAuthGate)->isProtected(RouteTable::ROUTE_AUTH_TOKEN) and ROUTE_AUTH_DEVICE are false; ROUTE_INVOKE stays true.",
+        "baseline": true,
+        "status": "open",
+        "source_run": "2026-09-30-iter2",
+        "source_auditor": "control-plane-auditor (notes)",
+        "baseline_note": "Raised in findings-control-plane.json notes as core-side and outside CLI scope; no L-1xx finding covers it. Locations verified by the synthesizer.",
+        "score": 5.0
+      },
+      {
+        "id": "M-107",
+        "title": "Fail or finish explicitly when a turn hits max_tool_rounds",
+        "category": "architecture",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "reliability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-ai/src/Domain/TurnRunner.php",
+            "line": 76,
+            "snippet": "while ($rounds < $this->maxToolRounds) {"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Domain/TurnRunner.php",
+            "line": 192,
+            "snippet": "if (! $this->claim->complete($turnUlid, $usage)) {"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php",
+            "line": 126,
+            "snippet": "/** Max tool-call rounds per turn before force-complete/fail. */"
+          }
+        ],
+        "current_state": "When every round up to max_tool_rounds returns tool calls, the loop exits and the turn is marked completed with a 'completed' terminal event, but no assistant message is stored. The client sees a successful turn with no reply after the model has run up to 8 rounds of capability invokes. No test covers the cap.",
+        "recommended_state": "Hitting the cap either fails the turn with a clear error ('max_tool_rounds reached', retryable=false) or makes one final LLM call with no tools to get a closing message. Either way it is pinned by a unit test.",
+        "rationale": "A silent 'completed' hides the one case where the model looped, which is the case an operator most needs to see (D-013 loop protection). The config comment already promises 'force-complete/fail'.",
+        "implementation_hint": "Track `$finished = false`; set true on the text-only break paths. After the loop, `if (! $finished) throw new RuntimeException('max_tool_rounds reached');` so the existing catch fails the turn and emits error+terminal. Unit test with a FakeLlmClient that always returns a tool call and maxToolRounds=2.",
+        "source_auditor": "laravel-auditor-siblings",
+        "source_run": "2026-09-30-iter2",
+        "score": 5.0
+      },
+      {
+        "id": "C-104",
+        "title": "Drop or fix the post-login 'prefetch'; it caches nothing",
+        "category": "wire_contract",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "maintainability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/capabilities-cli/cmd/capabilities/cmd_auth.go",
+            "line": 64,
+            "snippet": "// Prefetch schemas into cache (best-effort)."
+          },
+          {
+            "file": "packages/capabilities-cli/cmd/capabilities/cmd_auth.go",
+            "line": 71,
+            "snippet": "_, _ = svc.Refresh(context.Background())"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/catalog/service.go",
+            "line": 98,
+            "snippet": "func (s *Service) Refresh(ctx context.Context) ([]CapabilitySummary, error) {"
+          },
+          {
+            "file": "packages/capabilities-cli/docs/authentication.md",
+            "line": 51,
+            "snippet": "Successful login best-effort prefetches the catalog into that profile\u2019s schema cache."
+          },
+          {
+            "file": "packages/capabilities-cli/docs/user-guide.md",
+            "line": 202,
+            "snippet": "Successful login best-effort prefetches"
+          }
+        ],
+        "current_state": "After every successful login, cmd_auth builds a second client from the raw (unnormalised) --base-url and calls Service.Refresh. Refresh wipes the principal's cache dir and does a GET /capabilities, then discards the result: List never Puts entries, and the compact list has no schemas. For --token login this repeats the GET that LoginWithToken just made. Both docs say the catalog is prefetched into the schema cache, but it is not.",
+        "recommended_state": "Pick one: delete the block and the doc sentence, since the cache is keyed by base URL plus token hash and a new credential already gets an empty cache dir; or make it true with ListWithSchemas and a Put per row. Deleting is the smaller change.",
+        "rationale": "Dead network work plus a false documentation claim. Agents reading the docs may skip describe or expect offline flag help right after login. Iteration 1 recorded this under C-004 ('the auth-login prefetch only clears the cache'), but the fix did not touch it.",
+        "implementation_hint": "Delete cmd_auth.go lines 64-72 (or replace them with a plain `catalog.PrincipalCache(...).Invalidate(\"\")` if clearing on same-token re-login matters). Remove the prefetch sentence from docs/authentication.md:51 and docs/user-guide.md:202.",
+        "source_auditor": "control-plane-auditor",
+        "source_run": "2026-09-30-iter2",
+        "score": 5.0
+      },
+      {
+        "id": "X-105",
+        "title": "Monorepo docs drift after the fix loop (threads, D-024, AI missing)",
+        "category": "documentation",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "dx",
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": "README.md",
+            "line": 47,
+            "snippet": "webhooks, identity link/allowlist, threads (process-local today), approval notifiers"
+          },
+          {
+            "file": "AGENTS.md",
+            "line": 19,
+            "snippet": "decisions D-002\u2013D-023"
+          },
+          {
+            "file": "docs/README.md",
+            "line": 43,
+            "snippet": "decisions D-002\u2013D-023"
+          },
+          {
+            "file": "docs/versioning.md",
+            "line": 170,
+            "snippet": "Both Composer packages **must** keep:"
+          },
+          {
+            "file": "docs/versioning.md",
+            "line": 180,
+            "snippet": "| Core | ... | Messaging | ... (no AI row)"
+          },
+          {
+            "file": "docs/versioning.md",
+            "line": 124,
+            "snippet": "VCS repository snippet lists core + messaging only"
+          }
+        ],
+        "current_state": "Messaging's 'Is' cell in the root README still says 'threads (process-local today)', while the next cell and the messaging README say messaging keeps no thread history (L-006 fix 52d1f5e). AGENTS.md and docs/README.md give the decision range as D-002\u2013D-023, but D-024 (host integration contract) is normative and is cited by the core README and IntegrationHealthChecker. versioning.md's branch-alias policy covers 'both' Composer packages and its path/VCS install snippets cover only core and messaging, although the AI package has the same branch-alias and self.version lockstep.",
+        "recommended_state": "The root README matches L-006, the D-range reads D-002\u2013D-024, and versioning.md covers all three Composer packages.",
+        "rationale": "These are the orientation files every new agent session reads first (AGENTS.md 'Essential files'). Small contradictions there send agents to the wrong spec range or leave the AI package out of install and version policy.",
+        "implementation_hint": "README.md:47 remove '(process-local today)'. AGENTS.md:19 and docs/README.md:43 change D-023 to D-024. docs/versioning.md: 'All three Composer packages', add an AI row to the alias table, add the AI path/VCS entries to both snippets.",
+        "source_auditor": "cross-cutting-auditor",
+        "source_run": "2026-09-30-iter2",
+        "score": 5.0
+      },
+      {
+        "id": "X-106",
+        "title": "Go CI has no gofmt gate (PHP got Pint; CLI already drifted once)",
+        "category": "ci_cd",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": ".github/workflows/tests.yml",
+            "line": 102,
+            "snippet": "- name: go test\n        run: go test ./..."
+          },
+          {
+            "file": "scripts/release.sh",
+            "line": 525,
+            "snippet": "composer test:cli"
+          }
+        ],
+        "current_state": "X-006 added Pint and PHPStan gates for PHP. The Go job and the release CLI gate only run `go test ./...`. The fix loop needed a separate commit (2cd5db9 'style: gofmt the CLI package') to clean up drift nobody had caught. The tree is gofmt-clean now (`gofmt -l .` is empty).",
+        "recommended_state": "The Go job fails when `gofmt -l .` prints anything, the Go counterpart of `composer format:test`.",
+        "rationale": "It keeps the PHP and Go formatting gates at parity for almost no CI time. It uses the toolchain's own formatter, not a new tool, and it stops the next round of format-only commits.",
+        "implementation_hint": "In tests.yml go job, before go test: `- name: gofmt\\n  run: test -z \"$(gofmt -l .)\" || { gofmt -l .; exit 1; }`. Optionally add the same check to release.sh run_cli_gates.",
+        "source_auditor": "cross-cutting-auditor",
+        "source_run": "2026-09-30-iter2",
+        "score": 5.0
+      },
+      {
+        "id": "X-104",
+        "title": "Package-facing docs still point at tests the split no longer ships",
+        "category": "documentation",
+        "severity": "low",
+        "effort": "small",
+        "impact": [
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/README.md",
+            "line": 155,
+            "snippet": "# from this package (after composer install of dev deps)\n./vendor/bin/pest --filter=PeerSupportMatrix"
+          },
+          {
+            "file": "packages/laravel-capabilities/README.md",
+            "line": 209,
+            "snippet": "[`PeerContractFixtures`](tests/Fixtures/PeerContractFixtures.php)"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/README.md",
+            "line": 34,
+            "snippet": "## Install (path package) ... composer update rawphp/laravel-capabilities-ai\ncomposer test:ai"
+          },
+          {
+            "file": "packages/laravel-capabilities/docs/user-guide.md",
+            "line": 219,
+            "snippet": "The table is pinned by `tests/Unit/Mcp/AuthProfileCapabilityMatrixTest.php`."
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/README.md",
+            "line": 25,
+            "snippet": "docs/user-guide.md#upgrade-for-hosts-llmclient-tool-rounds"
+          },
+          {
+            "file": "packages/capabilities-cli/docs/user-guide.md",
+            "line": 261,
+            "snippet": "authentication.md#multiple-projects--multi-deployment-profiles"
+          },
+          {
+            "file": "packages/laravel-capabilities/README.md",
+            "line": 51,
+            "snippet": "Sibling packages and thin adapters should depend only on this **allowlist** ... Support\\CapabilityResult / CapabilityContext / CapabilityData"
+          }
+        ],
+        "current_state": "The X-003 fix drops tests/ and phpunit.xml from the split, and package composer.json has no require-dev. The same core README (line 125) says the remote 'ships no tests'. Yet it tells readers to run `./vendor/bin/pest` 'from this package' and links tests/Fixtures/PeerContractFixtures.php, and the AI README's Install section is monorepo-root `composer test:ai`. Some anchors are also broken: AI README lines 25/26/28/123 and AI CHANGELOG lines 105/118/173 use single hyphens where GitHub slugs for headings with ' / ' or ' + ' keep '--', and the CLI user guide line 261 targets a heading that does not exist. The core README's sibling allowlist also leaves out Support\\ErrorCodeMap and Support\\Redactor, which messaging and AI import and their architecture tests allow.",
+        "recommended_state": "Package READMEs and guides only give commands that work on the split remote. Test and fixture references become absolute monorepo URLs or are dropped, the anchors resolve, and the allowlist table matches the architecture tests.",
+        "rationale": "After the split these files are each public repo's front page. AGENTS.md requires package docs to stay self-contained post-split. The broken links sit in the AI 'Upgrade for hosts' table, the main entry point for host upgrades.",
+        "implementation_hint": "Core README: delete the 'from this package' pest block; point the PeerContractFixtures link at https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/packages/laravel-capabilities/tests/Fixtures/PeerContractFixtures.php. AI README: rename the section 'Install' with `composer require rawphp/laravel-capabilities-ai` and leave test runs to the existing monorepo line. Anchors: `#upgrade-for-hosts-llmclient--tool-rounds`, `#upgrade-for-hosts-tool-progress--tool-messages`, `#upgrade-for-hosts-manual-di--constructor--job-handle`, `authentication.md#multi-project--multi-deployment-profiles`. Add ErrorCodeMap and Redactor rows to the allowlist table.",
+        "source_auditor": "cross-cutting-auditor",
+        "source_run": "2026-09-30-iter2",
+        "score": 4.25
+      }
+    ]
+  },
+  "dropped_count": 0,
+  "merges": [],
+  "baseline_items": [
+    "L-015",
+    "L-109",
+    "L-110"
+  ],
+  "warnings": [
+    "findings-laravel-siblings.json uses non-standard prefix M- (auditor \"laravel-auditor-siblings\"); kept as-is by orchestrator instruction.",
+    "Mode not supplied by orchestrator; recorded as \"audit\".",
+    "Auditors reviewed .worktrees/arch-audit2 (HEAD 64b23a1); the synthesis worktree has since moved to efebd3f (X-001 coverage merges: mostly tests/CI, plus AI config/provider and root docs). Files cited by M-104, M-107, X-101, X-102, X-105 and X-106 changed in that range, so their line refs may have shifted; re-check before fixing. Line refs for L-015/L-109/L-110 were verified at efebd3f.",
+    "Deferred / do-not-report honoured by auditors: X-001 coverage gate."
+  ]
+}

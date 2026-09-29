@@ -1,0 +1,297 @@
+{
+  "auditor": "laravel-auditor",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-audit2/packages/laravel-capabilities",
+  "stack_summary": {
+    "laravel": "illuminate/* 11|12|13 components (library package, not an app)",
+    "php": "^8.2",
+    "testing": "pest (unit-only, no DB)",
+    "scope": "packages/laravel-capabilities (core bus)"
+  },
+  "scanned_files_count": 58,
+  "findings": [
+    {
+      "id": "L-101",
+      "title": "Approval requests use an unconfigured second ApprovalManager; notifiers never fire",
+      "category": "architecture",
+      "severity": "high",
+      "effort": "small",
+      "impact": [
+        "reliability",
+        "maintainability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+          "line": 550,
+          "snippet": "$this->pipeline->approvalManager = (new ApprovalManager($store))->withExecutor(...)->withAudit(...)->withEventDispatcher(...)"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Boot/ContainerBindings.php",
+          "line": 282,
+          "snippet": "$registry->withApprovalStore($approvalStore);"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+          "line": 733,
+          "snippet": "$record = $this->approvalManager->request([...])"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+          "line": 355,
+          "snippet": "foreach ($this->notifiers as $notifier) { $notifier->notifyPending($row); }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+          "line": 237,
+          "snippet": "public function addNotifier(ApprovalNotifier $notifier): self"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+          "line": 134,
+          "snippet": "$this->app->singleton(ApprovalManager::class, function ($app) { ... })"
+        }
+      ],
+      "current_state": "The provider builds a configured ApprovalManager singleton, but makeRegistry passes only its store, and withApprovalStore() builds a fresh `new ApprovalManager($store)` with default config. Every approval_required from any surface goes through that second instance. It has no notifiers: nothing in core, messaging or AI ever calls addNotifier(), and a host that adds one to the singleton still never sees it fire. It also ignores approval.ttl_hours (request() caps expires_at at the default 24 h), and Capability::approvals() hands out this unconfigured instance.",
+      "recommended_state": "Build one ApprovalManager and use it everywhere: the registry pipeline should take the provider's configured singleton, not a store. The provider should attach every bound ApprovalNotifier (the messaging package already binds TelegramApprovalNotifier to the contract) plus the core HTTP/CLI notifiers the spec promises.",
+      "rationale": "L-002 made approvals reachable, so this path is now live. Spec D-006 / \u00a7Contracts: 'Core registers HTTP/CLI notifiers. Messaging package binds ApprovalNotifier channel for Telegram.' Today no approver is ever notified, so the Telegram approval-button flow is dead end to end. A host that sets approval.ttl_hours to 4 still gets 24 h pending rows, and with 72 a capability's approvalTtlHours of 48 is cut to 24.",
+      "implementation_hint": "Add CapabilityRegistry::withApprovalManager(ApprovalManager $m) that re-attaches the registry executor, audit and dispatcher, and have makeRegistry accept the manager, called from the provider with $app->make(ApprovalManager::class). In the ApprovalManager singleton closure, if $app->bound(ApprovalNotifier::class), call addNotifier($app->make(ApprovalNotifier::class)). Unit tests: a provider fake app with approval.ttl_hours=4 \u2192 the pipeline-requested row expires in 4 h; a bound recording notifier receives notifyPending on approval_required."
+    },
+    {
+      "id": "L-102",
+      "title": "Idempotent retries of approval-gated invokes create duplicate approvals",
+      "category": "api",
+      "severity": "high",
+      "effort": "small",
+      "impact": [
+        "reliability",
+        "security"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/IdempotencyGuard.php",
+          "line": 248,
+          "snippet": "// pending_approval / unknown: ... else continue cautiously.\nreturn ['action' => 'continue', 'record' => $existing];"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+          "line": 228,
+          "snippet": "public function withIdempotency(?IdempotencyStore $store): self  // never called in src"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+          "line": 746,
+          "snippet": "return $this->invoke(..., ['caller' => ..., 'actor' => $actor, ..., 'executing_approval_id' => ...]); // no idempotency_key"
+        }
+      ],
+      "current_state": "When an invoke with Idempotency-Key K needs approval, the key row is stored as pending_approval. A retry with K and the same body gets lookup() \u2192 'continue', so it re-runs authorize and needsApproval and creates a second pending approval, overwriting the row's approval_id. Nothing ever completes the key: withIdempotency() is never called in production, so completeIdempotency() is a no-op, and executeApproval() does not pass the key either. Retries after execution also open fresh approvals instead of replaying the result.",
+      "recommended_state": "A pending_approval row with the same hash should replay the stored approval_required result (same approval_id). Approved execution should run under the row's idempotency key so the key moves to completed/failed and later retries replay the executed outcome.",
+      "rationale": "D-005 / principle 11: 'Retries must not double-apply \u2026 approval accepts are idempotent when a key is supplied'. Spec \u00a7D-006 step 5 says run under the original key. CLI --idempotency-key and agents retry on timeouts, so one logical high-stakes action becomes N pending approvals, and accepting each runs the domain N times. That defeats both the approval gate and the key.",
+      "implementation_hint": "IdempotencyGuard::lookup: for status pending_approval with a matching hash, return ['action' => 'replay', 'result' => hydrateResult(result_json, false)], unless $options['executing_approval_id'] equals the row's approval_id (then continue). executeApproval(): add 'idempotency_key' => $row['idempotency_key'] to the options. Alternatively wire withIdempotency($app->make(IdempotencyStore::class)) on the manager singleton. Unit test with InMemoryIdempotencyStore + InMemoryApprovalStore: two invokes with the same key produce one approval row; after accept, a third invoke replays the executed result."
+    },
+    {
+      "id": "L-103",
+      "title": "A throwing bus-event listener turns a committed run() into 'internal' and poisons the key",
+      "category": "queues_events",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+          "line": 203,
+          "snippet": "$this->results()->emitEvents($state, success: true);"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokeResultFinalizer.php",
+          "line": 31,
+          "snippet": "public function dispatch(object $event): void { $this->events?->dispatch($event); }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+          "line": 245,
+          "snippet": "return $this->results()->finishFailure($state, $failure); // finishUncaught"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokeResultFinalizer.php",
+          "line": 53,
+          "snippet": "$this->idempotencyGuard->storeResult(... $result) // overwrites the completed row with failed"
+        }
+      ],
+      "current_state": "Since L-007, CapabilityInvoked goes synchronously through the host Dispatcher after run(), the completed idempotency write and the success audit. A sync listener that throws, or a queued listener whose queue push fails, propagates to the L-009 outer catch. finishUncaught() then calls finishFailure(), which overwrites the stored 'completed' key with 'failed/internal', dispatches CapabilityFailed and returns 'internal' to the caller. For approvals, ApprovalExecutor records the executed row as result_status=failed although run() committed.",
+      "recommended_state": "Once run() has succeeded, listener failures must not change the invoke outcome or its stored idempotency result. Isolate host listener exceptions: report them, keep the success. Or make finishUncaught skip the idempotency overwrite when STORE_IDEMPOTENCY already completed.",
+      "rationale": "D-010: 'Domain state remains committed'. The failure matrix only allows an error after a successful run for strict audit. Failed rows replay for the whole TTL (IdempotencyGuard.php:200), so the client can never learn about the success. A client that retries with a new key double-applies the mutation. Before L-007 events never left the process, and before L-009 the catch did not rewrite the key, so this combination is new.",
+      "implementation_hint": "In InvokeResultFinalizer::dispatch (and the ApprovalManager/ApprovalExecutor dispatch sites), wrap $this->events->dispatch() in try/catch(Throwable) and report through ExceptionHandler, as InvokePipeline::reportThrowable does. Unit test: a Dispatcher fake whose dispatch() throws on CapabilityInvoked; with an idempotency key, the invoke returns ok, the store row stays 'completed', and the exception is reported."
+    },
+    {
+      "id": "L-104",
+      "title": "Audit write failures: silent under best_effort, raw in approvals, leaked in strict",
+      "category": "observability",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "reliability",
+        "security"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokeAuditStage.php",
+          "line": 90,
+          "snippet": "$this->observation->log(['level' => 'warning', 'message' => 'Audit failed (best_effort): '...])"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokeAuditStage.php",
+          "line": 96,
+          "snippet": "$this->ensureOutbox()->enqueue($entry); // AuditOutbox = in-process array"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokeAuditStage.php",
+          "line": 75,
+          "snippet": "message: 'Audit failed in strict mode: '.$e->getMessage(),"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+          "line": 789,
+          "snippet": "$this->audit->write(array_merge(['event' => $event], $payload)); // unguarded"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalExecutor.php",
+          "line": 397,
+          "snippet": "$this->audit->write(array_merge(['event' => $event], $payload)); // unguarded"
+        }
+      ],
+      "current_state": "L-006 now wires DatabaseAuditWriter into production, so its failures are real. Three problems follow. (1) best_effort, the default: a failed insert goes only to InvokeObservation::log(), a capped in-memory window. No PSR log, report() or metric. (2) required=true: the fallback 'durable outbox' is Audit\\AuditOutbox, a PHP array on the singleton, never drained and lost when the process exits. (3) strict: the wire message embeds $e->getMessage(), and a QueryException carries SQL plus bound values including payload_json. Approval audit writes (requested/decided/executed) are unguarded, so a failed write throws out of request(), accept() and execute() after state changed or run() committed.",
+      "recommended_state": "Report every audit write failure through the ExceptionHandler/logger and a metric. Make the required-mode fallback durable, or fail boot when required=true has no durable fallback. Return a fixed 'Audit failed.' message in strict mode. Route approval audit writes through the same best_effort/strict policy as invoke audit.",
+      "rationale": "D-010: best_effort means 'log error + metric', required means 'at-least-once via outbox \u2014 not silently drop'. Today the default config drops failed audits with no trace, for example when the outbox migration was never run. With required=true they are kept only in RAM, and the array grows without bound in workers during an outage. L-009 sanitized the outer catch but not this path.",
+      "implementation_hint": "In InvokeAuditStage::record catch: call report($e) via Container ExceptionHandler, increment an audit_write_failed_total metric, and replace $e->getMessage() on the wire with 'Audit failed.'. Give ApprovalManager/ApprovalExecutor::auditWrite a try/catch that applies the mode (best_effort \u2192 report and continue). For required=true, either retry into the same DatabaseAuditWriter later or throw BootException when audit.queue/outbox is not durable. Unit tests: a throwing writer plus a recording ExceptionHandler \u2192 reported once; strict wire message contains no exception text; accept() still returns the executed result when the writer throws under best_effort."
+    },
+    {
+      "id": "L-105",
+      "title": "Approved execution is rate-limited as the requester; rate_limited burns the approval",
+      "category": "architecture",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": [
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+          "line": 169,
+          "snippet": "$early = $this->stageRateLimit($state, $forced); // runs before the executing_approval_id skip"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+          "line": 850,
+          "snippet": "return $this->rateLimitedResult('Rate limit exceeded (per_capability_per_minute).', ...);"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalExecutor.php",
+          "line": 235,
+          "snippet": "$resultStatus = $result->isOk() ? 'ok' : 'failed'; // then status=executed"
+        }
+      ],
+      "current_state": "executeApproval() re-invokes the pipeline as the requester with the original caller, so stageRateLimit spends the requester's per-minute and per-capability buckets. The original request already spent a hit on the same keys. Take a capability declaring rateLimit max=1 (typical for sensitive approval-gated operations) that is accepted within the decay window: execution returns rate_limited. ApprovalExecutor treats every non-ok result as terminal, so the row becomes executed/failed. It cannot be retried; accept replays the failure.",
+      "recommended_state": "Do not rate-limit the execution of an already-approved request. The request was counted when it was made, and the approver is not the requester. Alternatively, treat transient pipeline outcomes (rate_limited, busy) as non-terminal and leave the row approved for resume.",
+      "rationale": "D-013 places the rate limit before approval so requests cannot flood the store. It does not say to limit a decision that was already made. As it stands, a prompt approval of a low-limit capability silently discards the approved action, and the approver sees a retryable error that cannot be retried.",
+      "implementation_hint": "In InvokePipeline::stageRateLimit, return null when isset($state->options['executing_approval_id']), the same guard stageNeedsApproval already uses. Unit test: capability with rateLimit ['max' => 1], needsApproval true; invoke \u2192 approval_required; accept immediately \u2192 executed ok and run() called once."
+    },
+    {
+      "id": "L-106",
+      "title": "Declared approvalPolicy is unvalidated; unknown values fall open to requester self-approve",
+      "category": "authorization",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": [
+        "security"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalPolicy.php",
+          "line": 112,
+          "snippet": "default => $isRequester || $hasRole,"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalPolicy.php",
+          "line": 65,
+          "snippet": "public function forRow(array $row): self { ... return new self($declared, ...); }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Registry/CapabilityDefinitionBuilder.php",
+          "line": 210,
+          "snippet": "public function approvalPolicy(?string $policy): self { $this->approvalPolicy = $policy; ..."
+        }
+      ],
+      "current_state": "Since L-002 the capability's approvalPolicy string is stored on the row and enforced through forRow(). Nothing validates it: the #[Capability] attribute, the fluent builder and discovery all accept any string. A typo such as 'role-finance', 'Role:finance' or 'any-staff' hits the match default arm, which is requester_or_role with the default 'approver' role. So the requester can approve their own request on a capability whose author meant to require a finance role.",
+      "recommended_state": "Reject unknown policy strings when the definition is built: requester | requester_or_role | any_staff | custom | role:<name>. Make the ApprovalPolicy default arm deny.",
+      "rationale": "Approval is the governance gate for high-stakes capabilities, and an authoring typo should fail at boot, not quietly allow self-approval. The fail-open default was harmless while only the global config value reached it. Per-capability policies now reach it too.",
+      "implementation_hint": "Add ApprovalPolicy::isKnown(string): bool and throw InvalidArgumentException/BootException in CapabilityDefinition's constructor when approvalPolicy !== null && !isKnown(...). Change `default => false`. Unit tests: builder->approvalPolicy('role-finance') throws; a row with approval_policy 'bogus' denies the requester."
+    },
+    {
+      "id": "L-107",
+      "title": "capability:run Artisan command calls a non-existent invoke() and always fails",
+      "category": "architecture",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "reliability",
+        "dx"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Adapters/Artisan/RunCapabilityCommand.php",
+          "line": 56,
+          "snippet": "$result = $invoker->invoke([ 'name' => ..., 'acting_as' => $this->option('acting-as'), ... ]);"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Adapters/Artisan/ArtisanCapabilityInvoker.php",
+          "line": 82,
+          "snippet": "public function run(array $opts): CapabilityResult   // the only entry point; no invoke()/__call"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Adapters/Artisan/ArtisanCapabilityInvoker.php",
+          "line": 171,
+          "snippet": "$user = new stdClass; $user->id = ...; $user->name = 'artisan-user-'.$actingAs;"
+        }
+      ],
+      "current_state": "RunCapabilityCommand::handle() calls ArtisanCapabilityInvoker::invoke(), but the class only has run(). Every `php artisan capability:run \u2026` throws 'Call to undefined method', which the catch prints as an error before exiting 1. Tests cover only the registration table and the invoker, not handle(), and PHPStan level 1 does not check method calls on non-$this objects. With the call fixed, --acting-as would still build a fabricated stdClass user because the command passes no user_resolver. That is the same pattern L-005 and L-016 removed from approvals and jobs.",
+      "recommended_state": "Have the command call run() and resolve --acting-as through the registry's requester resolver (the host auth provider the provider wires), failing closed when the user is not found.",
+      "rationale": "This is the documented in-server ops surface (user-guide \u00a7errors, ArtisanCommandTable CMD_RUN), and it has never worked. When it does run, authorize() implementations that call $user->can() get a stdClass.",
+      "implementation_hint": "RunCapabilityCommand: `$invoker->run([... 'user_resolver' => $registry->hasRequesterResolver() ? fn ($id) => $registry->resolveRequester('user', (string) $id) : null])`. ArtisanCapabilityInvoker::resolveActor: drop the stdClass fallback and throw MissingArtisanActorException when no resolver is available. Unit test: construct the command with a registry (StubAuthorizer::allow + fluent capability), set input via ArrayInput and a BufferedOutput, and assert exit 0 and a run() call with the resolved user object."
+    },
+    {
+      "id": "L-108",
+      "title": "Resume sweep is scheduled even when its command is not registered",
+      "category": "queues_events",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": [
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+          "line": 519,
+          "snippet": "$this->bootResumeSchedule();  // ignores surfaces.artisan.enabled"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+          "line": 676,
+          "snippet": "$classes = ArtisanCommandRegistrar::classes($config); // [] when surfaces.artisan.enabled=false"
+        },
+        {
+          "file": "packages/laravel-capabilities/config/capabilities.php",
+          "line": 99,
+          "snippet": "'enabled' => $env('CAPABILITIES_SURFACE_ARTISAN', true),"
+        }
+      ],
+      "current_state": "ResumeApprovalsCommand is registered only through ArtisanCommandTable, which returns nothing when surfaces.artisan.enabled is false (the env toggle for the ops invoke surface). bootResumeSchedule() still schedules capabilities:approvals-resume every minute. With the artisan surface disabled, schedule:run fails every minute with 'command not defined' and the L-014 crash-recovery sweep never runs.",
+      "recommended_state": "Register the resume command whenever ResumeSchedulePlan::fromConfig() returns a plan, independent of the artisan invoke surface. It is approval infrastructure, not the operator invoke surface.",
+      "rationale": "Disabling the ops `capability:run` surface is a reasonable hardening step. It should not silently switch off approval crash recovery.",
+      "implementation_hint": "In boot(): if bootResumeSchedule() returns a plan and ResumeApprovalsCommand is not in the registered classes, call $this->commands([ResumeApprovalsCommand::class]). Unit test with FakeProviderApp: artisan disabled + deferred/resume enabled \u2192 the command class is registered and scheduled."
+    }
+  ],
+  "notes": "Iteration 2, core scope only. Read AGENTS.md, docs/spec.md D-005/D-006/D-010/D-013 sections, and .do-work/decisions.md (primary checkout). Reviewed the full core src/config/database diff 37a0552..HEAD (47 files) plus the untouched collaborators it calls. Iteration-1 fix verification: L-001, L-003, L-004, L-008, L-009, L-010, L-011, L-012, L-013, L-016, L-017, L-018, L-019 and L-020 are fixed as recommended. Partially fixed, with the gap raised as a new id: L-002 (the policy is declared and stored but unvalidated \u2192 L-106; approvals now reachable, which exposes L-101, L-102 and L-105), L-006 (writer wired, but the failure path is silent, not durable and leaky, and approval audit is unguarded \u2192 L-104), L-007 + L-009 together (a listener throw rewrites a committed result \u2192 L-103), L-014 (scheduled without the command when the artisan surface is off \u2192 L-108), and the L-005/L-016 fabricated-user pattern left in Artisan (\u2192 L-107, which also found capability:run broken). L-015 (discovery rescans on every boot) was not addressed by any commit and is still open. It is not re-raised; carry the iteration-1 id. Checked and not raised: the approval reject path checks status before policy (pre-existing ordering, and approval ids are random); the executing_approval_id option bypass (options come only from server code; no untrusted path found); the extra SELECT after each audit INSERT (QueryTableGateway::insert re-read; minor); timestamps encoded in the PHP default timezone (round-trips consistently); the attribute default surfaces excluding job/artisan (deliberate per spec examples). Deferred / do-not-report honoured: X-001 coverage gate. All implementation hints use unit fakes only (InMemory stores, ArrayTableGateway, FakeProviderApp, recording dispatcher/handler), with no DB or feature tests."
+}

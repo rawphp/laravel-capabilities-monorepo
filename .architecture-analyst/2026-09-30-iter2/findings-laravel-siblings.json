@@ -1,0 +1,149 @@
+{
+  "auditor": "laravel-auditor-siblings",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-audit2",
+  "stack_summary": {
+    "type": "library monorepo",
+    "scope": ["packages/laravel-capabilities-messaging", "packages/laravel-capabilities-ai"],
+    "php": "^8.2",
+    "laravel": "^11|^12|^13",
+    "tests": "Pest unit only (AGENTS.md)"
+  },
+  "scanned_files_count": 74,
+  "findings": [
+    {
+      "id": "M-101",
+      "title": "Wire the Telegram approval loop end to end (notifier never fires, taps reach the LLM)",
+      "category": "architecture",
+      "severity": "medium",
+      "effort": "medium",
+      "impact": ["reliability", "maintainability"],
+      "locations": [
+        { "file": "packages/laravel-capabilities-messaging/src/MessagingServiceProvider.php", "line": 149, "snippet": "$this->app->alias(TelegramApprovalNotifier::class, ApprovalNotifier::class);" },
+        { "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php", "line": 237, "snippet": "public function addNotifier(ApprovalNotifier $notifier): self" },
+        { "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php", "line": 355, "snippet": "foreach ($this->notifiers as $notifier) { $notifier->notifyPending($row); }" },
+        { "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php", "line": 733, "snippet": "$record = $this->approvalManager->request([... no 'messaging' / chat target ...])" },
+        { "file": "packages/laravel-capabilities-messaging/src/Notifiers/TelegramApprovalNotifier.php", "line": 43, "snippet": "throw new RuntimeException('Approval notify requires messaging.chat_id.');" },
+        { "file": "packages/laravel-capabilities-messaging/src/Telegram/TelegramUpdateParser.php", "line": 63, "snippet": "?? $update['callback_query']['data']" },
+        { "file": "packages/laravel-capabilities-messaging/docs/user-guide.md", "line": 164, "snippet": "not invoked by the default webhook → ProcessTelegramUpdate path yet" }
+      ],
+      "current_state": "Messaging binds TelegramApprovalNotifier to the ApprovalNotifier contract, but core never resolves that binding: ApprovalManager only calls notifiers added through addNotifier(), and nothing in core or messaging calls it. The approval row core writes carries no messaging chat target, so even a registered notifier would throw 'requires messaging.chat_id' inside ApprovalManager::request() for every approval, including HTTP/CLI ones. A tapped button (callback_query) is treated as chat text: the signed token is sent to the host AgentTurn as the approver's message.",
+      "recommended_state": "Core gains one seam to collect container-bound ApprovalNotifier(s) when it builds ApprovalManager (siblings cannot call addNotifier through ApprovalGateway). The Telegram notifier skips rows with no chat target instead of throwing, and the approval row records where to notify (for example the requesting invoke's messaging meta). ProcessTelegramUpdate routes callback_query updates to CallbackHandler (decode, accept/reject, answerCallbackQuery) and never to the agent turn.",
+      "rationale": "D-006 step 4 and D-007 put chat approvals in the messaging package, and iteration-1 fixes M-003/M-004 invested in the button token. Today a governed capability requested from Telegram creates a pending approval that no chat user hears about, and the package's only approval affordance cannot be consumed by the default pipeline. Iteration 1 skipped the CallbackHandler gap as documented; the notifier half was not visible then and makes the whole loop dead, not just unfinished.",
+      "implementation_hint": "Core provider: after building ApprovalManager, `foreach ($app->tagged('capabilities.approval_notifiers') as $n) $manager->addNotifier($n)` (or resolve the bound ApprovalNotifier when present). Messaging provider tags TelegramApprovalNotifier. TelegramApprovalNotifier::notifyPending returns early when resolveChatId() is null. InvokePipeline::buildApprovalRequired adds 'messaging' => $ctx->messaging(). ProcessTelegramUpdate::process(): if isset($update['callback_query']) → CallbackHandler::handle($signer->decode($data), $from) and reply/answer, before the link-code and ingress steps. Unit tests: fake manager receives the notifier; callback update never calls AgentTurn."
+    },
+    {
+      "id": "M-102",
+      "title": "Tell the chat user what happened to their request (approval, forbidden, tool output)",
+      "category": "architecture",
+      "severity": "medium",
+      "effort": "medium",
+      "impact": ["reliability", "dx"],
+      "locations": [
+        { "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php", "line": 245, "snippet": "if ($code === 'approval_required') { throw new RuntimeException('approval_required'); }" },
+        { "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php", "line": 99, "snippet": "return ['ok' => false, 'error' => $e->getMessage(), ...]; // no reply sent" },
+        { "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php", "line": 255, "snippet": "$replyText = (string) ($ingressResult['text'] ?? 'ok');" },
+        { "file": "packages/laravel-capabilities-messaging/src/Contracts/AgentTurn.php", "line": 12, "snippet": "Tool calls are returned, not executed" },
+        { "file": "docs/spec.md", "line": 1816, "snippet": "Surfaces receive a structured `approval_required` result (approval id + summary)." }
+      ],
+      "current_state": "AgentTurn::respond() returns its reply text and tool calls together, so the text is written before any tool runs; ProcessTelegramUpdate invokes the tools, collects their results into tool_results, and never shows them to the agent or the user. Any non-ok tool result (approval_required, forbidden, validation_failed, conflict) throws, so no reply is sent at all. The same silence applies to an unlinked user's plain '/start'.",
+      "recommended_state": "Governed outcomes reach the user: approval_required replies with 'waiting for approval' and the approval id, forbidden/validation reply with a fixed refusal, identity_unresolved replies with how to link. Either tool results feed back into the agent (a second respond() call carrying results, the way TurnRunner does rounds) before the reply, or the contract says plainly that tool output is never shown and the reply is sent regardless.",
+      "rationale": "Approval is the governance path the bus exists for (D-006); on the Telegram surface it currently looks identical to a crash from the user's side. Because the reply is authored before execution, read capabilities are useless over chat (the data never leaves tool_results) and success replies are guesses. This was introduced with the M-001 AgentTurn contract.",
+      "implementation_hint": "Smallest step: map terminal codes to fixed reply strings in handle()'s catch (skip rate_limited to avoid feeding floods) and send them through adapter->reply(). Larger step: extend AgentTurn with an optional `respondWithResults(array $message, array $toolResults): array{text}` and call it when tool_calls were non-empty. Unit-test with FakeTelegramBotClient that approval_required produces one sendMessage containing the approval id."
+    },
+    {
+      "id": "M-103",
+      "title": "Retry only the failed Telegram reply, not the whole agent turn",
+      "category": "queues_events",
+      "severity": "medium",
+      "effort": "small",
+      "impact": ["reliability", "performance"],
+      "locations": [
+        { "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php", "line": 266, "snippet": "if ($e instanceof TelegramBotApiException && $e->retryable) { throw new RetryableUpdateFailure($message, 0, $e); }" },
+        { "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php", "line": 200, "snippet": "$ingressResult = $this->adapter->handle($ingressMessage);" },
+        { "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php", "line": 232, "snippet": "$key = TelegramUpdateParser::idempotencyKey($update, count($toolResults));" },
+        { "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdateJob.php", "line": 18, "snippet": "public int $tries = 3;" },
+        { "file": "packages/laravel-capabilities/src/Pipeline/IdempotencyGuard.php", "line": 212, "snippet": "Completed: same hash replays; different hash conflicts." }
+      ],
+      "current_state": "A retryable failure anywhere (Bot API 429/5xx on the reply, a retryable registry result) fails the job, and the retry re-runs the whole update: the chat turn limit is hit again, AgentTurn::respond() calls the LLM again, and tool calls are re-issued. Idempotency keys are 'telegram:<chat>:<update>:<index>' and core scopes them per capability, so they only replay when the new LLM answer repeats the same capability and input at the same index. A different answer runs extra mutations under fresh keys, or conflicts (409) and the update ends silently.",
+      "recommended_state": "The agent turn and its tool invokes run at most once per update. A reply-send failure retries only the send, and a retryable tool result retries the same tool call list, not a new LLM answer.",
+      "rationale": "M-002's fix made the job retry (correct), but the unit of retry is the whole pipeline while only the tool invokes are idempotent. LLM output is not deterministic, so D-005 exactly-once holds only by luck on retry, and each retry pays for another LLM call and appends another turn to any host AgentTurn memory.",
+      "implementation_hint": "Option A: on reply failure, dispatch a small SendTelegramReplyJob(chatId, text, topic) with its own tries/backoff and return ok from the update job. Option B: cache the AgentTurn result under 'capabilities-messaging:turn:<chat>:<update_id>' (TTL a few minutes) before invoking tools and reuse it on retry. Unit test: second handle() of the same update after a retryable reply failure does not call AgentTurn::respond again."
+    },
+    {
+      "id": "M-104",
+      "title": "Size max_tokens and message storage to what a turn can actually deliver",
+      "category": "configuration",
+      "severity": "medium",
+      "effort": "small",
+      "impact": ["reliability"],
+      "locations": [
+        { "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php", "line": 65, "snippet": "'max_tokens' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS', 64000)," },
+        { "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php", "line": 72, "snippet": "'timeout' => (int) $env('CAPABILITIES_AI_ANTHROPIC_TIMEOUT', 110)," },
+        { "file": "packages/laravel-capabilities-ai/src/Package.php", "line": 16, "snippet": "public const DEFAULT_CLAIM_TTL = 120; // also RunTurnJob::$timeout" },
+        { "file": "packages/laravel-capabilities-ai/database/migrations/2026_08_02_000002_create_capabilities_ai_messages_table.php", "line": 22, "snippet": "$blueprint->text('content');" },
+        { "file": "packages/laravel-capabilities-ai/src/Domain/TurnRunner.php", "line": 89, "snippet": "$this->store->createMessage($conversation, $this->ulid(), 'assistant', $content);" },
+        { "file": "packages/laravel-capabilities-ai/src/Http/ChatController.php", "line": 93, "snippet": "if (! is_string($content) || trim($content) === '') { // no max length" }
+      ],
+      "current_state": "The M-012 fix added a 110s per-request timeout but left max_tokens at 64000, which a non-streaming request cannot produce in 110s (or inside the 120s job timeout). A long reply becomes a connection timeout and a failed turn. A reply that does arrive is stored in messages.content, a TEXT column (65,535 bytes on MySQL, about 16k tokens), so a longer reply fails the insert under MySQL strict mode after the tokens are paid for and any tool calls have run. POST messages accepts user content of any length into the same column, which surfaces as a 500 instead of a 422.",
+      "recommended_state": "max_tokens defaults to a value the default timeout can deliver (roughly 4-8k), with a note tying the three numbers together. messages.content is longText (or mediumText) via a new migration. ChatController rejects content above a configured max with 422 validation_failed.",
+      "rationale": "M-012 asked for 'a max_tokens default the timeout can actually deliver'; that half did not land. L-012 already made package SQL portable to MySQL. The column limit is the same kind of issue: it works on sqlite and Postgres and fails on the most common host database.",
+      "implementation_hint": "New migration 2026_09_30_000001_widen_capabilities_ai_messages_content: `$table->longText('content')->change();` (guarded like the usage migration). Config default `CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS` → 8192. Add `capabilities-ai.max_message_chars` (e.g. 32000) checked in storeMessageViolations(). Unit tests: violation for oversize content; config default pinned."
+    },
+    {
+      "id": "M-105",
+      "title": "Send only Bot API fields: reply into the forum topic, drop internal keys",
+      "category": "api",
+      "severity": "medium",
+      "effort": "small",
+      "impact": ["reliability", "security"],
+      "locations": [
+        { "file": "packages/laravel-capabilities-messaging/src/Telegram/TelegramAdapter.php", "line": 59, "snippet": "$this->bot->sendMessage($chatId, $text, $data);" },
+        { "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php", "line": 259, "snippet": "$this->adapter->reply(['chat_id' => ..., 'text' => $replyText, 'thread_id' => $threadId]);" },
+        { "file": "packages/laravel-capabilities-messaging/src/Support/HttpTelegramBotClient.php", "line": 36, "snippet": "$params = array_merge($payload, ['chat_id' => $chatId, 'text' => $text]);" },
+        { "file": "packages/laravel-capabilities-messaging/src/Notifiers/TelegramApprovalNotifier.php", "line": 75, "snippet": "'signed_buttons' => true, 'accept_payload' => $accept, 'reject_payload' => $reject," },
+        { "file": "packages/laravel-capabilities-messaging/docs/user-guide.md", "line": 166, "snippet": "The approver hint is signed but not transmitted" }
+      ],
+      "current_state": "HttpTelegramBotClient merges whatever payload it gets into the Bot API request. Replies pass the internal thread_id ('tg:<chat>:<topic>') but never message_thread_id, so in a forum supergroup the answer lands in the General topic, not the topic the user wrote in. The notifier sends signed_buttons, accept_payload and reject_payload (full signed payloads including approver_hint, the product user id) as request parameters to api.telegram.org. These are recorder fields for FakeTelegramBotClient left over from M-006.",
+      "recommended_state": "Reply params are built explicitly: chat_id, text, reply_markup and message_thread_id when the update had a topic. HttpTelegramBotClient forwards only known Bot API keys, and tests read button data from reply_markup.",
+      "rationale": "Topic isolation is a stated messaging guarantee (ThreadStore, ThreadIsolationMatrixTest), yet the reply path loses the topic. The docs promise the approver hint is not transmitted, and it is, just in a field Telegram ignores. It is also the last piece of test scaffolding in a production payload, which M-006 set out to remove.",
+      "implementation_hint": "ProcessTelegramUpdate passes 'topic_id' => $topicId; TelegramAdapter::reply maps it to ['message_thread_id' => (int) $topicId] and passes no other keys. Notifier sends only ['reply_markup' => …]. Tests: FakeTelegramBotClient call for a topic update has message_thread_id; notifier call has no accept_payload key and decodes buttons via TelegramCallbackSigner::decode()."
+    },
+    {
+      "id": "M-106",
+      "title": "Add a per-user unlink for code-bound Telegram identities",
+      "category": "security",
+      "severity": "medium",
+      "effort": "small",
+      "impact": ["security"],
+      "locations": [
+        { "file": "packages/laravel-capabilities-messaging/src/Identity/LinkStore.php", "line": 12, "snippet": "interface LinkStore { putCode, takeCode, putLink, findLink } // no removal" },
+        { "file": "packages/laravel-capabilities-messaging/src/Identity/CacheLinkStore.php", "line": 47, "snippet": "$this->cache->forever(self::PREFIX.'link:'.$telegramUserId, $link);" },
+        { "file": "packages/laravel-capabilities-messaging/src/Identity/IdentityLinker.php", "line": 102, "snippet": "$this->store->putLink($telegramUserId, [...]); // earlier links to the same user stay" },
+        { "file": "packages/laravel-capabilities-messaging/docs/user-guide.md", "line": 112, "snippet": "clear the cache to drop them for good" }
+      ],
+      "current_state": "Since M-008, code-bound links are durable (cache forever) and act as the product user on every tool call. There is no way to revoke one link: LinkStore and IdentityLinker have no unlink, relinking from another Telegram account adds a link without removing the old one, and the only documented revocations are switching the whole install to allowlist mode or flushing the cache.",
+      "recommended_state": "IdentityLinker::unlink(string $telegramUserId) and LinkStore::forgetLink(), so a host can offer 'disconnect Telegram' and revoke a lost or compromised Telegram account for one user without touching the others.",
+      "rationale": "A chat identity link is a long-lived credential for capability invokes (D-002/D-022). Offboarding, a lost phone or a hijacked Telegram account currently means leaving the link active or logging out every chat user. Iteration 1 treated links as in-memory, so revocation came for free; the durable store is what makes this necessary.",
+      "implementation_hint": "LinkStore::forgetLink(string $telegramUserId): void (CacheLinkStore → cache->forget, InMemoryLinkStore → unset). IdentityLinker::unlink() delegates. Optionally keep a reverse index 'link-user:<user_id>' so a host can revoke by product user id. Unit tests on both stores plus resolve() returning null after unlink."
+    },
+    {
+      "id": "M-107",
+      "title": "Fail or finish explicitly when a turn hits max_tool_rounds",
+      "category": "architecture",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": ["reliability", "dx"],
+      "locations": [
+        { "file": "packages/laravel-capabilities-ai/src/Domain/TurnRunner.php", "line": 76, "snippet": "while ($rounds < $this->maxToolRounds) {" },
+        { "file": "packages/laravel-capabilities-ai/src/Domain/TurnRunner.php", "line": 192, "snippet": "if (! $this->claim->complete($turnUlid, $usage)) {" },
+        { "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php", "line": 126, "snippet": "/** Max tool-call rounds per turn before force-complete/fail. */" }
+      ],
+      "current_state": "When every round up to max_tool_rounds returns tool calls, the loop exits and the turn is marked completed with a 'completed' terminal event, but no assistant message is stored. The client sees a successful turn with no reply after the model has run up to 8 rounds of capability invokes. No test covers the cap.",
+      "recommended_state": "Hitting the cap either fails the turn with a clear error ('max_tool_rounds reached', retryable=false) or makes one final LLM call with no tools to get a closing message. Either way it is pinned by a unit test.",
+      "rationale": "A silent 'completed' hides the one case where the model looped, which is the case an operator most needs to see (D-013 loop protection). The config comment already promises 'force-complete/fail'.",
+      "implementation_hint": "Track `$finished = false`; set true on the text-only break paths. After the loop, `if (! $finished) throw new RuntimeException('max_tool_rounds reached');` so the existing catch fails the turn and emits error+terminal. Unit test with a FakeLlmClient that always returns a tool call and maxToolRounds=2."
+    }
+  ],
+  "notes": "Iteration-2 audit of the messaging and AI siblings on arch-audit2 (HEAD 64b23a1). Read AGENTS.md, .do-work/decisions.md, spec D-006/D-007/D-013/D-021/D-024 and the caller table (spec:3825). Boundary check (D-007/D-011) still holds: siblings import only core Contracts\\* plus Support\\CapabilityContext/CapabilityResult/Redactor/ErrorCodeMap. Iteration-1 fixes checked: M-001 (AgentTurn, fail closed), M-003 (compact token ≤64B), M-004 (lazy signer from callbackSecret), M-005 (PSR-3 logger), M-007 (ModelUserFactory), M-008 (/start|/link + CacheLinkStore, allowlist mode ignores links), M-009 (cancel checks + CAS complete/fail), M-010 (caller=agent), M-011 (TableNames reads app config), M-013, M-014, M-015 (TTL + LRANGE from cursor), M-016, M-017: correct and complete. M-002 is correct but the retry unit is too wide (M-103). M-006 left recorder fields in the notifier's production payload (M-105). M-012 is half done: the timeout landed but max_tokens was not reconciled (M-104). M-018: domain moved behind ports. The three remaining sqlite tests are the known open policy question and are not reported. Deliberate and recorded, not raised: proposal accept keeps caller=job (spec:3825); per-request timeout vs claim_ttl for multi-round turns (README:66 tells hosts to raise claim_ttl); no thread history (L-006 residual). Considered and dropped as low value: the missing 'messaging:telegram-setup' Artisan command named in user-guide:71 (TelegramSetup::runOrFail exists); the webhook docs do not say to set secret_token on setWebhook; ChatController 429 has no Retry-After header; a small closed-conversation create/destroy race. M-101 needs a small core seam (a notifier collection point on ApprovalManager). Siblings cannot add notifiers through ApprovalGateway without importing the concrete manager."
+}
