@@ -33,6 +33,7 @@ use Rawphp\Capabilities\Schema\ServerRuleChecker;
 use Rawphp\Capabilities\Schema\ToolSchemaExporter;
 use Rawphp\Capabilities\Support\CapabilityContext;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\CapabilityScope;
 use Rawphp\Capabilities\Support\InMemoryRateLimiter;
 use Rawphp\Capabilities\Support\RegistryAssertions;
 use Rawphp\Capabilities\Support\StubAuthorizer;
@@ -766,6 +767,10 @@ final class CapabilityRegistry implements CapabilityBus
             'actor' => $actor,
             'tenant_id' => $tenantId,
             'job' => ['tenant_id' => $tenantId],
+            // Run in the tenant stamped on the row — the one the approver was placed in and
+            // authorize() was re-checked under (OriginalActorAuthorizer) — not wherever the
+            // requester resolves now (D-003 / D-006, L-401). Untenanted rows resolve as usual.
+            'scope' => $tenantId !== null && $tenantId !== '' ? new CapabilityScope(tenantId: $tenantId) : null,
             // Decision already made: the needs-approval gate must not re-request (D-006).
             'executing_approval_id' => (string) $str('id', ''),
             // Run under the original key so it moves pending_approval → completed/failed and

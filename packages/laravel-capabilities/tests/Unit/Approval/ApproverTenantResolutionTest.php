@@ -9,8 +9,11 @@ declare(strict_types=1);
 use Rawphp\Capabilities\Approval\ApprovalPolicy;
 use Rawphp\Capabilities\Approval\ApprovalStateMachine;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
+use Rawphp\Capabilities\Support\CapabilityContext;
 use Rawphp\Capabilities\Support\DefaultScopeResolver;
+use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\ApprovalHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
 use Rawphp\Capabilities\Tests\Fixtures\IdempotencyHelpers;
 
 /**
@@ -143,4 +146,79 @@ it('resume resolves the acting user through the same resolver: same tenant runs,
     expect($refused[0]->errorCode())->toBe('forbidden')
         ->and($resumed[0]->isOk())->toBeTrue()
         ->and($h['runCount']->value)->toBe(1);
+});
+
+// L-401: an approved execution runs in the tenant stamped on the row — the tenant the approver
+// was placed in and authorize() was re-checked under — not whatever tenant the requester
+// resolves to at accept time. The key row in the row's tenant settles.
+it('an approved execution runs in the row tenant even when the requester has since switched tenant', function () {
+    $seen = [];
+    $h = IdempotencyHelpers::harness([
+        'approvalPolicy' => ApprovalPolicy::REQUESTER,
+        'run' => function ($in, CapabilityContext $ctx) use (&$seen) {
+            $seen[] = $ctx->tenantId();
+
+            return new CreateInvoiceResult(invoice_id: 42);
+        },
+    ]);
+    // Requester now resolves to t2 (tenant switcher moved on after the request).
+    $h['registry']->withRequesterResolver(fn (string $type, string $id) => m301Actor(['current_tenant_id' => 't2'], $id));
+    $opts = ['caller' => 'http', 'actor' => m301Actor(['current_tenant_id' => 't1']), 'needs_approval' => true, 'idempotency_key' => 'switch-1'];
+
+    $requested = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), $opts);
+    $id = (string) $requested->approvalId();
+
+    $accepted = $h['registry']->approvals()->accept($id, m301Actor(['current_tenant_id' => 't1']));
+    $retryInT1 = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), $opts);
+
+    expect($h['registry']->approvals()->find($id)['tenant_id'])->toBe('t1')
+        ->and($accepted->isOk())->toBeTrue()
+        ->and($seen)->toBe(['t1'])
+        ->and($h['store']->find('t1', 'user', '7', $h['name'], 'switch-1')['status'])->toBe('completed')
+        ->and($h['store']->find('t2', 'user', '7', $h['name'], 'switch-1'))->toBeNull()
+        ->and($retryInT1->isOk())->toBeTrue()
+        ->and($retryInT1->isApprovalRequired())->toBeFalse()
+        ->and($seen)->toHaveCount(1);
+});
+
+it('resume also runs an approved row in the row tenant, not the requester\'s current one', function () {
+    $seen = [];
+    $h = IdempotencyHelpers::harness([
+        'approvalPolicy' => ApprovalPolicy::REQUESTER,
+        'run' => function ($in, CapabilityContext $ctx) use (&$seen) {
+            $seen[] = $ctx->tenantId();
+
+            return new CreateInvoiceResult(invoice_id: 42);
+        },
+    ]);
+    $h['registry']->withRequesterResolver(fn (string $type, string $id) => m301Actor(['current_tenant_id' => 't2'], $id));
+    $requested = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), ['caller' => 'http', 'actor' => m301Actor(['current_tenant_id' => 't1']), 'needs_approval' => true]);
+    $id = (string) $requested->approvalId();
+    $h['registry']->approvals()->store()->update($id, ['status' => ApprovalStateMachine::STATUS_APPROVED, 'approved_at' => '2026-01-15T12:00:00+00:00', 'decided_by' => '7']);
+
+    $resumed = $h['registry']->approvals()->resume($id, m301Actor(['current_tenant_id' => 't1']), force: true);
+
+    expect($resumed[0]->isOk())->toBeTrue()
+        ->and($seen)->toBe(['t1']);
+});
+
+it('an approved row without a tenant keeps resolving scope at execution time', function () {
+    $seen = [];
+    $h = IdempotencyHelpers::harness([
+        'approvalPolicy' => ApprovalPolicy::ANY_STAFF,
+        'run' => function ($in, CapabilityContext $ctx) use (&$seen) {
+            $seen[] = $ctx->tenantId();
+
+            return new CreateInvoiceResult(invoice_id: 42);
+        },
+    ]);
+    $requested = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), ['caller' => 'job', 'actor' => SystemActor::named('sched'), 'needs_approval' => true, 'global_system' => true]);
+    $id = (string) $requested->approvalId();
+    $row = $h['registry']->approvals()->find($id);
+
+    $accepted = $h['registry']->approvals()->accept($id, m301Actor(['is_staff' => true]));
+
+    expect($row['tenant_id'] ?? null)->toBeNull()
+        ->and($accepted->isOk())->toBeTrue()
+        ->and($seen)->toBe([null]);
 });

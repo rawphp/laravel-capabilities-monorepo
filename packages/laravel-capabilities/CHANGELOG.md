@@ -310,6 +310,17 @@ These shipped in 0.5.3 and had no callers inside the package:
 
 ### Fixed
 
+- **Approved executions run in the approval row's tenant (D-003 / D-006, L-401).**
+  `CapabilityRegistry::executeApproval()` — the default executor behind accept and resume —
+  re-invoked the capability as the real requester and let the `ScopeResolver` place them
+  again, so a requester who had switched tenant between request and decision (for example a
+  new `current_tenant_id`) had the stored input run in the *new* tenant: the approver was
+  checked against the row's tenant and `authorize()` was re-checked there
+  (`OriginalActorAuthorizer`), but `run()`, audit and the idempotency row landed elsewhere,
+  and the original key stayed `pending_approval`. The executor now passes an explicit
+  `CapabilityScope` for the row's `tenant_id`, so scope, authorization, `run()`, audit and
+  the key row all use the tenant the decision was made in. Rows without a tenant
+  (global system work) resolve scope at execution time as before.
 - **In-tenant approvers can accept, reject and resume (D-003 / D-006, M-301).** The approval
   row's `tenant_id` comes from the `ScopeResolver` (`current_tenant_id`, or `default-tenant`
   for a user without one), but `ApprovalManager` and `ApprovalResumer` read the approver's
