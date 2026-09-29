@@ -5,6 +5,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Container\Container;
 use Rawphp\Capabilities\Adapters\Ai\AiToolAdapter;
 use Rawphp\Capabilities\Adapters\Ai\AiToolAdapterV1;
 use Rawphp\Capabilities\Adapters\Http\CapabilityController;
@@ -20,6 +21,7 @@ use Rawphp\Capabilities\Contracts\ApprovalGateway;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\Metrics;
+use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\Capabilities\Observability\InvokeTelemetry;
 use Rawphp\Capabilities\Persistence\ArrayTableGateway;
 use Rawphp\Capabilities\Persistence\DatabaseApprovalStore;
@@ -33,6 +35,7 @@ use Rawphp\Capabilities\Tests\Fixtures\BootHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
 use Rawphp\Capabilities\Tests\Fixtures\FakeCapabilityBus;
+use Rawphp\Capabilities\Tests\Fixtures\FakeProviderApp;
 use Rawphp\Capabilities\Tests\Fixtures\HttpHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
@@ -680,4 +683,59 @@ it('happy: the container adapters take require_profile from surfaces.agent / sur
         ->and($strict->make(McpToolAdapter::class)->handle('missing-cap', [], McpCredential::userPat($user))->error['normalized_code'] ?? null)->toBe('profile_required')
         ->and($relaxed->make(AiToolAdapter::class)->handle('missing-cap', [], $user)->errorCode())->toBe('not_found')
         ->and($relaxed->make(McpToolAdapter::class)->handle('missing-cap', [], McpCredential::userPat($user))->errorCode())->toBe('not_found');
+});
+
+it('happy: register merges the config defaults and binds resolvable Metrics and Tracer factories', function () {
+    $app = FakeProviderApp::registered();
+
+    expect($app->singletons)->not->toBeEmpty()
+        ->and($app->config->get('capabilities'))->toBeArray()
+        ->and($app->singletons[Metrics::class])->toBeCallable()
+        ->and($app->make(Metrics::class))->toBeInstanceOf(Metrics::class)
+        ->and($app->singletons[Tracer::class])->toBeCallable()
+        ->and($app->make(Tracer::class))->toBeInstanceOf(Tracer::class);
+});
+
+it('happy: boot publishes the config and migrations when running in console', function () {
+    $app = new class extends Container
+    {
+        public function runningInConsole(): bool
+        {
+            return true;
+        }
+    };
+    $app->instance('config', new class(BootHelpers::config([]))
+    {
+        /** @param  array<string, mixed>  $config */
+        public function __construct(private array $config) {}
+
+        public function get(string $key, mixed $default = null): mixed
+        {
+            return $key === 'capabilities' ? $this->config : $default;
+        }
+    });
+
+    if (! function_exists('config_path')) {
+        eval('function config_path($path = "") { return "/tmp/config/".$path; }');
+    }
+    if (! function_exists('database_path')) {
+        eval('function database_path($path = "") { return "/tmp/database/".$path; }');
+    }
+
+    $provider = new class($app) extends CapabilitiesServiceProvider
+    {
+        /** @var list<array{paths: array<string, string>, group: string}> */
+        public array $publishCalls = [];
+
+        /**
+         * @param  array<string, string>  $paths
+         */
+        protected function publishes(array $paths, $group = null): void
+        {
+            $this->publishCalls[] = ['paths' => $paths, 'group' => (string) $group];
+        }
+    };
+    $provider->boot();
+
+    expect(array_column($provider->publishCalls, 'group'))->toBe(['capabilities-config', 'capabilities-migrations']);
 });

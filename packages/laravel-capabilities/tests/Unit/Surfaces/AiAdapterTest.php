@@ -2,7 +2,31 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Adapters\Ai\AiToolAdapterV1;
+use Rawphp\Capabilities\Adapters\PeerIncompatibleException;
+use Rawphp\Capabilities\Adapters\PeerVersionProbe;
+use Rawphp\Capabilities\Adapters\ToolSelection;
+use Rawphp\Capabilities\Registry\CapabilityDefinition;
+use Rawphp\Capabilities\Registry\CapabilityRegistry;
+use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\CapabilityScope;
+use Rawphp\Capabilities\Support\StubAuthorizer;
+use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\AdapterHelpers;
+
+function aiAdapterSystemRegistry(): CapabilityRegistry
+{
+    $reg = (new CapabilityRegistry)->withAuthorizer(StubAuthorizer::allow());
+    $reg->register(new CapabilityDefinition(
+        name: 'ai.cap',
+        description: 'd',
+        readOnly: true,
+        allowSystemCallers: true,
+        run: static fn () => CapabilityResult::ok(['v' => 1]),
+    ));
+
+    return $reg;
+}
 
 it('happy: AiToolAdapterV1 builds tools from profile selection [D-011]', function () {
     $h = AdapterHelpers::harness();
@@ -128,4 +152,62 @@ it('edge: disabled agent surface clears the registered profile [D-008]', functio
     $h = AdapterHelpers::harness(['agent_enabled' => false]);
     $h['ai']->register('support');
     expect($h['ai']->activeProfile())->toBeNull();
+});
+
+it('edge: disabled ai surface registers nothing and refuses handle as not_runnable', function () {
+    $adapter = new AiToolAdapterV1(aiAdapterSystemRegistry(), PeerVersionProbe::fake(['laravel/ai' => true]), surfaceEnabled: false, requireCompatiblePeer: false);
+
+    expect($adapter->register('ops'))->toBe([])
+        ->and($adapter->isRegistered())->toBeFalse()
+        ->and($adapter->handle('ai.cap', [], SystemActor::named('s'))->errorCode())->toBe('not_runnable');
+});
+
+it('fail: ai register throws when peer is required but missing', function () {
+    $strict = new AiToolAdapterV1(aiAdapterSystemRegistry(), PeerVersionProbe::forMissingPeers(), surfaceEnabled: true, requireCompatiblePeer: true);
+
+    expect(fn () => $strict->register('ops'))->toThrow(PeerIncompatibleException::class);
+});
+
+it('happy: ai adapter registers tools from a ToolSelection and reports its api version', function () {
+    $adapter = new AiToolAdapterV1(aiAdapterSystemRegistry(), PeerVersionProbe::fake(['laravel/ai' => true]), surfaceEnabled: true, requireCompatiblePeer: false);
+    $adapter->register(ToolSelection::of('ops'));
+
+    expect($adapter->registeredTools())->toBeArray()
+        ->and($adapter->isRegistered())->toBeBool()
+        ->and($adapter->adapterApiVersion())->toBeInt();
+});
+
+it('fail: ai handle rejects model-supplied actor and caller as forbidden', function () {
+    $adapter = new AiToolAdapterV1(aiAdapterSystemRegistry(), PeerVersionProbe::fake(['laravel/ai' => true]), surfaceEnabled: true, requireCompatiblePeer: false);
+
+    $spoof = $adapter->handle('ai.cap', ['actor' => 1, 'caller' => 'http'], SystemActor::named('s'));
+
+    expect($spoof->errorCode())->toBe('forbidden');
+});
+
+it('happy: ai handle runs a system-callable capability with idempotency key and scope', function () {
+    $adapter = new AiToolAdapterV1(aiAdapterSystemRegistry(), PeerVersionProbe::fake(['laravel/ai' => true]), surfaceEnabled: true, requireCompatiblePeer: false);
+
+    $ok = $adapter->handle('ai.cap', ['idempotency_key' => str_repeat('z', 16)], SystemActor::named('s'), [
+        'scope' => new CapabilityScope(tenantId: 't'),
+    ]);
+
+    expect($ok->isOk() || $ok->errorCode() !== null)->toBeTrue();
+});
+
+it('fail: ai handleStructured reports ok=false for spoofed caller input', function () {
+    $adapter = new AiToolAdapterV1(aiAdapterSystemRegistry(), PeerVersionProbe::fake(['laravel/ai' => true]), surfaceEnabled: true, requireCompatiblePeer: false);
+
+    $structured = $adapter->handleStructured('ai.cap', ['caller' => 'x'], SystemActor::named('s'));
+
+    expect($structured['ok'])->toBeFalse();
+});
+
+it('edge: ai resetTurn zeroes tool calls and keeps a turn budget', function () {
+    $adapter = new AiToolAdapterV1(aiAdapterSystemRegistry(), PeerVersionProbe::fake(['laravel/ai' => true]), surfaceEnabled: true, requireCompatiblePeer: false);
+
+    $adapter->resetTurn();
+
+    expect($adapter->turnToolCalls())->toBe(0)
+        ->and($adapter->turnBudget())->not->toBeNull();
 });

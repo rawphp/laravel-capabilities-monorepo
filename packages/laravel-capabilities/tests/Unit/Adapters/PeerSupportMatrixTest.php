@@ -181,3 +181,41 @@ it('happy: PeerVersionProbe::composerVersion reads Composer installed versions [
         ->toBe(InstalledVersions::getPrettyVersion('pestphp/pest'))
         ->and(PeerVersionProbe::composerVersion('rawphp/not-installed-peer'))->toBeNull();
 });
+
+it('PeerVersionProbe reports installed and compatible from overrides and supported versions', function () {
+    $probe = new PeerVersionProbe(
+        installedOverrides: ['laravel/ai' => true, 'laravel/mcp' => false],
+        compatibleOverrides: [],
+        versions: ['laravel/ai' => '2.0.0', 'laravel/mcp' => null],
+        supportedVersions: ['laravel/ai' => ['1.0.0'], 'laravel/mcp' => ['*']],
+    );
+
+    expect($probe->isInstalled('laravel/ai'))->toBeTrue()
+        ->and($probe->isInstalled('laravel/mcp'))->toBeFalse()
+        ->and($probe->isCompatible('laravel/mcp'))->toBeFalse(); // not installed
+
+    // installed with version not in list
+    expect($probe->isCompatible('laravel/ai'))->toBeFalse();
+
+    $probe2 = new PeerVersionProbe(
+        installedOverrides: ['laravel/ai' => true],
+        compatibleOverrides: [],
+        versions: ['laravel/ai' => null],
+        supportedVersions: ['laravel/ai' => ['*']],
+    );
+    expect($probe2->isCompatible('laravel/ai'))->toBeTrue();
+
+    $probe3 = new PeerVersionProbe(
+        installedOverrides: [],
+        classExists: static fn (string $class): bool => false,
+    );
+    expect($probe3->isInstalled('laravel/ai'))->toBeFalse();
+
+    $probe4 = new PeerVersionProbe(
+        installedOverrides: ['laravel/ai' => true],
+        compatibleOverrides: [],
+        versions: ['laravel/ai' => '1.0.0'],
+        supportedVersions: ['laravel/ai' => ['1.0.0']],
+    );
+    expect($probe4->isCompatible('laravel/ai'))->toBeTrue();
+});

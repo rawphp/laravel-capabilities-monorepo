@@ -9,6 +9,24 @@ use Rawphp\Capabilities\Idempotency\IdempotencyKey;
 use Rawphp\Capabilities\Idempotency\WireKeyResolver;
 use Rawphp\Capabilities\Tests\Fixtures\IdempotencyHelpers;
 
+it('happy: toolArg prefers the explicit key, falls back to body idempotency_key, and drops empty keys', function () {
+    expect(WireKeyResolver::toolArg('hdr', []))->toBe('hdr')
+        ->and(WireKeyResolver::toolArg(null, ['idempotency_key' => 'body']))->toBe('body')
+        ->and(WireKeyResolver::toolArg('', ['idempotency_key' => '']))->toBeNull();
+});
+
+it('happy: job key prefers the explicit key, then payload keys, stringifying scalars and dropping arrays', function () {
+    expect(WireKeyResolver::job('h', []))->toBe('h')
+        ->and(WireKeyResolver::job(null, ['idempotencyKey' => 'jk']))->toBe('jk')
+        ->and(WireKeyResolver::job(null, ['idempotency_key' => 123]))->toBe('123')
+        ->and(WireKeyResolver::job(null, ['idempotency_key' => ['x']]))->toBeNull();
+});
+
+it('happy: approvalAccept uses the stored key when no header is given and the header otherwise', function () {
+    expect(WireKeyResolver::approvalAccept(null, [], 'stored'))->toBe('stored')
+        ->and(WireKeyResolver::approvalAccept('h', [], null))->toBe('h');
+});
+
 it('happy: idempotency key accepted via http header [D-005]', function () {
     $key = WireKeyResolver::resolve('http', headers: ['Idempotency-Key' => 'hdr-1'], body: []);
     expect($key)->toBe('hdr-1');

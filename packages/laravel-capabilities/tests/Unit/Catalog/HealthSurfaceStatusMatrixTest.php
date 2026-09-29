@@ -4,6 +4,7 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Schema\CatalogHealth;
 use Rawphp\Capabilities\Tests\Fixtures\CatalogHelpers;
 
 it('edge: health surface agent can report up [D-011]', function () {
@@ -424,4 +425,14 @@ it('edge: health surface messaging can report missing [D-011]', function () {
     $h['registry']->withSurfaceHealthOverrides(['messaging' => 'missing']);
     $report = $h['registry']->catalog()->health();
     expect($report['surfaces']['messaging']['status'] ?? null)->toBe('missing');
+});
+
+it('CatalogHealth surfaceStatus reports status and enabled for up, config-disabled, and incompatible surfaces', function () {
+    $health = new CatalogHealth;
+    foreach ([CatalogHealth::STATUS_UP, CatalogHealth::STATUS_DISABLED_CONFIG, 'disabled_incompatible'] as $st) {
+        $row = $health->surfaceStatus('agent', $st, ['agent' => true]);
+        expect($row)->toHaveKeys(['status', 'enabled']);
+    }
+    $row2 = $health->surfaceStatus('agent', CatalogHealth::STATUS_DISABLED_CONFIG, []);
+    expect($row2['enabled'])->toBeFalse();
 });

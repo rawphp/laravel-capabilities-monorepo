@@ -7,9 +7,14 @@ declare(strict_types=1);
 use Rawphp\Capabilities\Adapters\Http\ApprovalController;
 use Rawphp\Capabilities\Adapters\Http\AuthController;
 use Rawphp\Capabilities\Adapters\Http\CapabilityController;
+use Rawphp\Capabilities\Http\HttpAuthGate;
 use Rawphp\Capabilities\Http\HttpRequestContext;
+use Rawphp\Capabilities\Http\HttpResponse;
 use Rawphp\Capabilities\Http\RouteTable;
+use Rawphp\Capabilities\Registry\CapabilityDefinition;
+use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Tests\Fixtures\HttpHelpers;
 
 it('happy: catalog list describe invoke approval auth live on one CapabilityController tree [D-009]', function () {
@@ -195,4 +200,53 @@ it('fail: HTTP describe of an mcp-only capability is not_found for caller http [
 
     expect($res->errorCode())->toBe('not_found')
         ->and($res->body)->not->toHaveKey('data');
+});
+
+/**
+ * Controller over one listed capability, with a private health endpoint.
+ */
+function capApiPrivateHealthController(): CapabilityController
+{
+    $reg = (new CapabilityRegistry)->withAuthorizer(StubAuthorizer::allow());
+    $reg->register(new CapabilityDefinition(
+        name: 'listed',
+        description: 'd',
+        readOnly: true,
+        allowSystemCallers: true,
+        run: static fn () => CapabilityResult::ok(['ok' => true]),
+    ));
+
+    return new CapabilityController(
+        $reg,
+        clientsConfig: [],
+        httpConfig: ['idempotency_header' => 'Idempotency-Key'],
+        authGate: new HttpAuthGate(['health_public' => false]),
+    );
+}
+
+it('fail: describe of an unknown capability answers with a client error', function () {
+    $ctrl = capApiPrivateHealthController();
+
+    $missing = $ctrl->describe(HttpHelpers::authedRequest([
+        'method' => 'GET',
+        'jsonBody' => null,
+    ]), 'no-such-cap');
+
+    expect($missing->status)->toBeGreaterThanOrEqual(400);
+});
+
+it('fail: health is denied to a guest when health_public is false', function () {
+    $healthDeny = capApiPrivateHealthController()->health(HttpHelpers::guestRequest());
+
+    expect($healthDeny->status)->toBeGreaterThanOrEqual(400);
+});
+
+it('edge: invoke with an authenticated request and a body for a capability without an input class answers over http', function () {
+    $inv = capApiPrivateHealthController()->invoke(HttpHelpers::authedRequest([
+        'method' => 'POST',
+        'jsonBody' => ['not' => 'schema'], // no input class — ok
+        'headers' => ['idempotency-key' => str_repeat('k', 16)],
+    ]), 'listed');
+
+    expect($inv)->toBeInstanceOf(HttpResponse::class);
 });

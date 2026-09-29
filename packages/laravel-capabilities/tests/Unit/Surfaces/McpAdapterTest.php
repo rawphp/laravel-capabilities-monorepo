@@ -2,7 +2,18 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Adapters\Mcp\McpAuthProfileResolver;
 use Rawphp\Capabilities\Adapters\Mcp\McpCredential;
+use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapterV1;
+use Rawphp\Capabilities\Adapters\PeerIncompatibleException;
+use Rawphp\Capabilities\Adapters\PeerVersionProbe;
+use Rawphp\Capabilities\Adapters\ToolSelection;
+use Rawphp\Capabilities\Registry\CapabilityDefinition;
+use Rawphp\Capabilities\Registry\CapabilityRegistry;
+use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\CapabilityScope;
+use Rawphp\Capabilities\Support\StubAuthorizer;
+use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\AdapterHelpers;
 
 it('happy: McpToolAdapterV1 registers tools from profile [D-011]', function () {
@@ -138,4 +149,101 @@ it('edge: re-registering the same profile keeps the implicit single-profile defa
 
     expect($r->isOk())->toBeTrue()
         ->and($h['runs']['create-invoice']->value)->toBe(1);
+});
+
+function mcpAdapterSystemRegistry(): CapabilityRegistry
+{
+    $reg = (new CapabilityRegistry)->withAuthorizer(StubAuthorizer::allow());
+    $reg->register(new CapabilityDefinition(
+        name: 'mcp.cap',
+        description: 'd',
+        readOnly: true,
+        allowSystemCallers: true,
+        run: static fn () => CapabilityResult::ok(['ok' => true]),
+    ));
+
+    return $reg;
+}
+
+function mcpAdapterResolver(): McpAuthProfileResolver
+{
+    return new McpAuthProfileResolver([
+        'allow_integration_credentials' => true,
+        'integration_actors' => ['c1' => 'integration-c1'],
+    ]);
+}
+
+it('edge: disabled mcp surface registers and lists nothing and refuses handle as not_runnable', function () {
+    $disabled = new McpToolAdapterV1(
+        mcpAdapterSystemRegistry(),
+        PeerVersionProbe::fake(['laravel/mcp' => true]),
+        mcpAdapterResolver(),
+        surfaceEnabled: false,
+        requireCompatiblePeer: false,
+    );
+    $cred = McpCredential::userPat((object) ['id' => 1], 'c1');
+
+    expect($disabled->register('ops'))->toBe([])
+        ->and($disabled->listTools())->toBe([])
+        ->and($disabled->isRegistered())->toBeFalse()
+        ->and($disabled->activeProfile())->toBeNull()
+        ->and($disabled->handle('mcp.cap', [], $cred)->errorCode())->toBe('not_runnable');
+});
+
+it('happy: mcp adapter registers tools from a groups ToolSelection', function () {
+    $adapter = new McpToolAdapterV1(
+        mcpAdapterSystemRegistry(),
+        PeerVersionProbe::fake(['laravel/mcp' => true]),
+        mcpAdapterResolver(),
+        surfaceEnabled: true,
+        requireCompatiblePeer: false,
+    );
+    $adapter->register(ToolSelection::of(['groups' => ['ops']]));
+
+    expect($adapter->registeredTools())->toBeArray();
+});
+
+it('fail: mcp handle rejects model-supplied user_id and actor as forbidden', function () {
+    $adapter = new McpToolAdapterV1(
+        mcpAdapterSystemRegistry(),
+        PeerVersionProbe::fake(['laravel/mcp' => true]),
+        mcpAdapterResolver(),
+        surfaceEnabled: true,
+        requireCompatiblePeer: false,
+    );
+    $cred = McpCredential::userPat((object) ['id' => 1], 'c1');
+
+    $spoof = $adapter->handle('mcp.cap', ['user_id' => 9, 'actor' => 1], $cred);
+
+    expect($spoof->errorCode())->toBe('forbidden');
+});
+
+it('happy: mcp handle returns a CapabilityResult for scoped system actor options', function () {
+    $adapter = new McpToolAdapterV1(
+        mcpAdapterSystemRegistry(),
+        PeerVersionProbe::fake(['laravel/mcp' => true]),
+        mcpAdapterResolver(),
+        surfaceEnabled: true,
+        requireCompatiblePeer: false,
+    );
+    $cred = McpCredential::userPat((object) ['id' => 1], 'c1');
+
+    $ok = $adapter->handle('mcp.cap', ['x' => 1], $cred, [
+        'scope' => new CapabilityScope(tenantId: 't'),
+        'actor' => SystemActor::named('s'),
+    ]);
+
+    expect($ok)->toBeInstanceOf(CapabilityResult::class);
+});
+
+it('fail: mcp register throws when peer is required but missing', function () {
+    $strict = new McpToolAdapterV1(
+        mcpAdapterSystemRegistry(),
+        PeerVersionProbe::forMissingPeers(),
+        mcpAdapterResolver(),
+        surfaceEnabled: true,
+        requireCompatiblePeer: true,
+    );
+
+    expect(fn () => $strict->register('ops'))->toThrow(PeerIncompatibleException::class);
 });

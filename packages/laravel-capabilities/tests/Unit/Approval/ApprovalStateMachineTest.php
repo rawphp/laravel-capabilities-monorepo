@@ -3,9 +3,11 @@
 declare(strict_types=1);
 
 use Rawphp\Capabilities\Approval\ApprovalCallbackVerifier;
+use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Approval\ApprovalPolicy;
 use Rawphp\Capabilities\Approval\ApprovalStateMachine;
 use Rawphp\Capabilities\Approval\Notifiers\HttpApprovalNotifier;
+use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Tests\Fixtures\ApprovalHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
@@ -479,4 +481,41 @@ it('edge: approval_required path works for original caller job [D-006]', functio
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $r = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('job', ['needs_approval' => true]));
     expect($r->isApprovalRequired())->toBeTrue();
+});
+
+it('ApprovalManager assertCanTransition mirrors the state machine table [D-006]', function () {
+    $mgr = ApprovalManager::inMemory(new FixedClock(new DateTimeImmutable('2026-05-02T00:00:00Z')));
+
+    expect($mgr->assertCanTransition(
+        ApprovalStateMachine::STATUS_PENDING,
+        ApprovalStateMachine::STATUS_APPROVED,
+    ))->toBeTrue();
+    expect($mgr->assertCanTransition('nope', 'nope'))->toBeFalse();
+});
+
+it('state machine transition and terminal helpers classify statuses and steps [D-006]', function () {
+    expect(ApprovalStateMachine::canTransition('x', 'y'))->toBeFalse()
+        ->and(ApprovalStateMachine::canTransition(
+            ApprovalStateMachine::STATUS_PENDING,
+            ApprovalStateMachine::STATUS_APPROVED,
+        ))->toBeTrue();
+
+    expect(fn () => ApprovalStateMachine::assertTransition(
+        ApprovalStateMachine::STATUS_EXECUTED,
+        ApprovalStateMachine::STATUS_PENDING,
+    ))->toThrow(InvalidArgumentException::class);
+
+    ApprovalStateMachine::assertTransition(
+        ApprovalStateMachine::STATUS_PENDING,
+        ApprovalStateMachine::STATUS_REJECTED,
+    );
+
+    expect(ApprovalStateMachine::isTerminal(ApprovalStateMachine::STATUS_EXECUTED))->toBeTrue()
+        ->and(ApprovalStateMachine::isTerminal(ApprovalStateMachine::STATUS_PENDING))->toBeFalse()
+        ->and(ApprovalStateMachine::acceptIncludesStep('revalidate'))->toBeBool()
+        ->and(ApprovalStateMachine::resumeIncludesStep('claim_lease'))->toBeBool()
+        ->and(ApprovalStateMachine::revalidationIncludesStep('revalidate'))->toBeBool()
+        ->and(ApprovalStateMachine::acceptSteps())->not->toBeEmpty()
+        ->and(ApprovalStateMachine::resumeSteps())->not->toBeEmpty()
+        ->and(ApprovalStateMachine::revalidationSteps())->not->toBeEmpty();
 });
