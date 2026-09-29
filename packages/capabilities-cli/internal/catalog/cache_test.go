@@ -2,6 +2,8 @@ package catalog
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -109,6 +111,18 @@ func TestCacheperprincipalisolation(t *testing.T) {
 	again := PrincipalCache(root, principalClient("https://a", "tok-alice"))
 	if _, ok := again.Get("n", ""); !ok {
 		t.Fatal("same principal must hit its own cache")
+	}
+}
+
+func TestCacheignoresentrieswrittenbeforecacheformatchange(t *testing.T) {
+	// Entries cached by a CLI before the cache kept description/readOnly/idempotent
+	// sit under the unversioned key; they must miss so describe refetches them.
+	root := t.TempDir()
+	c := principalClient("https://a", "tok")
+	sum := sha256.Sum256([]byte(c.BaseURL + "\x00" + c.Token))
+	legacy := NewCache(filepath.Join(root, hex.EncodeToString(sum[:8])))
+	if !seededMiss(t, legacy, PrincipalCache(root, c)) {
+		t.Fatal("an entry under the pre-versioned cache key must not be served")
 	}
 }
 
