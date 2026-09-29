@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Domain;
 
-use Illuminate\Support\Carbon;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\Redactor;
@@ -54,6 +53,7 @@ final class TurnRunner
 
         $this->progress->append($turnUlid, ['kind' => 'status', 'data' => ['status' => Turn::STATUS_RUNNING]]);
 
+        $usage = [];
         try {
             $conversation = Conversation::query()->findOrFail($turn->conversation_id);
             $messages = $this->context->messagesForTurn($conversation->ulid, $turnUlid);
@@ -65,10 +65,13 @@ final class TurnRunner
             $offeredNames = array_column($toolDefs, 'name');
 
             $rounds = 0;
-            $usage = [];
             // 1-based tool-call count across all rounds of this turn → core D-013 agent turn budget.
             $toolCallCount = 0;
             while ($rounds < $this->maxToolRounds) {
+                // Cooperative cancel: no further LLM call once the owner cancelled.
+                if ($this->claim->isCancelled($turnUlid)) {
+                    return $this->stopped($turn, $usage);
+                }
                 $rounds++;
                 $startedAt = hrtime(true);
                 $response = $this->llm->complete($messages, $toolDefs);
@@ -143,6 +146,10 @@ final class TurnRunner
                 ];
 
                 foreach ($normalizedCalls as $call) {
+                    // Cancel means stop acting for the user: no bus invoke after it, even mid-round.
+                    if ($this->claim->isCancelled($turnUlid)) {
+                        return $this->stopped($turn, $usage);
+                    }
                     $name = (string) ($call['name'] ?? '');
                     $payload = $call['arguments'] ?? $call['input'] ?? [];
                     if (! is_array($payload)) {
@@ -187,19 +194,10 @@ final class TurnRunner
                 }
             }
 
-            // Cooperative cancel: do not overwrite cancelled mid-run
-            $fresh = Turn::query()->where('ulid', $turnUlid)->first();
-            if ($fresh !== null && $fresh->status === Turn::STATUS_CANCELLED) {
-                $fresh->usage = $usage;
-                $fresh->save();
-
-                return $fresh;
+            // CAS running→completed: a cancel (or reap) that landed first wins; no completed terminal.
+            if (! $this->claim->complete($turnUlid, $usage)) {
+                return $this->stopped($turn, $usage);
             }
-
-            $turn->status = Turn::STATUS_COMPLETED;
-            $turn->usage = $usage;
-            $turn->finished_at = Carbon::now();
-            $turn->save();
 
             // Terminal progress AFTER DB completed
             $this->progress->append($turnUlid, [
@@ -209,17 +207,10 @@ final class TurnRunner
 
             return $turn->refresh();
         } catch (\Throwable $e) {
-            $fresh = Turn::query()->where('ulid', $turnUlid)->first();
-            if ($fresh !== null && $fresh->status === Turn::STATUS_CANCELLED) {
-                // Cancelled mid-run — do not overwrite with failed / terminal failed
+            // CAS running→failed: a turn cancelled (or reaped) mid-run keeps its status and events.
+            if (! $this->claim->fail($turnUlid, $e->getMessage(), $usage)) {
                 throw $e;
             }
-
-            $turn->status = Turn::STATUS_FAILED;
-            $turn->error = $e->getMessage();
-            $turn->usage = $usage ?? null;
-            $turn->finished_at = Carbon::now();
-            $turn->save();
             // retryable=true: transient LLM failure; the turn stays failed, but a caller may try again later.
             $error = ['message' => $e->getMessage(), 'retryable' => $e instanceof RetryableLlmException];
             if ($e instanceof RetryableLlmException && $e->retryAfterSeconds !== null) {
@@ -232,6 +223,19 @@ final class TurnRunner
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * The turn left running under the runner (cancelled, reaped): keep its status and
+     * terminal event, record the rounds' usage, and return the fresh row.
+     *
+     * @param  list<array<string, int>>  $usage
+     */
+    private function stopped(Turn $turn, array $usage): Turn
+    {
+        $this->claim->recordUsage($turn->ulid, $usage);
+
+        return $turn->refresh();
     }
 
     /**

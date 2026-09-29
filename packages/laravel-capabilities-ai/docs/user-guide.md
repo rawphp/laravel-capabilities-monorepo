@@ -193,7 +193,7 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 
 **Host action:** if you enable routes, stop assuming always-**200** empty bodies. Handle **404** for missing conversation/turn and **409** for cancel/destroy conflicts. Leave `routes.enabled` false until clients are ready.
 
-**Cooperative cancel (mid-run):** `TurnService::cancel` CAS-marks the turn cancelled and emits a terminal progress event. If `TurnRunner` observes `cancelled` mid-loop, it does **not** overwrite status with completed/failed and does **not** emit a failed terminal progress event — the cancelled terminal stands.
+**Cooperative cancel (mid-run):** `TurnService::cancel` CAS-marks the turn cancelled and emits a terminal progress event. `TurnRunner` re-checks the turn before every LLM round and before every tool call, and stops as soon as it is `cancelled`: no further LLM call, no further bus invoke. Its completed/failed writes are compare-and-set on `status=running`, so a cancel that lands at any point is never overwritten and no completed/failed terminal event follows it — the cancelled terminal stands. A tool call already in flight when the cancel lands still finishes (it cannot be recalled) and reports its `tool` event.
 
 Authoritative: `ChatController` + conversation/turn services (see package unit tests). CHANGELOG: [Unreleased Breaking — Chat HTTP non-proposal routes](../CHANGELOG.md).
 

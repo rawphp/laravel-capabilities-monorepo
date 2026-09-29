@@ -14,10 +14,12 @@ use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
+use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
+use Rawphp\CapabilitiesAi\Domain\TurnService;
 use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
@@ -1155,4 +1157,189 @@ it('marks a permanent LLM failure as not retryable', function () {
         static fn (array $ev): bool => ($ev['kind'] ?? '') === 'error'
     ))[0];
     expect($error['data'])->toBe(['message' => 'Anthropic API error: 400 (bad)', 'retryable' => false]);
+});
+
+/**
+ * Progress store where the owner cancels (over HTTP) right after the first tool result is published.
+ */
+function cancelAfterFirstToolEvent(string $ownerId): ProgressStore
+{
+    return new class($ownerId) implements ProgressStore
+    {
+        private readonly ArrayProgressStore $inner;
+
+        private bool $cancelled = false;
+
+        public function __construct(private readonly string $ownerId)
+        {
+            $this->inner = new ArrayProgressStore;
+        }
+
+        public function append(string $turnUlid, array $event): void
+        {
+            $this->inner->append($turnUlid, $event);
+            if (! $this->cancelled && ($event['kind'] ?? null) === 'tool') {
+                $this->cancelled = true;
+                (new TurnService($this))->cancel($turnUlid, $this->ownerId);
+            }
+        }
+
+        public function since(string $turnUlid, int $cursor = 0): array
+        {
+            return $this->inner->since($turnUlid, $cursor);
+        }
+    };
+}
+
+/**
+ * @return array{0: ConversationContextProvider, 1: ToolCatalog}
+ */
+function cancelContextAndTools(): array
+{
+    return [
+        new class implements ConversationContextProvider
+        {
+            public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+            {
+                return [['role' => 'user', 'content' => 'act']];
+            }
+        },
+        new class implements ToolCatalog
+        {
+            public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+            {
+                return [['name' => 'demo.a'], ['name' => 'demo.b']];
+            }
+        },
+    ];
+}
+
+/**
+ * @param  list<array<string, mixed>>  $events
+ * @return list<string>
+ */
+function kindsAfterTerminal(array $events): array
+{
+    $kinds = array_column($events, 'kind');
+    $terminal = array_search('terminal', $kinds, true);
+
+    return $terminal === false ? $kinds : array_slice($kinds, $terminal + 1);
+}
+
+it('stops invoking tools in later rounds once the turn is cancelled', function () {
+    bootTurnSqlite();
+    $seeded = enqueueTurnWithUser('act');
+    $turnUlid = $seeded['turn_ulid'];
+    $progress = cancelAfterFirstToolEvent((string) $seeded['user']->id);
+    $bus = recordingBus();
+    $llm = new FakeLlmClient([
+        ['tool_calls' => [['name' => 'demo.a', 'arguments' => []]]],
+        ['tool_calls' => [['name' => 'demo.b', 'arguments' => []]]],
+        ['content' => 'done'],
+    ]);
+    [$context, $tools] = cancelContextAndTools();
+
+    $turn = (new TurnRunner(
+        claim: new TurnClaim,
+        llm: $llm,
+        progress: $progress,
+        context: $context,
+        tools: $tools,
+        bus: $bus,
+        actors: turnActors(),
+    ))->run($turnUlid);
+
+    $events = $progress->since($turnUlid);
+    expect($turn->status)->toBe(Turn::STATUS_CANCELLED)
+        ->and($bus->invokes)->toBe(1)
+        ->and($bus->lastName)->toBe('demo.a')
+        ->and($llm->callCount)->toBe(1)
+        ->and(kindsAfterTerminal($events))->toBe([])
+        ->and(array_column(array_filter($events, static fn (array $e): bool => $e['kind'] === 'terminal'), 'data'))
+        ->toBe([['status' => Turn::STATUS_CANCELLED]])
+        ->and(Turn::query()->where('ulid', $turnUlid)->value('status'))->toBe(Turn::STATUS_CANCELLED);
+});
+
+it('skips the remaining tool calls of a round once the turn is cancelled', function () {
+    bootTurnSqlite();
+    $seeded = enqueueTurnWithUser('act');
+    $turnUlid = $seeded['turn_ulid'];
+    $progress = cancelAfterFirstToolEvent((string) $seeded['user']->id);
+    $bus = recordingBus();
+    [$context, $tools] = cancelContextAndTools();
+
+    $turn = (new TurnRunner(
+        claim: new TurnClaim,
+        llm: new FakeLlmClient([
+            ['tool_calls' => [
+                ['name' => 'demo.a', 'arguments' => []],
+                ['name' => 'demo.b', 'arguments' => []],
+            ]],
+            ['content' => 'done'],
+        ]),
+        progress: $progress,
+        context: $context,
+        tools: $tools,
+        bus: $bus,
+        actors: turnActors(),
+    ))->run($turnUlid);
+
+    expect($turn->status)->toBe(Turn::STATUS_CANCELLED)
+        ->and($bus->invokes)->toBe(1)
+        ->and($bus->lastName)->toBe('demo.a')
+        ->and(kindsAfterTerminal($progress->since($turnUlid)))->toBe([]);
+});
+
+it('does not call the LLM for a turn cancelled right after it was claimed', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurn();
+    // Cancel lands between claim and the first round (context load).
+    $context = new class implements ConversationContextProvider
+    {
+        public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            Turn::query()->where('ulid', $turnUlid)->update(['status' => Turn::STATUS_CANCELLED]);
+
+            return [['role' => 'user', 'content' => 'hi']];
+        }
+    };
+    [, $tools] = cancelContextAndTools();
+    $llm = new FakeLlmClient([['content' => 'never']]);
+    $progress = new ArrayProgressStore;
+
+    $turn = (new TurnRunner(claim: new TurnClaim, llm: $llm, progress: $progress, context: $context, tools: $tools))
+        ->run($turnUlid);
+
+    expect($turn->status)->toBe(Turn::STATUS_CANCELLED)
+        ->and($llm->callCount)->toBe(0)
+        ->and(array_column($progress->since($turnUlid), 'kind'))->toBe(['status']);
+});
+
+it('fails with a compare-and-set so a cancel landing mid-round is not overwritten', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurn();
+    $progress = new ArrayProgressStore;
+    $llm = new class implements LlmClient
+    {
+        public function supportsToolRounds(): bool
+        {
+            return true;
+        }
+
+        public function complete(array $messages, array $tools = []): array
+        {
+            Turn::query()->where('ulid', $GLOBALS['cas_fail_turn_ulid'])->update(['status' => Turn::STATUS_CANCELLED]);
+
+            throw new RuntimeException('boom');
+        }
+    };
+    $GLOBALS['cas_fail_turn_ulid'] = $turnUlid;
+    [$context, $tools] = cancelContextAndTools();
+
+    expect(fn () => (new TurnRunner(claim: new TurnClaim, llm: $llm, progress: $progress, context: $context, tools: $tools))->run($turnUlid))
+        ->toThrow(RuntimeException::class, 'boom');
+    $kinds = array_column($progress->since($turnUlid), 'kind');
+    expect(Turn::query()->where('ulid', $turnUlid)->value('status'))->toBe(Turn::STATUS_CANCELLED)
+        ->and($kinds)->not->toContain('terminal')
+        ->and($kinds)->not->toContain('error');
 });
