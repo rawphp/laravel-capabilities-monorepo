@@ -109,6 +109,14 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   predicate compares `IS NULL` / `<=` only and no longer tests a timestamp column against
   `''`. New optional constructor argument `timestampColumns` (defaults to
   `DEFAULT_TIMESTAMP_COLUMNS`). Rows written by earlier versions still decode.
+- **Approval accept/reject honour the execution lease and never recurse (D-006, L-013).** A
+  pending row whose `execution_lease_until` is still live is a Shape B (`approval.execution =
+  atomic`) run in flight: `accept()` and `reject()` now return `conflict` with
+  `in_progress: true` instead of `accept()` re-entering itself until the lease expired (a hot
+  loop) and `reject()` flipping an executing row to `rejected` behind the runner's back.
+  `reject()` uses the lease-aware conditional update; a lost race is settled from one re-read
+  (terminal status → that outcome). `ApprovalStore::claimLease()` attributes need not carry a
+  new lease.
 - **Pipeline `rate_limited` sends a backoff hint (D-013, C-007).** The envelope now carries
   `error.retry_after` (seconds until the tripped per-minute / per-capability window frees)
   and `HttpResponse::fromResult` adds `Retry-After` on 429 when it is present (an explicit
