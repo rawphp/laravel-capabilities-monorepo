@@ -318,7 +318,8 @@ final class IdempotencyGuard
             'request_hash' => $requestHash,
             'status' => $status,
             'result_json' => $result->toArray(),
-            'approval_id' => $approvalId ?? ($result->approvalId()),
+            // An approved execution settles its pending_approval row: keep the link (L-202).
+            'approval_id' => $approvalId ?? $result->approvalId() ?? (is_array($existing) ? ($existing['approval_id'] ?? null) : null),
             'created_at' => $createdAt,
             'expires_at' => $expiresAt,
         ]);

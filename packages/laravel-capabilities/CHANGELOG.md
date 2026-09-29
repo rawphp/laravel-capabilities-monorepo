@@ -96,6 +96,17 @@ tools themselves (messaging) pass it as an invoke option. `null` for invokes out
 
 ### Changed (BREAKING)
 
+#### Approval execution has one idempotency writer (D-005, L-202)
+
+`ApprovalManager::withIdempotency()`, `ApprovalExecutor::withIdempotency()` and the
+`idempotency:` constructor argument of both are removed. They enabled a second writer that
+marked the request's key `completed` after every approved execution — even a failed one — and
+the provider never wired it. The approved execution already runs through the invoke pipeline
+under the request's own key (L-102), which moves the row from `pending_approval` to `completed`
+or `failed`; that is now the only writer. The settled row keeps its `approval_id`. Hosts that
+passed `idempotency:` to `new ApprovalManager(...)` should drop the argument; bind the
+`IdempotencyStore` on the registry instead (`withIdempotencyStore()`).
+
 #### `RunCapabilityJob` really queues (D-002 / D-019, L-016)
 
 `RunCapabilityJob` was a plain object whose static `dispatch()` only built an instance —

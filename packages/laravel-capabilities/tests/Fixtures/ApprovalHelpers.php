@@ -14,7 +14,6 @@ use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\Capabilities\Support\InMemoryAuditWriter;
-use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
 use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Support\SharedFakes;
 use stdClass;
@@ -31,7 +30,6 @@ final class ApprovalHelpers
      *     store: InMemoryApprovalStore,
      *     clock: FixedClock,
      *     audit: InMemoryAuditWriter,
-     *     idempotency: InMemoryIdempotencyStore,
      *     runCount: stdClass,
      *     resume: ResumeApprovedApprovals,
      *     fakes: SharedFakes
@@ -43,7 +41,6 @@ final class ApprovalHelpers
         $clock = $opts['clock'] ?? new FixedClock($now instanceof DateTimeImmutable ? $now : new DateTimeImmutable((string) $now));
         $store = $opts['store'] ?? new InMemoryApprovalStore($clock);
         $audit = $opts['audit'] ?? new InMemoryAuditWriter($clock);
-        $idempotency = $opts['idempotency'] ?? new InMemoryIdempotencyStore($clock);
 
         $runCount = new stdClass;
         $runCount->value = 0;
@@ -141,7 +138,6 @@ final class ApprovalHelpers
             revalidator: $revalidator,
             originalAuthorizer: $originalAuthorizer,
             audit: $audit,
-            idempotency: $idempotency,
         );
 
         $fakes = SharedFakes::create(clock: $clock);
@@ -151,7 +147,6 @@ final class ApprovalHelpers
             'store' => $store,
             'clock' => $clock,
             'audit' => $audit,
-            'idempotency' => $idempotency,
             'runCount' => $runCount,
             'resume' => new ResumeApprovedApprovals($manager),
             'fakes' => $fakes,
@@ -182,7 +177,7 @@ final class ApprovalHelpers
 
     /**
      * @param  array<string, mixed>  $opts
-     * @return array{manager: ApprovalManager, row: array<string, mixed>, runCount: stdClass, store: InMemoryApprovalStore, clock: FixedClock, audit: InMemoryAuditWriter, idempotency: InMemoryIdempotencyStore, resume: ResumeApprovedApprovals}
+     * @return array{manager: ApprovalManager, row: array<string, mixed>, runCount: stdClass, store: InMemoryApprovalStore, clock: FixedClock, audit: InMemoryAuditWriter, resume: ResumeApprovedApprovals}
      */
     public static function withPending(array $opts = []): array
     {
