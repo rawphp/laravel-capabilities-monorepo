@@ -46,7 +46,7 @@ The PHP job also runs two static gates before the suites, and `scripts/release.s
 
 Level 1 is the highest level that passes today without a baseline. Level 2 mostly reports Eloquent magic attributes on package models. The intent is to raise the level one step at a time as those are typed, toward the `max` target in `AGENTS.md`. Each raise must pass cleanly; do not add a baseline to climb.
 
-All split runs (`main`, `v*` tags, `workflow_dispatch`) share one concurrency group, `split-packages`, with `cancel-in-progress: false`. Runs queue one after another and are never cancelled mid-matrix, so a main push and a tag push cannot race on the same package remote or leave it partially mirrored.
+Split runs use one concurrency group per ref (`split-packages-<ref>`) with `cancel-in-progress: false`, so a running split is never cancelled mid-matrix and never leaves a package remote partially mirrored. Main runs serialize: a newer pending main run replaces an older pending one, because the latest tree wins. Each tag has its own group, so a later main push cannot cancel a pending tag run and drop that release. Main and tag runs do not race on package `main`, because a tag run pushes only its tag. A tag run that overlaps a main run may point at a sync commit whose parent is the previous package `main`; that is the same side-commit shape a hotfix tag already has.
 
 **Implications:**
 
