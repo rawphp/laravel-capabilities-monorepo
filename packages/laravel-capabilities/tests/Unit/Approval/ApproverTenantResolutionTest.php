@@ -206,26 +206,84 @@ it('resume also runs an approved row in the row tenant, not the requester\'s cur
         ->and($seen)->toBe(['t1']);
 });
 
-it('an approved row without a tenant keeps resolving scope at execution time', function () {
+// L-601: an untenanted row is not an unscoped row. Global system work carrying team /
+// organization dimensions runs under what it was stamped with; only a legacy untenanted row
+// with no stamp resolves scope at execution time.
+it('an approved untenanted system job row keeps its stamped team and organization', function () {
     $seen = [];
     $h = IdempotencyHelpers::harness([
         'approvalPolicy' => ApprovalPolicy::ANY_STAFF,
         'run' => function ($in, CapabilityContext $ctx) use (&$seen) {
-            $seen[] = $ctx->tenantId();
+            $seen[] = [$ctx->tenantId(), $ctx->teamId(), $ctx->organizationId()];
 
             return new CreateInvoiceResult(invoice_id: 42);
         },
     ]);
-    $requested = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), ['caller' => 'job', 'actor' => SystemActor::named('sched'), 'needs_approval' => true, 'global_system' => true]);
+    $requested = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), [
+        'caller' => 'job',
+        'actor' => SystemActor::named('sched'),
+        'needs_approval' => true,
+        'global_system' => true,
+        'job' => ['team_id' => 'team-5', 'organization_id' => 'org-5'],
+    ]);
     $id = (string) $requested->approvalId();
     $row = $h['registry']->approvals()->find($id);
 
     $accepted = $h['registry']->approvals()->accept($id, m301Actor(['is_staff' => true]));
 
     expect($row['tenant_id'] ?? null)->toBeNull()
+        ->and($row['scope'])->toBe(['tenant_id' => null, 'team_id' => 'team-5', 'organization_id' => 'org-5', 'attributes' => []])
         ->and($accepted->isOk())->toBeTrue()
-        ->and($seen)->toBe([null]);
+        ->and($seen)->toBe([[null, 'team-5', 'org-5']]);
 });
+
+it('a legacy untenanted row without a scope stamp resolves scope at execution time', function () {
+    $seen = [];
+    $h = IdempotencyHelpers::harness([
+        'approvalPolicy' => ApprovalPolicy::ANY_STAFF,
+        'run' => function ($in, CapabilityContext $ctx) use (&$seen) {
+            $seen[] = [$ctx->tenantId(), $ctx->teamId(), $ctx->organizationId()];
+
+            return new CreateInvoiceResult(invoice_id: 42);
+        },
+    ]);
+    $requested = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), ['caller' => 'job', 'actor' => SystemActor::named('sched'), 'needs_approval' => true, 'global_system' => true]);
+    $id = (string) $requested->approvalId();
+    $h['registry']->approvals()->store()->update($id, ['scope' => null]);
+
+    $accepted = $h['registry']->approvals()->accept($id, m301Actor(['is_staff' => true]));
+
+    expect($accepted->isOk())->toBeTrue()
+        ->and($seen)->toBe([[null, null, null]]);
+});
+
+it('a team-only host runs the approved row under the stamped team after the requester switched team (accept and resume)', function (string $path) {
+    $teamOnly = new class implements ScopeResolver
+    {
+        public function resolve(CapabilityContext $partial): CapabilityScope
+        {
+            $actor = $partial->actor();
+
+            return new CapabilityScope(tenantId: null, teamId: isset($actor->current_team_id) ? (string) $actor->current_team_id : null);
+        }
+    };
+    $h = l501Harness($teamOnly);
+    // Requester now resolves to team-B (team switcher moved on after the request).
+    $h['registry']->withRequesterResolver(fn (string $type, string $id) => m301Actor(['current_team_id' => 'team-B'], $id));
+    $requested = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), ['caller' => 'http', 'actor' => m301Actor(['current_team_id' => 'team-A']), 'needs_approval' => true]);
+    $id = (string) $requested->approvalId();
+
+    if ($path === 'resume') {
+        $h['registry']->approvals()->store()->update($id, ['status' => ApprovalStateMachine::STATUS_APPROVED, 'approved_at' => '2026-01-15T12:00:00+00:00', 'decided_by' => '7']);
+        $result = $h['registry']->approvals()->resume($id, m301Actor(['current_team_id' => 'team-A']), force: true)[0];
+    } else {
+        $result = $h['registry']->approvals()->accept($id, m301Actor(['current_team_id' => 'team-A']));
+    }
+
+    expect($h['registry']->approvals()->find($id)['tenant_id'] ?? null)->toBeNull()
+        ->and($result->isOk())->toBeTrue()
+        ->and((array) $h['seen'])->toBe([[null, 'team-A', null, []]]);
+})->with(['accept', 'resume']);
 
 // L-402: any error a host ScopeResolver raises while placing an approver means "not placed":
 // accept and reject answer forbidden (like the invoke pipeline's resolve_scope stage) on the

@@ -51,11 +51,27 @@ it('fromRow yields a tenant-only scope for legacy rows whose scope is a string o
     'array without dimensions' => [['tenant_id' => 't1', 'scope' => ['tenant_id' => 't1']]],
 ]);
 
-it('fromRow yields null for an untenanted row so scope resolves at execution time', function (array $row) {
+// L-601: untenanted does not mean unscoped — a team-only host or global system work stamps
+// team / organization with a null tenant, and that stamp is what runs.
+it('fromRow rebuilds a stamped scope for an untenanted row with a null tenant', function (array $row) {
+    $scope = CapabilityScope::fromRow($row);
+
+    expect($scope)->toBeInstanceOf(CapabilityScope::class)
+        ->and($scope->tenantId)->toBeNull()
+        ->and($scope->teamId)->toBe('team-9')
+        ->and($scope->organizationId)->toBe('org-3')
+        ->and($scope->attributes)->toBe(['region' => 'au']);
+})->with([
+    'null tenant' => [['tenant_id' => null, 'scope' => ['tenant_id' => null, 'team_id' => 'team-9', 'organization_id' => 'org-3', 'attributes' => ['region' => 'au']]]],
+    'empty tenant' => [['tenant_id' => '', 'scope' => ['tenant_id' => null, 'team_id' => 'team-9', 'organization_id' => 'org-3', 'attributes' => ['region' => 'au']]]],
+    'no tenant key' => [['scope' => ['team_id' => 'team-9', 'organization_id' => 'org-3', 'attributes' => ['region' => 'au']]]],
+]);
+
+it('fromRow yields null for a legacy untenanted row without a stamp so scope resolves at execution time', function (array $row) {
     expect(CapabilityScope::fromRow($row))->toBeNull();
 })->with([
-    'null tenant' => [['tenant_id' => null, 'scope' => ['tenant_id' => null, 'team_id' => 'team-9', 'organization_id' => null, 'attributes' => []]]],
-    'empty tenant' => [['tenant_id' => '', 'scope' => '']],
+    'null tenant, null scope' => [['tenant_id' => null, 'scope' => null]],
+    'empty tenant, empty string scope' => [['tenant_id' => '', 'scope' => '']],
     'no tenant key' => [[]],
 ]);
 

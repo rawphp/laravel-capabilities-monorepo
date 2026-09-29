@@ -770,7 +770,8 @@ final class CapabilityRegistry implements CapabilityBus
             // Run under the scope stamped on the row — the tenant the approver was placed in
             // and authorize() was re-checked under (OriginalActorAuthorizer), with the team /
             // organization / attributes the request resolved — not wherever the requester
-            // resolves now (D-003 / D-006, L-401 / L-501). Untenanted rows resolve as usual.
+            // resolves now (D-003 / D-006, L-401 / L-501). Untenanted rows run under their
+            // stamp too (L-601); only legacy rows with neither tenant nor stamp resolve anew.
             'scope' => CapabilityScope::fromRow($row),
             // Decision already made: the needs-approval gate must not re-request (D-006).
             'executing_approval_id' => (string) $str('id', ''),

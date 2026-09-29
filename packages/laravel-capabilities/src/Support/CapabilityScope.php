@@ -75,8 +75,10 @@ final class CapabilityScope
      * Rebuild the scope an approval request was stamped with, so accept re-check and
      * execution see what the approver saw (D-006, L-501). The row's `tenant_id` column —
      * the tenant the approver was placed in — is the tenant; team, organization and
-     * attributes come from the `scope` array written by {@see toRow()}. A legacy string /
-     * null `scope` yields a tenant-only scope; an untenanted row yields null so scope
+     * attributes come from the `scope` array written by {@see toRow()}. The tenant may be
+     * null: an untenanted row (team-only host, global system work) still runs under its
+     * stamped team / organization (L-601). A legacy string / null `scope` yields a
+     * tenant-only scope; a legacy row with neither tenant nor stamp yields null so scope
      * resolves at execution time. A rebuilt scope has no query factory: `query()` uses the
      * container-bound {@see ScopedQueryFactory}, the same route as any resolver scope.
      *
@@ -84,17 +86,18 @@ final class CapabilityScope
      */
     public static function fromRow(array $row): ?self
     {
-        $tenant = $row['tenant_id'] ?? null;
-        if (! is_scalar($tenant) || (string) $tenant === '') {
+        $tenant = is_scalar($row['tenant_id'] ?? null) && (string) $row['tenant_id'] !== '' ? (string) $row['tenant_id'] : null;
+        $stamped = is_array($row['scope'] ?? null) ? $row['scope'] : null;
+        if ($tenant === null && $stamped === null) {
             return null;
         }
 
-        $stamped = is_array($row['scope'] ?? null) ? $row['scope'] : [];
+        $stamped ??= [];
         $str = static fn (string $key): ?string => is_scalar($stamped[$key] ?? null) ? (string) $stamped[$key] : null;
         $attributes = is_array($stamped['attributes'] ?? null) ? $stamped['attributes'] : [];
 
         return new self(
-            tenantId: (string) $tenant,
+            tenantId: $tenant,
             teamId: $str('team_id'),
             organizationId: $str('organization_id'),
             attributes: array_filter($attributes, static fn (mixed $v): bool => $v === null || is_scalar($v)),
