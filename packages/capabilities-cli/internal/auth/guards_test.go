@@ -67,7 +67,7 @@ func TestStatusshowsloggedin(t *testing.T) {
 func TestLoginfailsonnetworkerror(t *testing.T) {
 	st := tempStore(t)
 	c := api.NewClient("http://127.0.0.1:1", "")
-	_, err := LoginDeviceCode(context.Background(), st, c, "default", "http://127.0.0.1:1")
+	_, err := LoginDeviceCode(context.Background(), st, c, "default", "http://127.0.0.1:1", DeviceFlow{})
 	if err == nil {
 		t.Fatal("expected network error")
 	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -53,6 +54,8 @@ type Env struct {
 	SelfUpdate SelfUpdateEngine
 	// ExecutablePath optional override for self-update target (default os.Executable).
 	ExecutablePath string
+	// Sleep optional wait between device-login polls (tests inject; nil = real time).
+	Sleep func(ctx context.Context, d time.Duration) error
 }
 
 // Execute parses args and runs a subcommand. Returns process exit code.

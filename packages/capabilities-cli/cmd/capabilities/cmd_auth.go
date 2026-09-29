@@ -51,7 +51,7 @@ func cmdAuth(env Env, args []string) int {
 			if env.NewClient != nil {
 				c = env.NewClient(base, "")
 			}
-			_, err = auth.LoginDeviceCode(context.Background(), st, c, profile, base)
+			_, err = auth.LoginDeviceCode(context.Background(), st, c, profile, base, auth.DeviceFlow{Prompt: env.Stderr, Sleep: env.Sleep})
 		}
 		if err != nil {
 			se, ok := err.(*api.StructuredError)

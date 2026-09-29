@@ -16,7 +16,7 @@ func TestLoginDeviceFailureDoesNotClobberExistingBaseURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := api.NewClient("http://127.0.0.1:1", "")
-	_, err := LoginDeviceCode(context.Background(), st, c, "default", "https://evil.example")
+	_, err := LoginDeviceCode(context.Background(), st, c, "default", "https://evil.example", DeviceFlow{})
 	if err == nil {
 		t.Fatal("expected network failure")
 	}
@@ -36,7 +36,7 @@ func TestLoginDeviceFailureDoesNotClobberExistingBaseURL(t *testing.T) {
 func TestLoginDeviceFailureDoesNotWriteBaseURLOnFreshProfile(t *testing.T) {
 	st := tempStore(t)
 	c := api.NewClient("http://127.0.0.1:1", "")
-	_, err := LoginDeviceCode(context.Background(), st, c, "default", "https://nowhere.example")
+	_, err := LoginDeviceCode(context.Background(), st, c, "default", "https://nowhere.example", DeviceFlow{})
 	if err == nil {
 		t.Fatal("expected failure")
 	}

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rawphp/capabilities-cli/internal/api"
 )
@@ -62,16 +63,10 @@ func TestAuthrequiredbeforerun(t *testing.T) {
 
 func TestAuthlogindevicecodeflow(t *testing.T) {
 	st := tempStore(t)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != api.PathAuthDevice {
-			t.Fatalf("path %s", r.URL.Path)
-		}
-		w.Write([]byte(`{"ok":true,"data":{"access_token":"device-tok","device_code":"d"}}`))
-	}))
-	t.Cleanup(srv.Close)
-	c := api.NewClient(srv.URL, "")
-	c.HTTP = srv.Client()
-	res, err := LoginDeviceCode(context.Background(), st, c, "default", srv.URL)
+	d := &deviceServer{start: deviceStart, polls: []string{`{"ok":true,"data":{"access_token":"device-tok"}}`}}
+	c := d.serve(t)
+	var waits []time.Duration
+	res, err := LoginDeviceCode(context.Background(), st, c, "default", c.BaseURL, DeviceFlow{Sleep: recordSleeps(&waits)})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rawphp/capabilities-cli/internal/api"
 	"github.com/rawphp/capabilities-cli/internal/auth"
@@ -18,8 +21,14 @@ func testAPI(t *testing.T) (*httptest.Server, string) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == api.PathAuthDevice:
-			w.Write([]byte(`{"ok":true,"data":{"access_token":"device-token","device_code":"d"}}`))
+			w.Write([]byte(`{"ok":true,"data":{"device_code":"d","user_code":"HOST-USER","verification_uri":"https://example.test/device","expires_in":600,"interval":5}}`))
 		case r.URL.Path == api.PathAuthToken:
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body["grant_type"] == auth.DeviceCodeGrantType && body["device_code"] == "d" {
+				w.Write([]byte(`{"ok":true,"data":{"access_token":"device-token"}}`))
+				return
+			}
 			w.Write([]byte(`{"ok":true,"data":{"access_token":"oauth-token"}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/capabilities":
 			w.Write([]byte(`{"ok":true,"data":{"capabilities":[{"name":"create-invoice","deprecated":true,"successor":"create-invoice-v2"}]}}`))
@@ -83,9 +92,27 @@ func TestExecuteAuthLoginTokenAndStatusLogout(t *testing.T) {
 func TestExecuteAuthLoginDevice(t *testing.T) {
 	srv, url := testAPI(t)
 	root := t.TempDir()
-	code, _, errb := CaptureExecute([]string{"auth", "login", "--base-url", url}, root, newClientFactory(srv))
+	var out, errb bytes.Buffer
+	var waits []time.Duration
+	code := Execute(Env{
+		Args:       []string{"auth", "login", "--base-url", url},
+		Stdout:     &out,
+		Stderr:     &errb,
+		ConfigRoot: root,
+		NewClient:  newClientFactory(srv),
+		Sleep: func(_ context.Context, d time.Duration) error {
+			waits = append(waits, d)
+			return nil
+		},
+	})
 	if code != 0 {
-		t.Fatal(code, errb)
+		t.Fatal(code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "HOST-USER") || strings.Contains(out.String(), "HOST-USER") {
+		t.Fatalf("user code prompt belongs on stderr: out=%q err=%q", out.String(), errb.String())
+	}
+	if len(waits) != 1 || waits[0] != 5*time.Second {
+		t.Fatalf("waits %v", waits)
 	}
 	st := auth.NewStore(root)
 	tok, err := st.GetToken("default")

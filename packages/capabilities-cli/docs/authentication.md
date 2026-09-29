@@ -46,10 +46,26 @@ capabilities auth status [--profile=NAME]
 |-------|------|
 | `--base-url` + `--token` | Store a PAT / API token directly |
 | `--base-url` + `--code` | OAuth authorization-code exchange against the API |
-| `--base-url` only | Device-code login against the API |
+| `--base-url` only | Device-code login against the API (see below) |
 
 `login` **requires** `--base-url`. Successful login best-effort prefetches the
 catalog into that profile’s schema cache.
+
+### Device-code login
+
+1. `POST /capabilities/auth/device` with `{"client_id":"capabilities-cli"}`
+   returns `device_code`, `user_code`, `verification_uri`, `interval`, `expires_in`.
+2. The CLI prints the `user_code` and `verification_uri` to **stderr** and waits.
+3. Every `interval` seconds (default 5) it polls `POST /capabilities/auth/token`
+   with `{"grant_type":"urn:ietf:params:oauth:grant-type:device_code","device_code":…,"client_id":"capabilities-cli"}`.
+4. A response with `data.access_token` completes the login. While the user has
+   not approved, the host returns `data.status` (or `data.error`) set to
+   `authorization_pending`, or `slow_down` (the CLI adds 5 seconds to the interval).
+   `access_denied`, `expired_token`, or reaching `expires_in` (default 10 minutes)
+   exit **3**. Any other response fails closed.
+
+The profile is written only after a token is issued, so a failed or abandoned
+device login never changes a working profile.
 
 A failed login exits with the D-018 code's CLI exit (server `unauthenticated` →
 **3**; local/transport failures → **1**). With `--json`, stdout carries the

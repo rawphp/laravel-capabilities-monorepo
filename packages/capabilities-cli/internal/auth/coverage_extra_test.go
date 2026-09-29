@@ -41,7 +41,7 @@ func TestLoginFailures(t *testing.T) {
 	t.Cleanup(srv.Close)
 	c := api.NewClient(srv.URL, "")
 	c.HTTP = srv.Client()
-	if _, err := LoginDeviceCode(context.Background(), st, c, "default", srv.URL); err == nil {
+	if _, err := LoginDeviceCode(context.Background(), st, c, "default", srv.URL, DeviceFlow{}); err == nil {
 		t.Fatal("expected device fail")
 	}
 	if _, err := LoginBrowserOAuth(context.Background(), st, c, "default", srv.URL, "c"); err == nil {
@@ -54,7 +54,7 @@ func TestLoginFailures(t *testing.T) {
 	t.Cleanup(srv2.Close)
 	c2 := api.NewClient(srv2.URL, "")
 	c2.HTTP = srv2.Client()
-	if _, err := LoginDeviceCode(context.Background(), st, c2, "default", srv2.URL); err == nil {
+	if _, err := LoginDeviceCode(context.Background(), st, c2, "default", srv2.URL, DeviceFlow{}); err == nil {
 		t.Fatal("missing token")
 	}
 	// extractToken top-level

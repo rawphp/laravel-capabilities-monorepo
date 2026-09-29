@@ -158,6 +158,15 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   persisted input with the persisted `Idempotency-Key`, so the server replays
   the stored outcome instead of rejecting a mismatched body (409). Explicit
   input still wins.
+- **Device-code login polls for the token** — `auth login --base-url=URL`
+  used to require `access_token` in the `POST /capabilities/auth/device`
+  response, so it failed against any issuer that returns the RFC 8628 start
+  shape. It now prints `user_code` + `verification_uri` to stderr and polls
+  `POST /capabilities/auth/token` (`grant_type=urn:ietf:params:oauth:grant-type:device_code`)
+  every `interval` seconds until a token arrives. Pending polls return
+  `data.status` (or `data.error`) `authorization_pending` / `slow_down`
+  (+5s); `access_denied`, `expired_token`, or passing `expires_in` exit **3**.
+  Nothing is written to the profile until a token is issued.
 
 ## [0.x] — pre-stable
 
