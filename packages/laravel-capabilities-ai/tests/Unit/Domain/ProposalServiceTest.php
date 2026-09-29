@@ -526,3 +526,98 @@ it('ownedBy is false for a proposal whose conversation has no owner', function (
 
     expect(makeProposalService(proposalBus())->ownedBy($proposal->ulid, ''))->toBeFalse();
 });
+
+/**
+ * Swap in a store where a peer wins the next CAS into $targetStatus: the proposal is moved
+ * to $peerStatus and the transition reports lost (false), exactly once.
+ */
+function proposalRaceTo(string $targetStatus, string $peerStatus): InMemoryConversationStore
+{
+    $store = new class($targetStatus, $peerStatus) extends InMemoryConversationStore
+    {
+        private bool $raced = false;
+
+        public function __construct(private string $targetStatus, private string $peerStatus) {}
+
+        public function transitionProposal(string $proposalUlid, string $fromStatus, array $attributes): bool
+        {
+            if (! $this->raced && ($attributes['status'] ?? null) === $this->targetStatus) {
+                $this->raced = true;
+                $this->proposal($proposalUlid)->status = $this->peerStatus;
+
+                return false;
+            }
+
+            return parent::transitionProposal($proposalUlid, $fromStatus, $attributes);
+        }
+    };
+    proposalWorld()->store = $store;
+
+    return $store;
+}
+
+it('reject that loses the CAS to a concurrent reject returns the rejected row', function () {
+    proposalRaceTo(Proposal::STATUS_REJECTED, Proposal::STATUS_REJECTED);
+    $proposal = seedPendingProposal();
+
+    expect(makeProposalService(proposalBus())->reject($proposal->ulid)->status)->toBe(Proposal::STATUS_REJECTED);
+});
+
+it('reject that loses the CAS to a concurrent accept claim refuses', function () {
+    proposalRaceTo(Proposal::STATUS_REJECTED, Proposal::STATUS_ACCEPTING);
+    $proposal = seedPendingProposal();
+
+    expect(fn () => makeProposalService(proposalBus())->reject($proposal->ulid))
+        ->toThrow(RuntimeException::class, 'cannot be rejected (status=accepting)');
+});
+
+it('accept that loses the pending claim to a peer that already accepted does not invoke again', function () {
+    proposalRaceTo(Proposal::STATUS_ACCEPTING, Proposal::STATUS_ACCEPTED);
+    $proposal = seedPendingProposal();
+    $bus = proposalBus();
+
+    $out = makeProposalService($bus)->accept($proposal->ulid);
+
+    expect($out->kind)->toBe(AcceptOutcome::KIND_ACCEPTED)
+        ->and($bus->invokes)->toBe(0);
+});
+
+it('accept whose accepted write loses to a peer that already recorded accepted still reports accepted', function () {
+    proposalRaceTo(Proposal::STATUS_ACCEPTED, Proposal::STATUS_ACCEPTED);
+    $proposal = seedPendingProposal();
+    $bus = proposalBus();
+
+    $out = makeProposalService($bus)->accept($proposal->ulid);
+
+    expect($out->kind)->toBe(AcceptOutcome::KIND_ACCEPTED)
+        ->and($out->proposal->status)->toBe(Proposal::STATUS_ACCEPTED)
+        ->and($bus->invokes)->toBe(1);
+});
+
+it('accept whose accepted write loses to a different terminal state fails loudly', function () {
+    proposalRaceTo(Proposal::STATUS_ACCEPTED, Proposal::STATUS_EXPIRED);
+    $proposal = seedPendingProposal();
+
+    expect(fn () => makeProposalService(proposalBus())->accept($proposal->ulid))
+        ->toThrow(RuntimeException::class, 'lost accept claim (status=expired)');
+});
+
+it('terminal failure whose failed write loses to a peer that already failed returns the failed outcome', function () {
+    proposalRaceTo(Proposal::STATUS_FAILED, Proposal::STATUS_FAILED);
+    $proposal = seedPendingProposal();
+    $bus = proposalBus(static fn () => CapabilityResult::failure('domain_error', 'nope'));
+
+    $out = makeProposalService($bus)->accept($proposal->ulid);
+
+    expect($out->kind)->toBe(AcceptOutcome::KIND_FAILED)
+        ->and($out->proposal->status)->toBe(Proposal::STATUS_FAILED);
+});
+
+it('terminal failure whose failed write loses to a peer accept fails loudly', function () {
+    proposalRaceTo(Proposal::STATUS_FAILED, Proposal::STATUS_ACCEPTED);
+    $proposal = seedPendingProposal();
+    $bus = proposalBus(static fn () => CapabilityResult::failure('domain_error', 'nope'));
+
+    expect(fn () => makeProposalService($bus)->accept($proposal->ulid))
+        ->toThrow(RuntimeException::class, 'lost fail claim (status=accepted)');
+});
