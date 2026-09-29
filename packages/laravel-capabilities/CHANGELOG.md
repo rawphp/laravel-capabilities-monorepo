@@ -96,6 +96,17 @@ tools themselves (messaging) pass it as an invoke option. `null` for invokes out
 
 ### Changed (BREAKING)
 
+#### Approval execution has one idempotency writer (D-005, L-202)
+
+`ApprovalManager::withIdempotency()`, `ApprovalExecutor::withIdempotency()` and the
+`idempotency:` constructor argument of both are removed. They enabled a second writer that
+marked the request's key `completed` after every approved execution — even a failed one — and
+the provider never wired it. The approved execution already runs through the invoke pipeline
+under the request's own key (L-102), which moves the row from `pending_approval` to `completed`
+or `failed`; that is now the only writer. The settled row keeps its `approval_id`. Hosts that
+passed `idempotency:` to `new ApprovalManager(...)` should drop the argument; bind the
+`IdempotencyStore` on the registry instead (`withIdempotencyStore()`).
+
 #### `RunCapabilityJob` really queues (D-002 / D-019, L-016)
 
 `RunCapabilityJob` was a plain object whose static `dispatch()` only built an instance —
@@ -343,6 +354,23 @@ These shipped in 0.5.3 and had no callers inside the package:
   change is the record of truth). Known limit: the first-party `AuditOutbox` that
   `required=true` falls back to is process-local; hosts needing cross-process at-least-once
   should treat `capabilities_audit_outbox` as the durable sink and alert on the metric.
+- **A request refused at the idempotency lookup no longer overwrites the key's owner row
+  (D-005, found under L-202).** Reusing a key with a different body (`conflict`) or retrying
+  while the key is still `processing` (`busy`) used to run the failure finish, which stored the
+  refusal under the key: the owner's `completed` row became `failed/conflict` (its own retries
+  then replayed `conflict` instead of the stored success), and an in-flight row was flipped to
+  `failed` until the run finished. The refused request now never writes the row it did not claim.
+- **A failing approval notifier or `CapabilityApprovalRequested` listener no longer turns a saved
+  approval into `internal` (D-006, L-201 / M-201).** `ApprovalManager::request()` now calls each
+  `ApprovalNotifier::notifyPending()` inside a guard: a throw (chat API outage, a half-configured
+  channel) is reported to the `ExceptionHandler` and counted as
+  `approval_notify_failed_total{notifier}`, and the remaining notifiers still run. The
+  `CapabilityApprovalRequested` event goes through the same guarded dispatch as the other bus
+  events (`bus_listener_failed_total{event}`). The caller gets the normal `approval_required`
+  with its approval id, and a keyed invoke's idempotency row stays `pending_approval`. Before,
+  the pending row was saved but the caller saw `internal` and the key was stored as `failed`, so
+  accepting that row replayed `internal` instead of running, and an unkeyed retry opened a second
+  approval.
 - **A throwing bus-event listener no longer turns a committed run into `internal` (D-010, L-103).**
   `CapabilityInvoked`, `CapabilityFailed`, `CapabilityApprovalDecided` and
   `CapabilityApprovalExecuted` are dispatched inside a guard: a sync listener that throws, or a

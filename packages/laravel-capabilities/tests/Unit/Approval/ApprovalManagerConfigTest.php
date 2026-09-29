@@ -11,7 +11,6 @@ use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\Capabilities\Support\InMemoryAuditWriter;
-use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
 
 it('ApprovalManager validates config and exposes its collaborators after fluent with* calls', function () {
     $clock = new FixedClock(new DateTimeImmutable('2026-01-01T00:00:00Z'));
@@ -25,8 +24,7 @@ it('ApprovalManager validates config and exposes its collaborators after fluent 
         ->withExecutor(static fn () => CapabilityResult::ok(['done' => true]))
         ->withRevalidator(static fn () => true)
         ->withOriginalAuthorizer(static fn () => true)
-        ->withAudit(new InMemoryAuditWriter($clock))
-        ->withIdempotency(new InMemoryIdempotencyStore($clock));
+        ->withAudit(new InMemoryAuditWriter($clock));
 
     expect($clone->store())->toBeInstanceOf(InMemoryApprovalStore::class)
         ->and($clone->clock())->not->toBeNull()

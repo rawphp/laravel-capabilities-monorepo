@@ -9,7 +9,7 @@ use Throwable;
 
 /**
  * Hand a swallowed throwable to the host's ExceptionHandler (and a metric to the bound
- * {@see Metrics}) without letting it change the invoke outcome (L-009 / L-103 / L-104).
+ * {@see Metrics}) without letting it change the invoke outcome (L-009 / L-103 / L-104 / L-201).
  *
  * Resolves both lazily from the global container so pure registry construction in unit
  * tests needs neither; when nothing is bound the failure is dropped here, but every call
@@ -20,6 +20,8 @@ final class FailureReporter
     public const AUDIT_WRITE_FAILED = 'audit_write_failed_total';
 
     public const LISTENER_FAILED = 'bus_listener_failed_total';
+
+    public const APPROVAL_NOTIFY_FAILED = 'approval_notify_failed_total';
 
     public static function report(Throwable $e): void
     {

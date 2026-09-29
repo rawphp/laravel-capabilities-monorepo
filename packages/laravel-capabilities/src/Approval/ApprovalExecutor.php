@@ -5,7 +5,6 @@ namespace Rawphp\Capabilities\Approval;
 use Illuminate\Contracts\Events\Dispatcher;
 use Rawphp\Capabilities\Contracts\ApprovalStore;
 use Rawphp\Capabilities\Contracts\AuditWriter;
-use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Events\CapabilityApprovalExecuted;
 use Rawphp\Capabilities\Pipeline\ResolveActor;
 use Rawphp\Capabilities\Support\CapabilityResult;
@@ -15,10 +14,11 @@ use Throwable;
 /**
  * Exactly-once approval domain execution (D-006 / P2-004).
  *
- * Owns re-validation, original-actor re-auth, domain executor call, result
- * persistence, and idempotency completion. {@see ApprovalManager} remains the
- * public API for request / accept / reject / resume and delegates here after
- * lease claims.
+ * Owns re-validation, original-actor re-auth, domain executor call and result
+ * persistence. {@see ApprovalManager} remains the public API for request / accept /
+ * reject / resume and delegates here after lease claims. The request's idempotency
+ * key is settled by the pipeline the domain executor runs through (L-102 / L-202),
+ * never written a second time here.
  */
 final class ApprovalExecutor
 {
@@ -65,7 +65,6 @@ final class ApprovalExecutor
         ?callable $domainExecutor = null,
         ?callable $revalidator = null,
         ?callable $originalAuthorizer = null,
-        private ?IdempotencyStore $idempotency = null,
         private ?AuditWriter $audit = null,
     ) {
         $this->domainExecutor = $domainExecutor;
@@ -103,14 +102,6 @@ final class ApprovalExecutor
     {
         $clone = clone $this;
         $clone->originalAuthorizer = $originalAuthorizer;
-
-        return $clone;
-    }
-
-    public function withIdempotency(?IdempotencyStore $store): self
-    {
-        $clone = clone $this;
-        $clone->idempotency = $store;
 
         return $clone;
     }
@@ -230,8 +221,6 @@ final class ApprovalExecutor
                 ?? $this->store->update($id, $payload);
         }
 
-        $this->completeIdempotency($row, $result);
-
         $executed = new CapabilityApprovalExecuted(
             capability: (string) ($row['capability_name'] ?? ''),
             approvalId: $id,
@@ -318,52 +307,6 @@ final class ApprovalExecutor
         }
 
         return null;
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     */
-    private function completeIdempotency(array $row, CapabilityResult $result): void
-    {
-        $key = $row['idempotency_key'] ?? null;
-        if ($key === null || $key === '' || $this->idempotency === null) {
-            return;
-        }
-
-        $tenantId = isset($row['tenant_id']) ? (is_string($row['tenant_id']) ? $row['tenant_id'] : (string) $row['tenant_id']) : null;
-        $actorType = (string) ($row['requester_actor_type'] ?? 'user');
-        $actorId = (string) ($row['requester_actor_id'] ?? '');
-        $capability = (string) ($row['capability_name'] ?? '');
-
-        $existing = $this->idempotency->find($tenantId, $actorType, $actorId, $capability, (string) $key);
-        if ($existing === null) {
-            $this->idempotency->put([
-                'tenant_id' => $tenantId,
-                'actor_type' => $actorType,
-                'actor_id' => $actorId,
-                'capability_name' => $capability,
-                'idempotency_key' => $key,
-                'request_hash' => $row['input_hash'] ?? null,
-                'status' => 'completed',
-                'result_json' => $result->toArray(),
-                'approval_id' => $row['id'] ?? null,
-            ]);
-
-            return;
-        }
-
-        // Same key, different request body: the row belongs to another request (D-005 conflict).
-        $existingHash = $existing['request_hash'] ?? null;
-        $inputHash = $row['input_hash'] ?? null;
-        if ($existingHash !== null && $inputHash !== null && $existingHash !== $inputHash) {
-            return;
-        }
-
-        $this->idempotency->update($tenantId, $actorType, $actorId, $capability, (string) $key, [
-            'status' => 'completed',
-            'result_json' => $result->toArray(),
-            'approval_id' => $row['id'] ?? null,
-        ]);
     }
 
     /**

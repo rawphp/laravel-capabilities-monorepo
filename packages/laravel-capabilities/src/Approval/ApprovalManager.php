@@ -9,7 +9,6 @@ use Rawphp\Capabilities\Contracts\ApprovalNotifier;
 use Rawphp\Capabilities\Contracts\ApprovalStore;
 use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Contracts\Clock;
-use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Events\CapabilityApprovalDecided;
 use Rawphp\Capabilities\Pipeline\ResolveActor;
 use Rawphp\Capabilities\Support\CapabilityResult;
@@ -53,8 +52,6 @@ final class ApprovalManager implements ApprovalGateway
 
     private ?Dispatcher $dispatcher = null;
 
-    private ?IdempotencyStore $idempotency;
-
     /**
      * @param  array<string, mixed>  $config
      * @param  callable(array<string, mixed>, object): mixed|null  $executor
@@ -70,7 +67,6 @@ final class ApprovalManager implements ApprovalGateway
         ?callable $revalidator = null,
         ?callable $originalAuthorizer = null,
         ?AuditWriter $audit = null,
-        ?IdempotencyStore $idempotency = null,
         ?ApprovalMetrics $metrics = null,
     ) {
         $this->clock = $clock ?? new SystemClock;
@@ -79,7 +75,6 @@ final class ApprovalManager implements ApprovalGateway
             (string) ($this->config['default_policy'] ?? ApprovalPolicy::REQUESTER_OR_ROLE),
         );
         $this->audit = $audit;
-        $this->idempotency = $idempotency;
         $this->metrics = $metrics ?? new ApprovalMetrics;
         $this->machine = new ApprovalStateMachine;
         $this->rowExecutor = new ApprovalExecutor(
@@ -88,7 +83,6 @@ final class ApprovalManager implements ApprovalGateway
             domainExecutor: $executor,
             revalidator: $revalidator,
             originalAuthorizer: $originalAuthorizer,
-            idempotency: $idempotency,
             audit: $audit,
         );
     }
@@ -229,15 +223,6 @@ final class ApprovalManager implements ApprovalGateway
         return $clone;
     }
 
-    public function withIdempotency(?IdempotencyStore $store): self
-    {
-        $clone = clone $this;
-        $clone->idempotency = $store;
-        $clone->rowExecutor = $this->rowExecutor->withIdempotency($store);
-
-        return $clone;
-    }
-
     public function addNotifier(ApprovalNotifier $notifier): self
     {
         $this->notifiers[] = $notifier;
@@ -356,8 +341,14 @@ final class ApprovalManager implements ApprovalGateway
             'idempotency_key' => $row['idempotency_key'] ?? null,
         ]);
 
+        // The row is saved: a notifier is a side channel and cannot change the outcome.
+        // Report its failure and keep notifying the rest (L-201 / L-103).
         foreach ($this->notifiers as $notifier) {
-            $notifier->notifyPending($row);
+            try {
+                $notifier->notifyPending($row);
+            } catch (Throwable $e) {
+                FailureReporter::reportAndCount($e, FailureReporter::APPROVAL_NOTIFY_FAILED, ['notifier' => $notifier::class]);
+            }
         }
 
         return $row;

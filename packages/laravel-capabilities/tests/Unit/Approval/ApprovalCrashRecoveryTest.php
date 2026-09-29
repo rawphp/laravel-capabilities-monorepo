@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Rawphp\Capabilities\Events\CapabilityApprovalExecuted;
 use Rawphp\Capabilities\Tests\Fixtures\ApprovalHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\IdempotencyHelpers;
 
 it('happy: ResumeApprovedApprovals executes stuck approved past grace with free lease [P2-004]', function () {
     $h = ApprovalHelpers::withPending();
@@ -124,12 +125,19 @@ it('fail: re-accept while approved does not blindly re-run [P2-004]', function (
 });
 
 it('happy: resume uses original D-005 idempotency key [P2-004]', function () {
-    $h = ApprovalHelpers::withPending(['record' => ['idempotency_key' => 'k-99']]);
-    $id = (string) $h['row']['id'];
-    $h['store']->update($id, ['status' => 'approved', 'approved_at' => $h['clock']->now()->modify('-120 seconds')->format(DATE_ATOM), 'execution_lease_until' => null]);
-    $h['manager']->resume($id);
-    $found = $h['idempotency']->find('t-1', 'user', '7', 'create-invoice', 'k-99');
-    expect($found)->not->toBeNull()->and($found['status'])->toBe('completed');
+    // Resume re-runs through the pipeline under the request's key, which settles the row (L-202).
+    $h = IdempotencyHelpers::harness();
+    $opts = IdempotencyHelpers::options('http', ['idempotency_key' => 'k-99', 'needs_approval' => true]);
+    $pending = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), $opts);
+    $id = (string) $pending->approvalId();
+    $h['fakes']->approvals->update($id, ['status' => 'approved', 'approved_at' => $h['clock']->now()->modify('-120 seconds')->format(DATE_ATOM), 'execution_lease_until' => null]);
+
+    $h['registry']->approvals()->resume($id);
+
+    $found = $h['store']->find('tenant-1', 'user', '7', $h['name'], 'k-99');
+    expect($h['runCount']->value)->toBe(1)
+        ->and($found['status'])->toBe('completed')
+        ->and($found['approval_id'])->toBe($id);
 });
 
 it('edge: execution_attempt increments on each resume claim [P2-004]', function () {

@@ -579,6 +579,10 @@ final class InvokePipeline
         }
 
         if ($lookup['action'] === 'conflict' || $lookup['action'] === 'busy') {
+            // This request never claimed the key: its refusal must not overwrite the owning
+            // request's row (a different body, or the run still in flight) — D-005.
+            $state->idempotencyKey = null;
+
             return $lookup['result'];
         }
 
@@ -757,7 +761,8 @@ final class InvokePipeline
         );
         $this->observation->recordApproval($requested);
         if ($this->eventsEnabled) {
-            $this->events?->dispatch($requested);
+            // The approval row is saved; a listener cannot turn it into `internal` (L-201).
+            $this->results()->dispatch($requested);
         }
 
         return CapabilityResult::approvalRequired(
