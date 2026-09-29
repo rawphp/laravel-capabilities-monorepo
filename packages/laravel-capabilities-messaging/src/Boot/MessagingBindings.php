@@ -125,7 +125,6 @@ final class MessagingBindings
      *     queue: UpdateQueue,
      *     threads: ThreadStore,
      *     identity: IdentityLinker,
-     *     signer: TelegramCallbackSigner,
      *     adapter: TelegramAdapter,
      *     notifier: TelegramApprovalNotifier,
      *     webhook: TelegramWebhookController,
@@ -150,10 +149,9 @@ final class MessagingBindings
         // L-006 residual: identity + threads stay in-memory process-local.
         $threads = new ThreadStore;
         $identity = new IdentityLinker($cfg);
-        $secret = $cfg->webhookSecret() ?? 'deferred-unset';
-        $signer = new TelegramCallbackSigner($secret, $cfg->callbackTtlSeconds());
         $adapter = new TelegramAdapter($bot);
-        $notifier = new TelegramApprovalNotifier($cfg, $bot, $signer);
+        // Signs with callbackSecret() on notify — no secret needed to build (D-021).
+        $notifier = new TelegramApprovalNotifier($cfg, $bot);
         $webhook = new TelegramWebhookController($cfg, $queue);
         $processor = new ProcessTelegramUpdate($cfg, $identity, $threads, $adapter, null, $bot);
 
@@ -166,7 +164,6 @@ final class MessagingBindings
             'queue' => $queue,
             'threads' => $threads,
             'identity' => $identity,
-            'signer' => $signer,
             'adapter' => $adapter,
             'notifier' => $notifier,
             'webhook' => $webhook,

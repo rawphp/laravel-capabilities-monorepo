@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesMessaging\Tests\Fixtures;
 
+use Illuminate\Container\Container;
+use Illuminate\Contracts\Foundation\CachesConfiguration;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Contracts\ApprovalGateway;
 use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
 use Rawphp\CapabilitiesMessaging\MessagingConfig;
+use Rawphp\CapabilitiesMessaging\MessagingServiceProvider;
 use Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier;
 use Rawphp\CapabilitiesMessaging\Support\FakeQueue;
 use Rawphp\CapabilitiesMessaging\Support\FakeTelegramBotClient;
@@ -164,6 +167,53 @@ final class MessagingHelpers
             $identity ?? self::identity(),
             $approvals ?? self::approvals(),
         );
+    }
+
+    /**
+     * DB-free container with the messaging provider registered against a fixed config array.
+     * Config reports as cached, so register() skips mergeConfigFrom and the env()-driven file.
+     *
+     * @param  array<string, mixed>  $messagingConfig  value of config('capabilities-messaging')
+     * @param  array<string, mixed>  $otherConfig  other dotted keys (e.g. auth.providers.users.model)
+     */
+    public static function container(array $messagingConfig = [], array $otherConfig = []): Container
+    {
+        $app = new class extends Container implements CachesConfiguration
+        {
+            public function configurationIsCached(): bool
+            {
+                return true;
+            }
+
+            public function getCachedConfigPath(): string
+            {
+                return '';
+            }
+
+            public function getCachedServicesPath(): string
+            {
+                return '';
+            }
+
+            public function environment(): string
+            {
+                return 'testing';
+            }
+        };
+        $values = ['capabilities-messaging' => $messagingConfig] + $otherConfig;
+        $app->instance('config', new class($values)
+        {
+            /** @param  array<string, mixed>  $values */
+            public function __construct(private array $values) {}
+
+            public function get(string $key, mixed $default = null): mixed
+            {
+                return array_key_exists($key, $this->values) ? $this->values[$key] : $default;
+            }
+        });
+        (new MessagingServiceProvider($app))->register();
+
+        return $app;
     }
 
     /**

@@ -36,6 +36,15 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   that put a Telegram user id (or anything other than the product user id) in
   `approver_hint` must switch to the product user id or send an empty hint.
 
+### Fixed
+
+- **Callback signing key** — the container-bound `TelegramCallbackSigner` and approval notifier
+  now sign with `telegram.callback_secret` (falling back to `telegram.webhook_secret`). Before,
+  buttons were always signed with the webhook secret, so a distinct `TELEGRAM_CALLBACK_SECRET`
+  broke every callback, and with no webhook secret the key was the literal `'deferred-unset'`.
+  Resolving the signer with neither secret set now throws; the notifier resolves without secrets
+  and checks them on notify (D-021). `MessagingBindings::build()` no longer returns a `signer`.
+
 ### Changed
 
 - **Internal extract** — `TelegramUpdateParser` peels pure Update field extraction from

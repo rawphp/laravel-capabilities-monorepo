@@ -107,12 +107,12 @@ class MessagingServiceProvider extends ServiceProvider
         });
         $this->app->alias(IdentityLinker::class, ConversationIdentity::class);
 
+        // Resolved lazily: callbackSecret() throws when neither callback nor webhook secret is set (D-021).
         $this->app->singleton(TelegramCallbackSigner::class, function ($app) {
             /** @var MessagingConfig $cfg */
             $cfg = $app->make(MessagingConfig::class);
-            $secret = $cfg->webhookSecret() ?? 'deferred-unset';
 
-            return new TelegramCallbackSigner($secret, $cfg->callbackTtlSeconds());
+            return new TelegramCallbackSigner($cfg->callbackSecret(), $cfg->callbackTtlSeconds());
         });
 
         $this->app->singleton(TelegramAdapter::class, function ($app) {
@@ -121,12 +121,13 @@ class MessagingServiceProvider extends ServiceProvider
         $this->app->alias(TelegramAdapter::class, ConversationIngress::class);
         $this->app->alias(TelegramAdapter::class, ConversationReply::class);
 
+        // No signer injected: the notifier signs with callbackSecret() on notify, so resolving
+        // the ApprovalNotifier never requires secrets at boot (D-021).
         $this->app->singleton(TelegramApprovalNotifier::class, function ($app) {
             return new TelegramApprovalNotifier(
                 $app->make(MessagingConfig::class),
                 $app->make(TelegramBotClient::class),
-                $app->make(TelegramCallbackSigner::class),
-                $app->bound(AuditWriter::class) ? $app->make(AuditWriter::class) : null,
+                audit: $app->bound(AuditWriter::class) ? $app->make(AuditWriter::class) : null,
             );
         });
         $this->app->alias(TelegramApprovalNotifier::class, ApprovalNotifier::class);
