@@ -27,6 +27,7 @@ The ALTER is idempotent (no-op if the column already exists). Greenfield install
 - `ToolCatalog`
 - `LlmClient` (config default `llm.driver=fake`; set `CAPABILITIES_AI_LLM_DRIVER=anthropic` or bind a client for production)
 - `user_model` / `CAPABILITIES_AI_USER_MODEL` — Eloquent user class for resolving the conversation principal (falls back to `auth.providers.users.model`)
+- `ConversationStore` / `TurnClaim` (optional) — row persistence and turn status compare-and-set for the package tables. The provider binds `EloquentConversationStore` / `EloquentTurnClaim` unless the host bound its own, and shares one of each across `ConversationService`, `TurnService`, `TurnRunner`, `ProposalService` and `StaleTurnReaper`.
 
 ### Bus principal (job + conversation user)
 
@@ -38,8 +39,9 @@ Hosts that construct AI runtime services with `new` (or jobs without container m
 
 | Site | Required now | Notes |
 |------|--------------|--------|
-| `TurnRunner` | `ProgressStore $progress` | Required 3rd ctor arg (`TurnClaim`, `LlmClient`, **`ProgressStore`**, then optional context/tools/bus…). Was optional `?ProgressStore = null`. |
+| `TurnRunner` | `ProgressStore $progress` | Required 3rd ctor arg (`TurnClaim`, `LlmClient`, **`ProgressStore`**, then optional context/tools/bus…). Was optional `?ProgressStore = null`. `TurnClaim` is an interface: pass `new EloquentTurnClaim` (was `new TurnClaim`). Optional last arg `ConversationStore $store`. |
 | `ConversationService` | `ProgressStore $progress` | Required 2nd ctor arg after `$dispatch`. **No** silent `ArrayProgressStore` default in ctor. Optional last arg `ConversationStore $store` (default `EloquentConversationStore`) is the row-persistence seam; unit tests pass an in-memory store. |
+| `TurnService` / `StaleTurnReaper` / `ProposalService` | — | Optional trailing `ConversationStore` / `TurnClaim` args, defaulting to the Eloquent implementations. `ResolveConversationActor` takes an optional `ActorLookup` (default `EloquentActorLookup` over the configured user model). |
 | `RunTurnJob::handle` | `handle(TurnRunner $runner)` | Workers resolve `TurnRunner` via **container method injection**. Empty `handle()` is invalid. |
 | `ProposalService` | `IdempotencyReadiness $idempotency` | Required 2nd ctor arg after `CapabilityBus`. SP default **`StoreBoundIdempotencyReadiness`** (live core store ping; fail closed when unbound). **`AlwaysReadyIdempotency` is unit-tests only** — do not bind in production. |
 

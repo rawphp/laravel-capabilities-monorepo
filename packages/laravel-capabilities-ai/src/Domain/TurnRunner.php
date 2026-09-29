@@ -4,17 +4,19 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Domain;
 
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\Redactor;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
+use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
+use Rawphp\CapabilitiesAi\Contracts\TurnClaim;
 use Rawphp\CapabilitiesAi\Models\Conversation;
-use Rawphp\CapabilitiesAi\Models\Message;
-use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
+use Rawphp\CapabilitiesAi\Support\EloquentConversationStore;
 use Rawphp\CapabilitiesAi\Support\ProposalFenceExtractor;
 use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
 use Rawphp\CapabilitiesAi\Support\RetryableLlmException;
@@ -38,6 +40,7 @@ final class TurnRunner
         private readonly ProposalFenceExtractor $proposalExtractor = new ProposalFenceExtractor,
         private readonly ResolveConversationActor $actors = new ResolveConversationActor,
         private readonly bool $proposalsEnabled = true,
+        private readonly ConversationStore $store = new EloquentConversationStore,
     ) {}
 
     public function run(string $turnUlid): Turn
@@ -46,8 +49,7 @@ final class TurnRunner
             throw new RuntimeException('ConversationContextProvider and ToolCatalog must be bound before running a turn');
         }
 
-        $turn = $this->claim->claim($turnUlid, $this->claimOwner);
-        if ($turn === null) {
+        if (! $this->claim->claim($turnUlid, $this->claimOwner)) {
             throw new RuntimeException("Failed to claim turn {$turnUlid}");
         }
 
@@ -55,7 +57,11 @@ final class TurnRunner
 
         $usage = [];
         try {
-            $conversation = Conversation::query()->findOrFail($turn->conversation_id);
+            $turn = $this->store->turn($turnUlid);
+            $conversation = $turn->conversation;
+            if (! $conversation instanceof Conversation) {
+                throw (new ModelNotFoundException)->setModel(Conversation::class, [$turn->conversation_id]);
+            }
             $messages = $this->context->messagesForTurn($conversation->ulid, $turnUlid);
             // Do not advertise tools to clients that cannot continue after tool results.
             $toolDefs = $this->llm->supportsToolRounds()
@@ -80,13 +86,7 @@ final class TurnRunner
 
                 if ($toolCalls === []) {
                     $content = (string) ($response['content'] ?? '');
-                    Message::query()->create([
-                        'conversation_id' => $conversation->id,
-                        'ulid' => strtoupper(bin2hex(random_bytes(13))),
-                        'role' => 'assistant',
-                        'content' => $content,
-                        'meta' => null,
-                    ]);
+                    $this->store->createMessage($conversation, $this->ulid(), 'assistant', $content);
                     $this->maybeCreateProposalsFromFence($conversation, $turn, $content);
                     break;
                 }
@@ -127,13 +127,7 @@ final class TurnRunner
                 if ($normalizedCalls === []) {
                     // tool_calls present but unusable — treat as text-only terminal content.
                     $content = (string) ($response['content'] ?? '');
-                    Message::query()->create([
-                        'conversation_id' => $conversation->id,
-                        'ulid' => strtoupper(bin2hex(random_bytes(13))),
-                        'role' => 'assistant',
-                        'content' => $content,
-                        'meta' => null,
-                    ]);
+                    $this->store->createMessage($conversation, $this->ulid(), 'assistant', $content);
                     $this->maybeCreateProposalsFromFence($conversation, $turn, $content);
                     break;
                 }
@@ -205,7 +199,7 @@ final class TurnRunner
                 'data' => ['status' => Turn::STATUS_COMPLETED],
             ]);
 
-            return $turn->refresh();
+            return $this->store->turn($turnUlid);
         } catch (\Throwable $e) {
             // CAS running→failed: a turn cancelled (or reaped) mid-run keeps its status and events.
             if (! $this->claim->fail($turnUlid, $e->getMessage(), $usage)) {
@@ -235,7 +229,7 @@ final class TurnRunner
     {
         $this->claim->recordUsage($turn->ulid, $usage);
 
-        return $turn->refresh();
+        return $this->store->turn($turn->ulid);
     }
 
     /**
@@ -287,16 +281,19 @@ final class TurnRunner
 
         $target = isset($data['target_capability']) ? (string) $data['target_capability'] : null;
 
-        Proposal::query()->create([
-            'turn_id' => $turn->id,
-            'conversation_id' => $conversation->id,
-            'ulid' => strtoupper(bin2hex(random_bytes(13))),
-            'type' => (string) ($data['type'] ?? 'action'),
-            'payload' => $data['payload'] ?? $data,
-            'target_capability' => $target,
-            'schema_hash' => $target === null ? null : $this->targetSchemaHash($target, $conversation->ulid, $turn->ulid),
-            'status' => Proposal::STATUS_PENDING,
-        ]);
+        $this->store->createProposal(
+            $turn,
+            $this->ulid(),
+            (string) ($data['type'] ?? 'action'),
+            $data['payload'] ?? $data,
+            $target,
+            $target === null ? null : $this->targetSchemaHash($target, $conversation->ulid, $turn->ulid),
+        );
+    }
+
+    private function ulid(): string
+    {
+        return strtoupper(bin2hex(random_bytes(13)));
     }
 
     /**

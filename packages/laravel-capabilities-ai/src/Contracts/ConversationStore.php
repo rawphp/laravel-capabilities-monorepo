@@ -12,10 +12,11 @@ use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\EloquentConversationStore;
 
 /**
- * Persistence port for ConversationService (conversation / message / queued-turn rows).
+ * Row persistence for the package's conversation / message / turn / proposal tables.
+ * Turn status transitions live on {@see TurnClaim}.
  *
  * Production: {@see EloquentConversationStore}.
- * Unit tests bind an in-memory fake, so conversation rules run without a database.
+ * Unit tests bind an in-memory fake, so conversation, turn and proposal rules run without a database.
  */
 interface ConversationStore
 {
@@ -48,4 +49,50 @@ interface ConversationStore
     public function hasActiveTurns(Conversation $conversation): bool;
 
     public function close(Conversation $conversation): void;
+
+    /**
+     * The turn with this ulid, its conversation loaded.
+     *
+     * @throws ModelNotFoundException when missing
+     */
+    public function turn(string $turnUlid): Turn;
+
+    /**
+     * The turn with this ulid whose conversation is owned by $ownerId, its conversation loaded.
+     *
+     * @throws ModelNotFoundException when missing, ownerless, or owned by someone else
+     */
+    public function ownedTurn(string $turnUlid, string $ownerId): Turn;
+
+    /**
+     * A pending proposal on the turn's conversation.
+     */
+    public function createProposal(
+        Turn $turn,
+        string $ulid,
+        string $type,
+        mixed $payload,
+        ?string $targetCapability,
+        ?string $schemaHash,
+    ): Proposal;
+
+    /**
+     * The proposal with this ulid, its conversation and turn loaded (null when those rows are gone).
+     *
+     * @throws ModelNotFoundException when missing
+     */
+    public function proposal(string $proposalUlid): Proposal;
+
+    /**
+     * True only when the proposal exists and its conversation is owned by $ownerId.
+     */
+    public function proposalOwnedBy(string $proposalUlid, string $ownerId): bool;
+
+    /**
+     * Atomic proposal status transition: UPDATE … WHERE ulid AND status = $fromStatus.
+     *
+     * @param  array<string, mixed>  $attributes  Columns to set (status included)
+     * @return bool false when the proposal is missing or already left $fromStatus
+     */
+    public function transitionProposal(string $proposalUlid, string $fromStatus, array $attributes): bool;
 }

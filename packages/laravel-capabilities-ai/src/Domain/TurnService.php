@@ -4,13 +4,12 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Domain;
 
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Illuminate\Support\Carbon;
+use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
-use Rawphp\CapabilitiesAi\Models\TableNames;
+use Rawphp\CapabilitiesAi\Contracts\TurnClaim;
 use Rawphp\CapabilitiesAi\Models\Turn;
-use Rawphp\CapabilitiesAi\Support\DatabaseConnection;
+use Rawphp\CapabilitiesAi\Support\EloquentConversationStore;
+use Rawphp\CapabilitiesAi\Support\EloquentTurnClaim;
 use RuntimeException;
 
 /**
@@ -22,6 +21,8 @@ final class TurnService
 {
     public function __construct(
         private readonly ProgressStore $progress,
+        private readonly ConversationStore $store = new EloquentConversationStore,
+        private readonly TurnClaim $claim = new EloquentTurnClaim,
     ) {}
 
     /**
@@ -37,7 +38,7 @@ final class TurnService
      */
     public function show(string $turnUlid, string $ownerId): array
     {
-        $turn = $this->owned($turnUlid, $ownerId)->with('conversation')->firstOrFail();
+        $turn = $this->store->ownedTurn($turnUlid, $ownerId);
 
         return [
             'turn_ulid' => $turn->ulid,
@@ -53,15 +54,15 @@ final class TurnService
     /**
      * Cancel for queued|running. Idempotent if already cancelled.
      *
-     * DB status flip is atomic; progress append is best-effort after. If progress
-     * fails, the turn remains cancelled and this method throws so callers/subscribers
-     * do not assume events were published.
+     * Status flip is an atomic {@see TurnClaim::cancel()}; progress append is best-effort
+     * after. If progress fails, the turn remains cancelled and this method throws so
+     * callers/subscribers do not assume events were published.
      *
      * @return array{turn_ulid: string, status: string}
      */
     public function cancel(string $turnUlid, string $ownerId): array
     {
-        $turn = $this->owned($turnUlid, $ownerId)->firstOrFail();
+        $turn = $this->store->ownedTurn($turnUlid, $ownerId);
 
         if ($turn->status === Turn::STATUS_CANCELLED) {
             return ['turn_ulid' => $turn->ulid, 'status' => Turn::STATUS_CANCELLED];
@@ -71,19 +72,9 @@ final class TurnService
             throw new RuntimeException("Turn {$turnUlid} cannot be cancelled (status={$turn->status})");
         }
 
-        $now = Carbon::now()->toDateTimeString();
-        $rows = DatabaseConnection::resolve()->table(TableNames::turns())
-            ->where('ulid', $turnUlid)
-            ->whereIn('status', [Turn::STATUS_QUEUED, Turn::STATUS_RUNNING])
-            ->update([
-                'status' => Turn::STATUS_CANCELLED,
-                'finished_at' => $now,
-                'updated_at' => $now,
-            ]);
-
-        if ($rows !== 1) {
+        if (! $this->claim->cancel($turnUlid)) {
             // Race: re-read
-            $fresh = Turn::query()->where('ulid', $turnUlid)->firstOrFail();
+            $fresh = $this->store->turn($turnUlid);
             if ($fresh->status === Turn::STATUS_CANCELLED) {
                 return ['turn_ulid' => $fresh->ulid, 'status' => Turn::STATUS_CANCELLED];
             }
@@ -115,20 +106,8 @@ final class TurnService
      */
     public function events(string $turnUlid, string $ownerId, int $cursor = 0): array
     {
-        if (! $this->owned($turnUlid, $ownerId)->exists()) {
-            throw (new ModelNotFoundException)->setModel(Turn::class, [$turnUlid]);
-        }
+        $this->store->ownedTurn($turnUlid, $ownerId);
 
         return $this->progress->since($turnUlid, $cursor);
-    }
-
-    /**
-     * @return Builder<Turn>
-     */
-    private function owned(string $turnUlid, string $ownerId): Builder
-    {
-        return Turn::query()
-            ->where('ulid', $turnUlid)
-            ->whereHas('conversation', static fn (Builder $q) => $q->where('user_id', $ownerId));
     }
 }
