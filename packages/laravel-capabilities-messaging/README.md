@@ -85,6 +85,8 @@ Drivers (`config/capabilities-messaging.php`):
 - `queue_driver`: `auto` \| `laravel` \| `fake` — `auto` → fake when `APP_ENV=testing`, otherwise Laravel bus
 - `bot_driver`: `auto` \| `http` \| `fake` — `auto` → fake when testing, otherwise HTTP
 
+`ProcessTelegramUpdateJob` implements `ShouldQueue`: the webhook answers Telegram once the update is queued, and a queue worker runs the agent turn (3 tries, backoff 10s/60s). Transient failures (Bot API 429/5xx, retryable registry results) throw `RetryableUpdateFailure` so the job retries and lands in `failed_jobs`; terminal outcomes (unlinked user, rate limited, forbidden, …) return without retrying.
+
 Fake\* classes bind only when the matching driver is `fake`, or `auto` with `APP_ENV=testing`. Unit tests never call the live Telegram network; inject a transport on `HttpTelegramBotClient` or use `bot_driver=fake`.
 
 **Notifier FQCN:** production is messaging `…Notifiers\TelegramApprovalNotifier`. Core’s `RecordingTelegramApprovalNotifier` is the test recording double; core’s deprecated empty `…Approval\Notifiers\TelegramApprovalNotifier` is a soft-landing alias only — do not use it in hosts.

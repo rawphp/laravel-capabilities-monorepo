@@ -7,6 +7,7 @@ use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Support\CapabilityContext;
 use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
 use Rawphp\CapabilitiesMessaging\MessagingConfig;
+use Rawphp\CapabilitiesMessaging\Support\TelegramBotApiException;
 use Rawphp\CapabilitiesMessaging\Support\TelegramBotClient;
 use Rawphp\CapabilitiesMessaging\Threads\ThreadStore;
 use RuntimeException;
@@ -86,6 +87,11 @@ final class ProcessTelegramUpdate
                 'failure' => $e->getMessage(),
                 'tags' => $this->lastTags,
             ]);
+
+            // Transient: fail the queued job so the queue retries (D-019 failed-job tags).
+            if ($e instanceof RetryableUpdateFailure) {
+                throw $e;
+            }
 
             return [
                 'ok' => false,
@@ -310,6 +316,9 @@ final class ProcessTelegramUpdate
             $result = $this->registry->invoke($name, $call['input'] ?? [], $options);
             if (! $result->isOk()) {
                 $code = (string) ($result->errorCode() ?? 'registry_validation');
+                if ($result->isRetryable()) {
+                    throw new RetryableUpdateFailure($code);
+                }
                 if ($code === 'forbidden') {
                     throw new RuntimeException('registry_forbidden');
                 }
@@ -336,7 +345,11 @@ final class ProcessTelegramUpdate
                 'thread_id' => $thread['id'],
             ]);
         } catch (Throwable $e) {
-            throw new RuntimeException('reply_send_fail: '.$e->getMessage(), 0, $e);
+            $message = 'reply_send_fail: '.$e->getMessage();
+            if ($e instanceof TelegramBotApiException && $e->retryable) {
+                throw new RetryableUpdateFailure($message, 0, $e);
+            }
+            throw new RuntimeException($message, 0, $e);
         }
         $this->mark('conversation_reply');
 

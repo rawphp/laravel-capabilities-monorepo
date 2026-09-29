@@ -58,7 +58,12 @@ it('fail: Telegram turn stops invoking tools once the core turn budget is exhaus
     $registry->when('support.ping', static function (string $name, array $input, array $options) use ($budget): CapabilityResult {
         $calls = (int) ($options['agent_turn_tool_calls'] ?? 0);
         if ($options['caller'] === 'agent' && $budget->exhausted($calls)) {
-            return CapabilityResult::failure(code: 'rate_limited', message: $budget->stopMessage($calls)['message']);
+            // Core marks budget exhaustion non-retryable (InvokePipeline rate_limit stage).
+            return CapabilityResult::failure(
+                code: 'rate_limited',
+                message: $budget->stopMessage($calls)['message'],
+                extra: ['retryable' => false],
+            );
         }
 
         return CapabilityResult::ok(['name' => $name]);

@@ -2,14 +2,29 @@
 
 namespace Rawphp\CapabilitiesMessaging\Telegram;
 
+use Illuminate\Contracts\Queue\ShouldQueue;
+
 /**
- * Laravel-bus-friendly job wrapper for ProcessTelegramUpdate (L-004).
+ * Queued Laravel job wrapper for ProcessTelegramUpdate (L-004).
  *
  * Serialisable payload only — domain work stays in ProcessTelegramUpdate.
- * Dispatched by LaravelUpdateQueue production wiring; unit tests call handle() directly.
+ * Dispatched by LaravelUpdateQueue production wiring, so the webhook answers Telegram
+ * without waiting on the agent turn. A {@see RetryableUpdateFailure} fails the job and
+ * the queue retries; terminal outcomes return normally.
  */
-final class ProcessTelegramUpdateJob
+final class ProcessTelegramUpdateJob implements ShouldQueue
 {
+    /** Finite attempts; tool calls replay via per-update idempotency keys (D-005). */
+    public int $tries = 3;
+
+    /** @var list<int> seconds between attempts */
+    public array $backoff = [10, 60];
+
+    /** Laravel bus / queue worker read these public props (no Queueable trait required). */
+    public ?string $queue = null;
+
+    public ?string $connection = null;
+
     /**
      * @param  array<string, mixed>  $update  Telegram Update payload
      */

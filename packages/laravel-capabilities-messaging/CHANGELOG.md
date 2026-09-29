@@ -38,6 +38,13 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
+- **Telegram updates are really queued** — `ProcessTelegramUpdateJob` now implements `ShouldQueue`
+  (`tries = 3`, `backoff = [10, 60]`, public `queue` / `connection`). Before, the Laravel bus ran
+  the whole update inline in the webhook request. Transient failures (retryable Bot API errors on
+  reply, retryable registry results) now throw `Telegram\RetryableUpdateFailure` out of
+  `ProcessTelegramUpdate::handle()` so the job fails and retries; terminal failures still return
+  `ok: false`. **Consumer impact:** production needs a queue worker for messaging.
+
 - **Approval buttons fit Telegram's 64-byte `callback_data` limit** — `TelegramCallbackSigner::encode()`
   now emits `{a|r}.{approval_id}.{exp base36}.{sig}` (HMAC-SHA256 truncated to 96 bits) instead
   of base64 JSON (195+ bytes, rejected by the Bot API with `BUTTON_DATA_INVALID`), and throws when
