@@ -1303,7 +1303,7 @@ Every `run` receives a `CapabilityContext`:
 | `job` | Optional `{ queue, job_id, acting_as_type, acting_as_id }` when `caller=job` |
 | `credential` | Optional audit metadata: `{ type: oauth\|pat\|in_process, client_id?, ability? }` used to derive caller |
 
-Use this for policy differences (e.g. agents cannot void invoices without approval; staff UI can). Messaging-originated tool calls still use `caller: agent` at the registry; `messaging` metadata explains *which* front door started the turn.
+Use this for policy differences (e.g. agents cannot void invoices without approval; staff UI can). Messaging-originated tool calls still use `caller: agent` at the registry; `messaging` metadata explains *which* front door started the turn. The registry also refuses an invoke that carries `messaging` metadata while `surfaces.messaging.enabled` is off, so the global flag gates chat turns even though the caller is `agent`.
 
 **Caller is not a client-chosen header.** Approvals and rate limits that branch on `$ctx->caller()` are only meaningful if the bus sets caller from **credential class** or **in-process adapter code**. See [D-022](#d-022--server-derived-caller-not-client-spoofable-header).
 
@@ -3592,6 +3592,8 @@ capability has agent|mcp surface
 | **> 64** | Hard fail by default (`max_tools_hard`) unless app raises the cap knowingly |
 
 Guidance is for **one agent turn’s tool list**, not total capabilities in the app.
+
+Boundary events are logged and, when an `AuditWriter` is bound and audit is enabled, also written to the audit trail (best effort — an audit failure never blocks the tool list): `tool_surface.unfiltered_refused` → surface; `tool_surface.warn_threshold_exceeded` → surface, count, warn, profile.
 
 Keep descriptions short and non-overlapping (same as agent-native “keep the action surface small”).
 
