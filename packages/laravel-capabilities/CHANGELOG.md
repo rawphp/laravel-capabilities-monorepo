@@ -65,6 +65,10 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   `handleStructured()` without `options['profile']` return `not_runnable`
   (`normalized_code: profile_required`, plus `registered_profiles`) instead of silently
   running under the last-registered profile. Single-profile hosts are unchanged.
+- **Failed audit outbox rows are retried (D-010).** `WriteAuditJob::handle()` now calls
+  `AuditOutbox::requeueFailed($maxAttempts)` before draining, so a `failed` row goes back
+  to `pending` until it has used `maxAttempts` (new constructor argument, default `3`).
+  Before, one failed write left the row `failed` forever. Rows at the cap stay `failed`.
 
 ## [0.5.3] - 2026-09-29
 
