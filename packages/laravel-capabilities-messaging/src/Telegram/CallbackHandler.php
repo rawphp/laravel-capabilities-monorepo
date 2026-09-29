@@ -16,6 +16,10 @@ use RuntimeException;
  * A non-empty signed approver_hint binds the buttons to one product principal id:
  * a different linked user clicking a forwarded/leaked callback is forbidden.
  * An empty hint leaves the decision to the approval policy alone.
+ *
+ * A decoded callback_data token carries no approver_hint (64-byte limit): if it does not verify
+ * unbound, it is re-verified with the clicking user's principal id as the hint, so a token bound
+ * to someone else reads as invalid.
  */
 final class CallbackHandler
 {
@@ -38,8 +42,15 @@ final class CallbackHandler
 
         $this->signer->assertSafePayload($callbackPayload);
 
+        $invalid = ['status' => 'invalid', 'message' => 'invalid_signature_or_expired'];
+
+        // Hint-less compact token that does not verify unbound may be bound to the clicking user.
+        $boundToClicker = false;
         if (! $this->signer->verify($callbackPayload)) {
-            return ['status' => 'invalid', 'message' => 'invalid_signature_or_expired'];
+            if (array_key_exists('approver_hint', $callbackPayload)) {
+                return $invalid;
+            }
+            $boundToClicker = true;
         }
 
         $action = strtolower((string) $callbackPayload['action']);
@@ -66,6 +77,12 @@ final class CallbackHandler
 
         if ($user === null) {
             return ['status' => 'forbidden', 'message' => 'unlinked_approver'];
+        }
+
+        if ($boundToClicker) {
+            if (! $this->signer->verify($callbackPayload + ['approver_hint' => (string) $this->principalId($user)])) {
+                return $invalid;
+            }
         }
 
         $approverHint = (string) ($callbackPayload['approver_hint'] ?? '');

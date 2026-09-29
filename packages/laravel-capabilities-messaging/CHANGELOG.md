@@ -38,6 +38,15 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
+- **Approval buttons fit Telegram's 64-byte `callback_data` limit** — `TelegramCallbackSigner::encode()`
+  now emits `{a|r}.{approval_id}.{exp base36}.{sig}` (HMAC-SHA256 truncated to 96 bits) instead
+  of base64 JSON (195+ bytes, rejected by the Bot API with `BUTTON_DATA_INVALID`), and throws when
+  a token would exceed 64 bytes. The approver hint is still signed but no longer transmitted:
+  `CallbackHandler` re-verifies a hint-less token against the clicking user's principal id, so a
+  token bound to another user returns `invalid` (not `approver_mismatch`). `FakeTelegramBotClient`
+  now rejects oversized `callback_data` like the Bot API. **Consumer impact:** `sign()`'s `sig` is
+  now 16 base64url chars (was 64 hex); tokens issued before upgrade no longer decode.
+
 - **Callback signing key** — the container-bound `TelegramCallbackSigner` and approval notifier
   now sign with `telegram.callback_secret` (falling back to `telegram.webhook_secret`). Before,
   buttons were always signed with the webhook secret, so a distinct `TELEGRAM_CALLBACK_SECRET`

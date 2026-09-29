@@ -7,13 +7,23 @@ use RuntimeException;
 /**
  * Signed short-lived approval callbacks for chat buttons (D-006).
  *
- * Payload: approval_id + action + exp + approver_hint + sig.
+ * Signature covers approval_id + action + exp + approver_hint.
  * Never embeds capability input or bot token.
+ *
+ * Wire token (callback_data, <= 64 bytes): `{a|r}.{approval_id}.{exp base36}.{sig}` where sig is
+ * the HMAC-SHA256 truncated to 96 bits (16 base64url chars). The approver hint is bound into the
+ * signature but not transmitted: a decoded token verifies either unbound (empty hint) or once the
+ * clicking user's principal id is supplied as the hint.
  */
 final class TelegramCallbackSigner
 {
     /** @var list<string> */
     public const ALLOWED_ACTIONS = ['accept', 'reject'];
+
+    /** Telegram Bot API limit for inline button callback_data. */
+    public const MAX_CALLBACK_DATA_BYTES = 64;
+
+    private const SIG_LENGTH = 16;
 
     public function __construct(
         private readonly string $secret,
@@ -93,31 +103,50 @@ final class TelegramCallbackSigner
     }
 
     /**
-     * Compact token for Telegram callback_data size limits.
+     * Compact callback_data token (approver hint is signed, not transmitted).
      *
-     * @param  array{approval_id: string, action: string, exp: int, approver_hint: string, sig: string}  $payload
+     * @param  array{approval_id: string, action: string, exp: int, approver_hint?: string, sig: string}  $payload
+     *
+     * @throws RuntimeException when the token would exceed Telegram's 64-byte callback_data limit
      */
     public function encode(array $payload): string
     {
-        return rtrim(strtr(base64_encode(json_encode($payload, JSON_THROW_ON_ERROR)), '+/', '-_'), '=');
+        $token = implode('.', [
+            $payload['action'] === 'reject' ? 'r' : 'a',
+            (string) $payload['approval_id'],
+            base_convert((string) (int) $payload['exp'], 10, 36),
+            (string) $payload['sig'],
+        ]);
+
+        if (strlen($token) > self::MAX_CALLBACK_DATA_BYTES) {
+            throw new RuntimeException(sprintf(
+                'Callback token for approval "%s" is %d bytes; Telegram callback_data allows %d (D-006).',
+                (string) $payload['approval_id'],
+                strlen($token),
+                self::MAX_CALLBACK_DATA_BYTES,
+            ));
+        }
+
+        return $token;
     }
 
     /**
-     * @return array<string, mixed>|null
+     * Parse a callback_data token. The result carries no approver_hint (see class doc).
+     *
+     * @return array{approval_id: string, action: string, exp: int, sig: string}|null
      */
     public function decode(string $token): ?array
     {
-        $pad = 4 - (strlen($token) % 4);
-        if ($pad < 4) {
-            $token .= str_repeat('=', $pad);
-        }
-        $raw = base64_decode(strtr($token, '-_', '+/'), true);
-        if ($raw === false) {
+        if (preg_match('/^([ar])\.(.+)\.([0-9a-z]{1,13})\.([A-Za-z0-9_-]{'.self::SIG_LENGTH.'})$/', $token, $m) !== 1) {
             return null;
         }
-        $data = json_decode($raw, true);
 
-        return is_array($data) ? $data : null;
+        return [
+            'approval_id' => $m[2],
+            'action' => $m[1] === 'r' ? 'reject' : 'accept',
+            'exp' => (int) base_convert($m[3], 36, 10),
+            'sig' => $m[4],
+        ];
     }
 
     /**
@@ -161,6 +190,8 @@ final class TelegramCallbackSigner
             (string) ($payload['approver_hint'] ?? ''),
         ]);
 
-        return hash_hmac('sha256', $canonical, $this->secret);
+        $mac = rtrim(strtr(base64_encode(hash_hmac('sha256', $canonical, $this->secret, true)), '+/', '-_'), '=');
+
+        return substr($mac, 0, self::SIG_LENGTH);
     }
 }
