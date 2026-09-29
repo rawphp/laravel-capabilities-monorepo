@@ -92,6 +92,26 @@ func TestParseDescribeMapsFields(t *testing.T) {
 	}
 }
 
+func TestParseDescribeKeepsDescriptionAndSafetyFlags(t *testing.T) {
+	res := &api.Response{
+		Body:   []byte(`{"ok":true,"data":{"name":"n","description":"Create an invoice","readOnly":true,"idempotent":true,"schema_version":"1","input_schema":{"type":"object"}}}`),
+		Header: http.Header{},
+	}
+	e, err := parseDescribe(res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.Description != "Create an invoice" || !e.ReadOnly || !e.Idempotent {
+		t.Fatalf("describe dropped metadata: %+v", e)
+	}
+	b, _ := json.Marshal(e)
+	for _, want := range []string{`"description":"Create an invoice"`, `"readOnly":true`, `"idempotent":true`} {
+		if !strings.Contains(string(b), want) {
+			t.Fatalf("cache/--json form missing %s: %s", want, b)
+		}
+	}
+}
+
 // unreachable returns a client whose every request fails at the transport.
 func unreachable() *api.Client {
 	c := api.NewClient("https://unreachable.invalid", "t")

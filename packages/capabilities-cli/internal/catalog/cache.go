@@ -16,6 +16,9 @@ import (
 // CacheEntry is one cached schema document.
 type CacheEntry struct {
 	Name          string          `json:"name"`
+	Description   string          `json:"description,omitempty"`
+	ReadOnly      bool            `json:"readOnly,omitempty"`
+	Idempotent    bool            `json:"idempotent,omitempty"`
 	SchemaVersion string          `json:"schema_version"`
 	ETag          string          `json:"etag,omitempty"`
 	InputSchema   json.RawMessage `json:"input_schema"`
