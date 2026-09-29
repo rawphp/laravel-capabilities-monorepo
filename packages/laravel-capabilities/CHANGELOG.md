@@ -176,6 +176,15 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   `afterCommit()`. `registry->invokedEvents()` / `failedEvents()` / `approvalEvents()` /
   `logs()` keep only the newest `InvokeObservation::MAX_RETAINED` (100) entries — a
   diagnostic window, not the delivery channel.
+- **Device-code poll contract is spelled out (C-001).** `Contracts\AuthTokenIssuer` now documents
+  what the Go CLI drives: `POST {prefix}/auth/device` starts the flow; the CLI polls
+  `POST {prefix}/auth/token` with `grant_type = AuthTokenIssuer::GRANT_DEVICE_CODE` (new
+  constant) every `interval` seconds (floored to 10 s for the `throttle:6,1` auth stack) and,
+  while undecided, expects `data.status` (or `data.error`) in
+  `AuthTokenIssuer::DEVICE_POLL_STATUSES` — `authorization_pending`, `slow_down`,
+  `access_denied`, `expired_token` — **inside the `ok: true` envelope**, then the token shape.
+  The package's fake issuer fixture and the user guide follow the same contract. Host
+  implementations of `issueToken()` must handle the device-code grant this way.
 - **Pipeline `rate_limited` sends a backoff hint (D-013, C-007).** The envelope now carries
   `error.retry_after` (seconds until the tripped per-minute / per-capability window frees)
   and `HttpResponse::fromResult` adds `Retry-After` on 429 when it is present (an explicit

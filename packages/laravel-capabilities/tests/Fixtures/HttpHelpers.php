@@ -168,7 +168,11 @@ final class HttpHelpers
     /**
      * In-memory AuthTokenIssuer for unit tests (L-002). Never used as production default.
      *
-     * @param  array<string, mixed>  $overrides  keys: token|device|oauth → response arrays
+     * Models the device-code poll contract the CLI expects (C-001): the device-code grant
+     * on issueToken() returns `device_poll` (default `['status' => 'authorization_pending']`)
+     * until the test overrides it with a token shape.
+     *
+     * @param  array<string, mixed>  $overrides  keys: token|device|device_poll|oauth → response arrays
      */
     public static function fakeAuthTokenIssuer(array $overrides = []): AuthTokenIssuer
     {
@@ -179,6 +183,10 @@ final class HttpHelpers
 
             public function issueToken(HttpRequestContext $request, array $body): array
             {
+                if (($body['grant_type'] ?? null) === AuthTokenIssuer::GRANT_DEVICE_CODE) {
+                    return $this->overrides['device_poll'] ?? ['status' => 'authorization_pending'];
+                }
+
                 return $this->overrides['token'] ?? [
                     'token_type' => 'Bearer',
                     'access_token' => 'host-issued-token',
@@ -193,7 +201,7 @@ final class HttpHelpers
                     'user_code' => 'HOST-USER',
                     'verification_uri' => 'https://example.test/device',
                     'expires_in' => 600,
-                    'interval' => 5,
+                    'interval' => 10,
                 ];
             }
 

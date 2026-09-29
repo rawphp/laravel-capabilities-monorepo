@@ -238,6 +238,18 @@ The three `auth/*` routes issue credentials, so they skip `auth:*` middleware an
 
 Product CLI is a remote client of **this** API. Do not add a second invoke controller tree.
 
+#### Device-code login (what the CLI expects from your `AuthTokenIssuer`)
+
+`capabilities auth login --base-url=…` runs RFC 8628 against the two `auth/*` routes above; the host binds `Rawphp\Capabilities\Contracts\AuthTokenIssuer` and core only wraps its return value in the `ok: true` envelope.
+
+| Step | Route | Your issuer returns (`data`) |
+|---|---|---|
+| Start | `POST …/auth/device` `{"client_id":"capabilities-cli"}` → `issueDeviceCode()` | `device_code`, `user_code`, `verification_uri`, `expires_in`, `interval` |
+| Poll (every `interval` s, floored to 10 s by the CLI) | `POST …/auth/token` `{"grant_type":"urn:ietf:params:oauth:grant-type:device_code","device_code":…,"client_id":"capabilities-cli"}` → `issueToken()` | while undecided: `{"status":"authorization_pending"}` (or `{"error":"authorization_pending"}`); `{"status":"slow_down"}` adds 5 s; `{"status":"access_denied"}` / `{"status":"expired_token"}` end the login |
+| Approved | same poll | `access_token`, `token_type`, `expires_in` |
+
+Pending statuses travel **inside** `ok: true` — do not throw or return an error envelope for them. The constants `AuthTokenIssuer::GRANT_DEVICE_CODE` and `AuthTokenIssuer::DEVICE_POLL_STATUSES` spell the wire values. Keep `interval >= 10` (the CLI polls no faster) unless `surfaces.http.auth_middleware` replaces the default `throttle:6,1,capabilities-auth` stack; an HTTP 429 makes the CLI back off by `Retry-After`.
+
 Example invoke:
 
 ```http
