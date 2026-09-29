@@ -1,0 +1,139 @@
+{
+  "auditor": "cross-cutting-auditor",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-audit4",
+  "stack_summary": {
+    "laravel": {
+      "present": true,
+      "version": "11.x|12.x|13.x (illuminate/* components; three packages, not a full app)",
+      "php_version": "8.2+",
+      "key_packages": [
+        "illuminate/support",
+        "illuminate/http",
+        "illuminate/routing",
+        "illuminate/console",
+        "illuminate/bus",
+        "illuminate/events",
+        "illuminate/database",
+        "illuminate/validation",
+        "pestphp/pest",
+        "phpstan/phpstan"
+      ]
+    },
+    "frontend": {
+      "framework": "none",
+      "framework_version": null,
+      "inertia_version": null,
+      "typescript": false,
+      "state_library": "none",
+      "ui_library": "none",
+      "build_tool": "unknown",
+      "key_packages": []
+    },
+    "testing": {
+      "backend": "pest",
+      "frontend": "none"
+    },
+    "tooling": {
+      "linter_backend": "none",
+      "linter_frontend": "none",
+      "formatter_frontend": "none",
+      "types_php": "phpstan"
+    },
+    "infrastructure_hints": {
+      "queue_driver": "unknown",
+      "cache_driver": "unknown",
+      "ci": "github-actions (tests.yml, split-packages.yml)",
+      "deploy": "unknown"
+    },
+    "notes": "Monorepo: packages/laravel-capabilities (core bus, ~22.8k LOC), packages/laravel-capabilities-messaging (~3k), packages/laravel-capabilities-ai (~4.5k), packages/capabilities-cli (Go, ~5.5k). No root app/routes/package.json. Unit-test-only policy (no feature/DB tests), >=95% coverage. Design oracle: docs/spec.md (D-002..D-023). Standing decisions: /Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.do-work/decisions.md (primary checkout, untracked).",
+    "control_plane": {
+      "present": true,
+      "language": "go",
+      "path": "packages/capabilities-cli",
+      "notes": "Go product CLI, HTTP client only (D-016)"
+    }
+  },
+  "scanned_files_count": 41,
+  "findings": [
+    {
+      "id": "X-301",
+      "title": "Packagist checklist still omits the AI package and forbids a third one",
+      "category": "documentation",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": [
+        "reliability",
+        "dx"
+      ],
+      "locations": [
+        {
+          "file": "docs/versioning.md",
+          "line": 253,
+          "snippet": "### Package names and publish surface  (table rows: laravel-capabilities, laravel-capabilities-messaging, capabilities-cli; no laravel-capabilities-ai)"
+        },
+        {
+          "file": "docs/versioning.md",
+          "line": 265,
+          "snippet": "- Do not invent a third Composer package name."
+        },
+        {
+          "file": "docs/versioning.md",
+          "line": 278,
+          "snippet": "- [ ] **Submit package** for `rawphp/laravel-capabilities-messaging` the same way (after core is listed)."
+        },
+        {
+          "file": "docs/versioning.md",
+          "line": 295,
+          "snippet": "`composer show rawphp/laravel-capabilities` (and messaging) resolves a version."
+        },
+        {
+          "file": "README.md",
+          "line": 106,
+          "snippet": "| **Packaging / Packagist publish** | residual | **Residual until human completes** the Packagist + git tag publish **checklist** in docs/versioning.md"
+        }
+      ],
+      "current_state": "The X-105 fix brought the top of versioning.md up to three Composer packages (line 11 row, branch-alias table at 177/199, path/VCS snippets). The 'Packagist + git tag publish checklist' further down was not updated. Its publish-surface table lists only core, messaging and the CLI. It says 'Do not invent a third Composer package name', although rawphp/laravel-capabilities-ai is that third package. Its submit, prep (line 272) and verify (line 295) steps cover only core and messaging. The root README names this checklist as the one remaining human gate for Packagist publishing.",
+      "recommended_state": "The checklist covers all three Composer packages. The table has an AI row, the submit and verify steps include rawphp/laravel-capabilities-ai (published after core, which it requires via self.version), and the 'third package' line is gone or changed to say there are exactly three.",
+      "rationale": "Nothing in CI publishes to Packagist (decisions.md UR-008: human-gated). This checklist is the only procedure for doing it. A maintainer who follows it as written submits two packages. `composer require rawphp/laravel-capabilities-ai` then fails for consumers, and line 265 tells them not to add the missing one. Line 349 mentions the AI package's Packagist step, but only as a side note far below the checklist.",
+      "implementation_hint": "docs/versioning.md: add the row `| rawphp/laravel-capabilities-ai | packages/laravel-capabilities-ai | Packagist (Composer) | https://github.com/rawphp/laravel-capabilities-ai |` after the messaging row. Line 264: 'Messaging and AI depend on core, so publish core first, then messaging and AI.' Line 265: 'Exactly three Composer packages; do not invent a fourth.' Line 272: '(`composer test`: core, messaging and AI)'. Add a '**Submit package** for rawphp/laravel-capabilities-ai' step after line 278. Line 295: '(and messaging, AI)'."
+    },
+    {
+      "id": "X-302",
+      "title": "Iteration-3 fixes left D-021 notify row and core sibling allowlist stale",
+      "category": "documentation",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": [
+        "maintainability"
+      ],
+      "locations": [
+        {
+          "file": "docs/spec.md",
+          "line": 3236,
+          "snippet": "| First webhook / `messaging:telegram-setup` / first outbound notify | **Validate secrets**; fail that request/command loudly |"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+          "line": 348,
+          "snippet": "$notifier->notifyPending($row);\n} catch (Throwable $e) {"
+        },
+        {
+          "file": "packages/laravel-capabilities/README.md",
+          "line": 60,
+          "snippet": "| | `Support\\Redactor` | D-010 key redaction shared with the audit log; allowed for AI |"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/tests/Unit/Architecture/SiblingCoreImportAllowlistTest.php",
+          "line": 45,
+          "snippet": "// D-010 sensitive-key redaction (static, no state) — approval messages echo stored input.\n'Rawphp\\\\Capabilities\\\\Support\\\\Redactor',"
+        }
+      ],
+      "current_state": "Two iteration-3 fixes changed documented cross-package contracts without updating their docs. (1) L-201 (13dd370): ApprovalManager::request() now catches a notifier throw, reports it (ExceptionHandler plus approval_notify_failed_total) and still returns approval_required. D-021 in the spec still says a first outbound notify with missing secrets fails the request loudly. The TelegramApprovalNotifier still throws, but the request no longer fails. (2) M-203 (32e1acd): messaging now imports core Support\\Redactor, and its architecture allowlist test was widened to permit that. The core README's 'Public surface for sibling packages' table still marks Redactor 'allowed for AI'.",
+      "recommended_state": "The D-021 notify row describes the shipped behaviour: the notifier validates secrets and throws, and core reports the throw without failing the invoke, so the approval stays pending. The core README Redactor row says 'allowed for messaging and AI', which matches both architecture tests.",
+      "rationale": "The spec is the design oracle that audits and fixes are checked against (AGENTS.md). A later pass reading D-021 as written would flag L-201's isolation as a D-021 violation and could undo it. The README table is the stated contract for which core helpers siblings depend on. A core maintainer changing Redactor would read it as affecting only AI.",
+      "implementation_hint": "docs/spec.md:3236, second cell: '**Validate secrets**; fail the webhook / setup command loudly. An outbound notify throws, and core reports it (ExceptionHandler + `approval_notify_failed_total{notifier}`) without failing the invoke: the approval stays pending (L-201).' packages/laravel-capabilities/README.md:60: 'allowed for AI' → 'allowed for messaging (approval message input) and AI'. Docs only, no code change."
+    }
+  ],
+  "notes": "Iteration-4 check of the iteration-3 cross-cutting fixes (019e698..HEAD). X-201 is fixed: split-packages.yml uses `split-packages-${{ github.ref }}` with cancel-in-progress false, and the header comment and versioning.md:49 describe per-ref groups and the documented tag/main overlap shape. X-202 is fixed: squash_base() is always origin/<branch>, refuses when nothing is unpushed or origin/<branch> is missing, and release.sh has no force push. The self-test asserts this statically and with a bare-origin fixture. release.md dropped the prefer-squash rule, its examples use plain `--yes patch`, and `--help` now prints a Quality gates block matching release.sh's gates. X-203 is fixed: core [Unreleased] 'Changed (BREAKING)' lists the five removed helpers, and the L-108 entry names infrastructure()/all(). X-204 is fixed: tests.yml php job runs `bash scripts/lib/test-release.sh`. Run locally with an empty HOME and no git identity (CI-like): 55/55 pass. Every src-touching commit in 019e698..HEAD has a CHANGELOG entry. dedf1ad's removal of ApprovalManager/ApprovalExecutor::withIdempotency() and the `idempotency:` constructor argument (present at v0.5.3) is listed under core 'Changed (BREAKING)'. No other public method or constructor signature was removed. Messaging and AI changes are additive (AnthropicLlmClient gains an optional deadlineSeconds, CallbackHandler gains a `failed` status, listed under Fixed). Gates on the audit tree: Pint --test passes, PHPStan level 1 reports no errors (run with a scratch tmpDir), gofmt -l is empty, report_inventory_gaps --fail-on-gaps reports no gaps, and tools/tests pass. Dependency direction is clean: messaging imports only Contracts\\*, CapabilityResult/CapabilityContext, ErrorCodeMap and now Redactor, all allowlisted and all under a hard `rawphp/laravel-capabilities: self.version` require. Split readiness: no binaries or build output tracked under packages/ (only scripts/coverage.sh matched a path filter), and vendor/ is untracked. .architecture-analyst/ reports are deliberately committed at the monorepo root and never split. Not raised: package-internal design of the M-205 turn marker, M-206 deadline and M-202 status mapping (siblings auditor scope). Also not raised: .claude/settings.json hooks with absolute owner paths (owner tooling), and the deferred-list items."
+}
