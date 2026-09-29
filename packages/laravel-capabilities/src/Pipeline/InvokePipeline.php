@@ -2,6 +2,7 @@
 
 namespace Rawphp\Capabilities\Pipeline;
 
+use Closure;
 use Error;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Debug\ExceptionHandler;
@@ -27,6 +28,9 @@ use Rawphp\Capabilities\Support\CapabilityData;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\ErrorCodeMap;
 use Rawphp\Capabilities\Support\SystemActor;
+use ReflectionFunction;
+use ReflectionFunctionAbstract;
+use ReflectionMethod;
 use Throwable;
 
 /**
@@ -117,6 +121,13 @@ final class InvokePipeline
             if ($early !== null) {
                 // Replay is success-shaped; conflict/busy are failures.
                 if ($state->idempotentReplay) {
+                    // Replays still spend turn budget and rate limits (D-013): a loop
+                    // resending one idempotency key must not bypass loop protection.
+                    $limited = $this->stageRateLimit($state, $forced);
+                    if ($limited !== null) {
+                        return $this->results()->finishFailure($state, $limited);
+                    }
+
                     return $this->results()->finishReplay($state, $early);
                 }
 
@@ -128,14 +139,15 @@ final class InvokePipeline
                 return $this->results()->finishFailure($state, $early, auditDeny: true);
             }
 
+            // Rate limit before approval so approval requests cannot flood the store/notifiers (D-013).
+            $early = $this->stageRateLimit($state, $forced);
+            if ($early !== null) {
+                return $this->results()->finishFailure($state, $early, auditDeny: true);
+            }
+
             $early = $this->stageNeedsApproval($state, $forced);
             if ($early !== null) {
                 return $this->results()->finishApprovalRequired($state, $early);
-            }
-
-            $early = $this->stageRateLimit($state, $forced);
-            if ($early !== null) {
-                return $this->results()->finishFailure($state, $early);
             }
 
             // ── run ─────────────────────────────────────────────────────
@@ -190,7 +202,7 @@ final class InvokePipeline
             $state->mark(PipelineStages::WIRE_RESPONSE);
             $this->observation->lastState = $state;
             $this->observation->lastStages = $state->stages;
-            $this->results()->recordFailure($state->definition, $e->getMessage(), $state->caller, 'internal');
+            $this->results()->recordFailure($state->definition->name, $e->getMessage(), $state->caller, 'internal');
 
             return CapabilityResult::failure(
                 code: 'internal',
@@ -200,9 +212,22 @@ final class InvokePipeline
         }
     }
 
-    public function finishEarly(CapabilityResult $result, ?InvokeState $state): CapabilityResult
+    /**
+     * Registry gate deny (sunset / surface): audited and emitted like an authorize deny.
+     */
+    public function finishGateDeny(InvokeState $state, CapabilityResult $result): CapabilityResult
     {
-        return $this->results()->finishEarly($result, $state);
+        return $this->results()->finishFailure($state, $result, auditDeny: true);
+    }
+
+    /**
+     * Unknown capability: no definition to audit against, but the attempt is still a failed invoke.
+     */
+    public function finishUnknown(string $name, string $caller, CapabilityResult $result): CapabilityResult
+    {
+        $this->results()->recordFailure($name, (string) ($result->error['message'] ?? 'not found'), $caller, 'not_found');
+
+        return $this->results()->finishEarly($result, null);
     }
 
     /**
@@ -462,7 +487,11 @@ final class InvokePipeline
             $key = IdempotencyKey::derive($state->definition->idempotencyKeyFields, $state->rawInput);
         }
         $state->idempotencyKey = $key;
-        $state->requestHash = RequestHash::of($state->rawInput);
+        // Hash the validated, defaults-applied input so omitted vs explicit-default
+        // optional fields are the same request (D-005 canonical input JSON).
+        $state->requestHash = RequestHash::of($state->input instanceof CapabilityData
+            ? $state->input->toArray()
+            : $state->rawInput);
 
         // Policy before any store interaction (required key / format / warn missing).
         $policy = $this->idempotencyGuard->assertKeyPolicy(
@@ -858,12 +887,11 @@ final class InvokePipeline
     private function executeRun(CapabilityDefinition $definition, mixed $input, mixed $context = null): mixed
     {
         if (is_callable($definition->run)) {
-            // Prefer (input, context) for D-003 re-resolve; fall back to input-only handlers.
-            try {
-                return ($definition->run)($input, $context);
-            } catch (\ArgumentCountError) {
-                return ($definition->run)($input);
-            }
+            $run = Closure::fromCallable($definition->run);
+
+            return self::acceptsContext(new ReflectionFunction($run))
+                ? $run($input, $context)
+                : $run($input);
         }
 
         if ($definition->handlerClass !== null) {
@@ -875,14 +903,21 @@ final class InvokePipeline
                 ));
             }
 
-            try {
-                return $handler->run($input, $context);
-            } catch (\ArgumentCountError) {
-                return $handler->run($input);
-            }
+            return self::acceptsContext(new ReflectionMethod($handler, 'run'))
+                ? $handler->run($input, $context)
+                : $handler->run($input);
         }
 
         throw new InvalidArgumentException('No run handler.');
+    }
+
+    /**
+     * D-003: pass context to run() only when its signature takes a second argument.
+     * Decided up front so a run() is never invoked twice for one invoke.
+     */
+    private static function acceptsContext(ReflectionFunctionAbstract $run): bool
+    {
+        return $run->isVariadic() || $run->getNumberOfParameters() >= 2;
     }
 
     /**

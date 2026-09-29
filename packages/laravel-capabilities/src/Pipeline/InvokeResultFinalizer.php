@@ -4,7 +4,6 @@ namespace Rawphp\Capabilities\Pipeline;
 
 use Rawphp\Capabilities\Events\CapabilityFailed;
 use Rawphp\Capabilities\Events\CapabilityInvoked;
-use Rawphp\Capabilities\Registry\CapabilityDefinition;
 use Rawphp\Capabilities\Support\CapabilityResult;
 
 /**
@@ -162,7 +161,7 @@ final class InvokeResultFinalizer
             $this->observation->invokedEvents[] = $event;
         } elseif ($failure !== null) {
             $this->recordFailure(
-                $state->definition,
+                $state->definition->name,
                 $failure->error['message'] ?? 'failed',
                 $state->caller,
                 $failure->errorCode() ?? 'internal',
@@ -171,13 +170,13 @@ final class InvokeResultFinalizer
     }
 
     public function recordFailure(
-        CapabilityDefinition $definition,
+        string $capability,
         string $message,
         string $caller,
         string $code = 'output_invalid',
     ): void {
         $event = new CapabilityFailed(
-            capability: $definition->name,
+            capability: $capability,
             code: $code,
             message: $message,
             caller: $caller,
@@ -187,7 +186,7 @@ final class InvokeResultFinalizer
             'level' => 'error',
             'message' => $message,
             'context' => [
-                'capability' => $definition->name,
+                'capability' => $capability,
                 'code' => $code,
                 'caller' => $caller,
             ],
