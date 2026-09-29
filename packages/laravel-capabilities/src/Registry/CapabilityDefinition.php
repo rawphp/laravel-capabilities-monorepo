@@ -3,6 +3,7 @@
 namespace Rawphp\Capabilities\Registry;
 
 use InvalidArgumentException;
+use Rawphp\Capabilities\Audit\AuditLogger;
 use Rawphp\Capabilities\Contracts\SchemaProvider;
 use Rawphp\Capabilities\Support\SystemActor;
 
@@ -46,6 +47,7 @@ final class CapabilityDefinition
      * @param  class-string|null  $handlerClass  Attributed class implementing DefinesCapability
      * @param  array<string, mixed>|null  $rateLimit
      * @param  array<string, mixed>|bool|null  $audit
+     * @param  list<string>  $idempotencyKeyFields  Input fields hashed into a key when the caller sends none (D-005)
      * @param  callable|null  $authorize
      * @param  callable|null  $run
      */
@@ -78,6 +80,7 @@ final class CapabilityDefinition
         public readonly mixed $canDiscover = null,
         public readonly ?string $cliDomain = null,
         public readonly ?string $cliVerb = null,
+        public readonly array $idempotencyKeyFields = [],
     ) {
         if (trim($name) === '') {
             throw new InvalidArgumentException('Capability definition name must not be empty.');
@@ -91,6 +94,8 @@ final class CapabilityDefinition
         }
 
         self::assertValidCliRouting($this->cliDomain, $this->cliVerb, $name);
+        self::assertValidAuditMode($this->audit, $name);
+        $this->assertValidIdempotencyKeyFields();
     }
 
     public function isMutating(): bool
@@ -161,6 +166,19 @@ final class CapabilityDefinition
     }
 
     /**
+     * Effective audit mode for this capability (D-010). `audit: ['mode' => 'strict']`
+     * tightens the global default; a capability can never loosen it.
+     */
+    public function auditMode(string $globalMode): string
+    {
+        if (is_array($this->audit) && ($this->audit['mode'] ?? null) === 'strict') {
+            return 'strict';
+        }
+
+        return $globalMode;
+    }
+
+    /**
      * Read-only ignores idempotency keys (D-005).
      */
     public function shouldUseIdempotency(): bool
@@ -170,6 +188,29 @@ final class CapabilityDefinition
         }
 
         return $this->idempotent !== self::IDEMPOTENT_NONE;
+    }
+
+    private function assertValidIdempotencyKeyFields(): void
+    {
+        if ($this->idempotencyKeyFields === []) {
+            return;
+        }
+
+        if (! $this->shouldUseIdempotency()) {
+            throw new InvalidArgumentException(sprintf(
+                'Capability "%s" declares idempotency key fields but does not store idempotency keys.',
+                $this->name,
+            ));
+        }
+
+        foreach ($this->idempotencyKeyFields as $field) {
+            if (trim($field) === '') {
+                throw new InvalidArgumentException(sprintf(
+                    'Capability "%s" idempotency key field names must not be empty.',
+                    $this->name,
+                ));
+            }
+        }
     }
 
     /**
@@ -275,6 +316,29 @@ final class CapabilityDefinition
         }
 
         throw new InvalidArgumentException(sprintf('Invalid idempotent flag: %s', var_export($value, true)));
+    }
+
+    /**
+     * Per-capability audit mode may only tighten to strict (D-010).
+     *
+     * @param  array<string, mixed>|bool|null  $audit
+     *
+     * @throws InvalidArgumentException
+     */
+    private static function assertValidAuditMode(array|bool|null $audit, string $name): void
+    {
+        if (! is_array($audit) || ! array_key_exists('mode', $audit)) {
+            return;
+        }
+
+        $mode = AuditLogger::assertValidMode(is_string($audit['mode']) ? $audit['mode'] : get_debug_type($audit['mode']));
+        if ($mode !== 'strict') {
+            throw new InvalidArgumentException(sprintf(
+                'Capability "%s" audit mode "%s" is not allowed; a capability can only tighten the global audit mode to strict (D-010).',
+                $name,
+                $mode,
+            ));
+        }
     }
 
     /**

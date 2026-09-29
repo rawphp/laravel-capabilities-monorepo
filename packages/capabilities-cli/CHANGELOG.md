@@ -21,6 +21,11 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   `approvals`. The token **`mcp` stays reserved forever** and cannot be a
   synthesis domain. Use server product MCP or the HTTP CLI (`catalog` /
   `run` / `--json`) instead of `capabilities mcp`.
+- **Profile names must be filesystem-safe** — `--profile` accepts letters,
+  digits, `-` and `_` only. Other names (e.g. `prod.eu`) used to be rewritten
+  to `prod_eu`, so they read, overwrote, or logged out another profile's token.
+  They are now rejected with an error that suggests the safe name; `auth logout`
+  exits 2 instead of claiming success. Rename by passing the suggested name.
 
 ### Added
 
@@ -36,6 +41,11 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   already-up-to-date exits **0**, unwritable path fails closed with `install.sh` /
   `CAPABILITIES_INSTALL_DIR` guidance. No auth; does not touch session stores. Documented in
   package README and `docs/user-guide.md` (when to use vs `scripts/install.sh`).
+- **Signed self-update** — release builds pin an ed25519 public key
+  (`selfupdate.ReleasePublicKey` via ldflags) and `self-update` then requires a valid
+  `checksums.txt.sig` over `checksums.txt` (fail closed when missing/invalid). The release
+  workflow signs checksums when `CAPABILITIES_RELEASE_SIGNING_KEY` is set; without it, releases
+  and dev builds stay checksum-only. See `docs/release-signing.md`.
 - **`auth status --json`** — D-018 envelope with `profile`, `base_url`, `logged_in` (never the token).
 - **`auth list` / `auth profiles`** — list stored profiles (name, base_url, logged_in; never tokens); `--json` envelope.
 - **`catalog --include-schemas`** — list/JSON with `input_schema` / `output_schema` in one round-trip for agents.
@@ -51,9 +61,15 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Changed (0.x agent/script contract)
 
+- **`int|float` inputs are flags** — a property exported as `["integer","number"]` (PHP `int|float`,
+  optionally nullable) now takes `--flag 0.1` as a `number` instead of being json-only. Locked by D-020
+  snapshot fixtures under `internal/flagschema/testdata/snapshots/`.
 - **Unauthenticated domain/unknown argv** — exit **3** with `not authenticated` (was exit **5**
   “unknown domain”, which hid the need to login). Authenticated unknown domain remains exit **5**.
 - **Domain catalog load uses active `--profile`** (no longer always loads with `default`).
+- **`auth login` failures** — server errors exit with their D-018 CLI exit (e.g. rejected
+  credentials → **3**, was always **1**). New `auth login --json` writes the D-018 envelope
+  on stdout (success data or `{ok:false,error:{code,message,…}}`); never includes tokens.
 
 - **Root command exit code** — bare `capabilities` (no subcommand) prints usage and
   exits **0** (was exit **2** / `validation_failed`). Update scripts that treated a
@@ -135,6 +151,13 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   Then leave [Unreleased] empty for the next cycle. Section title has no leading "v";
   git tag keeps the "v" prefix.
 -->
+### Fixed
+
+- **`run --retry-last` with no input replays the last body** — when no
+  `--input`, `--input-file`, or schema flag is given, the CLI resends the
+  persisted input with the persisted `Idempotency-Key`, so the server replays
+  the stored outcome instead of rejecting a mismatched body (409). Explicit
+  input still wins.
 
 ## [0.x] — pre-stable
 

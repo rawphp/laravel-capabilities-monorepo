@@ -2,12 +2,18 @@
 
 namespace Rawphp\Capabilities\Pipeline;
 
+use Error;
+use Illuminate\Container\Container;
+use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use InvalidArgumentException;
+use PDOException;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Contracts\Authorizer;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\SchemaProvider;
 use Rawphp\Capabilities\Events\CapabilityApprovalRequested;
+use Rawphp\Capabilities\Idempotency\IdempotencyKey;
 use Rawphp\Capabilities\Idempotency\RequestHash;
 use Rawphp\Capabilities\RateLimiting\AgentTurnBudget;
 use Rawphp\Capabilities\RateLimiting\RateLimitKey;
@@ -452,6 +458,9 @@ final class InvokePipeline
         if ($key === '') {
             $key = null;
         }
+        if ($key === null) {
+            $key = IdempotencyKey::derive($state->definition->idempotencyKeyFields, $state->rawInput);
+        }
         $state->idempotencyKey = $key;
         $state->requestHash = RequestHash::of($state->rawInput);
 
@@ -761,13 +770,33 @@ final class InvokePipeline
             $this->observation->invokeStartedAt ??= microtime(true);
             $state->output = $this->executeRun($state->definition, $state->input, $state->context);
         } catch (Throwable $e) {
-            return CapabilityResult::failure(
-                code: 'domain_error',
-                message: $e->getMessage(),
-            );
+            return $this->runFailure($e);
         }
 
         return null;
+    }
+
+    /**
+     * Bug-class errors are reported and hidden; missing models are not_found;
+     * anything else is a deliberate domain throw and keeps its message (L-004).
+     */
+    private function runFailure(Throwable $e): CapabilityResult
+    {
+        if ($e instanceof ModelNotFoundException) {
+            return CapabilityResult::failure(code: 'not_found', message: 'Not found.');
+        }
+
+        // QueryException is a PDOException.
+        if ($e instanceof Error || $e instanceof PDOException) {
+            $container = Container::getInstance();
+            if ($container->bound(ExceptionHandler::class)) {
+                $container->make(ExceptionHandler::class)->report($e);
+            }
+
+            return CapabilityResult::failure(code: 'internal', message: 'Internal error.');
+        }
+
+        return CapabilityResult::failure(code: 'domain_error', message: $e->getMessage());
     }
 
     /**
@@ -788,7 +817,7 @@ final class InvokePipeline
             return null;
         }
 
-        $check = $this->outputValidator->validate($state->definition, $state->output);
+        $check = $this->outputValidator->validate($state->definition, $state->output, $state->context);
         if ($check !== null) {
             return $check;
         }
