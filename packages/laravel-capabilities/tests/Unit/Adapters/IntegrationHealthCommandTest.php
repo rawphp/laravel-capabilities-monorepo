@@ -10,9 +10,12 @@ use Rawphp\Capabilities\Adapters\Mcp\McpCredential;
 use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapter;
 use Rawphp\Capabilities\Adapters\ToolSelection;
 use Rawphp\Capabilities\Contracts\AuditWriter;
+use Rawphp\Capabilities\Contracts\Authorizer;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\IntegrationHealthChecker;
 use Rawphp\Capabilities\Tests\Fixtures\AdapterHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\ArtisanCommandHarness;
 
 /**
  * Minimal container for IntegrationHealthCommand::mcpToolCountCallback.
@@ -316,4 +319,86 @@ it('audit writer probe reads the live registry writer, not a container binding',
             AuditWriter::class => $wired->audit(),
         ])))->toBeFalse()
         ->and(ihInvokeAuditWired(ihCommandApp([])))->toBeFalse();
+});
+
+it('command prints OK and exits 0 when a bus-only host is wired', function () {
+    $h = AdapterHelpers::harness();
+
+    $r = ArtisanCommandHarness::run(new IntegrationHealthCommand, [], [
+        Authorizer::class => $h['fakes']->authorizer,
+        CapabilityRegistry::class => $h['registry'],
+    ], ihMcpSurfacesConfig());
+
+    expect($r['exit'])->toBe(0)
+        ->and($r['output'])->toStartWith("Mode: bus-only\n")
+        ->and($r['output'])->toContain('[OK] authorizer_bound: Authorizer is bound.')
+        ->and($r['output'])->toContain('[OK] audit_writer:')
+        ->and($r['output'])->toContain('[OK] mcp_tools:')
+        ->and($r['output'])->toEndWith("Integration health: OK\n");
+});
+
+it('command prints FAIL and WARN lines and exits 1 when the authorizer and audit writer are missing', function () {
+    $r = ArtisanCommandHarness::run(new IntegrationHealthCommand, [], [], [
+        'capabilities' => ['surfaces' => ['http' => ['enabled' => true]]],
+    ]);
+
+    expect($r['exit'])->toBe(1)
+        ->and($r['output'])->toContain('[FAIL] authorizer_bound:')
+        ->and($r['output'])->toContain('[WARN] audit_writer:')
+        ->and($r['output'])->toContain('[SKIP] mcp_tools:')
+        ->and($r['output'])->toEndWith("Integration health: FAILED\n");
+});
+
+it('command switches to ai-chat mode from capabilities-ai config and reports the readiness class', function () {
+    $h = AdapterHelpers::harness();
+
+    $r = ArtisanCommandHarness::run(new IntegrationHealthCommand, [], [
+        Authorizer::class => $h['fakes']->authorizer,
+        CapabilityRegistry::class => $h['registry'],
+        IntegrationHealthChecker::AI_IDEMPOTENCY_READINESS => new stdClass,
+    ], [
+        'capabilities' => ['surfaces' => ['http' => ['enabled' => true]]],
+        'capabilities-ai' => ['routes' => ['enabled' => true]],
+    ]);
+
+    expect($r['output'])->toStartWith("Mode: ai-chat\n")
+        ->and($r['output'])->toContain('[OK] ai_always_ready: IdempotencyReadiness is stdClass')
+        ->and($r['output'])->toContain('[FAIL] ai_context_bound:')
+        ->and($r['exit'])->toBe(1);
+});
+
+it('command treats an unbound config repository as empty config (defaults, bus-only)', function () {
+    $r = ArtisanCommandHarness::run(new IntegrationHealthCommand);
+
+    expect($r['output'])->toStartWith("Mode: bus-only\n")
+        ->and($r['output'])->toContain('[FAIL] authorizer_bound:')
+        ->and($r['exit'])->toBe(1);
+});
+
+it('readiness class probe returns the resolved class, null when unbound or unresolvable', function () {
+    $invoke = static function (object $app): ?string {
+        $cmd = new IntegrationHealthCommand;
+        $ref = new ReflectionClass($cmd);
+        $ref->getProperty('laravel')->setValue($cmd, $app);
+
+        return $ref->getMethod('idempotencyReadinessClassCallback')->invoke($cmd)();
+    };
+    $abstract = IntegrationHealthChecker::AI_IDEMPOTENCY_READINESS;
+    $throwing = new class
+    {
+        public function bound(string $abstract): bool
+        {
+            return true;
+        }
+
+        public function make(string $abstract): mixed
+        {
+            throw new RuntimeException('unresolvable');
+        }
+    };
+
+    expect($invoke(ihCommandApp([$abstract => new stdClass])))->toBe(stdClass::class)
+        ->and($invoke(ihCommandApp([$abstract => 'not-an-object'])))->toBeNull()
+        ->and($invoke(ihCommandApp()))->toBeNull()
+        ->and($invoke($throwing))->toBeNull();
 });
