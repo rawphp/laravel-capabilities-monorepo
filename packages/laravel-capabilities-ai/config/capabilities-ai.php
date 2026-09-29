@@ -68,7 +68,11 @@ return [
              * retryable timeout. Raise timeout and claim_ttl together for very long replies.
              */
             'max_tokens' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS', 64000),
-            /** 429 retries per request (honours Retry-After, capped at 60s); 0 disables. */
+            /**
+             * 429 retries per request (honours Retry-After, capped at 60s); 0 disables. A retry is
+             * skipped when the wait plus one more `timeout` would not end before claim_ttl; the 429
+             * then fails the turn as retryable instead of the worker being killed mid-request.
+             */
             'max_retries' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_RETRIES', 2),
             /**
              * Per-request HTTP timeout in seconds (Laravel's client default is 30s, too short for

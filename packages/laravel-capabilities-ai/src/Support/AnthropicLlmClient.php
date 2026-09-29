@@ -12,6 +12,7 @@ use InvalidArgumentException;
 use Rawphp\Capabilities\Contracts\Metrics;
 use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
+use Rawphp\CapabilitiesAi\Package;
 use RuntimeException;
 use stdClass;
 use Throwable;
@@ -28,6 +29,9 @@ use Throwable;
  *
  * Rate limits: a 429 is retried up to $maxRetries times via Laravel's Http retry,
  * waiting Retry-After seconds (capped) or 1s, 2s, 4s… when the header is unusable.
+ * A retry is skipped when elapsed + wait + one more timeout would reach
+ * $deadlineSeconds (the turn job timeout); the 429 then surfaces as a
+ * RetryableLlmException carrying its Retry-After.
  */
 final class AnthropicLlmClient implements LlmClient
 {
@@ -55,6 +59,8 @@ final class AnthropicLlmClient implements LlmClient
         private readonly ?Tracer $tracer = null,
         private readonly int $maxRetries = 2,
         private readonly int $timeoutSeconds = self::DEFAULT_TIMEOUT_SECONDS,
+        /** Whole complete() call, 429 waits included, must end before this (claim_ttl). */
+        private readonly int $deadlineSeconds = Package::DEFAULT_CLAIM_TTL,
     ) {
         if ($this->timeoutSeconds <= 0) {
             throw new InvalidArgumentException('Anthropic timeout must be a positive number of seconds');
@@ -215,6 +221,7 @@ final class AnthropicLlmClient implements LlmClient
         $labels = ['provider' => 'anthropic', 'model' => $this->model];
         $spanId = $this->tracer?->startSpan(self::SPAN_COMPLETE, $labels);
         $started = hrtime(true);
+        $failedAttempts = 0;
 
         try {
             $response = Http::withHeaders([
@@ -224,7 +231,11 @@ final class AnthropicLlmClient implements LlmClient
             ])->timeout($this->timeoutSeconds)->retry(
                 max(0, $this->maxRetries) + 1,
                 fn (int $attempt, Throwable $e): int => $this->retryDelayMs($attempt, $e),
-                fn (Throwable $e): bool => $e instanceof RequestException && $e->response->status() === 429,
+                function (Throwable $e) use ($started, &$failedAttempts): bool {
+                    return $e instanceof RequestException
+                        && $e->response->status() === 429
+                        && $this->retryFitsDeadline($started, $this->retryDelayMs(++$failedAttempts, $e));
+                },
                 throw: false,
             )->post(rtrim($this->baseUrl, '/').'/v1/messages', $payload);
         } catch (Throwable $e) {
@@ -276,6 +287,15 @@ final class AnthropicLlmClient implements LlmClient
     private static function elapsedMs(int $started): float
     {
         return (hrtime(true) - $started) / 1e6;
+    }
+
+    /**
+     * True when waiting $delayMs and then one more full-timeout request still ends
+     * before the deadline, so the worker is not killed mid-request.
+     */
+    private function retryFitsDeadline(int $started, int $delayMs): bool
+    {
+        return self::elapsedMs($started) + $delayMs + $this->timeoutSeconds * 1000 < $this->deadlineSeconds * 1000;
     }
 
     /**
