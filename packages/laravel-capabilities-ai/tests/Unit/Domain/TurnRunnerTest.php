@@ -1335,3 +1335,40 @@ it('fails the claimed turn when its conversation row is gone', function () {
     expect(turnStore()->turn($turnUlid)->status)->toBe(Turn::STATUS_FAILED)
         ->and(array_column($progress->since($turnUlid), 'kind'))->toBe(['status', 'error', 'terminal']);
 });
+
+it('fails the turn when max_tool_rounds is reached without a final reply (D-013)', function () {
+    $seeded = enqueueTurnWithUser('use tool');
+    [$context, $tools] = usageContextAndTools();
+    $progress = new ArrayProgressStore;
+    $bus = recordingBus();
+    // Every round asks for another tool call: the model never produces a reply.
+    $llm = new FakeLlmClient([['tool_calls' => [['name' => 'demo.tool', 'arguments' => []]]]]);
+    $runner = new TurnRunner(
+        claim: turnClaim(),
+        store: turnStore(),
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        bus: $bus,
+        progress: $progress,
+        maxToolRounds: 2,
+        actors: turnActors(),
+    );
+
+    expect(fn () => $runner->run($seeded['turn_ulid']))
+        ->toThrow(RuntimeException::class, 'max_tool_rounds (2) reached without a final reply');
+
+    $turn = turnStore()->turn($seeded['turn_ulid']);
+    $events = $progress->since($seeded['turn_ulid'], 0);
+    $errors = array_values(array_filter($events, static fn (array $ev): bool => $ev['kind'] === 'error'));
+    $terminal = array_values(array_filter($events, static fn (array $ev): bool => $ev['kind'] === 'terminal'));
+    expect($llm->callCount)->toBe(2)
+        ->and($bus->invokes)->toBe(2)
+        ->and($turn->status)->toBe(Turn::STATUS_FAILED)
+        ->and($turn->error)->toBe('max_tool_rounds (2) reached without a final reply')
+        ->and($turn->usage)->toHaveCount(2)
+        ->and($errors)->toHaveCount(1)
+        ->and($errors[0]['data'])->toBe(['message' => 'max_tool_rounds (2) reached without a final reply', 'retryable' => false])
+        ->and($terminal)->toHaveCount(1)
+        ->and($terminal[0]['data']['status'])->toBe(Turn::STATUS_FAILED);
+});

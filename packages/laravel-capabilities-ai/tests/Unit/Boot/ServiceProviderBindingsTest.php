@@ -8,7 +8,9 @@ declare(strict_types=1);
  */
 
 use Illuminate\Container\Container;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Http;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
@@ -35,6 +37,7 @@ use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnRateLimitedException;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
+use Rawphp\CapabilitiesAi\Http\ChatController;
 use Rawphp\CapabilitiesAi\Support\AnthropicLlmClient;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\EloquentConversationStore;
@@ -185,6 +188,50 @@ it('wires a container-bound core RateLimiter into ConversationService (D-013 tur
 
     expect(fn () => $service->createUserMessage('hi', userId: 'u1'))
         ->toThrow(TurnRateLimitedException::class);
+});
+
+it('resolves ChatController with max_message_chars from config', function () {
+    $app = bootAiProviderContainer(['max_message_chars' => 3]);
+    $request = Request::create('/messages', 'POST', ['content' => 'four']);
+    $request->setUserResolver(static fn () => new class implements Authenticatable
+    {
+        public function getAuthIdentifierName(): string
+        {
+            return 'id';
+        }
+
+        public function getAuthIdentifier(): mixed
+        {
+            return 'u1';
+        }
+
+        public function getAuthPasswordName(): string
+        {
+            return 'password';
+        }
+
+        public function getAuthPassword(): string
+        {
+            return '';
+        }
+
+        public function getRememberToken(): string
+        {
+            return '';
+        }
+
+        public function setRememberToken($value): void {}
+
+        public function getRememberTokenName(): string
+        {
+            return '';
+        }
+    });
+
+    $response = $app->make(ChatController::class)->storeMessage($request, $app->make(ConversationService::class));
+
+    expect($response->getStatusCode())->toBe(422)
+        ->and($response->getData(true)['error']['violations'][0]['message'])->toContain('3 characters');
 });
 
 it('resolves ProposalService with CapabilityBus', function () {

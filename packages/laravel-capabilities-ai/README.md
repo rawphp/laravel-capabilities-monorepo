@@ -58,10 +58,10 @@ Key defaults (`config/capabilities-ai.php`):
 | `progress.ttl_seconds` | `86400` (`CAPABILITIES_AI_PROGRESS_TTL`) — Redis progress key lifetime after a turn's last event |
 | `llm.driver` | `fake` (set `CAPABILITIES_AI_LLM_DRIVER=anthropic` or bind `LlmClient` for production) — `fake` outside testing throws unless `CAPABILITIES_AI_ALLOW_UNSAFE=1` |
 | `llm.anthropic.model` | `claude-sonnet-4-6` (`CAPABILITIES_AI_ANTHROPIC_MODEL`) |
-| `llm.anthropic.max_tokens` | `64000` (`CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS`) |
+| `llm.anthropic.max_tokens` | `64000` (`CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS`) — a ceiling, not a target. Requests are non-streaming, so a turn only gets what the model writes within `llm.anthropic.timeout`; a reply that needs longer fails the turn as a retryable timeout. For very long replies raise `timeout` and `claim_ttl` together |
 | `llm.anthropic.max_retries` | `2` (`CAPABILITIES_AI_ANTHROPIC_MAX_RETRIES`) — Anthropic 429 retries per request; waits `Retry-After` seconds (capped at 60) or 1s, 2s, 4s…; `0` disables |
 | `user_model` | null → falls back to `auth.providers.users.model` (`CAPABILITIES_AI_USER_MODEL`) |
-| `llm.anthropic.timeout` | `110` (`CAPABILITIES_AI_ANTHROPIC_TIMEOUT`) — seconds per Anthropic request (Laravel's HTTP default is 30s). Keep it below `claim_ttl`; a turn with several tool rounds makes several requests inside one job timeout, so raise `claim_ttl` for long multi-round turns |
+| `llm.anthropic.timeout` | `110` (`CAPABILITIES_AI_ANTHROPIC_TIMEOUT`) — seconds per Anthropic request (Laravel's HTTP default is 30s). Must be below `claim_ttl`, or the anthropic `LlmClient` refuses to build (`InvalidArgumentException`); a turn with several tool rounds makes several requests inside one job timeout, so raise `claim_ttl` for long multi-round turns |
 | `claim_ttl` | **`120`** (seconds; worker heartbeat / job timeout window) |
 | `queue.connection` | null (`CAPABILITIES_AI_QUEUE_CONNECTION`) — applied to default `RunTurnJob` dispatch when set |
 | `queue.name` | null (`CAPABILITIES_AI_QUEUE_NAME`) — applied to default dispatch; also marks **AI-chat** for core `capabilities:integration-health` when non-empty |
@@ -71,7 +71,8 @@ Key defaults (`config/capabilities-ai.php`):
 | `allow_unsafe` | `false` (`CAPABILITIES_AI_ALLOW_UNSAFE`) — local demos only |
 | `turns_per_minute` | `20` (`CAPABILITIES_AI_TURNS_PER_MINUTE`) — D-013 per-user message (turn) budget via core `RateLimiter`; over it, message create returns **429** `rate_limited` and persists/dispatches nothing; `0` disables |
 | `max_concurrent_turns` | `0` = unlimited (`CAPABILITIES_AI_MAX_CONCURRENT_TURNS`) — at the ceiling of queued + running turns, message create returns **429** `rate_limited` (D-018 envelope, `retryable: true`) and persists/dispatches nothing |
-| `max_tool_rounds` | `8` |
+| `max_message_chars` | `32000` (`CAPABILITIES_AI_MAX_MESSAGE_CHARS`) — longest accepted chat message `content` in characters; longer → **422** `validation_failed`, nothing persisted or dispatched; `0` = no cap |
+| `max_tool_rounds` | `8` (`CAPABILITIES_AI_MAX_TOOL_ROUNDS`) — LLM rounds per turn; a turn still asking for tools after the last round **fails** (`max_tool_rounds (N) reached without a final reply`, `retryable: false`) |
 | `routes.enabled` | `false` |
 
 Progress events live in array/Redis — **not** MySQL product tables.

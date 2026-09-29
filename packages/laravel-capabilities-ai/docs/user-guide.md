@@ -21,6 +21,10 @@ If you already ran package migrations **before** `last_error` was added to the c
 
 The ALTER is idempotent (no-op if the column already exists). Greenfield installs get `last_error` from the create migration alone.
 
+### Upgrade: messages `content` is `longText`
+
+`2026_09_30_000001_widen_capabilities_ai_messages_content` changes `capabilities_ai_messages.content` from `text` to `longText`. On MySQL, `TEXT` holds 65,535 bytes (about 16k tokens), so a longer assistant reply failed the insert after the model call and its tool invokes had run. Run **`php artisan migrate`**; the migration skips when the table or column is missing.
+
 ## Host bindings
 
 - `ConversationContextProvider` — messages for the model (`content` may be a **string** or a **list of provider content blocks** for multimodal / vision; hosts hydrate attachment bytes — this package does not store or fetch files)
@@ -168,7 +172,7 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 | **cancelTurn** | Always **200** cancelled stub | Real cancel; missing → **HTTP 404**; conflict (not cancellable) → **HTTP 409** `conflict` |
 | **turnEvents** | Empty events | Real progress events; query `cursor` (default **0**); JSON body `{turn_ulid, events}`; missing turn → **HTTP 404** |
 | **destroyConversation** | Always **200** deleted stub | Real destroy; missing → **HTTP 404**; conflict (e.g. active turns) → **HTTP 409** `conflict` |
-| **storeMessage** | Any body accepted; unknown `conversation_ulid` → **500** | `content` must be a non-empty string and `conversation_ulid` (optional) a 26-char uppercase ULID, else **HTTP 422** `validation_failed` (field errors in `error.violations`) with no rows or turn job; well-formed but unknown `conversation_ulid` → **HTTP 404** `not_found` |
+| **storeMessage** | Any body accepted; unknown `conversation_ulid` → **500** | `content` must be a non-empty string of at most `max_message_chars` characters (default 32000) and `conversation_ulid` (optional) a 26-char uppercase ULID, else **HTTP 422** `validation_failed` (field errors in `error.violations`) with no rows or turn job; well-formed but unknown `conversation_ulid` → **HTTP 404** `not_found` |
 
 **Status mapping (controller):**
 
