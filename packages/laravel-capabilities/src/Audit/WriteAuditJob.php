@@ -15,14 +15,17 @@ final class WriteAuditJob
     public function __construct(
         private readonly AuditOutbox $outbox,
         private readonly AuditWriter $writer,
+        private readonly int $maxAttempts = 3,
     ) {}
 
     /**
-     * Process pending outbox rows. Returns number of successfully written entries.
+     * Requeue failed rows under the attempts cap, then process pending outbox rows.
+     * Returns number of successfully written entries.
      */
     public function handle(?int $limit = null): int
     {
         $written = 0;
+        $this->outbox->requeueFailed($this->maxAttempts);
         $pending = $this->outbox->pending();
         if ($limit !== null) {
             $pending = array_slice($pending, 0, max(0, $limit));

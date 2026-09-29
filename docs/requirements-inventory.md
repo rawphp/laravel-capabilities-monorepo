@@ -7,14 +7,14 @@ When implemented, the tests are the source of truth for what the product is and 
 
 Policy: **unit tests only**, no DB, mocks/fakes, **≥95% coverage** when implemented (`AGENTS.md`).
 
-**Cases: 5010 total — 5010 implemented, 0 remaining**
+**Cases: 5000 total — 5000 implemented, 0 remaining**
 
 - happy: 2029
 - fail: 1737
 - edge: 977
-- go: 267
+- go: 257
 
-Regenerate scaffold (safe — does not wipe implemented tests), then sync status:
+Regenerate scaffold (safe — does not wipe implemented tests):
 
 ```bash
 python3 tools/generate_requirement_stubs.py
@@ -5459,11 +5459,11 @@ Extend the catalog in the generator and re-run; do not hand-edit pure stubs.
 ### `cmd/capabilities/main_test.go` (7)
 
 - [x] TestBinarynameiscapabilities [D-016]
-- [x] TestHelplistsauthcatalogrunmcpapprovals [D-016]
+- [x] TestHelplistsauthcatalogrunapprovals [D-016]
 - [x] TestBinaryisnotartisan [D-016]
 - [x] TestHelpdocumentsexitcodes [D-016]
 - [x] TestHelpdocumentsjsonflag [D-016]
-- [x] TestRootcommandrequiressubcommand [D-016]
+- [x] TestRootWithoutArgsPrintsHelpOK [D-016]
 - [x] TestVersioncommandexists [D-016]
 
 ### `internal/api/api_test.go` (12)
@@ -5508,14 +5508,12 @@ Extend the catalog in the generator and re-run; do not hand-edit pure stubs.
 - [x] TestCatalogjsonoutputenvelope [CLI-CAT]
 - [x] TestSunsetcapabilitywarnedorblocked [CLI-CAT]
 
-### `internal/mcpstdio/mcpstdio_test.go` (6) — **removed** (ORI-791; CLI MCP stdio hard-removed; historical inventory only)
+### `cmd/capabilities/mcp_removed_test.go` (4)
 
-- [x] ~~TestMcpstdioproxiestoremotehttpwithstoredtoken~~ [CLI-MCP] — removed with package
-- [x] ~~TestMcpstdionolocaldomainrun~~ [CLI-MCP] — removed with package
-- [x] ~~TestMcpstdiousessameauthascli~~ [CLI-MCP] — removed with package
-- [x] ~~TestMcpstdiodoesnotbypassserverauthorization~~ [CLI-MCP] — removed with package
-- [x] ~~TestMcpstdioprofiletoolscomefromserver~~ [CLI-MCP] — removed with package
-- [x] ~~TestMcpstdioforwardsidempotencykeys~~ [CLI-MCP] — removed with package
+- [x] TestMcpIsNotARunnableCommand [D-016]
+- [x] TestMcpHelpIsNotWorkingStdioBridge [D-016]
+- [x] TestRootHelpDoesNotListWorkingMcpStdio [D-016]
+- [x] TestMcpUnauthenticatedAlsoNonZero [D-016]
 
 ### `internal/run/run_test.go` (24)
 
@@ -5587,7 +5585,7 @@ Extend the catalog in the generator and re-run; do not hand-edit pure stubs.
 - [x] TestRunwithoutauthfails [CLI-AUTH]
 - [x] TestCatalogwithoutauthfails [CLI-AUTH]
 - [x] TestDescribewithoutauthfails [CLI-AUTH]
-- [x] TestMcpwithoutauthfails [CLI-AUTH]
+- [x] TestMcpwithoutauthNotCommandGuard [CLI-AUTH]
 - [x] TestLogoutidempotentwhenalreadyloggedout [CLI-AUTH]
 - [x] TestStatusshowsloggedout [CLI-AUTH]
 - [x] TestStatusshowsloggedin [CLI-AUTH]
@@ -5608,7 +5606,7 @@ Extend the catalog in the generator and re-run; do not hand-edit pure stubs.
 - [x] TestHelpcatalog [D-016]
 - [x] TestHelpdescribe [D-016]
 - [x] TestHelprun [D-016]
-- [x] TestHelpmcp [D-016]
+- [x] TestHelpmcpNotStdioBridge [D-016]
 - [x] TestHelpapprovals [D-016]
 - [x] TestHelpexitcodestable [D-016]
 - [x] TestHelpexamplesdonotshowdomainlogic [D-016]
@@ -5627,12 +5625,12 @@ Extend the catalog in the generator and re-run; do not hand-edit pure stubs.
 - [x] TestCommandhelpDescribe [D-016]
 - [x] TestCommandexistsRun [D-016]
 - [x] TestCommandhelpRun [D-016]
-- [x] TestCommandexistsMcp [D-016]
-- [x] TestCommandhelpMcp [D-016]
 - [x] TestCommandexistsVersion [D-016]
 - [x] TestCommandhelpVersion [D-016]
 - [x] TestCommandexistsHelp [D-016]
 - [x] TestCommandhelpHelp [D-016]
+- [x] TestCommandexistsMcpFalse [D-016]
+- [x] TestCommandhelpMcpNotStdioBridge [D-016]
 
 ### `internal/run/exitcodes_test.go` (21)
 
@@ -5688,16 +5686,6 @@ Extend the catalog in the generator and re-run; do not hand-edit pure stubs.
 - [x] TestNomultilanguageclimatrixinv02 [D-016]
 - [x] TestProductclinotartisan [D-016]
 
-### `internal/mcpstdio/security_test.go` (7) — **removed** (ORI-791; CLI MCP stdio hard-removed; historical inventory only)
-
-- [x] ~~TestNolocalauthorize~~ [CLI-MCP] — removed with package
-- [x] ~~TestNolocalrun~~ [CLI-MCP] — removed with package
-- [x] ~~TestUsesstoredtokenonly~~ [CLI-MCP] — removed with package
-- [x] ~~TestDoesnotaccepthostinjectedactor~~ [CLI-MCP] — removed with package
-- [x] ~~TestDoesnotbypassserverprofile~~ [CLI-MCP] — removed with package
-- [x] ~~TestPropagatesservererrors~~ [CLI-MCP] — removed with package
-- [x] ~~TestPropagatesapprovalrequired~~ [CLI-MCP] — removed with package
-
 ### `internal/run/failure_chain_test.go` (12)
 
 - [x] TestFaillocalschema [CLI-RUN]
@@ -5713,7 +5701,7 @@ Extend the catalog in the generator and re-run; do not hand-edit pure stubs.
 - [x] TestFailoutputinvalid [CLI-RUN]
 - [x] TestFaildomain [CLI-RUN]
 
-### `internal/auth/command_guards_test.go` (10)
+### `internal/auth/command_guards_test.go` (9)
 
 - [x] TestRunrequiresauth [CLI-AUTH]
 - [x] TestRunfailswithexit3whennotoken [CLI-AUTH]
@@ -5721,10 +5709,9 @@ Extend the catalog in the generator and re-run; do not hand-edit pure stubs.
 - [x] TestCatalogfailswithexit3whennotoken [CLI-AUTH]
 - [x] TestDescriberequiresauth [CLI-AUTH]
 - [x] TestDescribefailswithexit3whennotoken [CLI-AUTH]
-- [x] TestMcprequiresauth [CLI-AUTH]
-- [x] TestMcpfailswithexit3whennotoken [CLI-AUTH]
 - [x] TestApprovalsrequiresauth [CLI-AUTH]
 - [x] TestApprovalsfailswithexit3whennotoken [CLI-AUTH]
+- [x] TestMcpDoesNotRequireAuthAsCommand [CLI-AUTH]
 
 ### `internal/catalog/cache_test.go` (10)
 

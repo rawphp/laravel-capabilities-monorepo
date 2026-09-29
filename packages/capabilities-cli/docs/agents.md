@@ -78,7 +78,7 @@ The token **`mcp` is reserved forever** (cannot be a synthesis domain) but is
 | **3** | Unauthenticated / forbidden | Re-auth or wrong profile / host |
 | **4** | `approval_required` | Surface to human; `approvals accept/reject` |
 | **5** | Domain error / conflict / not_found / output_invalid | Read envelope on **stdout**; do not invent alternate paths |
-| **6** | Rate limited | Back off and retry |
+| **6** | Rate limited | Back off and retry. When the server sent `Retry-After`, stdout `error.retry_after` holds the wait in seconds; otherwise pick your own backoff |
 
 **Help/usage (exit 0):** bare `capabilities`, `capabilities help …`, `… --help`, bare `approvals`.  
 **Not help (exit 2):** `approvals accept` / `reject` without `<id>`; invalid flags / local schema failures (type, required, structure, **and** string formats).

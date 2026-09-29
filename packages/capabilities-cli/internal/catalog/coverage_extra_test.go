@@ -5,46 +5,57 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/rawphp/capabilities-cli/internal/api"
 )
 
-func TestListAlternateShapes(t *testing.T) {
-	// data as array
+func TestListRejectsNonEnvelopeShapes(t *testing.T) {
+	// The server only sends {"ok":true,"data":{"capabilities":[...]}}; anything else is a parse error,
+	// including rows that would previously have been salvaged as name-only summaries.
+	cases := map[string]string{
+		"data as array":       `{"ok":true,"data":[{"name":"a"}]}`,
+		"bare array":          `[{"name":"b"}]`,
+		"missing key":         `{"ok":true,"data":{"nope":1}}`,
+		"null capabilities":   `{"ok":true,"data":{"capabilities":null}}`,
+		"mistyped row fields": `{"ok":true,"data":{"capabilities":[{"name":"c","aliases":"x"}]}}`,
+		"not json":            `nope`,
+	}
+	for label, body := range cases {
+		body := body
+		t.Run(label, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(body))
+			}))
+			t.Cleanup(srv.Close)
+			c := api.NewClient(srv.URL, "t")
+			c.HTTP = srv.Client()
+			list, res, err := (&Service{Client: c}).List(context.Background())
+			if err == nil {
+				t.Fatalf("expected shape error, got %v", list)
+			}
+			if res == nil {
+				t.Fatal("expected response alongside parse error")
+			}
+			if !strings.Contains(err.Error(), "unexpected catalog list shape") {
+				t.Fatalf("unclear error: %v", err)
+			}
+		})
+	}
+}
+
+func TestListEmptyEnvelopeIsEmptyList(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"ok":true,"data":[{"name":"a"}]}`))
+		w.Write([]byte(`{"ok":true,"data":{"capabilities":[],"schema_version":"","etag":"e"}}`))
 	}))
 	t.Cleanup(srv.Close)
 	c := api.NewClient(srv.URL, "t")
 	c.HTTP = srv.Client()
 	list, _, err := (&Service{Client: c}).List(context.Background())
-	if err != nil || len(list) != 1 {
+	if err != nil || list == nil || len(list) != 0 {
 		t.Fatal(err, list)
-	}
-
-	// bare array
-	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[{"name":"b"}]`))
-	}))
-	t.Cleanup(srv2.Close)
-	c2 := api.NewClient(srv2.URL, "t")
-	c2.HTTP = srv2.Client()
-	list, _, err = (&Service{Client: c2}).List(context.Background())
-	if err != nil || list[0].Name != "b" {
-		t.Fatal(err, list)
-	}
-
-	// bad shape
-	srv3 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"ok":true,"data":{"nope":1}}`))
-	}))
-	t.Cleanup(srv3.Close)
-	c3 := api.NewClient(srv3.URL, "t")
-	c3.HTTP = srv3.Client()
-	if _, _, err := (&Service{Client: c3}).List(context.Background()); err == nil {
-		t.Fatal("expected shape error")
 	}
 }
 

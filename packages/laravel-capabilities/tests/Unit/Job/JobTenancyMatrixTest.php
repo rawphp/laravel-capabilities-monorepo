@@ -23,6 +23,7 @@ it('edge: job dispatch resolves scope when actor=user tenant=present globalSyste
         'input' => H::homeInput(),
         'actingAs' => 7,
         'tenantId' => 'tenant-a',
+        'user_resolver' => fn ($id) => H::user($id, 'tenant-a'),
         'tenancy_required' => true,
         'globalSystem' => true,
     ];
@@ -52,6 +53,7 @@ it('edge: job dispatch resolves scope when actor=user tenant=present globalSyste
         'input' => H::homeInput(),
         'actingAs' => 7,
         'tenantId' => 'tenant-a',
+        'user_resolver' => fn ($id) => H::user($id, 'tenant-a'),
         'tenancy_required' => false,
         'globalSystem' => true,
     ];
@@ -81,6 +83,7 @@ it('edge: job dispatch resolves scope when actor=user tenant=present globalSyste
         'input' => H::homeInput(),
         'actingAs' => 7,
         'tenantId' => 'tenant-a',
+        'user_resolver' => fn ($id) => H::user($id, 'tenant-a'),
         'tenancy_required' => true,
         'globalSystem' => false,
     ];
@@ -110,6 +113,7 @@ it('edge: job dispatch resolves scope when actor=user tenant=present globalSyste
         'input' => H::homeInput(),
         'actingAs' => 7,
         'tenantId' => 'tenant-a',
+        'user_resolver' => fn ($id) => H::user($id, 'tenant-a'),
         'tenancy_required' => false,
         'globalSystem' => false,
     ];
@@ -139,6 +143,7 @@ it('edge: job dispatch scope from user membership when actor=user tenant=absent 
         'input' => H::homeInput(),
         'actingAs' => 7,
         'tenantId' => null,
+        'user_resolver' => fn ($id) => H::user($id, null),
         'tenancy_required' => true,
         'globalSystem' => true,
     ];
@@ -168,6 +173,7 @@ it('edge: job dispatch scope from user membership when actor=user tenant=absent 
         'input' => H::homeInput(),
         'actingAs' => 7,
         'tenantId' => null,
+        'user_resolver' => fn ($id) => H::user($id, null),
         'tenancy_required' => false,
         'globalSystem' => true,
     ];
@@ -197,6 +203,7 @@ it('edge: job dispatch scope from user membership when actor=user tenant=absent 
         'input' => H::homeInput(),
         'actingAs' => 7,
         'tenantId' => null,
+        'user_resolver' => fn ($id) => H::user($id, null),
         'tenancy_required' => true,
         'globalSystem' => false,
     ];
@@ -226,6 +233,7 @@ it('edge: job dispatch scope from user membership when actor=user tenant=absent 
         'input' => H::homeInput(),
         'actingAs' => 7,
         'tenantId' => null,
+        'user_resolver' => fn ($id) => H::user($id, null),
         'tenancy_required' => false,
         'globalSystem' => false,
     ];
