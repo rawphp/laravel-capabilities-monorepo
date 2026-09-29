@@ -48,6 +48,12 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
+- **HTTP redirects are never followed** — against a `--base-url` that 301s
+  (e.g. `http://` to an HTTPS-only host), Go replayed the `run` POST as a GET,
+  which hit the describe route and returned an ok envelope: the CLI exited
+  **0** without running the capability, and `auth login --token` stored the
+  redirecting URL. Any 3xx from the capability API is now an `internal` error
+  (exit **1**) naming the redirect target; login stores nothing.
 - **Capability help advertises the flags invoke accepts** — help derived flag
   names and pass modes with its own rules, so it showed `--amount-cents` for a
   camelCase `amountCents` property (invoke only accepts `--amountCents`) and

@@ -48,7 +48,9 @@ capabilities auth status [--profile=NAME]
 | `--base-url` + `--code` | OAuth authorization-code exchange against the API |
 | `--base-url` only | Device-code login against the API (see below) |
 
-`login` **requires** `--base-url`. Successful login best-effort prefetches the
+`login` **requires** `--base-url`. The CLI never follows HTTP redirects: a
+3xx (for example `http://` redirected to `https://`) fails login with the
+redirect target in the message, so pass the final URL. Successful login best-effort prefetches the
 catalog into that profile’s schema cache.
 
 ### Device-code login

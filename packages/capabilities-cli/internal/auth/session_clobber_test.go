@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -267,5 +268,32 @@ func TestDeviceLoginExpiresBeforeFirstPollWhenWindowIsShorterThanInterval(t *tes
 	}
 	if len(d.pollBodies) != 0 {
 		t.Fatal("polled although the code expires before the first interval")
+	}
+}
+
+// An http:// base URL that 301s to https must not verify: the redirect is not
+// followed, so login fails and the redirecting URL is never stored.
+func TestLoginWithTokenRejectsRedirectingBaseURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/secure"+api.PathCapabilities {
+			w.Write([]byte(`{"ok":true,"data":{"capabilities":[]}}`))
+			return
+		}
+		http.Redirect(w, r, "/secure"+r.URL.Path, http.StatusMovedPermanently)
+	}))
+	t.Cleanup(srv.Close)
+	c := api.NewClient(srv.URL, "")
+	c.HTTP = srv.Client()
+	st := tempStore(t)
+	_, err := LoginWithToken(context.Background(), st, c, "default", srv.URL, "tok")
+	var se *api.StructuredError
+	if !errors.As(err, &se) || se.HTTPStatus != http.StatusMovedPermanently || !strings.Contains(se.Message, "/secure/capabilities") {
+		t.Fatalf("expected redirect error, got %v", err)
+	}
+	if _, err := st.GetBaseURL("default"); err == nil {
+		t.Fatal("redirecting base URL stored")
+	}
+	if st.HasToken("default") {
+		t.Fatal("token stored after redirect")
 	}
 }
