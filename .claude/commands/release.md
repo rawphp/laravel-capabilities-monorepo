@@ -7,7 +7,7 @@ argument-hint: "[patch|minor|major|vX.Y.Z] [--dry-run] [--squash] [-m MSG] [--ye
 
 Create a release for the **laravel-capabilities monorepo**.
 
-**Ship path:** promote package CHANGELOGs (commit + push) → local gates → optional `--squash` (clean commit + force-with-lease branch) → annotated `v*` tag → `git push` tag → GitHub Actions `split-packages.yml` mirrors `packages/*` to public remotes and the CLI GoReleaser path builds GitHub Release binaries.
+**Ship path:** promote package CHANGELOGs (commit + push) → local gates → optional `--squash` (fold unpushed commits into one, fast-forward push) → annotated `v*` tag → `git push` tag → GitHub Actions `split-packages.yml` mirrors `packages/*` to public remotes and the CLI GoReleaser path builds GitHub Release binaries.
 
 **Sole gate implementation:** `scripts/release.sh` is the only executable source of truth for quality gates, versioning, squash, tag, and push. This command only orchestrates UX (confirm with the user, pass an explicit bump, invoke the script, report). Do not re-run gates by hand and do not invent a second gate recipe.
 
@@ -23,7 +23,7 @@ Parse `$ARGUMENTS` (may be empty). Tokens map to `scripts/release.sh` flags:
 | `--skip-php` | Skip PHP gates (Pint, PHPStan, Pest) — **only with `--dry-run`** |
 | `--skip-cli` | Skip CLI gates — **only with `--dry-run`** |
 | `--yes` | Non-interactive after you have already confirmed with the user |
-| `--squash` | Soft-reset BASE..HEAD into **one clean commit**, then `git push --force-with-lease` the branch, then gates/tag. BASE = latest `v*` tag reachable from HEAD (a hotfix tag cut off `main` is skipped), or `origin/<branch>` when none is. Rewrites branch history — only use when intended. |
+| `--squash` | Fold the commits **not yet on origin** (`origin/<branch>..HEAD`, e.g. the CHANGELOG promotion commit) into one clean commit, `git push` the branch (fast-forward), then gates/tag. Refuses when nothing is unpushed: history already on origin is never rewritten. |
 | `-m` / `--message MSG` | Squash commit message (requires `--squash`). Default: `Release <tag>`. |
 
 ### Version policy (explicit bump only)
@@ -38,12 +38,11 @@ State the chosen version (and that it was explicit or script-default patch) in o
 
 ## Hard rules
 
-1. **Never** use `git push --force` (script uses `--force-with-lease` only with `--squash`). Never delete remote tags.
+1. **Never** force-push (the script never does). Never delete remote tags.
 2. **Never** skip failing quality gates. Fix or abort — gates are whatever `scripts/release.sh` runs.
 3. **Never** create a tag on a dirty working tree.
 4. **Never** release from a branch other than `main` or `master`.
-5. Side effects (tag + push, or squash rewrite) need **explicit user confirmation** in this turn unless they already said e.g. "release patch now" / "ship it" / passed `--yes` after agreeing.
-6. Prefer **`--squash -m "…"`** when history since the last tag (or unpushed stack) is noisy merge/wip commits — one clean release commit.
+5. Side effects (tag + push, or squash + branch push) need **explicit user confirmation** in this turn unless they already said e.g. "release patch now" / "ship it" / passed `--yes` after agreeing.
 
 ## Procedure
 
@@ -68,9 +67,9 @@ Tell the user:
 
 - latest tag (or "none — first release")
 - proposed new tag
-- gates: whatever `./scripts/release.sh --help` lists (Pint, PHPStan, Pest, Go) — do not restate them from memory
+- gates: the "Quality gates" block of `./scripts/release.sh --help` — do not restate them from memory
 - that the tag push triggers **package split** + **CLI GitHub Release** (not Forge)
-- whether `--squash` will rewrite history
+- whether `--squash` will fold unpushed commits (and how many)
 
 If they have not already approved shipping, ask once and wait.
 
@@ -95,11 +94,11 @@ Always invoke the in-repo script:
 ./scripts/release.sh --dry-run [patch|minor|major|vX.Y.Z]
 # optional dry-run-only: --skip-php --skip-cli
 
-# After confirmation — first cut example:
-./scripts/release.sh --yes --squash -m "Pre-stable monorepo: core bus, messaging, CLI" v0.1.0
+# After confirmation — CHANGELOG promotion already pushed:
+./scripts/release.sh --yes patch
 
-# Subsequent patch:
-./scripts/release.sh --yes --squash patch
+# Or fold the unpushed promotion commit(s) into one release commit:
+./scripts/release.sh --yes --squash -m "Release v0.6.0" minor
 ```
 
 ### 5. Report
