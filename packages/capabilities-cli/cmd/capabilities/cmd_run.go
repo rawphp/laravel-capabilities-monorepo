@@ -38,7 +38,7 @@ func cmdDescribe(env Env, args []string) int {
 		fmt.Fprintln(env.Stderr, err.Error())
 		return api.ExitAuth
 	}
-	svc := &catalog.Service{Client: c, Cache: catalog.NewCache(st.SchemaCacheDir(profile)), NoCache: noCache}
+	svc := &catalog.Service{Client: c, Cache: catalog.PrincipalCache(st.SchemaCacheDir(profile), c), NoCache: noCache}
 	entry, _, err := svc.Describe(context.Background(), name)
 	if err != nil {
 		if se, ok := err.(*api.StructuredError); ok {
@@ -141,7 +141,7 @@ func invokeCapability(
 		fmt.Fprintln(env.Stderr, err.Error())
 		return api.ExitAuth
 	}
-	svc := &catalog.Service{Client: c, Cache: catalog.NewCache(st.SchemaCacheDir(profile)), NoCache: noCache}
+	svc := &catalog.Service{Client: c, Cache: catalog.PrincipalCache(st.SchemaCacheDir(profile), c), NoCache: noCache}
 
 	// Load schema for flag merge (cache / describe).
 	var schemaJSON []byte
@@ -179,12 +179,7 @@ func invokeCapability(
 		return api.ExitValidation
 	}
 
-	// Bare --retry-last sends no input so run restores the previous body.
-	var merged []byte
-	var merr error
-	if !retryLast || baseJSON != nil || len(flagMap) > 0 {
-		merged, merr = fs.MergeJSON(baseJSON, flagMap)
-	}
+	merged, merr := fs.MergeJSON(baseJSON, flagMap)
 	if merr != nil {
 		fmt.Fprintln(env.Stderr, merr.Error())
 		// Point agents at help for required / usage errors.
@@ -192,6 +187,10 @@ func invokeCapability(
 			fmt.Fprintln(env.Stderr, "hint: capabilities run", name, "--help")
 		}
 		return api.ExitValidation
+	}
+	// No fresh input on --retry-last: let Run replay the stored body.
+	if retryLast && len(baseJSON) == 0 && len(flagMap) == 0 {
+		merged = nil
 	}
 
 	opts := run.Options{

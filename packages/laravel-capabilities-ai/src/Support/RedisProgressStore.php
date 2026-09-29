@@ -28,14 +28,13 @@ final class RedisProgressStore implements ProgressStore
             throw new \InvalidArgumentException('Progress event requires kind');
         }
 
+        // No index in the payload: rPush is atomic, so an event's list position
+        // is its index. Counting first would let concurrent appends collide.
         $key = $this->keyPrefix.$turnUlid;
-        $existing = $this->lRange($key);
-        $index = count($existing);
         $payload = json_encode([
             'kind' => $kind,
             'data' => $event['data'] ?? null,
             'at' => $event['at'] ?? gmdate('c'),
-            'index' => $index,
         ], JSON_THROW_ON_ERROR);
 
         if (method_exists($this->redis, 'rPush')) {
@@ -55,12 +54,13 @@ final class RedisProgressStore implements ProgressStore
         $key = $this->keyPrefix.$turnUlid;
         $rows = $this->lRange($key);
         $out = [];
-        foreach ($rows as $raw) {
-            /** @var array{kind: string, data?: mixed, at?: string, index: int} $decoded */
-            $decoded = json_decode((string) $raw, true, 512, JSON_THROW_ON_ERROR);
-            if (($decoded['index'] ?? 0) >= $cursor) {
-                $out[] = $decoded;
+        foreach ($rows as $index => $raw) {
+            if ($index < $cursor) {
+                continue;
             }
+            /** @var array{kind: string, data?: mixed, at?: string} $decoded */
+            $decoded = json_decode((string) $raw, true, 512, JSON_THROW_ON_ERROR);
+            $out[] = [...$decoded, 'index' => $index];
         }
 
         return $out;

@@ -74,7 +74,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 }
             }
 
-            return new PeerVersionProbe(supportedVersions: $support);
+            return PeerVersionProbe::fromComposer(supportedVersions: $support);
         });
 
         $this->app->singleton(Metrics::class, function ($app) {
@@ -195,6 +195,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 $clients,
                 $http,
                 new HttpAuthGate(['health_public' => (bool) ($http['health_public'] ?? false)]),
+                $app->make(Metrics::class),
             );
         });
 
@@ -418,6 +419,12 @@ class CapabilitiesServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Misconfigured surfaces fail boot before any route/tool registers (SURF-004 / D-007).
+        (new BootGuard(
+            config: self::configFromApp($this->app),
+            messagingPackageInstalled: $this->messagingPackageInstalled(),
+        ))->assertSurfaceRules();
+
         $this->bootHttpRoutes();
         $this->bootCapabilityDiscovery();
         $this->bootArtisanCommands();
@@ -435,6 +442,14 @@ class CapabilitiesServiceProvider extends ServiceProvider
     }
 
     /**
+     * Presence check only — core never depends on the messaging package (D-007).
+     */
+    protected function messagingPackageInstalled(): bool
+    {
+        return class_exists('Rawphp\\CapabilitiesMessaging\\MessagingServiceProvider');
+    }
+
+    /**
      * Plan MCP servers from surfaces.mcp.profiles and register profile tools on the adapter
      * (ORI-790 / D-008 / D-011 / ORI-801 / ORI-803).
      *
@@ -442,7 +457,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
      * for each planned profile. It does **not** push definitions into laravel/mcp — there is no
      * peer sink like {@see HttpRouteRegistrar::registerInto}. Hosts still wire peer MCP servers
      * (e.g. Mcp::web / peer docs). Multi-profile sequential register overwrites adapter active
-     * profile/tools (last profile wins). Optional $sink is for tests/host glue only.
+     * profile/tools (last profile wins); handle() then requires options['profile']. Optional $sink is for tests/host glue only.
      * Disabled surface, empty profiles/servers, or soft-disabled peer → plan nothing
      * (no half-registration). PeerIncompatibleException only when the plan is non-empty
      * and the peer is missing/incompatible with on_incompatible=fail.
