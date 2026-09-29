@@ -116,8 +116,9 @@ final class IntegrationHealthChecker
      * Warn (not fail) when audit is on but the registry has no AuditWriter: every
      * audit record is then a silent no-op (D-010), including in strict mode.
      *
-     * Probes the live registry writer, not a container binding — the service
-     * provider never injects a bound AuditWriter, so a binding alone proves nothing.
+     * Probes the live registry writer, not a container binding: with `audit.driver=database`
+     * and a connection the provider wires DatabaseAuditWriter; `memory` (or no connection
+     * under best_effort) leaves the registry without a writer.
      *
      * @param  array<string, mixed>  $capabilitiesConfig
      * @param  (callable(): bool)|null  $auditWriterWired
@@ -151,7 +152,7 @@ final class IntegrationHealthChecker
 
         return $wired
             ? ['level' => 'ok', 'code' => 'audit_writer', 'message' => 'AuditWriter is wired into the registry.']
-            : ['level' => 'warn', 'code' => 'audit_writer', 'message' => 'No AuditWriter wired into the registry; audit records are silently dropped (call CapabilityRegistry::withAuditWriter).'];
+            : ['level' => 'warn', 'code' => 'audit_writer', 'message' => 'No AuditWriter wired into the registry; audit records are silently dropped (use audit.driver=database with a connection, or bind AuditWriter).'];
     }
 
     /**

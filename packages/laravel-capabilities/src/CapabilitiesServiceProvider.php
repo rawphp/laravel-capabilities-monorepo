@@ -32,6 +32,7 @@ use Rawphp\Capabilities\Boot\ContainerBindings;
 use Rawphp\Capabilities\Boot\RegistrationPlan;
 use Rawphp\Capabilities\Boot\SurfaceNames;
 use Rawphp\Capabilities\Contracts\ApprovalGateway;
+use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Contracts\AuthTokenIssuer;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
@@ -46,6 +47,7 @@ use Rawphp\Capabilities\Http\HttpRouteRegistrar;
 use Rawphp\Capabilities\Http\RouteTable;
 use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\Capabilities\Observability\LogFallbackMetrics;
+use Rawphp\Capabilities\Persistence\DatabaseAuditWriter;
 use Rawphp\Capabilities\Persistence\TableGateway;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\CapabilityResult;
@@ -63,6 +65,11 @@ use Rawphp\Capabilities\Support\IlluminateRateLimitCache;
  */
 class CapabilitiesServiceProvider extends ServiceProvider
 {
+    /** Memoised so the registry and the ApprovalManager share one writer (D-010). */
+    private ?AuditWriter $auditWriter = null;
+
+    private bool $auditWriterResolved = false;
+
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/capabilities.php', 'capabilities');
@@ -136,7 +143,8 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 $registry = $app->make(CapabilityRegistry::class);
 
                 return $registry->executeApproval($row);
-            })->withOriginalAuthorizer(static fn (array $row): bool => self::originalActorAllows($app, $row));
+            })->withOriginalAuthorizer(static fn (array $row): bool => self::originalActorAllows($app, $row))
+                ->withAudit($this->auditWriterOrNull($app, $config));
         });
         $this->app->alias(ApprovalManager::class, 'ApprovalManager');
         // Hosts with custom actor lookup rebind this; default resolves users through
@@ -178,6 +186,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 self::boundConnectionOrNull($app, $config, null),
                 self::boundRateLimitCacheOrNull($app),
                 $rateLimiter,
+                $this->auditWriterOrNull($app, $config),
             )->withRequesterResolver(
                 // Approved rows execute as the real requester — same lookup as the accept re-check (D-006).
                 static fn (string $type, string $id): ?object => self::authUserOrNull($app, $id),
@@ -279,6 +288,41 @@ class CapabilitiesServiceProvider extends ServiceProvider
             );
         });
         $this->app->alias(AiToolAdapter::class, 'AiToolAdapter');
+    }
+
+    /**
+     * Audit sink shared by the registry pipeline and the ApprovalManager (D-010 / L-006).
+     *
+     * A host-bound {@see AuditWriter} wins; otherwise `audit.driver=database` gets the
+     * first-party {@see DatabaseAuditWriter} on the
+     * default connection. Null only for the memory driver or when no connection exists —
+     * {@see ContainerBindings::makeRegistry} then fails boot for strict/required audit.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    private function auditWriterOrNull(object $app, array $config): ?AuditWriter
+    {
+        if ($this->auditWriterResolved) {
+            return $this->auditWriter;
+        }
+        $this->auditWriterResolved = true;
+
+        try {
+            if (method_exists($app, 'bound') && $app->bound(AuditWriter::class)) {
+                $bound = $app->make(AuditWriter::class);
+                if ($bound instanceof AuditWriter) {
+                    return $this->auditWriter = $bound;
+                }
+            }
+        } catch (\Throwable) {
+            // fall through to the package writer
+        }
+
+        return $this->auditWriter = ContainerBindings::makeAuditWriter(
+            $config,
+            self::boundTableGatewayOrNull($app),
+            self::boundConnectionOrNull($app, $config, null),
+        );
     }
 
     /**

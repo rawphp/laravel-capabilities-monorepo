@@ -228,6 +228,9 @@ final class CapabilityRegistry implements CapabilityBus
             toolSurfaceConfig: $this->toolSurfaceConfig,
             auditStage: $auditStage,
         );
+        if ($auditWriter !== null) {
+            $approvalManager = $approvalManager->withAudit($auditWriter);
+        }
         $this->assertions = new RegistryAssertions($this, $this->observation);
         $this->pipeline = new InvokePipeline(
             jsonSchema: $jsonSchema,
@@ -365,9 +368,14 @@ final class CapabilityRegistry implements CapabilityBus
         return $this;
     }
 
+    /**
+     * Audit sink for invokes and for the approval rows this registry requests
+     * (`approval.requested` travels with the same writer — D-006 / D-010).
+     */
     public function withAuditWriter(?AuditWriter $writer): self
     {
         $this->pipeline->auditStage->auditWriter = $writer;
+        $this->pipeline->approvalManager = $this->pipeline->approvalManager->withAudit($writer);
 
         return $this;
     }
@@ -520,7 +528,9 @@ final class CapabilityRegistry implements CapabilityBus
     public function withApprovalStore(ApprovalStore $store): self
     {
         $this->approvalStore = $store;
-        $this->pipeline->approvalManager = (new ApprovalManager($store))->withExecutor($this->executeApproval(...));
+        $this->pipeline->approvalManager = (new ApprovalManager($store))
+            ->withExecutor($this->executeApproval(...))
+            ->withAudit($this->audit());
 
         return $this;
     }

@@ -37,10 +37,23 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 - **`capabilities:integration-health` warns on silent audit loss (D-010).** New
   `audit_writer` check: when `audit.enabled` and any invoke surface is on but the live
   registry has no `AuditWriter`, it reports `warn` (every audit record is otherwise a
-  silent no-op). It probes `CapabilityRegistry::audit()`, not a container binding — the
-  service provider does not inject a bound `AuditWriter`; wire one with
-  `CapabilityRegistry::withAuditWriter(...)`. Warn only; exit code unchanged.
-  `IntegrationHealthChecker::check()` takes an optional seventh `$auditWriterWired` probe.
+  silent no-op). It probes `CapabilityRegistry::audit()`, not a container binding. Warn
+  only; exit code unchanged. `IntegrationHealthChecker::check()` takes an optional seventh
+  `$auditWriterWired` probe.
+- **Audit records are really written (D-010, L-006).** `audit.driver=database` (the default)
+  now has a first-party writer: `Persistence\DatabaseAuditWriter` inserts one row per entry
+  into `capabilities_audit_outbox` (status `pending`, `available_at = now`, full entry in
+  `payload_json`); the row is the durable audit record and a host drain may forward it and
+  mark it `completed`. The service provider wires that writer (or a host-bound
+  `Contracts\AuditWriter`, which wins) into **both** the registry pipeline and the
+  `ApprovalManager`, so `approval.requested` / `approval.decided` / `approval.executed`
+  entries land too; `CapabilityRegistry::withAuditWriter()` forwards to
+  `registry->approvals()`. Before, no production writer existed and every entry was dropped
+  with no error. `ContainerBindings::makeAuditWriter()` and a `makeRegistry(...,
+  auditWriter:)` argument are new. **Fail closed:** `audit.enabled` with `mode = strict` or
+  `required = true` and no writer (memory driver, or database with no connection) now throws
+  `BootException` at boot instead of passing silently; `best_effort` without a writer still
+  boots and `capabilities:integration-health` warns.
 
 #### Audit entry `tool_profile` (D-008 / D-010)
 

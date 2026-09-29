@@ -64,6 +64,17 @@ final class BootException extends RuntimeException
         );
     }
 
+    public static function auditWriterRequired(string $mode, bool $required): self
+    {
+        $why = $mode === 'strict' ? 'audit.mode=strict' : 'audit.required=true';
+
+        return new self(
+            "{$why} but no AuditWriter is available, so every audit record would be dropped silently (D-010). "
+            .'Use audit.driver=database with a database connection (capabilities_audit_outbox), bind '
+            .'Rawphp\\Capabilities\\Contracts\\AuditWriter in the host app, or set audit.enabled=false.'
+        );
+    }
+
     public static function missingRateLimitCache(): self
     {
         return new self(
