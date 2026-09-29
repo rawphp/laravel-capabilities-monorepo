@@ -123,7 +123,7 @@ capabilities run <name> --profile=P --input='{"customer_id":1}'
 capabilities run <name> --profile=P --input-file=./payload.json
 
 # Scalar flags (schema-driven) — flag wins over JSON key if both set
-capabilities <domain> <verb> --profile=P --customer_id=1
+capabilities <domain> <verb> --profile=P --customer-id=1
 
 # Hybrid
 capabilities <domain> <verb> --profile=P --input='{"a":1}' --b=2

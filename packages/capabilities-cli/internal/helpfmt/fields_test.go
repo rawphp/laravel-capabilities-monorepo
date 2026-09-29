@@ -2,7 +2,10 @@ package helpfmt
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
+
+	"github.com/rawphp/capabilities-cli/internal/flagschema"
 )
 
 // sampleInputSchema matches design Schema help UX examples (invoice-like).
@@ -172,17 +175,54 @@ func TestDeriveFields_freeFormMapIsJSONOnly(t *testing.T) {
 	}
 }
 
-func TestFlagName_kebabCase(t *testing.T) {
-	cases := map[string]string{
-		"customer_id":   "--customer-id",
-		"amountCents":   "--amount-cents",
-		"currency":      "--currency",
-		"line_items":    "--line-items",
-		"Already-Kebab": "--already-kebab",
+// Help advertises exactly the flags invoke accepts: flag names and pass modes
+// come from flagschema, so a help example pasted back into the CLI never hits
+// "unknown flag" or "json-only" rejections.
+func TestDeriveFields_flagsMatchWhatInvokeAccepts(t *testing.T) {
+	raw := `{
+		"type": "object",
+		"properties": {
+			"customer_id": {"type": "integer"},
+			"amountCents": {"type": "integer"},
+			"Already-Kebab": {"type": "string"},
+			"picked": {"type": "string", "oneOf": [{"const": "a"}, {"const": "b"}]},
+			"line_no": {"type": "integer"},
+			"line-no": {"type": "integer"},
+			"weird": "not-a-schema"
+		}
+	}`
+	fields := DeriveFields(parseSchema(t, raw))
+	fs, err := flagschema.FromJSONSchema([]byte(raw))
+	if err != nil {
+		t.Fatal(err)
 	}
-	for in, want := range cases {
-		if got := FlagName(in); got != want {
-			t.Fatalf("FlagName(%q)=%q want %q", in, got, want)
+
+	want := map[string]string{
+		"customer_id":   "--customer-id",
+		"amountCents":   "--amountCents",
+		"Already-Kebab": "--Already-Kebab",
+	}
+	for name, flag := range want {
+		f, ok := fieldByName(fields, name)
+		if !ok || f.Pass != PassFlag || f.Flag == nil || *f.Flag != flag {
+			t.Fatalf("%s: want flag %s, got %+v", name, flag, f)
+		}
+		// Round-trip: the advertised flag merges into the same property.
+		merged, err := fs.Merge(nil, map[string]string{strings.TrimPrefix(flag, "--"): "7"})
+		if err != nil {
+			t.Fatalf("invoke rejects advertised %s: %v", flag, err)
+		}
+		if _, ok := merged[name]; !ok {
+			t.Fatalf("%s did not land on %s: %v", flag, name, merged)
+		}
+	}
+
+	// oneOf, kebab collisions, and non-object property schemas are json-only in
+	// invoke, so help must not advertise a flag for them.
+	for _, name := range []string{"picked", "line_no", "line-no", "weird"} {
+		f, ok := fieldByName(fields, name)
+		if !ok || f.Pass != PassJSONOnly || f.Flag != nil {
+			t.Fatalf("%s: want json-only, got %+v", name, f)
 		}
 	}
 }
