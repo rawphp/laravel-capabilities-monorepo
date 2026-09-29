@@ -3087,7 +3087,7 @@ One discovery pass builds the registry. Fluent calls insert into the same map (d
 
 **Problem:** CLI exit codes exist; HTTP lacks a stable machine envelope.
 
-**Decision:** Every non-success response (and CLI stderr JSON) uses:
+**Decision:** Every non-success response (and CLI stdout JSON; stderr is human-only) uses:
 
 ```json
 {
@@ -3100,12 +3100,20 @@ One discovery pass builds the registry. Fluent calls insert into the same map (d
     ],
     "approval_id": null,
     "request_id": "01J…",
-    "retryable": false
+    "retryable": false,
+    "http_status": 422,
+    "cli_exit": 2
   }
 }
 ```
 
-| `code` (normative set) | HTTP | CLI exit |
+- `http_status` — the HTTP status the server sends for this failure.
+- `cli_exit` — the CLI's exit authority: the CLI exits with this value (when it is in 1–6) and falls back to its local `code` table only when the field is absent, so codes added on the server keep their exit class.
+- `retry_after` — on `rate_limited` only, when the window is known: seconds until it frees. HTTP mirrors it as the `Retry-After` header; the CLI keeps it in the envelope it prints.
+
+The table is the normative core set. The full code map (HTTP status, CLI exit, retryable default) is `packages/laravel-capabilities/src/Support/ErrorCodeMap.php`, pinned to the core user guide by `ErrorCodesUserGuideTest`. Unknown codes map to HTTP 500 / CLI exit 1.
+
+| `code` (normative core set) | HTTP | CLI exit |
 |---|---|---|
 | `validation_failed` | 422 | 2 |
 | `unauthenticated` | 401 | 3 |
@@ -3132,7 +3140,7 @@ Success:
 }
 ```
 
-CLI `--json` prints the same envelope; exit code maps from `error.code`.
+The CLI prints every structured result (success or failure) on **stdout** and human hints on **stderr**; it exits with `error.cli_exit` (fallback: its table keyed by `error.code`).
 
 ---
 
