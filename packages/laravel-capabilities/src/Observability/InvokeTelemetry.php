@@ -18,6 +18,8 @@ final class InvokeTelemetry
 
     public const METRIC_AUTHZ_DENY = 'authz_deny_total';
 
+    public const METRIC_UNAUTHENTICATED = 'http_unauthenticated_total';
+
     public const METRIC_RATE_LIMITED = 'rate_limited_total';
 
     public const METRIC_IDEMPOTENT_REPLAY = 'idempotent_replay_total';

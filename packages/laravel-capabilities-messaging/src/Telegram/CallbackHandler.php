@@ -47,10 +47,21 @@ final class CallbackHandler
             return ['status' => 'invalid', 'message' => 'unsupported_action'];
         }
 
+        if ($this->approvals === null) {
+            throw new RuntimeException('ApprovalGateway is required to process callbacks.');
+        }
+
+        $approvalId = (string) $callbackPayload['approval_id'];
+        // Use gateway find() so lazy TTL expiry matches HTTP/accept paths (D-006).
+        $row = $this->approvals->find($approvalId);
+
+        // Resolve the link under the row's tenant: an approver linked in another
+        // tenant resolves to no one (D-003), whatever the approval policy says.
         $telegramUserId = (string) ($telegramUser['id'] ?? $telegramUser['telegram_user_id'] ?? '');
         $user = $this->identity->resolve([
             'channel' => 'telegram',
             'telegram_user_id' => $telegramUserId,
+            'expected_tenant_id' => $row['tenant_id'] ?? null,
         ]);
 
         if ($user === null) {
@@ -62,13 +73,7 @@ final class CallbackHandler
             return ['status' => 'forbidden', 'message' => 'approver_mismatch'];
         }
 
-        if ($this->approvals === null) {
-            throw new RuntimeException('ApprovalGateway is required to process callbacks.');
-        }
-
-        $approvalId = (string) $callbackPayload['approval_id'];
-        // Use gateway find() so lazy TTL expiry matches HTTP/accept paths (D-006).
-        $row = $this->approvals->find($approvalId);
+        // Identity is checked first so unlinked users cannot probe approval ids.
         if ($row === null) {
             return ['status' => 'not_found', 'message' => 'unknown_approval'];
         }

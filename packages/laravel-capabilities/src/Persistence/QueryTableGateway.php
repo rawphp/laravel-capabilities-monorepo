@@ -4,6 +4,7 @@ namespace Rawphp\Capabilities\Persistence;
 
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Database\UniqueConstraintViolationException;
 use InvalidArgumentException;
 use JsonException;
 
@@ -95,6 +96,15 @@ final class QueryTableGateway implements TableGateway
         $this->query()->insert($this->encodePhysical($row));
 
         return $this->find($id) ?? $this->decodeLogical($row);
+    }
+
+    public function insertIfAbsent(array $identity, array $row): ?array
+    {
+        try {
+            return $this->insert(array_merge($row, $identity));
+        } catch (UniqueConstraintViolationException) {
+            return null;
+        }
     }
 
     public function find(string $id): ?array

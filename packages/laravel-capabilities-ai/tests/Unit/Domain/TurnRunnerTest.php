@@ -23,6 +23,7 @@ use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
+use Rawphp\CapabilitiesAi\Support\RetryableLlmException;
 
 /**
  * Minimal user model for TurnRunner principal resolution unit tests.
@@ -225,6 +226,53 @@ it('tool call path invokes CapabilityBus exactly once with expected name/payload
         ->and($data['error_code'])->toBeNull();
 });
 
+it('progress tool events redact sensitive payload keys while the bus receives raw input [D-010]', function () {
+    bootTurnSqlite();
+    $seeded = enqueueTurnWithUser('use tool');
+    $turnUlid = $seeded['turn_ulid'];
+    $bus = recordingBus();
+    $raw = ['email' => 'a@example.com', 'password' => 'hunter2', 'auth' => ['apiKey' => 'k-1']];
+    $llm = new FakeLlmClient([
+        ['tool_calls' => [['name' => 'demo.tool', 'arguments' => $raw]]],
+        ['content' => 'done'],
+    ]);
+    $context = new class implements ConversationContextProvider
+    {
+        public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['role' => 'user', 'content' => 'use tool']];
+        }
+    };
+    $tools = new class implements ToolCatalog
+    {
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['name' => 'demo.tool']];
+        }
+    };
+    $progress = new ArrayProgressStore;
+    (new TurnRunner(
+        claim: new TurnClaim,
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        bus: $bus,
+        progress: $progress,
+        actors: turnActors(),
+    ))->run($turnUlid);
+
+    $toolEvents = array_values(array_filter(
+        $progress->since($turnUlid),
+        static fn (array $e): bool => ($e['kind'] ?? null) === 'tool',
+    ));
+    expect($bus->lastInput)->toBe($raw)
+        ->and($toolEvents[0]['data']['payload'] ?? null)->toBe([
+            'email' => 'a@example.com',
+            'password' => '[REDACTED]',
+            'auth' => ['apiKey' => '[REDACTED]'],
+        ]);
+});
+
 it('tool invokes carry a 1-based per-turn tool-call count across rounds for the D-013 budget', function () {
     bootTurnSqlite();
     $context = new class implements ConversationContextProvider
@@ -269,6 +317,55 @@ it('tool invokes carry a 1-based per-turn tool-call count across rounds for the 
     expect(array_column($first->allOptions, 'agent_turn_tool_calls'))->toBe([1, 2, 3])
         ->and(array_column($second->allOptions, 'agent_turn_tool_calls'))->toBe([1, 2, 3])
         ->and(array_unique(array_column($first->allOptions, 'caller')))->toBe([ResolveConversationActor::CALLER_JOB]);
+});
+
+it('lifts tool arg idempotency_key into bus options and strips it from capability input (D-005)', function () {
+    bootTurnSqlite();
+    $seeded = enqueueTurnWithUser('use tools');
+    $bus = recordingBus();
+    $progress = new ArrayProgressStore;
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: new FakeLlmClient([
+            ['tool_calls' => [
+                ['name' => 'demo.tool', 'arguments' => ['x' => 1, 'idempotency_key' => 'invoice-create-001']],
+                ['name' => 'demo.tool', 'input' => ['x' => 2]],
+                ['name' => 'demo.tool', 'arguments' => ['x' => 3, 'idempotency_key' => '']],
+            ]],
+            ['content' => 'done'],
+        ]),
+        context: new class implements ConversationContextProvider
+        {
+            public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+            {
+                return [['role' => 'user', 'content' => 'use tools']];
+            }
+        },
+        tools: new class implements ToolCatalog
+        {
+            public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+            {
+                return [['name' => 'demo.tool']];
+            }
+        },
+        bus: $bus,
+        progress: $progress,
+        actors: turnActors(),
+    );
+
+    $runner->run($seeded['turn_ulid']);
+
+    expect($bus->invokes)->toBe(3)
+        ->and($bus->allOptions[0]['idempotency_key'] ?? null)->toBe('invoice-create-001')
+        ->and(array_key_exists('idempotency_key', $bus->allOptions[1]))->toBeFalse()
+        ->and(array_key_exists('idempotency_key', $bus->allOptions[2]))->toBeFalse()
+        ->and($bus->lastInput)->toBe(['x' => 3]);
+
+    $payloads = array_map(
+        static fn (array $e): mixed => $e['data']['payload'] ?? null,
+        array_values(array_filter($progress->since($seeded['turn_ulid']), static fn (array $e): bool => ($e['kind'] ?? null) === 'tool')),
+    );
+    expect($payloads)->toBe([['x' => 1], ['x' => 2], ['x' => 3]]);
 });
 
 it('tool call path fails closed when conversation has no user_id', function () {
@@ -757,4 +854,305 @@ it('does not overwrite cancelled status with completed (cooperative cancel)', fu
             && (($e['data']['status'] ?? '') === Turn::STATUS_COMPLETED)
     ));
     expect($terminals)->toBeEmpty();
+});
+
+it('tool call for a name outside the turn tool list is refused without a bus invoke', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurnWithUser('use tool')['turn_ulid'];
+    $bus = recordingBus();
+    $captured = [];
+    $llm = new class($captured) implements LlmClient
+    {
+        private int $calls = 0;
+
+        /** @param list<list<array<string, mixed>>> $captured */
+        public function __construct(private array &$captured) {}
+
+        public function complete(array $messages, array $tools = []): array
+        {
+            $this->captured[] = $messages;
+            $this->calls++;
+
+            return $this->calls === 1
+                ? ['tool_calls' => [
+                    ['id' => 'call_hidden', 'name' => 'admin.wipe', 'arguments' => ['all' => true]],
+                    ['id' => 'call_offered', 'name' => 'demo.tool', 'arguments' => ['x' => 1]],
+                ]]
+                : ['content' => 'done'];
+        }
+
+        public function supportsToolRounds(): bool
+        {
+            return true;
+        }
+    };
+    $context = new class implements ConversationContextProvider
+    {
+        public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['role' => 'user', 'content' => 'use tool']];
+        }
+    };
+    $tools = new class implements ToolCatalog
+    {
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['name' => 'demo.tool']];
+        }
+    };
+    $progress = new ArrayProgressStore;
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        bus: $bus,
+        progress: $progress,
+        actors: turnActors(),
+    );
+
+    $turn = $runner->run($turnUlid);
+
+    expect($turn->status)->toBe(Turn::STATUS_COMPLETED)
+        ->and($bus->invokes)->toBe(1)
+        ->and($bus->lastName)->toBe('demo.tool')
+        ->and($bus->lastOptions['agent_turn_tool_calls'] ?? null)->toBe(1);
+
+    $toolEvents = array_values(array_filter(
+        $progress->since($turnUlid),
+        static fn (array $e): bool => ($e['kind'] ?? null) === 'tool',
+    ));
+    expect($toolEvents)->toHaveCount(2)
+        ->and($toolEvents[0]['data']['name'] ?? null)->toBe('admin.wipe')
+        ->and($toolEvents[0]['data']['ok'] ?? null)->toBeFalse()
+        ->and($toolEvents[0]['data']['error_code'] ?? null)->toBe('capability_not_in_profile')
+        ->and($toolEvents[0]['data']['tool_call_id'] ?? null)->toBe('call_hidden');
+
+    $toolMessages = array_values(array_filter(
+        $captured[1] ?? [],
+        static fn (array $m): bool => ($m['role'] ?? null) === 'tool',
+    ));
+    $refused = json_decode((string) ($toolMessages[0]['content'] ?? ''), true);
+    expect($toolMessages[0]['tool_call_id'] ?? null)->toBe('call_hidden')
+        ->and($refused['ok'] ?? null)->toBeFalse()
+        ->and($refused['error']['code'] ?? null)->toBe('capability_not_in_profile')
+        ->and($refused['name'] ?? null)->toBe('admin.wipe');
+});
+
+/**
+ * @return array{0: ConversationContextProvider, 1: ToolCatalog}
+ */
+function usageContextAndTools(): array
+{
+    $context = new class implements ConversationContextProvider
+    {
+        public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['role' => 'user', 'content' => 'use tool']];
+        }
+    };
+    $tools = new class implements ToolCatalog
+    {
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['name' => 'demo.tool']];
+        }
+    };
+
+    return [$context, $tools];
+}
+
+it('records per-round LLM usage and latency on the completed turn', function () {
+    bootTurnSqlite();
+    $seeded = enqueueTurnWithUser('use tool');
+    [$context, $tools] = usageContextAndTools();
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: new FakeLlmClient([
+            [
+                'tool_calls' => [['name' => 'demo.tool', 'arguments' => []]],
+                'usage' => ['input_tokens' => 120, 'output_tokens' => 30],
+            ],
+            // Client that reports nothing (or junk) still gets a latency-only round.
+            ['content' => 'done', 'usage' => ['input_tokens' => 'many', 'output_tokens' => -1]],
+        ]),
+        context: $context,
+        tools: $tools,
+        bus: recordingBus(),
+        progress: new ArrayProgressStore,
+        actors: turnActors(),
+    );
+
+    $turn = $runner->run($seeded['turn_ulid']);
+
+    $usage = Turn::query()->where('ulid', $seeded['turn_ulid'])->firstOrFail()->usage;
+    expect($turn->status)->toBe(Turn::STATUS_COMPLETED)
+        ->and($usage)->toHaveCount(2)
+        ->and($usage[0]['input_tokens'])->toBe(120)
+        ->and($usage[0]['output_tokens'])->toBe(30)
+        ->and($usage[0]['latency_ms'])->toBeInt()->toBeGreaterThanOrEqual(0)
+        ->and(array_keys($usage[1]))->toBe(['latency_ms']);
+});
+
+it('records usage for rounds that ran before a turn failed', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurn('use tool');
+    [$context, $tools] = usageContextAndTools();
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: new FakeLlmClient([
+            [
+                'tool_calls' => [['name' => 'demo.tool', 'arguments' => []]],
+                'usage' => ['input_tokens' => 50, 'output_tokens' => 5],
+            ],
+        ]),
+        context: $context,
+        tools: $tools,
+        bus: null,
+        progress: new ArrayProgressStore,
+    );
+
+    expect(fn () => $runner->run($turnUlid))->toThrow(RuntimeException::class, 'CapabilityBus required');
+
+    $turn = Turn::query()->where('ulid', $turnUlid)->firstOrFail();
+    expect($turn->status)->toBe(Turn::STATUS_FAILED)
+        ->and($turn->usage)->toHaveCount(1)
+        ->and($turn->usage[0]['input_tokens'])->toBe(50)
+        ->and($turn->usage[0]['output_tokens'])->toBe(5);
+});
+
+it('records usage on a turn cancelled mid-run without overwriting cancelled', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurn();
+    $GLOBALS['usage_cancel_turn_ulid'] = $turnUlid;
+    $llm = new class implements LlmClient
+    {
+        public function supportsToolRounds(): bool
+        {
+            return true;
+        }
+
+        public function complete(array $messages, array $tools = []): array
+        {
+            Turn::query()->where('ulid', $GLOBALS['usage_cancel_turn_ulid'])->update([
+                'status' => Turn::STATUS_CANCELLED,
+            ]);
+
+            return ['content' => 'too late', 'usage' => ['input_tokens' => 7, 'output_tokens' => 3]];
+        }
+    };
+    [$context, $tools] = usageContextAndTools();
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        progress: new ArrayProgressStore,
+    );
+
+    $turn = $runner->run($turnUlid);
+
+    $stored = Turn::query()->where('ulid', $turnUlid)->firstOrFail();
+    expect($turn->status)->toBe(Turn::STATUS_CANCELLED)
+        ->and($stored->status)->toBe(Turn::STATUS_CANCELLED)
+        ->and($stored->usage[0]['input_tokens'])->toBe(7)
+        ->and($stored->usage[0]['output_tokens'])->toBe(3);
+});
+
+/**
+ * LlmClient that always throws the given exception from complete().
+ */
+function throwingLlm(Throwable $e): LlmClient
+{
+    return new class($e) implements LlmClient
+    {
+        public function __construct(private readonly Throwable $e) {}
+
+        public function supportsToolRounds(): bool
+        {
+            return true;
+        }
+
+        public function complete(array $messages, array $tools = []): array
+        {
+            throw $this->e;
+        }
+    };
+}
+
+function runnerFor(LlmClient $llm, ArrayProgressStore $progress): TurnRunner
+{
+    return new TurnRunner(
+        claim: new TurnClaim,
+        llm: $llm,
+        context: new class implements ConversationContextProvider
+        {
+            public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+            {
+                return [['role' => 'user', 'content' => 'hi']];
+            }
+        },
+        tools: new class implements ToolCatalog
+        {
+            public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+            {
+                return [];
+            }
+        },
+        progress: $progress,
+    );
+}
+
+it('marks a retryable LLM failure distinguishably and rethrows the typed exception', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurn();
+    $progress = new ArrayProgressStore;
+    $e = new RetryableLlmException('Anthropic API error: 529 (Overloaded)', status: 529, retryAfterSeconds: 30);
+
+    expect(fn () => runnerFor(throwingLlm($e), $progress)->run($turnUlid))
+        ->toThrow(RetryableLlmException::class, 'Anthropic API error: 529');
+
+    $turn = Turn::query()->where('ulid', $turnUlid)->firstOrFail();
+    $errors = array_values(array_filter(
+        $progress->since($turnUlid, 0),
+        static fn (array $ev): bool => ($ev['kind'] ?? '') === 'error'
+    ));
+    expect($turn->status)->toBe(Turn::STATUS_FAILED)
+        ->and($turn->error)->toBe('Anthropic API error: 529 (Overloaded)')
+        ->and($errors)->toHaveCount(1)
+        ->and($errors[0]['data'])->toBe([
+            'message' => 'Anthropic API error: 529 (Overloaded)',
+            'retryable' => true,
+            'retry_after_seconds' => 30,
+        ]);
+});
+
+it('omits retry_after_seconds on a retryable failure without a hint', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurn();
+    $progress = new ArrayProgressStore;
+
+    expect(fn () => runnerFor(throwingLlm(new RetryableLlmException('timed out')), $progress)->run($turnUlid))
+        ->toThrow(RetryableLlmException::class);
+
+    $error = array_values(array_filter(
+        $progress->since($turnUlid, 0),
+        static fn (array $ev): bool => ($ev['kind'] ?? '') === 'error'
+    ))[0];
+    expect($error['data'])->toBe(['message' => 'timed out', 'retryable' => true]);
+});
+
+it('marks a permanent LLM failure as not retryable', function () {
+    bootTurnSqlite();
+    $turnUlid = enqueueTurn();
+    $progress = new ArrayProgressStore;
+
+    expect(fn () => runnerFor(throwingLlm(new RuntimeException('Anthropic API error: 400 (bad)')), $progress)->run($turnUlid))
+        ->toThrow(RuntimeException::class, 'Anthropic API error: 400');
+
+    $error = array_values(array_filter(
+        $progress->since($turnUlid, 0),
+        static fn (array $ev): bool => ($ev['kind'] ?? '') === 'error'
+    ))[0];
+    expect($error['data'])->toBe(['message' => 'Anthropic API error: 400 (bad)', 'retryable' => false]);
 });

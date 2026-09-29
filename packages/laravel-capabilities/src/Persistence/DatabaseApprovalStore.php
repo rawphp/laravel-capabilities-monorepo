@@ -39,6 +39,8 @@ final class DatabaseApprovalStore implements ApprovalStore
             'idempotency_key' => $record['idempotency_key'] ?? null,
             'result_json' => $record['result_json'] ?? null,
             'result_status' => $record['result_status'] ?? null,
+            'executor_actor_type' => $record['executor_actor_type'] ?? null,
+            'executor_actor_id' => $record['executor_actor_id'] ?? null,
             'decided_by' => $record['decided_by'] ?? null,
             'decided_at' => $record['decided_at'] ?? null,
             'decision_reason' => $record['decision_reason'] ?? null,
