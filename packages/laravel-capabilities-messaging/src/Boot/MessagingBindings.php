@@ -6,7 +6,10 @@ use Rawphp\Capabilities\Contracts\ApprovalNotifier;
 use Rawphp\Capabilities\Contracts\ConversationIdentity;
 use Rawphp\Capabilities\Contracts\ConversationIngress;
 use Rawphp\Capabilities\Contracts\ConversationReply;
+use Rawphp\CapabilitiesMessaging\Identity\CacheLinkStore;
 use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
+use Rawphp\CapabilitiesMessaging\Identity\InMemoryLinkStore;
+use Rawphp\CapabilitiesMessaging\Identity\LinkStore;
 use Rawphp\CapabilitiesMessaging\MessagingConfig;
 use Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier;
 use Rawphp\CapabilitiesMessaging\Support\FakeQueue;
@@ -29,14 +32,15 @@ use RuntimeException;
  * - queue_driver: auto | laravel | fake  (auto → fake in testing, laravel otherwise)
  * - bot_driver:   auto | http | fake     (auto → fake in testing, http otherwise)
  *
- * L-006 residual: IdentityLinker and ThreadStore remain process-local in-memory.
- * Durable DB-backed identity/thread stores are deferred — not silent.
+ * Link codes and identity links: the container binds {@see CacheLinkStore} (host cache, shared by
+ * web and queue workers); build() has no container and uses {@see InMemoryLinkStore}.
+ * L-006 residual: ThreadStore history stays process-local in-memory — not silent.
  */
 final class MessagingBindings
 {
     public const L006_RESIDUAL =
-        'L-006 residual: IdentityLinker and ThreadStore are process-local in-memory (not durable). '
-        .'Durable DB-backed identity/thread stores are deferred.';
+        'L-006 residual: ThreadStore history is process-local in-memory (not durable). '
+        .'Link codes and identity links use the cache-backed LinkStore.';
 
     /**
      * @param  array<string, mixed>  $config
@@ -61,6 +65,7 @@ final class MessagingBindings
             TelegramBotClient::class => $botConcrete,
             UpdateQueue::class => $queueConcrete,
             ThreadStore::class => ThreadStore::class,
+            LinkStore::class => CacheLinkStore::class,
             IdentityLinker::class => IdentityLinker::class,
             ConversationIdentity::class => IdentityLinker::class,
             TelegramCallbackSigner::class => TelegramCallbackSigner::class,
@@ -146,7 +151,7 @@ final class MessagingBindings
         $bot = self::makeBot($cfg, $drivers['bot'], $httpTransport);
         $queue = self::makeQueue($drivers['queue'], $queueDispatcher);
 
-        // L-006 residual: identity + threads stay in-memory process-local.
+        // No container here: in-memory link store (the provider binds CacheLinkStore). L-006: threads.
         $threads = new ThreadStore;
         $identity = new IdentityLinker($cfg);
         $adapter = new TelegramAdapter($bot);
@@ -226,6 +231,7 @@ final class MessagingBindings
             TelegramBotClient::class,
             UpdateQueue::class,
             ThreadStore::class,
+            LinkStore::class,
             IdentityLinker::class,
             ConversationIdentity::class,
             TelegramCallbackSigner::class,

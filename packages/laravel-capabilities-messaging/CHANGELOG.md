@@ -66,6 +66,16 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
+- **Link codes and identity links are shared across processes** — `/start <code>` runs on the
+  queue worker, but codes and links lived in the process-local `IdentityLinker`, so a code
+  issued in a web request never bound and links vanished on restart. They now live behind
+  `Identity\LinkStore`: the container binds `CacheLinkStore` on the host cache repository
+  (`Illuminate\Contracts\Cache\Repository`), with code TTL from `identity.code_ttl_seconds` and
+  an atomic claim so a code binds at most once across workers. `InMemoryLinkStore` stays the
+  default for a bare `new IdentityLinker(...)` and `MessagingBindings::build()`. Allowlist
+  entries stay in config. **Consumer impact:** links persist in your cache without expiry — use
+  a persistent store, or bind `LinkStore` to `new CacheLinkStore(Cache::store(...))`. The L-006
+  residual now covers `ThreadStore` history only.
 
 - **Failures reach the host logger** — `TelegramWebhookController` and `ProcessTelegramUpdate`
   take an optional PSR-3 `logger` (the provider injects the bound `LoggerInterface`). Bad

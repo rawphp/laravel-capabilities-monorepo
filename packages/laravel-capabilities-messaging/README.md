@@ -11,7 +11,7 @@ Implements core `ConversationIngress` / `ApprovalNotifier` contracts. **Never** 
 | | |
 |---|---|
 | **Is** | Chat **ingress** (Telegram first): webhooks, identity link/allowlist, threads, approval notifiers; routes messages into the host-bound agent turn (`Contracts\AgentTurn`) with a configured tool profile |
-| **Is not** | Domain `run()` or any second write path; the capability registry / governance stack; product CLI; AI turn/proposal engine; durable multi-instance identity product (process-local stores residual — L-006); general-purpose notification platform |
+| **Is not** | Domain `run()` or any second write path; the capability registry / governance stack; product CLI; AI turn/proposal engine; durable thread-history store (process-local residual — L-006); general-purpose notification platform |
 
 Requires [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities). Developed in the monorepo; consumers install **this package repo**.
 
@@ -94,7 +94,9 @@ Fake\* classes bind only when the matching driver is `fake`, or `auto` with `APP
 
 **Notifier FQCN:** production is messaging `…Notifiers\TelegramApprovalNotifier`. Core’s `RecordingTelegramApprovalNotifier` is the test recording double; core’s deprecated empty `…Approval\Notifiers\TelegramApprovalNotifier` is a soft-landing alias only — do not use it in hosts.
 
-## Residual: durable identity / threads (L-006)
+## Identity storage and the thread residual (L-006)
 
-**Not silent:** `IdentityLinker` and `ThreadStore` remain **process-local in-memory** stores. They are **not durable** across processes or deploys. Durable DB-backed identity linking and thread history are **deferred (L-006)** — plan for host-level persistence or a future package revision before multi-instance production traffic depends on them.
+Link codes and code-bound identity links live in a `Identity\LinkStore`. The container binds `CacheLinkStore` on your default Laravel cache store (`Illuminate\Contracts\Cache\Repository`), so a code issued in a web request binds on the queue worker and links survive restarts. Codes expire with `identity.code_ttl_seconds` and are single-use across workers. Links have no expiry: use a persistent cache store (redis, database) that deploys do not flush. A lost link fails closed and the user links again. To use another store, bind `LinkStore` yourself, e.g. `new CacheLinkStore(Cache::store('redis'))`. Allowlist entries stay in config.
+
+**Not silent:** `ThreadStore` history is still **process-local in-memory** and **not durable** across processes or deploys (L-006 residual). Thread ids are derived from chat + topic, and the pipeline does not read history back into the agent turn today.
 
