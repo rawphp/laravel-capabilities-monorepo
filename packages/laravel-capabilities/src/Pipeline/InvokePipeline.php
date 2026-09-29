@@ -779,6 +779,14 @@ final class InvokePipeline
             return $this->rateLimitedResult('Forced failure at rate_limit.');
         }
 
+        // Executing an already-approved request (D-006 accept / resume): the request was
+        // counted when it was made and the approver is not the requester, so it must not
+        // spend or trip the requester's buckets — a max=1 capability would otherwise burn
+        // its approval as a terminal rate_limited row (L-105 / D-013).
+        if (isset($state->options['executing_approval_id'])) {
+            return null;
+        }
+
         // Agent turn budget (D-013) — checked whenever an in-process adapter supplies the turn's
         // tool-call count (agent tools, AI turns as caller=job). Only ever narrows.
         if (array_key_exists('agent_turn_tool_calls', $state->options)) {

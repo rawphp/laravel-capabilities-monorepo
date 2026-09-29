@@ -296,6 +296,11 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   row that still carries an unrecognised policy now denies every approver instead of
   behaving like `requester_or_role` — before, a typo such as `role-finance` let the requester
   approve their own request.
+- **Approved executions are no longer rate-limited as the requester (D-013, L-105).** The
+  pipeline skips `stageRateLimit` when `executing_approval_id` is set (accept / resume). The
+  request already spent its hit when it was made; re-counting the execution meant a capability
+  with `rateLimit(['max' => 1])` that was accepted inside the decay window returned
+  `rate_limited` and the row became `executed/failed` with no way to retry.
 - **`capability:run` works (D-016 / REQ-024).** `RunCapabilityCommand` called a non-existent
   `ArtisanCapabilityInvoker::invoke()`, so every run printed an "undefined method" error and
   exited 1. It now normalises the flags through `ArtisanCapabilityInvoker::parseFlags()`
