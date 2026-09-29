@@ -54,4 +54,7 @@ func TestNonEnvelope410IsDomainExit(t *testing.T) {
 	if res.Err == nil || res.Err.Code != CodeGone || res.Err.ExitCode != ExitDomain {
 		t.Fatalf("%#v", res.Err)
 	}
+	if HTTPStatus(CodeGone) != http.StatusGone {
+		t.Fatal(HTTPStatus(CodeGone))
+	}
 }
