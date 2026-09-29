@@ -7,6 +7,7 @@ use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\ServiceProvider;
 use Psr\Log\LoggerInterface;
+use Rawphp\Capabilities\Contracts\ApprovalGateway;
 use Rawphp\Capabilities\Contracts\ApprovalNotifier;
 use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
@@ -27,6 +28,7 @@ use Rawphp\CapabilitiesMessaging\Support\FakeQueue;
 use Rawphp\CapabilitiesMessaging\Support\LaravelUpdateQueue;
 use Rawphp\CapabilitiesMessaging\Support\TelegramBotClient;
 use Rawphp\CapabilitiesMessaging\Support\UpdateQueue;
+use Rawphp\CapabilitiesMessaging\Telegram\CallbackHandler;
 use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdate;
 use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdateJob;
 use Rawphp\CapabilitiesMessaging\Telegram\TelegramAdapter;
@@ -149,6 +151,18 @@ class MessagingServiceProvider extends ServiceProvider
             );
         });
         $this->app->alias(TelegramApprovalNotifier::class, ApprovalNotifier::class);
+        // Core attaches every tagged notifier to its single ApprovalManager (M-101 / L-101).
+        $this->app->tag([TelegramApprovalNotifier::class], ApprovalNotifier::CONTAINER_TAG);
+
+        // Tapped approval buttons decide through core's ApprovalGateway port (D-006 / D-007); the
+        // gateway is core's binding — unbound, the handler fails closed on use, not at boot.
+        $this->app->singleton(CallbackHandler::class, function (Container $app) {
+            return new CallbackHandler(
+                $app->make(TelegramCallbackSigner::class),
+                $app->make(IdentityLinker::class),
+                $app->bound(ApprovalGateway::class) ? $app->make(ApprovalGateway::class) : null,
+            );
+        });
 
         $this->app->singleton(TelegramWebhookController::class, function ($app) {
             return new TelegramWebhookController(
@@ -172,6 +186,8 @@ class MessagingServiceProvider extends ServiceProvider
                 turnLimiter: $app->bound(RateLimiter::class) ? $app->make(RateLimiter::class) : null,
                 logger: self::logger($app),
                 pendingReplies: $app->make(CacheRepository::class),
+                // Lazy: the handler needs the callback signer, whose secret must not be required at boot (D-021).
+                callbacks: static fn (): CallbackHandler => $app->make(CallbackHandler::class),
             );
         });
     }

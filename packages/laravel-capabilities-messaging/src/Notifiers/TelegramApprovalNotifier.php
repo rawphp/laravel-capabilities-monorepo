@@ -8,7 +8,6 @@ use Rawphp\CapabilitiesMessaging\MessagingConfig;
 use Rawphp\CapabilitiesMessaging\Support\TelegramBotApiException;
 use Rawphp\CapabilitiesMessaging\Support\TelegramBotClient;
 use Rawphp\CapabilitiesMessaging\Telegram\TelegramCallbackSigner;
-use RuntimeException;
 use Throwable;
 
 /**
@@ -38,9 +37,11 @@ final class TelegramApprovalNotifier implements ApprovalNotifier
 
         $this->config->requireTelegramSecrets();
 
+        // Only requests that came from a chat have somewhere to put the buttons; HTTP / CLI
+        // approvals are announced by their own channels (M-101 / D-006).
         $chatId = $this->resolveChatId($approval);
         if ($chatId === null) {
-            throw new RuntimeException('Approval notify requires messaging.chat_id.');
+            return;
         }
 
         $approvalId = (string) ($approval['id'] ?? '');

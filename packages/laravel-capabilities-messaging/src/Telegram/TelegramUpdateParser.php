@@ -21,6 +21,47 @@ final class TelegramUpdateParser
     }
 
     /**
+     * A tapped inline button (Telegram `callback_query`) — an approval decision, never chat text.
+     *
+     * @param  array<string, mixed>  $update
+     */
+    public static function isCallbackQuery(array $update): bool
+    {
+        return is_array($update['callback_query'] ?? null);
+    }
+
+    /**
+     * @param  array<string, mixed>  $update
+     */
+    public static function callbackQueryId(array $update): ?string
+    {
+        $id = $update['callback_query']['id'] ?? null;
+
+        return is_scalar($id) ? (string) $id : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $update
+     */
+    public static function callbackData(array $update): string
+    {
+        $data = $update['callback_query']['data'] ?? '';
+
+        return is_scalar($data) ? (string) $data : '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $update
+     * @return array<string, mixed>
+     */
+    public static function callbackFrom(array $update): array
+    {
+        $from = $update['callback_query']['from'] ?? [];
+
+        return is_array($from) ? $from : [];
+    }
+
+    /**
      * @param  array<string, mixed>  $update
      */
     public static function chatId(array $update): string|int|null

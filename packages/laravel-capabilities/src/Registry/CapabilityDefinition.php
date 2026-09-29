@@ -3,6 +3,7 @@
 namespace Rawphp\Capabilities\Registry;
 
 use InvalidArgumentException;
+use Rawphp\Capabilities\Approval\ApprovalPolicy;
 use Rawphp\Capabilities\Audit\AuditLogger;
 use Rawphp\Capabilities\Contracts\SchemaProvider;
 use Rawphp\Capabilities\Support\SystemActor;
@@ -101,6 +102,10 @@ final class CapabilityDefinition
         self::assertValidCliRouting($this->cliDomain, $this->cliVerb, $name);
         self::assertValidAuditMode($this->audit, $name);
         $this->assertValidIdempotencyKeyFields();
+        if ($this->approvalPolicy !== null) {
+            // Governance typo fails at definition time, never as requester self-approve (L-106).
+            ApprovalPolicy::assertKnown($this->approvalPolicy, sprintf('Capability "%s"', $name));
+        }
     }
 
     public function isMutating(): bool

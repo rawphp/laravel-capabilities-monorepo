@@ -6,8 +6,10 @@ declare(strict_types=1);
 
 use Illuminate\Console\Command;
 use Illuminate\Console\Scheduling\Schedule;
+use Rawphp\Capabilities\Adapters\Artisan\ArtisanCommandRegistrar;
 use Rawphp\Capabilities\Adapters\Artisan\ArtisanCommandTable;
 use Rawphp\Capabilities\Adapters\Artisan\ResumeApprovalsCommand;
+use Rawphp\Capabilities\Adapters\Artisan\RunCapabilityCommand;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Approval\ResumeSchedulePlan;
 use Rawphp\Capabilities\Tests\Fixtures\ApprovalHelpers;
@@ -171,4 +173,40 @@ it('resume config surfaces on the manager exactly as the plan reads it', functio
     $m = $h['manager'];
 
     expect(ResumeSchedulePlan::fromConfig($m->config()))->toBe(['command' => 'capabilities:approvals-resume', 'cron' => '* * * * *']);
+});
+
+// --- L-108: the sweep command is approval infrastructure, not the ops invoke surface ---
+
+it('registers the resume command when a sweep is planned even with the artisan invoke surface disabled [L-108]', function () {
+    $deferred = ['execution' => 'deferred', 'resume' => ['enabled' => true]];
+
+    expect(ArtisanCommandRegistrar::infrastructure($deferred))->toContain(ResumeApprovalsCommand::class)
+        ->and(ArtisanCommandRegistrar::infrastructure(['execution' => 'atomic']))->not->toContain(ResumeApprovalsCommand::class)
+        ->and(ArtisanCommandRegistrar::infrastructure(['resume' => ['enabled' => false]]))->not->toContain(ResumeApprovalsCommand::class)
+        ->and(ArtisanCommandRegistrar::all(['enabled' => false], $deferred))->toContain(ResumeApprovalsCommand::class)
+        ->and(ArtisanCommandRegistrar::classes(['enabled' => false]))->toBe([])
+        // Enabled surface already lists it once; the plan must not duplicate it.
+        ->and(array_count_values(ArtisanCommandRegistrar::all(['enabled' => true], $deferred))[ResumeApprovalsCommand::class])->toBe(1);
+});
+
+it('provider: artisan disabled + deferred resume still registers the scheduled command [L-108]', function () {
+    $config = BootHelpers::config([
+        'surfaces' => ['artisan' => ['enabled' => false]],
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+        'audit' => ['driver' => 'memory'],
+    ]);
+
+    $app = FakeProviderApp::registered($config);
+    $registered = $app->provider->bootArtisanCommands();
+    $plan = $app->provider->bootResumeSchedule();
+
+    expect($plan)->not->toBeNull()
+        ->and($registered)->toContain(ResumeApprovalsCommand::class)
+        ->and($registered)->not->toContain(RunCapabilityCommand::class);
+
+    $off = FakeProviderApp::registered(array_replace_recursive($config, ['approval' => ['execution' => 'atomic']]));
+
+    expect($off->provider->bootArtisanCommands())->not->toContain(ResumeApprovalsCommand::class)
+        ->and($off->provider->bootResumeSchedule())->toBeNull();
 });

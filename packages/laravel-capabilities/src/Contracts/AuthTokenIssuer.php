@@ -28,6 +28,12 @@ use Rawphp\Capabilities\Http\HttpRequestContext;
  *    5 s to its interval; `access_denied` and `expired_token` end the flow. See
  *    {@see DEVICE_POLL_STATUSES}.
  * 4. Once approved, return the token shape (`access_token`, `token_type`, `expires_in`).
+ *    Mint that token — and any PAT a user pastes into `capabilities auth login --token` — with
+ *    the ability mapped to caller `cli` in `clients.token_abilities` (default `capabilities:cli`,
+ *    e.g. `$user->createToken('cli', ['capabilities:cli'])->plainTextToken`). Core derives the
+ *    caller from that ability only (D-022); a token without it is an `http` caller, so
+ *    capabilities exposed on `cli` but not `http` vanish from the CLI catalog and `run` answers
+ *    `not_found` (C-103).
  *
  * Any other response without `access_token` makes the CLI fail closed.
  */

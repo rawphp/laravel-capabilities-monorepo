@@ -43,6 +43,11 @@ final class FlakyBot implements TelegramBotClient
     {
         return ['ok' => true];
     }
+
+    public function answerCallbackQuery(string $callbackQueryId, string $text = '', array $payload = []): array
+    {
+        return ['ok' => true];
+    }
 }
 
 final class ReplyRetryScenario

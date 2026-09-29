@@ -6,6 +6,8 @@ use Illuminate\Contracts\Events\Dispatcher;
 use Rawphp\Capabilities\Events\CapabilityFailed;
 use Rawphp\Capabilities\Events\CapabilityInvoked;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\FailureReporter;
+use Throwable;
 
 /**
  * Finish paths for the invoke pipeline: early exit, failure, approval, replay, wire.
@@ -30,7 +32,18 @@ final class InvokeResultFinalizer
      */
     public function dispatch(object $event): void
     {
-        $this->events?->dispatch($event);
+        if ($this->events === null) {
+            return;
+        }
+
+        // Once run() has committed, a throwing sync listener (or a failed queue push for a
+        // queued one) is the host's failure, not the invoke's: report it and keep the
+        // outcome and the stored idempotency row intact (L-103 / D-010).
+        try {
+            $this->events->dispatch($event);
+        } catch (Throwable $e) {
+            FailureReporter::reportAndCount($e, FailureReporter::LISTENER_FAILED, ['event' => $event::class]);
+        }
     }
 
     public function finishEarly(CapabilityResult $result, ?InvokeState $state): CapabilityResult

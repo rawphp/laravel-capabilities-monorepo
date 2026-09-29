@@ -66,10 +66,14 @@ final class FakeProviderApp implements ArrayAccess
      *
      * @param  array<string, mixed>  $capabilitiesConfig
      * @param  array<string, mixed>  $instances  abstract => instance bound before register()
+     * @param  self|null  $app  pre-built app (instances / tags already bound) to register into
      */
-    public static function registered(array $capabilitiesConfig = [], array $instances = []): self
+    public static function registered(array $capabilitiesConfig = [], array $instances = [], ?self $app = null): self
     {
-        $app = new self($capabilitiesConfig);
+        $app ??= new self;
+        if ($capabilitiesConfig !== []) {
+            $app->config->set('capabilities', $capabilitiesConfig);
+        }
         foreach ($instances as $abstract => $instance) {
             $app->instance($abstract, $instance);
         }
@@ -125,6 +129,27 @@ final class FakeProviderApp implements ArrayAccess
     public function bound(string $abstract): bool
     {
         return $this->offsetExists($abstract);
+    }
+
+    /** @var array<string, list<string>> */
+    public array $tags = [];
+
+    /**
+     * @param  list<string>|string  $abstracts
+     */
+    public function tag(array|string $abstracts, string $tag): void
+    {
+        foreach ((array) $abstracts as $abstract) {
+            $this->tags[$tag][] = $abstract;
+        }
+    }
+
+    /**
+     * @return list<mixed>
+     */
+    public function tagged(string $tag): iterable
+    {
+        return array_map(fn (string $abstract): mixed => $this->make($abstract), $this->tags[$tag] ?? []);
     }
 
     public function make(string $abstract): mixed
@@ -191,6 +216,16 @@ final class FakeProviderApp implements ArrayAccess
     public function runningInConsole(): bool
     {
         return false;
+    }
+
+    /** Set to model a Laravel app with a bootstrap/cache directory (discovery manifest, L-015). */
+    public ?string $bootstrapDir = null;
+
+    public function bootstrapPath(string $path = ''): string
+    {
+        $base = $this->bootstrapDir ?? sys_get_temp_dir().'/capabilities-fake-provider-bootstrap';
+
+        return $path === '' ? $base : $base.'/'.ltrim($path, '/');
     }
 
     public function configurationIsCached(): bool

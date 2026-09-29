@@ -13,6 +13,24 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Added
 
+- **Discovery class-map cache (L-015).** `php artisan capabilities:cache` writes
+  `bootstrap/cache/capabilities.php` — the classes the `#[Capability]` scan finds under
+  `capabilities.path` — and `php artisan capabilities:clear` removes it
+  (`Adapters\Artisan\CacheCapabilitiesCommand` / `ClearCapabilitiesCommand`,
+  `Discovery\DiscoveryManifest`). When the manifest exists, boot discovery
+  (`CapabilityDiscoveryBoot::run(..., $manifestPath)`) registers from it and never walks or
+  tokenizes the directory; without it, behaviour is unchanged. Hooked into `optimize` /
+  `optimize:clear` via `ServiceProvider::optimizes()` (Laravel 11.27+). Like `event:cache`, a
+  stale manifest hides new classes until cleared. The two commands, like the scheduled resume
+  sweep, are package infrastructure: `ArtisanCommandRegistrar::infrastructure()` /
+  `all()` register them regardless of `surfaces.artisan.enabled`; `classes()` stays the ops
+  invoke-surface table only.
+- **Sibling packages register approval notifiers through the container (M-101 / L-101).**
+  `Contracts\ApprovalNotifier::CONTAINER_TAG` (`capabilities.approval_notifiers`) names the tag
+  the provider collects extra notifiers from, alongside the plain contract binding; each instance
+  is attached once to the single `ApprovalManager`. Approval rows requested by the pipeline now
+  carry the invoke context's `messaging` meta (`channel`, `chat_id`, `message_id`, …; `null`
+  for HTTP / CLI / job requests) so a chat notifier knows where to put its buttons.
 - **`self-update` is a reserved CLI domain (C-008).** `CapabilityDefinition::RESERVED_CLI_DOMAINS`
   gains `self-update`, matching the Go CLI's meta-command dispatcher, so a capability can no
   longer claim a `cli` domain the binary would never route to it. Definitions using that
@@ -270,11 +288,85 @@ profile — or no profile — returns `forbidden` with `normalized_code`
 
 ### Fixed
 
+- **One configured ApprovalManager for every approval (D-006, L-101).** The registry pipeline
+  used to build its own `new ApprovalManager($store)` from the provider's store, so
+  `approval_required` rows ignored `approval.ttl_hours` (always 24 h) and no
+  `ApprovalNotifier` ever fired. `CapabilityRegistry::withApprovalManager()` adopts the
+  provider's configured singleton (`ContainerBindings::makeRegistry(..., approvalManager:)`),
+  re-attaching only the registry run path, audit sink and event dispatcher. The provider now
+  attaches every `ApprovalNotifier` the container knows: the contract binding plus anything
+  tagged `CapabilitiesServiceProvider::APPROVAL_NOTIFIER_TAG` (`capabilities.approval_notifiers`),
+  each instance once. Hosts and sibling packages register notifiers through those two container
+  seams; `withApprovalStore()` remains for bare-store wiring with default config.
+- **Retrying an approval-gated invoke no longer opens duplicate approvals (D-005 §11, L-102).**
+  A repeat invoke with the same `Idempotency-Key` and body whose row is `pending_approval`
+  now replays the stored `approval_required` (same `approval_id`, `idempotent_replay` meta)
+  instead of re-running the approval gate and creating another pending row. Accepted
+  executions run under the row's original key (`CapabilityRegistry::executeApproval()` passes
+  `idempotency_key`), so the key moves to `completed` / `failed` and later retries replay the
+  executed outcome. `IdempotencyGuard::lookup()` gains an optional `executingApprovalId` that
+  lets only that approval's own execution continue past its pending row.
+- **Unknown `approvalPolicy` strings fail at definition time and never fall open (D-006, L-106).**
+  `ApprovalPolicy::isKnown()` / `assertKnown()` accept only `requester`, `requester_or_role`,
+  `any_staff`, `custom` and `role:<name>`. `CapabilityDefinition` rejects anything else
+  (attribute, fluent builder and discovery all pass through it) with `InvalidArgumentException`,
+  and `approval.default_policy` is checked the same way when the manager config is merged. A
+  row that still carries an unrecognised policy now denies every approver instead of
+  behaving like `requester_or_role` — before, a typo such as `role-finance` let the requester
+  approve their own request.
+- **Approved executions are no longer rate-limited as the requester (D-013, L-105).** The
+  pipeline skips `stageRateLimit` when `executing_approval_id` is set (accept / resume). The
+  request already spent its hit when it was made; re-counting the execution meant a capability
+  with `rateLimit(['max' => 1])` that was accepted inside the decay window returned
+  `rate_limited` and the row became `executed/failed` with no way to retry.
+- **Audit write failures are reported, redacted on the wire, and never abort approvals (D-010, L-104).**
+  Every failed `AuditWriter::write()` — invoke audit in either mode, and the
+  `approval.requested` / `approval.decided` / `approval.executed` records — now goes to the
+  host `ExceptionHandler` and increments `audit_write_failed_total{mode}` on the bound
+  `Metrics` (new `Support\FailureReporter`, shared with the L-009 outer catch). Before, a
+  best_effort failure left only a line in the capped in-memory observation window; a strict
+  failure put `$e->getMessage()` — for a `QueryException`, the SQL plus bound `payload_json` —
+  on the wire (now the fixed `Audit failed.`); and approval audit writes were unguarded, so a
+  failed insert threw out of `request()`, `accept()` and `execute()` after the row had changed
+  state or `run()` had committed. Approval audit records are best_effort by design (the state
+  change is the record of truth). Known limit: the first-party `AuditOutbox` that
+  `required=true` falls back to is process-local; hosts needing cross-process at-least-once
+  should treat `capabilities_audit_outbox` as the durable sink and alert on the metric.
+- **A throwing bus-event listener no longer turns a committed run into `internal` (D-010, L-103).**
+  `CapabilityInvoked`, `CapabilityFailed`, `CapabilityApprovalDecided` and
+  `CapabilityApprovalExecuted` are dispatched inside a guard: a sync listener that throws, or a
+  queued listener whose push fails, is reported (`bus_listener_failed_total{event}`) while the
+  invoke keeps its success, the idempotency row stays `completed` (so retries replay instead of
+  double-applying) and an executed approval stays `executed/ok`. Before, the L-009 outer catch
+  rewrote the completed key as `failed/internal` for the whole TTL.
+- **`authKind` is `cli_token` only for a `cli`-mapped ability (L-110).** `IlluminateHttpBridge`
+  used to flag any token whose ability merely contained `cli` (`client:read`, `clinic:*`,
+  `decline`) as a CLI token, disagreeing with `CallerDeriver`. `fromIlluminate()` / `fromArray()`
+  take the `clients.token_abilities` map (the Illuminate wrapper controllers receive it from the
+  provider) and match exactly, case-insensitively, on abilities mapped to `cli` (default
+  `capabilities:cli`).
+- **`HttpAuthGate::PROTECTED` no longer lists the auth issuance routes (L-109).** `auth_token`
+  and `auth_device` are how the CLI logs in; `isProtected()` returns `false` for every
+  `RouteTable::isAuthIssuanceRoute()` key so nothing built on it can lock out device-code login.
+- **`AuthTokenIssuer` docblock and the device-code guide state the `capabilities:cli` ability (C-103).**
+  Tokens minted for the product CLI must carry the ability mapped to caller `cli` in
+  `clients.token_abilities`, or the CLI is an `http` caller and `cli`-only capabilities silently
+  vanish from its catalog.
 - **`capability:run` works (D-016 / REQ-024).** `RunCapabilityCommand` called a non-existent
   `ArtisanCapabilityInvoker::invoke()`, so every run printed an "undefined method" error and
   exited 1. It now normalises the flags through `ArtisanCapabilityInvoker::parseFlags()`
   (numeric `--acting-as` becomes an int; `--acting-as` with `--system` is refused) and calls
-  `run()`.
+  `run()`. `--acting-as` now loads the host's real user through the registry requester
+  resolver (the same lookup approvals use) and fails closed — `MissingArtisanActorException`
+  — when the registry has none or the id is unknown (D-002, L-107). Before, the invoker built
+  a fabricated `stdClass` "artisan-user-<id>" that `authorize()` implementations calling
+  `$user->can()` would have received.
+- **The approval resume sweep keeps its command when the artisan invoke surface is off (L-108).**
+  `ArtisanCommandRegistrar::classes($artisanConfig, $approvalConfig)` adds
+  `ResumeApprovalsCommand` whenever `ResumeSchedulePlan::fromConfig()` plans a sweep, and the
+  provider passes `approval.*` to it. Before, `surfaces.artisan.enabled=false` unregistered the
+  command while `bootResumeSchedule()` still scheduled it, so `schedule:run` failed every minute
+  and crash recovery never ran.
 - **HTTP routes register once, with their middleware once (REQ-021).** The provider now hands
   the router straight to `HttpRouteRegistrar::registerInto()`, which calls `addRoute()` with a
   `Controller@method` action. Before, the provider set `middleware` in the action and then

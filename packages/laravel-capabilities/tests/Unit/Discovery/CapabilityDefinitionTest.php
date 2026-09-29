@@ -158,8 +158,8 @@ it('happy: definition stores field globalSystem when declared [D-017]', function
 
 it('happy: definition stores field approvalPolicy when declared [D-017]', function () {
     $registry = DiscoveryHelpers::registry();
-    $def = DiscoveryHelpers::mutatingWith($registry, 'ap-cap', ['approvalPolicy' => 'two_person']);
-    expect($def->approvalPolicy)->toBe('two_person');
+    $def = DiscoveryHelpers::mutatingWith($registry, 'ap-cap', ['approvalPolicy' => 'role:two_person']);
+    expect($def->approvalPolicy)->toBe('role:two_person');
 });
 
 it('happy: definition stores field approvalTtlHours when declared [D-017]', function () {

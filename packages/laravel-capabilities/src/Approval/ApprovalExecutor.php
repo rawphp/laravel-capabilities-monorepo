@@ -9,6 +9,8 @@ use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Events\CapabilityApprovalExecuted;
 use Rawphp\Capabilities\Pipeline\ResolveActor;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\FailureReporter;
+use Throwable;
 
 /**
  * Exactly-once approval domain execution (D-006 / P2-004).
@@ -238,7 +240,14 @@ final class ApprovalExecutor
             result: $result->toArray(),
         );
         $this->events[] = $executed;
-        $this->dispatcher?->dispatch($executed);
+        if ($this->dispatcher !== null) {
+            try {
+                $this->dispatcher->dispatch($executed);
+            } catch (Throwable $e) {
+                // The domain ran and the row says so; a listener cannot undo that (L-103).
+                FailureReporter::reportAndCount($e, FailureReporter::LISTENER_FAILED, ['event' => $executed::class]);
+            }
+        }
 
         $this->auditWrite('approval.executed', [
             'approval_id' => $id,
@@ -366,6 +375,11 @@ final class ApprovalExecutor
             return;
         }
 
-        $this->audit->write(array_merge(['event' => $event], $payload));
+        // run() has committed and the row is terminal; audit failure is reported, not thrown (L-104).
+        try {
+            $this->audit->write(array_merge(['event' => $event], $payload));
+        } catch (Throwable $e) {
+            FailureReporter::reportAndCount($e, FailureReporter::AUDIT_WRITE_FAILED, ['mode' => 'approval']);
+        }
     }
 }

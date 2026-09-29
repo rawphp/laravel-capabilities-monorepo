@@ -110,7 +110,7 @@ it('edge: lookup replays a stored failure and reports conflict for an invalid ke
     expect($guard->lookup($optional, $ctx, '!!', $hash)['action'])->toBe('conflict');
 });
 
-it('edge: a pending_approval row conflicts on a different hash and continues on the same hash', function () {
+it('edge: a pending_approval row conflicts on a different hash and replays the same approval on the same hash', function () {
     $h = igGuardHarness();
     ['guard' => $guard, 'ctx' => $ctx, 'optional' => $optional, 'hash' => $hash] = $h;
 
@@ -118,8 +118,13 @@ it('edge: a pending_approval row conflicts on a different hash and continues on 
     $guard->lookup($optional, $ctx, $key3, $hash);
     $guard->storeResult($optional, $ctx, $key3, $hash, CapabilityResult::approvalRequired('ap-1', 'need approval'));
 
-    expect($guard->lookup($optional, $ctx, $key3, $guard->hashInput(['z' => 9]))['action'])->toBe('conflict');
-    expect($guard->lookup($optional, $ctx, $key3, $hash)['action'])->toBe('continue');
+    $same = $guard->lookup($optional, $ctx, $key3, $hash);
+
+    expect($guard->lookup($optional, $ctx, $key3, $guard->hashInput(['z' => 9]))['action'])->toBe('conflict')
+        ->and($same['action'])->toBe('replay')
+        ->and($same['result']->approvalId())->toBe('ap-1')
+        // The accepted execution of that approval is the one caller allowed through (L-102).
+        ->and($guard->lookup($optional, $ctx, $key3, $hash, executingApprovalId: 'ap-1')['action'])->toBe('continue');
 });
 
 it('edge: storeResult is a no-op for an invalid key or a none-policy capability', function () {

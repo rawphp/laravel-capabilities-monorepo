@@ -117,6 +117,8 @@ final class IdempotencyGuard
     }
 
     /**
+     * @param  string|null  $executingApprovalId  the approval whose accepted execution this invoke is (D-006);
+     *                                            it continues past its own pending_approval row
      * @return array{action: 'continue'|'replay'|'conflict'|'busy', result?: CapabilityResult, record?: array<string, mixed>}
      */
     public function lookup(
@@ -124,6 +126,7 @@ final class IdempotencyGuard
         CapabilityContext $context,
         ?string $key,
         string $requestHash,
+        ?string $executingApprovalId = null,
     ): array {
         if (! $this->config->enabled || $key === null || $key === '' || ! $definition->shouldUseIdempotency() || $this->store === null) {
             return ['action' => 'continue'];
@@ -232,7 +235,7 @@ final class IdempotencyGuard
             ];
         }
 
-        // pending_approval / unknown: conflict on different hash; else continue cautiously.
+        // pending_approval / unknown: conflict on different hash.
         if ($existingHash !== null && $existingHash !== $requestHash) {
             return [
                 'action' => 'conflict',
@@ -243,6 +246,22 @@ final class IdempotencyGuard
                 ),
                 'record' => $existing,
             ];
+        }
+
+        // Same request while its approval is pending: replay the one approval_required
+        // (same approval_id) — a retry must not open a second approval (L-102 / D-005 §11).
+        // Only the accepted execution of that very approval continues through to run().
+        if ($status === 'pending_approval') {
+            $ownsRow = $executingApprovalId !== null
+                && $executingApprovalId !== ''
+                && (string) ($existing['approval_id'] ?? '') === $executingApprovalId;
+            if (! $ownsRow && is_array($existing['result_json'] ?? null)) {
+                return [
+                    'action' => 'replay',
+                    'result' => $this->hydrateResult($existing['result_json'], false),
+                    'record' => $existing,
+                ];
+            }
         }
 
         return ['action' => 'continue', 'record' => $existing];

@@ -141,6 +141,7 @@ final class MessagingHelpers
             bot: $bot,
             profileResolver: static fn (string $profile): array => $tools,
             pendingReplies: $parts['pending_replies'] ?? null,
+            callbacks: $parts['callbacks'] ?? null,
         );
     }
 
@@ -268,6 +269,36 @@ final class MessagingHelpers
         return [
             'update_id' => $updateId,
             'message' => $message,
+        ];
+    }
+
+    /**
+     * A tapped approval button: Telegram `callback_query` update carrying signed callback_data.
+     *
+     * @return array<string, mixed>
+     */
+    public static function callbackUpdate(
+        string $approvalId,
+        string $action = 'accept',
+        string|int $chatId = 100,
+        string|int $userId = 42,
+        int $updateId = 2,
+        ?string $data = null,
+        ?TelegramCallbackSigner $signer = null,
+    ): array {
+        $signer ??= self::signer();
+
+        return [
+            'update_id' => $updateId,
+            'callback_query' => [
+                'id' => 'cbq-'.$updateId,
+                'from' => ['id' => $userId, 'is_bot' => false, 'first_name' => 'Test'],
+                'message' => [
+                    'message_id' => 9,
+                    'chat' => ['id' => $chatId, 'type' => 'private'],
+                ],
+                'data' => $data ?? $signer->encode($signer->sign($approvalId, $action)),
+            ],
         ];
     }
 

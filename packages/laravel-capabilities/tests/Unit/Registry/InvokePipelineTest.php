@@ -199,7 +199,7 @@ it('happy: correct error envelope when stage authorize fails [PIPE-002]', functi
 });
 
 it('fail: run is not called when stage needs_approval fails [PIPE-002]', function () {
-    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'x']);
+    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
     $result = $h['registry']->invoke($h['name'], $input, PipelineHelpers::options('http', $extra));
@@ -207,7 +207,7 @@ it('fail: run is not called when stage needs_approval fails [PIPE-002]', functio
 });
 
 it('fail: no domain side effects when stage needs_approval fails [PIPE-002]', function () {
-    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'x']);
+    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
     $h['registry']->invoke($h['name'], $input, PipelineHelpers::options('http', $extra));
@@ -215,7 +215,7 @@ it('fail: no domain side effects when stage needs_approval fails [PIPE-002]', fu
 });
 
 it('happy: correct error envelope when stage needs_approval fails [PIPE-002]', function () {
-    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'x']);
+    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
     $result = $h['registry']->invoke($h['name'], $input, PipelineHelpers::options('http', $extra));

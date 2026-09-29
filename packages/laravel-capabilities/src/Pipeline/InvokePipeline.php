@@ -5,7 +5,6 @@ namespace Rawphp\Capabilities\Pipeline;
 use Closure;
 use Error;
 use Illuminate\Container\Container;
-use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -29,6 +28,7 @@ use Rawphp\Capabilities\Support\CapabilityContext;
 use Rawphp\Capabilities\Support\CapabilityData;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\ErrorCodeMap;
+use Rawphp\Capabilities\Support\FailureReporter;
 use Rawphp\Capabilities\Support\SystemActor;
 use ReflectionFunction;
 use ReflectionFunctionAbstract;
@@ -259,10 +259,7 @@ final class InvokePipeline
 
     private function reportThrowable(Throwable $e): void
     {
-        $container = Container::getInstance();
-        if ($container->bound(ExceptionHandler::class)) {
-            $container->make(ExceptionHandler::class)->report($e);
-        }
+        FailureReporter::report($e);
     }
 
     /**
@@ -566,11 +563,13 @@ final class InvokePipeline
 
         /** @var CapabilityContext $ctx */
         $ctx = $state->context;
+        $executing = $state->options['executing_approval_id'] ?? null;
         $lookup = $this->idempotencyGuard->lookup(
             $state->definition,
             $ctx,
             $key,
             $state->requestHash,
+            is_scalar($executing) ? (string) $executing : null,
         );
 
         if ($lookup['action'] === 'replay') {
@@ -745,6 +744,9 @@ final class InvokePipeline
             // The capability's own governance travels with the row (D-006): who may decide, how long.
             'approval_policy' => $state->definition->approvalPolicy,
             'approval_ttl_hours' => $state->definition->approvalTtlHours,
+            // Where the request came from, so a chat notifier can put the buttons in that
+            // conversation (M-101 / D-006 step 4); null for HTTP / CLI / job requests.
+            'messaging' => $ctx->messaging(),
         ]);
 
         $state->approvalId = (string) $record['id'];
@@ -775,6 +777,14 @@ final class InvokePipeline
 
         if ($this->shouldForceFail(PipelineStages::RATE_LIMIT, $forced)) {
             return $this->rateLimitedResult('Forced failure at rate_limit.');
+        }
+
+        // Executing an already-approved request (D-006 accept / resume): the request was
+        // counted when it was made and the approver is not the requester, so it must not
+        // spend or trip the requester's buckets — a max=1 capability would otherwise burn
+        // its approval as a terminal rate_limited row (L-105 / D-013).
+        if (isset($state->options['executing_approval_id'])) {
+            return null;
         }
 
         // Agent turn budget (D-013) — checked whenever an in-process adapter supplies the turn's

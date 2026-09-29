@@ -544,10 +544,24 @@ final class CapabilityRegistry implements CapabilityBus
         return $this->pipeline->agentTurnBudget();
     }
 
+    /**
+     * Approval manager over a bare store with default approval config. Prefer
+     * {@see withApprovalManager} when the host has already configured one.
+     */
     public function withApprovalStore(ApprovalStore $store): self
     {
-        $this->approvalStore = $store;
-        $this->pipeline->approvalManager = (new ApprovalManager($store))
+        return $this->withApprovalManager(new ApprovalManager($store));
+    }
+
+    /**
+     * Use one configured ApprovalManager for pipeline-requested approvals (L-101 / D-006):
+     * its store, `approval.*` config and notifiers are kept; the registry re-attaches its
+     * own run path, audit sink and event dispatcher so accept/resume execute here.
+     */
+    public function withApprovalManager(ApprovalManager $manager): self
+    {
+        $this->approvalStore = $manager->store();
+        $this->pipeline->approvalManager = $manager
             ->withExecutor($this->executeApproval(...))
             ->withAudit($this->audit())
             ->withEventDispatcher($this->pipeline->events);
@@ -750,6 +764,9 @@ final class CapabilityRegistry implements CapabilityBus
             'job' => ['tenant_id' => $tenantId],
             // Decision already made: the needs-approval gate must not re-request (D-006).
             'executing_approval_id' => (string) $str('id', ''),
+            // Run under the original key so it moves pending_approval → completed/failed and
+            // later retries replay the executed outcome instead of re-requesting (D-005 §11).
+            'idempotency_key' => $str('idempotency_key', null),
         ]);
     }
 

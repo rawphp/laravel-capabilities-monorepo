@@ -12,6 +12,8 @@ use Rawphp\Capabilities\Adapters\Ai\AiToolAdapter;
 use Rawphp\Capabilities\Adapters\Ai\AiToolAdapterV1;
 use Rawphp\Capabilities\Adapters\Artisan\ArtisanCommandRegistrar;
 use Rawphp\Capabilities\Adapters\Artisan\ArtisanCommandTable;
+use Rawphp\Capabilities\Adapters\Artisan\CacheCapabilitiesCommand;
+use Rawphp\Capabilities\Adapters\Artisan\ClearCapabilitiesCommand;
 use Rawphp\Capabilities\Adapters\Http\ApprovalController;
 use Rawphp\Capabilities\Adapters\Http\AuthController;
 use Rawphp\Capabilities\Adapters\Http\CapabilityController;
@@ -35,6 +37,7 @@ use Rawphp\Capabilities\Boot\ContainerBindings;
 use Rawphp\Capabilities\Boot\RegistrationPlan;
 use Rawphp\Capabilities\Boot\SurfaceNames;
 use Rawphp\Capabilities\Contracts\ApprovalGateway;
+use Rawphp\Capabilities\Contracts\ApprovalNotifier;
 use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Contracts\AuthTokenIssuer;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
@@ -45,6 +48,7 @@ use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\ScopeResolver;
 use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\Capabilities\Discovery\CapabilityDiscoveryBoot;
+use Rawphp\Capabilities\Discovery\DiscoveryManifest;
 use Rawphp\Capabilities\Http\HttpAuthGate;
 use Rawphp\Capabilities\Http\HttpRouteRegistrar;
 use Rawphp\Capabilities\Http\RouteTable;
@@ -68,6 +72,12 @@ use Rawphp\Capabilities\Support\IlluminateRateLimitCache;
  */
 class CapabilitiesServiceProvider extends ServiceProvider
 {
+    /**
+     * Container tag sibling packages / hosts use to register extra {@see ApprovalNotifier}s
+     * on the single ApprovalManager (L-101). The contract binding itself is also attached.
+     */
+    public const APPROVAL_NOTIFIER_TAG = ApprovalNotifier::CONTAINER_TAG;
+
     /** Memoised so the registry and the ApprovalManager share one writer (D-010). */
     private ?AuditWriter $auditWriter = null;
 
@@ -137,7 +147,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
             // Accept / resume run the stored invoke through the registry (D-006), after
             // re-authorizing the original requester (re-validation step 4). Both resolved
             // lazily: the registry itself is built from this manager's store.
-            return ContainerBindings::makeApprovalManager(
+            $manager = ContainerBindings::makeApprovalManager(
                 $config,
                 self::boundTableGatewayOrNull($app),
                 self::boundConnectionOrNull($app, $config, 'approval'),
@@ -149,6 +159,15 @@ class CapabilitiesServiceProvider extends ServiceProvider
             })->withOriginalAuthorizer(static fn (array $row): bool => self::originalActorAllows($app, $row))
                 ->withAudit($this->auditWriterOrNull($app, $config))
                 ->withEventDispatcher(self::eventDispatcherOrNull($app, $config));
+
+            // Approvers are told about pending rows through every notifier the host or a
+            // sibling package registered (L-101 / D-006): the ApprovalNotifier contract binding
+            // and anything tagged APPROVAL_NOTIFIER_TAG. The registry adopts this instance.
+            foreach (self::boundApprovalNotifiers($app) as $notifier) {
+                $manager->addNotifier($notifier);
+            }
+
+            return $manager;
         });
         $this->app->alias(ApprovalManager::class, 'ApprovalManager');
         // Hosts with custom actor lookup rebind this; default resolves users through
@@ -185,12 +204,13 @@ class CapabilitiesServiceProvider extends ServiceProvider
             return ContainerBindings::makeRegistry(
                 $config,
                 self::boundTableGatewayOrNull($app),
-                $approval->store(),
+                null,
                 $idempotency,
                 self::boundConnectionOrNull($app, $config, null),
                 self::boundRateLimitCacheOrNull($app),
                 $rateLimiter,
                 $this->auditWriterOrNull($app, $config),
+                approvalManager: $approval,
             )->withRequesterResolver(
                 // Approved rows execute as the real requester — same lookup as the accept re-check (D-006).
                 static fn (string $type, string $id): ?object => self::authUserOrNull($app, $id),
@@ -238,14 +258,18 @@ class CapabilitiesServiceProvider extends ServiceProvider
             );
         });
 
+        // Wrappers classify authKind from the same clients.token_abilities map CallerDeriver uses (L-110).
         $this->app->singleton(IlluminateCapabilityController::class, static fn ($app) => new IlluminateCapabilityController(
             $app->make(CapabilityController::class),
+            self::tokenAbilityMap($app),
         ));
         $this->app->singleton(IlluminateAuthController::class, static fn ($app) => new IlluminateAuthController(
             $app->make(AuthController::class),
+            self::tokenAbilityMap($app),
         ));
         $this->app->singleton(IlluminateApprovalController::class, static fn ($app) => new IlluminateApprovalController(
             $app->make(ApprovalController::class),
+            self::tokenAbilityMap($app),
         ));
 
         // MCP adapter bindings (ContainerBindings plan BOOT-001) — real Laravel singletons.
@@ -292,6 +316,57 @@ class CapabilitiesServiceProvider extends ServiceProvider
             );
         });
         $this->app->alias(AiToolAdapter::class, 'AiToolAdapter');
+    }
+
+    /**
+     * `clients.token_abilities` (ability => caller) as an array<string, string>.
+     *
+     * @return array<string, string>
+     */
+    private static function tokenAbilityMap(object $app): array
+    {
+        $config = self::configFromApp($app);
+        $map = $config['clients']['token_abilities'] ?? [];
+        if (! is_array($map)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($map as $ability => $caller) {
+            if (is_string($ability) && is_string($caller)) {
+                $out[$ability] = $caller;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Every ApprovalNotifier the container knows about, each instance once:
+     * the contract binding plus everything tagged {@see APPROVAL_NOTIFIER_TAG}.
+     *
+     * @return list<ApprovalNotifier>
+     */
+    private static function boundApprovalNotifiers(object $app): array
+    {
+        $candidates = [];
+        if (method_exists($app, 'bound') && $app->bound(ApprovalNotifier::class)) {
+            $candidates[] = $app->make(ApprovalNotifier::class);
+        }
+        if (method_exists($app, 'tagged')) {
+            foreach ($app->tagged(self::APPROVAL_NOTIFIER_TAG) as $tagged) {
+                $candidates[] = $tagged;
+            }
+        }
+
+        $notifiers = [];
+        foreach ($candidates as $candidate) {
+            if ($candidate instanceof ApprovalNotifier) {
+                $notifiers[spl_object_id($candidate)] = $candidate;
+            }
+        }
+
+        return array_values($notifiers);
     }
 
     /**
@@ -518,6 +593,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
         $this->bootArtisanCommands();
         $this->bootResumeSchedule();
         $this->bootMcpServers();
+        $this->bootDiscoveryCacheHooks();
 
         if ($this->app->runningInConsole()) {
             $this->publishes([
@@ -656,18 +732,37 @@ class CapabilitiesServiceProvider extends ServiceProvider
     }
 
     /**
+     * `php artisan optimize` / `optimize:clear` run the discovery cache pair (L-015;
+     * Laravel 11.27+ `optimizes()`; older hosts call the commands directly).
+     */
+    public function bootDiscoveryCacheHooks(): void
+    {
+        if (method_exists($this, 'optimizes')) {
+            $this->optimizes(
+                optimize: CacheCapabilitiesCommand::SIGNATURE_NAME,
+                clear: ClearCapabilitiesCommand::SIGNATURE_NAME,
+                key: 'capabilities',
+            );
+        }
+    }
+
+    /**
      * Register in-server Artisan ops commands from ArtisanCommandTable (REQ-024).
      *
      * @return list<class-string>
      */
-    public function bootArtisanCommands(?array $artisanConfig = null): array
+    public function bootArtisanCommands(?array $artisanConfig = null, ?array $approvalConfig = null): array
     {
-        $config = $artisanConfig ?? (self::configFromApp($this->app)['surfaces']['artisan'] ?? []);
+        $full = self::configFromApp($this->app);
+        $config = $artisanConfig ?? ($full['surfaces']['artisan'] ?? []);
         if (! is_array($config)) {
             $config = [];
         }
+        $approval = $approvalConfig ?? ($full['approval'] ?? []);
 
-        $classes = ArtisanCommandRegistrar::classes($config);
+        // Infrastructure commands (discovery cache, scheduled resume sweep) register
+        // regardless of the ops invoke surface flag (L-015 / L-108).
+        $classes = ArtisanCommandRegistrar::all($config, is_array($approval) ? $approval : []);
         if ($classes === []) {
             return [];
         }
@@ -698,7 +793,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
             return [];
         }
 
-        return CapabilityDiscoveryBoot::run($registry, $config);
+        return CapabilityDiscoveryBoot::run($registry, $config, DiscoveryManifest::pathFor($this->app));
     }
 
     /**

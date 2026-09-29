@@ -30,6 +30,7 @@ it('edge: artisan mutate path when --acting-as=1 [D-002]', function () {
         'acting_as' => $parsed['acting_as'],
         'tenant' => 'tenant-a',
         'mutating' => true,
+        'user_resolver' => static fn ($id) => H::user($id, 'tenant-a'),
     ]);
     expect($result->isOk())->toBeTrue()
         ->and($h['registry']->lastState()?->context?->caller())->toBe('artisan');
@@ -205,18 +206,16 @@ it('fail: artisan run throws RuntimeException when user_resolver finds no user',
     ]))->toThrow(RuntimeException::class);
 });
 
-it('happy: artisan run accepts a numeric-string acting_as without a resolver', function () {
+it('fail: artisan run refuses acting_as without a user_resolver instead of fabricating a user [D-002 / L-107]', function () {
     $inv = new ArtisanCapabilityInvoker(artisanInvokerRegistry());
 
-    $numeric = $inv->run([
+    expect(fn () => $inv->run([
         'name' => 'art.cap',
         'input' => artisanInvoiceInput(),
         'acting_as' => '7',
         'tenant' => 't1',
         'skip_server_rules' => true,
-    ]);
-
-    expect($numeric)->toBeInstanceOf(CapabilityResult::class);
+    ]))->toThrow(MissingArtisanActorException::class, 'user_resolver');
 });
 
 it('happy: artisan run executes as a named system actor with a tenant', function () {

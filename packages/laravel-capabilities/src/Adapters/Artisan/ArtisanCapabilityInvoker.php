@@ -8,7 +8,6 @@ use Rawphp\Capabilities\Support\InvalidArtisanFlagsException;
 use Rawphp\Capabilities\Support\MissingArtisanActorException;
 use Rawphp\Capabilities\Support\MissingJobTenantException;
 use Rawphp\Capabilities\Support\SystemActor;
-use stdClass;
 
 /**
  * In-process Artisan capability:run invoker (D-002 / D-016 / PIPE-008).
@@ -155,24 +154,17 @@ final class ArtisanCapabilityInvoker
             throw MissingArtisanActorException::missing();
         }
 
+        // Fail closed (D-002 / L-107): the actor is the host's real user or nothing. A
+        // fabricated stdClass would make authorize() implementations calling $user->can()
+        // see a principal that never existed.
         $resolver = $opts['user_resolver'] ?? null;
-        if (is_callable($resolver)) {
-            $user = $resolver($actingAs);
-            if ($user === null) {
-                throw new \RuntimeException(sprintf(
-                    'User id "%s" not found for artisan --acting-as (D-002).',
-                    (string) $actingAs,
-                ));
-            }
-
-            return $user;
+        if (! is_callable($resolver)) {
+            throw MissingArtisanActorException::unresolvableUser($actingAs);
         }
 
-        $user = new stdClass;
-        $user->id = is_numeric($actingAs) ? (int) $actingAs : $actingAs;
-        $user->name = 'artisan-user-'.$actingAs;
-        if (isset($opts['tenant']) && is_string($opts['tenant']) && $opts['tenant'] !== '') {
-            $user->current_tenant_id = $opts['tenant'];
+        $user = $resolver($actingAs);
+        if (! is_object($user)) {
+            throw MissingArtisanActorException::userNotFound($actingAs);
         }
 
         return $user;

@@ -30,6 +30,23 @@ final class CallbackHandler
     ) {}
 
     /**
+     * Decode a tapped button's `callback_data` token and route it (M-101). A token that does
+     * not parse is `invalid` — the agent never sees it.
+     *
+     * @param  array<string, mixed>  $telegramUser  from callback_query.from
+     * @return array{status: string, result?: CapabilityResult|null, message: string}
+     */
+    public function handleCallbackData(string $callbackData, array $telegramUser): array
+    {
+        $payload = $this->signer->decode($callbackData);
+        if ($payload === null) {
+            return ['status' => 'invalid', 'message' => 'malformed_callback_data'];
+        }
+
+        return $this->handle($payload, $telegramUser);
+    }
+
+    /**
      * @param  array<string, mixed>  $callbackPayload  decoded callback_data fields
      * @param  array<string, mixed>  $telegramUser  from callback_query.from
      * @return array{status: string, result?: CapabilityResult|null, message: string}

@@ -2,6 +2,7 @@
 
 namespace Rawphp\Capabilities\Approval;
 
+use InvalidArgumentException;
 use Rawphp\Capabilities\Pipeline\ResolveActor;
 use Rawphp\Capabilities\Support\SystemActor;
 
@@ -53,6 +54,33 @@ final class ApprovalPolicy
     public function policy(): string
     {
         return $this->policy;
+    }
+
+    /**
+     * Is this a policy string the state machine understands? Anything else denies
+     * every approver (L-106) — an authoring typo must never fall open to self-approve.
+     */
+    public static function isKnown(string $policy): bool
+    {
+        if (in_array($policy, [self::REQUESTER, self::REQUESTER_OR_ROLE, self::ANY_STAFF, self::CUSTOM], true)) {
+            return true;
+        }
+
+        return str_starts_with($policy, 'role:') && substr($policy, 5) !== '';
+    }
+
+    /**
+     * @throws InvalidArgumentException when $policy is not one of requester | requester_or_role | any_staff | custom | role:<name>
+     */
+    public static function assertKnown(string $policy, string $context): void
+    {
+        if (! self::isKnown($policy)) {
+            throw new InvalidArgumentException(sprintf(
+                '%s: unknown approval policy "%s" (expected requester, requester_or_role, any_staff, custom or role:<name>).',
+                $context,
+                $policy,
+            ));
+        }
     }
 
     /**
@@ -109,7 +137,8 @@ final class ApprovalPolicy
             str_starts_with($this->policy, 'role:') => $hasRole,
             $this->policy === self::ANY_STAFF => $isStaff,
             $this->policy === self::CUSTOM || $this->customChecker !== null => $this->runCustom($actor, $row),
-            default => $isRequester || $hasRole,
+            // Unknown policy string: fail closed (L-106).
+            default => false,
         };
     }
 
