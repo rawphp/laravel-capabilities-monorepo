@@ -13,6 +13,16 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Added
 
+- **Approval is declared on the capability (D-006, L-002).** Fluent definitions gain
+  `->needsApproval(fn (Input $input, CapabilityContext $ctx): bool)`; class capabilities
+  use their `needsApproval()` method. Before, approval could only be triggered by the
+  internal invoke options `needs_approval` / `needs_approval_callback` / `require_approval`,
+  which no adapter sets — so the whole approval state machine was unreachable from a real
+  surface. The row now also stores the capability's `approvalPolicy` (`approval_policy`,
+  new nullable column via migration
+  `2026_09_29_000001_add_approval_policy_to_capabilities_approvals_table`) and its
+  `approvalTtlHours` is applied to `expires_at`. Custom `ApprovalStore` / `TableGateway`
+  implementations must persist the new key.
 - **Approval executor identity columns** — `capabilities_approvals` gains nullable
   `executor_actor_type` / `executor_actor_id` (new migration
   `2026_09_24_000001_add_executor_actor_to_capabilities_approvals_table`).
@@ -70,6 +80,14 @@ profile — or no profile — returns `forbidden` with `normalized_code`
 
 ### Changed
 
+- **Accept / reject / forced resume enforce the capability's `approvalPolicy` (D-006, L-002).**
+  `ApprovalManager` applied only its global `approval.default_policy`
+  (`requester_or_role`), so a capability declaring `approvalPolicy: 'role:finance'` still let
+  the requester self-approve. Decisions now use `ApprovalPolicy::forRow($row)`: the row's
+  stored policy when present (host role / staff / custom checkers are kept), otherwise the
+  global default. Rows written before this release have no stored policy and behave as before.
+  The approved execution passes `executing_approval_id` to the pipeline so the needs-approval
+  gate does not re-request approval for an already-decided row.
 - **Class capabilities run their own `authorize()` / `needsApproval()` (D-017, L-001).**
   For `#[Capability]` classes the pipeline previously called only `run()`: the class's
   `authorize()` was never consulted (the invoke fell through to the host `Authorizer`,

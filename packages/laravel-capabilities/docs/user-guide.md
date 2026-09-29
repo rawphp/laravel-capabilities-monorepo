@@ -47,7 +47,7 @@ Capability::define('create-invoice')
     ->register($registry);
 ```
 
-Builder highlights (non-exhaustive): `description`, `surfaces`, `input`, `output`, `aliases`, deprecation fields, `groups`, `tags`, `idempotent`, `idempotencyKeyFields` (derive a key from named input fields when the caller sends none), `authorize`, `run`, approval-related setters, `register`.
+Builder highlights (non-exhaustive): `description`, `surfaces`, `input`, `output`, `aliases`, deprecation fields, `groups`, `tags`, `idempotent`, `idempotencyKeyFields` (derive a key from named input fields when the caller sends none), `authorize`, `needsApproval` (`(Input, CapabilityContext): bool` — true stores an approval request and returns `approval_required` instead of running), `approvalPolicy` / `approvalTtlHours` (who may decide, and for how long the request stays pending — both travel on the approval row), `run`, `register`.
 
 ### CLI routing metadata (`domain` / `verb`)
 
@@ -332,7 +332,7 @@ Greenfield AI-chat hosts use this after queue/progress/proposals config — see 
 
 ## Approval and idempotency (operator view)
 
-- **Approval:** definitions may require approval before `run()` finishes. HTTP accept/reject routes are on the capability prefix. Notifier contracts allow CLI/HTTP/Telegram-style prompts; messaging package supplies conversation-side notify implementation.
+- **Approval:** a definition's `needsApproval` (fluent callable or class method) decides per invoke; `true` stores a pending row and returns `approval_required` without calling `run()`. Who may accept or reject is the capability's `approvalPolicy` when declared (stored on the row), otherwise `approval.default_policy`. HTTP accept/reject routes are on the capability prefix. Notifier contracts allow CLI/HTTP/Telegram-style prompts; messaging package supplies conversation-side notify implementation.
 - **Idempotency:** when enabled and the definition uses it, repeated keys replay stored outcomes instead of double-applying. CLI always sends a key on `run`.
 
 **Telegram approval notifiers (upgrade):** For in-memory recording doubles (tests/fakes — **no** Bot API in core), use `RecordingTelegramApprovalNotifier` (`Rawphp\Capabilities\Approval\Notifiers\RecordingTelegramApprovalNotifier`). Core still ships a **deprecated soft-landing** empty subclass `TelegramApprovalNotifier` of that recording double (still loadable; recording-only). Production Telegram Bot API delivery is the **messaging** package FQCN `Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier` — a different class, unchanged by this rename. Full consumer impact: package [CHANGELOG](../CHANGELOG.md) Unreleased **Breaking** and [README](../README.md) Telegram notifier / sibling notes. Pre-stable monorepo design surface — not a Packagist-stable API claim; soft-landing remains until a later removal.

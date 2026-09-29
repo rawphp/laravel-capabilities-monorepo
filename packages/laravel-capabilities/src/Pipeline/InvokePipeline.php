@@ -652,12 +652,22 @@ final class InvokePipeline
             return $this->buildApprovalRequired($state, forced: true);
         }
 
+        // Executing an already-approved request (D-006 accept / resume): the decision was
+        // made; asking again would loop the row back to pending.
+        if (isset($state->options['executing_approval_id'])) {
+            return null;
+        }
+
         $needs = (bool) ($state->options['needs_approval'] ?? false);
         if (! $needs && is_callable($state->options['needs_approval_callback'] ?? null)) {
             $needs = (bool) $state->options['needs_approval_callback']($state->input, $state->context);
         }
 
-        // The capability's own rule (D-017 class needsApproval()) — governance is part of the definition.
+        // The capability's own rule — governance is part of the definition (D-006 / D-017):
+        // fluent needsApproval(callable) or the class handler's needsApproval().
+        if (! $needs && is_callable($state->definition->needsApproval)) {
+            $needs = (bool) self::callWithArity($state->definition->needsApproval, $state->input, $state->context);
+        }
         $handler = $this->handler($state);
         if (! $needs && $handler !== null && method_exists($handler, 'needsApproval')) {
             $needs = (bool) self::callWithArity([$handler, 'needsApproval'], $state->input, $state->context);
@@ -691,6 +701,9 @@ final class InvokePipeline
                 : $state->rawInput,
             'input_hash' => $state->requestHash,
             'idempotency_key' => $state->idempotencyKey,
+            // The capability's own governance travels with the row (D-006): who may decide, how long.
+            'approval_policy' => $state->definition->approvalPolicy,
+            'approval_ttl_hours' => $state->definition->approvalTtlHours,
         ]);
 
         $state->approvalId = (string) $record['id'];

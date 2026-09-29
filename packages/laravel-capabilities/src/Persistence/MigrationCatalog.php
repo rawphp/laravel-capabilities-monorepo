@@ -57,6 +57,7 @@ final class MigrationCatalog
                     'result_status',
                     'executor_actor_type',
                     'executor_actor_id',
+                    'approval_policy',
                     'decided_by',
                     'decided_at',
                     'decision_reason',

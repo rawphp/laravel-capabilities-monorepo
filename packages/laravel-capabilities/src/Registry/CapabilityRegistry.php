@@ -619,6 +619,8 @@ final class CapabilityRegistry implements CapabilityBus
             'actor' => $actor,
             'tenant_id' => $tenantId,
             'job' => ['tenant_id' => $tenantId],
+            // Decision already made: the needs-approval gate must not re-request (D-006).
+            'executing_approval_id' => (string) $str('id', ''),
         ]);
     }
 

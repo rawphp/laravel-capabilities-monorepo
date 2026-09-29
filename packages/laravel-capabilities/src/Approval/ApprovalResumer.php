@@ -105,7 +105,7 @@ final class ApprovalResumer
                 return CapabilityResult::failure('forbidden', 'Resume actor tenant mismatch.');
             }
             // Random users without role/requester: deny for decision matrix.
-            if (! $this->policy->allows($row, $actor, $tenant) && ResolveActor::actorId($actor) !== (string) ($row['requester_actor_id'] ?? '')) {
+            if (! $this->policy->forRow($row)->allows($row, $actor, $tenant) && ResolveActor::actorId($actor) !== (string) ($row['requester_actor_id'] ?? '')) {
                 // Requester may force-resume as repair; role holders too via policy.
                 $isRequester = ResolveActor::actorId($actor) === (string) ($row['requester_actor_id'] ?? '');
                 if (! $isRequester) {
