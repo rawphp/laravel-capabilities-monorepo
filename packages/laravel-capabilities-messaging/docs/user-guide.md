@@ -96,8 +96,10 @@ A linked Telegram user resolves to an instance of your user model (`user_model`,
 ### `code_link` (default)
 
 1. Your app issues a one-time code for a Laravel user (`IdentityLinker::issueLinkCode`).
-2. The Telegram user presents the code.
-3. `bindWithCode` binds telegram user id → Laravel user (rejects expired, reused, or unknown codes).
+2. The Telegram user sends `/start <code>` or `/link <code>` to the bot. A deep link `https://t.me/<bot>?start=<code>` sends `/start <code>` for them.
+3. The update pipeline calls `bindWithCode` before identity resolution and replies with a fixed confirmation or refusal; no agent turn or tool runs. Expired, reused, or unknown codes are refused (`link_code_invalid`, logged as a warning).
+
+The command is only recognised in `code_link` mode. Codes live in the process-local `IdentityLinker` (L-006 residual): the process that issues a code must be the one that handles the `/start` update, so until a durable store exists this flow does not work across a web process and a separate queue worker.
 
 Codes expire per `identity.code_ttl_seconds`. Client-forged `laravel_user_id` values are never trusted.
 

@@ -42,6 +42,13 @@ final class ProcessTelegramUpdate
         'conversation_reply',
     ];
 
+    public const LINKED_REPLY = 'Linked. You can chat with the assistant now.';
+
+    public const LINK_FAILED_REPLY = 'That link code is invalid or expired. Ask for a new one in the app.';
+
+    /** `/start <code>` or `/link <code>` — code_link bind step (MSG-002). */
+    private const LINK_COMMAND = '#^/(?:start|link)(?:@\w+)?\s+([0-9a-f]{16})$#';
+
     /** @var list<string> */
     private array $completedSteps = [];
 
@@ -196,6 +203,11 @@ final class ProcessTelegramUpdate
         $telegramUserId = TelegramUpdateParser::telegramUserId($update);
         $topicId = TelegramUpdateParser::topicId($update);
         $text = TelegramUpdateParser::text($update);
+
+        $linkCode = $this->linkCode($text, $telegramUserId);
+        if ($linkCode !== null) {
+            return $this->bindLink((string) $chatId, (string) $telegramUserId, $linkCode);
+        }
 
         // resolve_identity
         if ($failAt === 'identity_unresolved') {
@@ -359,6 +371,46 @@ final class ProcessTelegramUpdate
             'caller' => 'agent',
             'steps' => $this->completedSteps,
             'domain_bypass' => false,
+        ];
+    }
+
+    /**
+     * Link code presented in chat, only in code_link mode (allowlist must not be bypassed).
+     */
+    private function linkCode(string $text, ?string $telegramUserId): ?string
+    {
+        if ($telegramUserId === null || $this->config->identityMode() !== 'code_link') {
+            return null;
+        }
+
+        return preg_match(self::LINK_COMMAND, trim($text), $m) === 1 ? $m[1] : null;
+    }
+
+    /**
+     * Bind the chat user with an app-issued code and confirm in chat — no agent turn, no tools.
+     *
+     * @return array<string, mixed>
+     */
+    private function bindLink(string $chatId, string $telegramUserId, string $code): array
+    {
+        $linked = $this->identity->bindWithCode($telegramUserId, $code) !== null;
+        $this->mark('link_identity');
+
+        $this->adapter->reply([
+            'chat_id' => $chatId,
+            'text' => $linked ? self::LINKED_REPLY : self::LINK_FAILED_REPLY,
+        ]);
+        $this->mark('conversation_reply');
+
+        if (! $linked) {
+            $this->log('warning', 'Telegram link code refused', ['failure' => 'link_code_invalid', 'tags' => $this->lastTags]);
+        }
+
+        return [
+            'ok' => $linked,
+            'linked' => $linked,
+            'error' => $linked ? null : 'link_code_invalid',
+            'steps' => $this->completedSteps,
         ];
     }
 

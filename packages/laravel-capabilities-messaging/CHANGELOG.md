@@ -91,6 +91,12 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Added
 
+- **Chat-side code link** — in `code_link` mode (the default) `ProcessTelegramUpdate` recognises
+  `/start <code>` and `/link <code>` before identity resolution, calls
+  `IdentityLinker::bindWithCode()` and replies with `ProcessTelegramUpdate::LINKED_REPLY` or
+  `LINK_FAILED_REPLY` (result `error: link_code_invalid`). No agent turn or tool runs for the
+  command. Before, nothing consumed a code, so the default identity mode could not link anyone.
+
 - **Audited tool profile** — Telegram tool calls pass the configured `agent_profile` as the
   `tool_profile` invoke option, so core audit entries record which profile gated the call.
 - **Allowlist user check in setup validation** — `TelegramSetup::validate()` / `runOrFail()`
