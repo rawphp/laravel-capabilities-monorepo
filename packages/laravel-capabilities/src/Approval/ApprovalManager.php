@@ -9,8 +9,10 @@ use Rawphp\Capabilities\Contracts\ApprovalNotifier;
 use Rawphp\Capabilities\Contracts\ApprovalStore;
 use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Contracts\Clock;
+use Rawphp\Capabilities\Contracts\ScopeResolver;
 use Rawphp\Capabilities\Events\CapabilityApprovalDecided;
 use Rawphp\Capabilities\Pipeline\ResolveActor;
+use Rawphp\Capabilities\Pipeline\ResolveTenantFromCaller;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\FailureReporter;
 use Rawphp\Capabilities\Support\InMemoryApprovalStore;
@@ -42,6 +44,9 @@ final class ApprovalManager implements ApprovalGateway
 
     private ApprovalExecutor $rowExecutor;
 
+    /** Places an approver in a tenant with the same resolver that stamped the row (M-301 / D-003). */
+    private ResolveTenantFromCaller $resolveTenant;
+
     /** @var list<object> */
     private array $events = [];
 
@@ -68,8 +73,10 @@ final class ApprovalManager implements ApprovalGateway
         ?callable $originalAuthorizer = null,
         ?AuditWriter $audit = null,
         ?ApprovalMetrics $metrics = null,
+        ?ScopeResolver $scopeResolver = null,
     ) {
         $this->clock = $clock ?? new SystemClock;
+        $this->resolveTenant = new ResolveTenantFromCaller($scopeResolver);
         $this->config = self::mergeConfig($config);
         $this->policy = $policy ?? ApprovalPolicy::fromString(
             (string) ($this->config['default_policy'] ?? ApprovalPolicy::REQUESTER_OR_ROLE),
@@ -173,6 +180,18 @@ final class ApprovalManager implements ApprovalGateway
     {
         $clone = clone $this;
         $clone->config = self::mergeConfig(array_replace_recursive($this->config, $config));
+
+        return $clone;
+    }
+
+    /**
+     * Resolve approvers with the host's ScopeResolver — the one the registry stamps rows with
+     * (D-003 / M-301). Null means the package default resolver.
+     */
+    public function withScopeResolver(?ScopeResolver $resolver): self
+    {
+        $clone = clone $this;
+        $clone->resolveTenant = new ResolveTenantFromCaller($resolver);
 
         return $clone;
     }
@@ -372,7 +391,10 @@ final class ApprovalManager implements ApprovalGateway
     /**
      * Accept a pending (or recover approved) approval — exactly-once execution.
      *
-     * @param  array<string, mixed>  $options  tenant_id?, reason?
+     * The approver's tenant comes from the ScopeResolver, like the row's (D-003); a trusted
+     * `tenant_id` option only fills in when the approver has no membership tenant.
+     *
+     * @param  array<string, mixed>  $options  tenant_id?, reason?, decided_via?
      */
     public function accept(string $id, object $approver, array $options = []): CapabilityResult
     {
@@ -387,7 +409,7 @@ final class ApprovalManager implements ApprovalGateway
 
         // Scope before status: a replay or terminal status must not leak to an out-of-policy caller.
         // The row carries the capability's declared policy (D-006); the manager's is the fallback.
-        if (! $this->policy->forRow($row)->allows($row, $approver, $options['tenant_id'] ?? $this->tenantOf($approver))) {
+        if (! $this->policy->forRow($row)->allows($row, $approver, $this->approverTenant($approver, $options))) {
             $this->metrics->increment('approvals_accept_total', 1, ['result' => 'forbidden']);
 
             return CapabilityResult::failure('forbidden', 'Approver is not authorized for this approval.');
@@ -467,7 +489,7 @@ final class ApprovalManager implements ApprovalGateway
             return $blocked;
         }
 
-        if (! $this->policy->forRow($row)->allows($row, $approver, $options['tenant_id'] ?? $this->tenantOf($approver))) {
+        if (! $this->policy->forRow($row)->allows($row, $approver, $this->approverTenant($approver, $options))) {
             return CapabilityResult::failure('forbidden', 'Approver is not authorized for this approval.');
         }
 
@@ -691,6 +713,7 @@ final class ApprovalManager implements ApprovalGateway
             leaseSeconds: $this->leaseSeconds(),
             stuckAfterSeconds: $this->stuckAfterSeconds(),
             atomic: $this->isAtomic(),
+            resolveTenant: $this->resolveTenant,
         );
     }
 
@@ -820,12 +843,19 @@ final class ApprovalManager implements ApprovalGateway
         return $copy;
     }
 
-    private function tenantOf(object $actor): ?string
+    /**
+     * @param  array<string, mixed>  $options
+     */
+    private function approverTenant(object $approver, array $options): ?string
     {
-        if (isset($actor->tenant_id)) {
-            return is_string($actor->tenant_id) ? $actor->tenant_id : (string) $actor->tenant_id;
-        }
+        $trusted = $options['tenant_id'] ?? null;
+        // A chat-decided approval reaches the bus the way messaging invokes do (caller `agent`).
+        $caller = isset($options['decided_via']['channel']) ? 'agent' : 'http';
 
-        return null;
+        return $this->resolveTenant->tenantOfPrincipal(
+            $approver,
+            is_string($trusted) || is_int($trusted) ? (string) $trusted : null,
+            $caller,
+        );
     }
 }

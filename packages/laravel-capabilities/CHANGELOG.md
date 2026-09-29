@@ -310,6 +310,21 @@ These shipped in 0.5.3 and had no callers inside the package:
 
 ### Fixed
 
+- **In-tenant approvers can accept, reject and resume (D-003 / D-006, M-301).** The approval
+  row's `tenant_id` comes from the `ScopeResolver` (`current_tenant_id`, or `default-tenant`
+  for a user without one), but `ApprovalManager` and `ApprovalResumer` read the approver's
+  `tenant_id` attribute, so with the default wiring every accept / reject over HTTP or a chat
+  callback was `forbidden` unless the user carried both attributes with the same value.
+  Approvers are now placed by the same resolver that stamped the row
+  (`ResolveTenantFromCaller::tenantOfPrincipal()`): `ApprovalManager::withScopeResolver()` /
+  constructor `scopeResolver:`; `CapabilityRegistry::withApprovalManager()` and
+  `withScopeResolver()` hand the registry's resolver to the manager; the provider gives the
+  `ApprovalManager` singleton and the registry the container's `ScopeResolver` binding, so a
+  host resolver governs invokes and approval decisions alike. `DefaultScopeResolver` reads a
+  principal's `current_tenant_id`, then `tenant_id`, then `tenantId` as membership (first set
+  wins). The `tenant_id` accept / reject option is a trusted server-side tenant that fills in
+  only when the approver has no membership tenant; a cross-tenant approver is still refused,
+  and a resolver that cannot place the approver fails closed as `forbidden`.
 - **One configured ApprovalManager for every approval (D-006, L-101).** The registry pipeline
   used to build its own `new ApprovalManager($store)` from the provider's store, so
   `approval_required` rows ignored `approval.ttl_hours` (always 24 h) and no

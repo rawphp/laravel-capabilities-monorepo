@@ -21,6 +21,7 @@ use Rawphp\Capabilities\Contracts\ApprovalGateway;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\Metrics;
+use Rawphp\Capabilities\Contracts\ScopeResolver;
 use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\Capabilities\Observability\InvokeTelemetry;
 use Rawphp\Capabilities\Persistence\ArrayTableGateway;
@@ -28,6 +29,7 @@ use Rawphp\Capabilities\Persistence\DatabaseApprovalStore;
 use Rawphp\Capabilities\Persistence\DatabaseIdempotencyStore;
 use Rawphp\Capabilities\Persistence\TableGateway;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
+use Rawphp\Capabilities\Support\DefaultScopeResolver;
 use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
 use Rawphp\Capabilities\Tests\Fixtures\AdapterHelpers;
@@ -607,6 +609,47 @@ it('happy: provider-wired approved execution runs as the rehydrated user, not a 
         ->and($runActors)->toHaveCount(1)
         ->and($runActors[0])->not->toBeInstanceOf(stdClass::class)
         ->and($runActors[0]->id)->toBe('7');
+});
+
+it('M-301: the host-bound ScopeResolver stamps the row and places the approver, so an in-tenant accept succeeds', function () {
+    $app = req048FakeApp(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+    ]));
+    $app->instance('auth', oaaProviderAuth(oaaRehydratingGuard()));
+    // Host tenancy: user 7 belongs to acme, user 8 to globex. No tenant attributes on the principals.
+    $app->instance(ScopeResolver::class, new DefaultScopeResolver(['user_tenants' => ['7' => 'acme', '8' => 'globex']]));
+
+    $registry = $app->make(CapabilityRegistry::class);
+    $runs = 0;
+    Capability::define('ship-order')
+        ->description('ship an order')
+        ->input(CreateInvoiceInput::class)
+        ->output(CreateInvoiceResult::class)
+        ->authorize(fn () => true)
+        ->approvalPolicy('requester')
+        ->run(function () use (&$runs) {
+            $runs++;
+
+            return new CreateInvoiceResult(invoice_id: 5);
+        })
+        ->register($registry);
+
+    $pending = $registry->invoke('ship-order', PipelineHelpers::validInput(), [
+        'caller' => 'http',
+        'actor' => PipelineHelpers::userActor(7),
+        'needs_approval' => true,
+    ]);
+    $id = (string) $pending->approvalId();
+    $approvals = $app->make(ApprovalManager::class);
+
+    $otherTenant = $approvals->accept($id, PipelineHelpers::userActor(8));
+    $sameTenant = $approvals->accept($id, PipelineHelpers::userActor(7));
+
+    expect($approvals->find($id)['tenant_id'])->toBe('acme')
+        ->and($otherTenant->errorCode())->toBe('forbidden')
+        ->and($sameTenant->isOk())->toBeTrue()
+        ->and($runs)->toBe(1);
 });
 
 // --- D-019: provider-built CapabilityController counts unauthenticated denials on the bound Metrics ---

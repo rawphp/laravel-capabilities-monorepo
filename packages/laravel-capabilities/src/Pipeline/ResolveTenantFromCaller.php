@@ -76,6 +76,31 @@ final class ResolveTenantFromCaller
     }
 
     /**
+     * Tenant of a principal outside an invoke — approval accept / reject / resume (D-006).
+     *
+     * Same resolver, same rule as the row's `tenant_id` stamp, so an approver is in scope
+     * exactly when the ScopeResolver places them in the row's tenant. `$trustedTenantId` is a
+     * server-side option handled like an invoke's `tenant_id` option: it fills in when the
+     * principal has no membership tenant and never overrides one. A resolver that cannot
+     * place the principal yields null, which the approval policy treats as out of scope.
+     */
+    public function tenantOfPrincipal(object $principal, ?string $trustedTenantId = null, string $caller = 'http'): ?string
+    {
+        if ($principal instanceof SystemActor) {
+            return null;
+        }
+
+        try {
+            return $this->resolve(
+                CapabilityContext::make(['caller' => $caller, 'actor' => $principal]),
+                ['tenant_id' => $trustedTenantId],
+            )->tenantId;
+        } catch (MissingJobTenantException|UnresolvedScopeException) {
+            return null;
+        }
+    }
+
+    /**
      * Documented: never promote input magic keys into SystemActor scope.
      *
      * @param  array<string, mixed>  $input
