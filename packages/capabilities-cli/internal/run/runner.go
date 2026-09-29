@@ -73,6 +73,12 @@ func Run(ctx context.Context, opts Options) *Result {
 		res.Envelope = localFailEnvelope(api.CodeValidationFailed, res.Stderr, nil)
 		return res
 	}
+	if se := api.CheckPathSegment("capability name", opts.Capability); se != nil {
+		res.ExitCode = ExitValidation
+		res.Stderr = se.Message
+		res.Envelope = localFailEnvelope(api.CodeValidationFailed, se.Message, nil)
+		return res
+	}
 
 	// --retry-last reuses the stored key; with no fresh input it also replays the
 	// stored body, so the server sees the same request hash and replays (no 409).

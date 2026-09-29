@@ -201,6 +201,9 @@ func writeDomainHelp(env Env, domain string, idx *synth.Index, summaries []catal
 }
 
 func writeCapabilityHelp(env Env, domain, verb, canonical string, jsonOut bool, profile, base string, noCache bool) int {
+	if code := refuseUnsafeSegment(env, "capability name", canonical); code != api.ExitOK {
+		return code
+	}
 	info := helpfmt.CapabilityInfo{
 		Domain: domain,
 		Verb:   verb,

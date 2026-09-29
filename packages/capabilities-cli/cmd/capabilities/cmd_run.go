@@ -30,6 +30,9 @@ func cmdDescribe(env Env, args []string) int {
 		return api.ExitValidation
 	}
 	name := args[0]
+	if code := refuseUnsafeSegment(env, "capability name", name); code != api.ExitOK {
+		return code
+	}
 	if err := auth.GuardAuth(st, profile, "describe"); err != nil {
 		fmt.Fprintln(env.Stderr, err.Error())
 		return api.ExitAuth
@@ -57,6 +60,16 @@ func cmdDescribe(env Env, args []string) int {
 	} else {
 		fmt.Fprintf(env.Stdout, "%s schema_version=%s\n", entry.Name, entry.SchemaVersion)
 		fmt.Fprintln(env.Stdout, string(entry.InputSchema))
+	}
+	return api.ExitOK
+}
+
+// refuseUnsafeSegment writes a validation_failed envelope and returns exit 2
+// when s is not a single safe URL path segment (C-401), before auth or HTTP.
+// The API client enforces the same rule; this is the friendly usage error.
+func refuseUnsafeSegment(env Env, kind, s string) int {
+	if se := api.CheckPathSegment(kind, s); se != nil {
+		return writeErrorEnvelope(env, se)
 	}
 	return api.ExitOK
 }
@@ -143,6 +156,9 @@ func invokeCapability(
 	jsonOut, human, noCache, retryLast bool,
 	flagArgs []string,
 ) int {
+	if code := refuseUnsafeSegment(env, "capability name", name); code != api.ExitOK {
+		return code
+	}
 	if err := auth.GuardAuth(st, profile, "run"); err != nil {
 		fmt.Fprintln(env.Stderr, err.Error())
 		return api.ExitAuth

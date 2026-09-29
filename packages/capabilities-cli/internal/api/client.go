@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // AcceptJSON is the default Accept header.
@@ -243,6 +244,38 @@ func codeFromHTTP(status int) string {
 	}
 }
 
+// CheckPathSegment refuses a user- or catalog-supplied value that is not one
+// safe URL path segment (C-401). Joined unchecked, `approvals/<id>/accept` as a
+// capability name reaches the approval accept route. Percent is refused too:
+// the server decodes the path before matching, so %2F is still a separator.
+// Returns a validation_failed error (exit 2), or nil when the value is safe.
+func CheckPathSegment(kind, s string) *StructuredError {
+	bad := s == "" || s == "." || s == ".."
+	for _, r := range s {
+		if strings.ContainsRune(`/\?#%`, r) || unicode.IsSpace(r) || unicode.IsControl(r) {
+			bad = true
+			break
+		}
+	}
+	if !bad {
+		return nil
+	}
+	return &StructuredError{
+		Code:     CodeValidationFailed,
+		Message:  fmt.Sprintf("invalid %s %q: must be a single path segment (no '/', '\\', '%%', '?', '#', whitespace or control characters, and not '.' or '..')", kind, s),
+		ExitCode: ExitValidation,
+	}
+}
+
+// segmentPath joins prefix + "/" + seg + suffix after CheckPathSegment, so no
+// caller can put an unchecked value into a request path.
+func segmentPath(prefix, kind, seg, suffix string) (string, error) {
+	if se := CheckPathSegment(kind, seg); se != nil {
+		return "", se
+	}
+	return prefix + "/" + seg + suffix, nil
+}
+
 // ListCapabilities GET /capabilities (compact catalog rows; may omit schemas).
 func (c *Client) ListCapabilities(ctx context.Context) (*Response, error) {
 	return c.do(ctx, http.MethodGet, PathCapabilities, nil, nil)
@@ -256,12 +289,20 @@ func (c *Client) ListCapabilitiesWithSchemas(ctx context.Context) (*Response, er
 
 // DescribeCapability GET /capabilities/{name}
 func (c *Client) DescribeCapability(ctx context.Context, name string) (*Response, error) {
-	return c.do(ctx, http.MethodGet, PathCapabilities+"/"+name, nil, nil)
+	path, err := segmentPath(PathCapabilities, "capability name", name, "")
+	if err != nil {
+		return nil, err
+	}
+	return c.do(ctx, http.MethodGet, path, nil, nil)
 }
 
 // InvokeCapability POST /capabilities/{name} with Idempotency-Key.
 // key must be non-empty for mutating runs (CLI always sends — D-005).
 func (c *Client) InvokeCapability(ctx context.Context, name string, input json.RawMessage, idempotencyKey string) (*Response, error) {
+	path, err := segmentPath(PathCapabilities, "capability name", name, "")
+	if err != nil {
+		return nil, err
+	}
 	if idempotencyKey == "" {
 		return nil, fmt.Errorf("idempotency key required on invoke")
 	}
@@ -270,7 +311,7 @@ func (c *Client) InvokeCapability(ctx context.Context, name string, input json.R
 	if body == nil {
 		body = json.RawMessage(`{}`)
 	}
-	res, err := c.do(ctx, http.MethodPost, PathCapabilities+"/"+name, body, map[string]string{
+	res, err := c.do(ctx, http.MethodPost, path, body, map[string]string{
 		"Idempotency-Key": idempotencyKey,
 	})
 	if err != nil {
@@ -293,12 +334,20 @@ func (c *Client) InvokeCapability(ctx context.Context, name string, input json.R
 
 // AcceptApproval POST /capabilities/approvals/{id}/accept
 func (c *Client) AcceptApproval(ctx context.Context, id string) (*Response, error) {
-	return c.do(ctx, http.MethodPost, PathApprovals+"/"+id+"/accept", []byte(`{}`), nil)
+	path, err := segmentPath(PathApprovals, "approval id", id, "/accept")
+	if err != nil {
+		return nil, err
+	}
+	return c.do(ctx, http.MethodPost, path, []byte(`{}`), nil)
 }
 
 // RejectApproval POST /capabilities/approvals/{id}/reject
 func (c *Client) RejectApproval(ctx context.Context, id string) (*Response, error) {
-	return c.do(ctx, http.MethodPost, PathApprovals+"/"+id+"/reject", []byte(`{}`), nil)
+	path, err := segmentPath(PathApprovals, "approval id", id, "/reject")
+	if err != nil {
+		return nil, err
+	}
+	return c.do(ctx, http.MethodPost, path, []byte(`{}`), nil)
 }
 
 // Health GET /capabilities/health

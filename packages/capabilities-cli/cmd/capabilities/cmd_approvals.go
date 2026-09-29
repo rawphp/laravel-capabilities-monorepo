@@ -37,6 +37,9 @@ func cmdApprovals(env Env, args []string) int {
 		return api.ExitValidation
 	}
 	id := args[1]
+	if code := refuseUnsafeSegment(env, "approval id", id); code != api.ExitOK {
+		return code
+	}
 	c, err := clientFor(env, st, profile, base)
 	if err != nil {
 		fmt.Fprintln(env.Stderr, err.Error())
