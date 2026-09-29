@@ -301,6 +301,26 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   request already spent its hit when it was made; re-counting the execution meant a capability
   with `rateLimit(['max' => 1])` that was accepted inside the decay window returned
   `rate_limited` and the row became `executed/failed` with no way to retry.
+- **Audit write failures are reported, redacted on the wire, and never abort approvals (D-010, L-104).**
+  Every failed `AuditWriter::write()` — invoke audit in either mode, and the
+  `approval.requested` / `approval.decided` / `approval.executed` records — now goes to the
+  host `ExceptionHandler` and increments `audit_write_failed_total{mode}` on the bound
+  `Metrics` (new `Support\FailureReporter`, shared with the L-009 outer catch). Before, a
+  best_effort failure left only a line in the capped in-memory observation window; a strict
+  failure put `$e->getMessage()` — for a `QueryException`, the SQL plus bound `payload_json` —
+  on the wire (now the fixed `Audit failed.`); and approval audit writes were unguarded, so a
+  failed insert threw out of `request()`, `accept()` and `execute()` after the row had changed
+  state or `run()` had committed. Approval audit records are best_effort by design (the state
+  change is the record of truth). Known limit: the first-party `AuditOutbox` that
+  `required=true` falls back to is process-local; hosts needing cross-process at-least-once
+  should treat `capabilities_audit_outbox` as the durable sink and alert on the metric.
+- **A throwing bus-event listener no longer turns a committed run into `internal` (D-010, L-103).**
+  `CapabilityInvoked`, `CapabilityFailed`, `CapabilityApprovalDecided` and
+  `CapabilityApprovalExecuted` are dispatched inside a guard: a sync listener that throws, or a
+  queued listener whose push fails, is reported (`bus_listener_failed_total{event}`) while the
+  invoke keeps its success, the idempotency row stays `completed` (so retries replay instead of
+  double-applying) and an executed approval stays `executed/ok`. Before, the L-009 outer catch
+  rewrote the completed key as `failed/internal` for the whole TTL.
 - **`capability:run` works (D-016 / REQ-024).** `RunCapabilityCommand` called a non-existent
   `ArtisanCapabilityInvoker::invoke()`, so every run printed an "undefined method" error and
   exited 1. It now normalises the flags through `ArtisanCapabilityInvoker::parseFlags()`

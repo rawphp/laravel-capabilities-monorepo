@@ -5,7 +5,6 @@ namespace Rawphp\Capabilities\Pipeline;
 use Closure;
 use Error;
 use Illuminate\Container\Container;
-use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -29,6 +28,7 @@ use Rawphp\Capabilities\Support\CapabilityContext;
 use Rawphp\Capabilities\Support\CapabilityData;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\ErrorCodeMap;
+use Rawphp\Capabilities\Support\FailureReporter;
 use Rawphp\Capabilities\Support\SystemActor;
 use ReflectionFunction;
 use ReflectionFunctionAbstract;
@@ -259,10 +259,7 @@ final class InvokePipeline
 
     private function reportThrowable(Throwable $e): void
     {
-        $container = Container::getInstance();
-        if ($container->bound(ExceptionHandler::class)) {
-            $container->make(ExceptionHandler::class)->report($e);
-        }
+        FailureReporter::report($e);
     }
 
     /**

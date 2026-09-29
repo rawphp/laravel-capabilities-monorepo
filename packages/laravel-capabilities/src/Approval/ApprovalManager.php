@@ -13,9 +13,11 @@ use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Events\CapabilityApprovalDecided;
 use Rawphp\Capabilities\Pipeline\ResolveActor;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\FailureReporter;
 use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Support\SystemClock;
+use Throwable;
 
 /**
  * High-level approval API: request, accept, reject, expire, resume (D-006 / P2-004).
@@ -747,7 +749,7 @@ final class ApprovalManager implements ApprovalGateway
             reason: $reason,
         );
         $this->events[] = $decided;
-        $this->dispatcher?->dispatch($decided);
+        $this->dispatch($decided);
         $this->auditWrite('approval.decided', [
             'approval_id' => $row['id'],
             'decided_by' => $decidedBy,
@@ -788,7 +790,27 @@ final class ApprovalManager implements ApprovalGateway
             return;
         }
 
-        $this->audit->write(array_merge(['event' => $event], $payload));
+        // The row has already changed state; a failed audit insert is reported, never
+        // thrown out of request()/accept()/reject() (L-104 / D-010 best_effort).
+        try {
+            $this->audit->write(array_merge(['event' => $event], $payload));
+        } catch (Throwable $e) {
+            FailureReporter::reportAndCount($e, FailureReporter::AUDIT_WRITE_FAILED, ['mode' => 'approval']);
+        }
+    }
+
+    private function dispatch(object $event): void
+    {
+        if ($this->dispatcher === null) {
+            return;
+        }
+
+        try {
+            $this->dispatcher->dispatch($event);
+        } catch (Throwable $e) {
+            // Listener failures never abort a decision already persisted (L-103).
+            FailureReporter::reportAndCount($e, FailureReporter::LISTENER_FAILED, ['event' => $event::class]);
+        }
     }
 
     private function redactInput(mixed $input): mixed
