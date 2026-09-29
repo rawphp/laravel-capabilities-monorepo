@@ -26,7 +26,8 @@ it('happy: first key inserts processing then stores completed result [D-005]', f
     $row = $h['store']->find('tenant-1', 'user', '7', $h['name'], 'first-1');
     expect($row)->not->toBeNull()
         ->and($row['status'])->toBe('completed')
-        ->and($row['request_hash'])->toBe(RequestHash::of(IdempotencyHelpers::inputA()))
+        ->and($row['request_hash'])->toBe(RequestHash::of(CreateInvoiceInput::fromArray(IdempotencyHelpers::inputA())->toArray()))
+        ->and($row['request_hash'])->not->toBe(RequestHash::of(IdempotencyHelpers::inputA()))
         ->and($row['result_json']['ok'])->toBeTrue();
 });
 
@@ -417,4 +418,15 @@ it('happy: request_hash is canonical input JSON hash [D-005]', function () {
     $c = RequestHash::of(['a' => 2, 'b' => 3]);
     expect($a)->toBe($b)->and($a)->not->toBe($c)
         ->and(strlen($a))->toBe(64);
+});
+
+it('edge: omitted optional field and its explicit default hash the same and replay [D-005]', function () {
+    $h = IdempotencyHelpers::harness();
+    $opts = IdempotencyHelpers::options('http', ['idempotency_key' => 'canon-1']);
+    $a = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), $opts);
+    $b = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA() + ['memo' => null], $opts);
+    expect($a->isOk())->toBeTrue()
+        ->and($b->isOk())->toBeTrue()
+        ->and($b->isReplay())->toBeTrue()
+        ->and($h['runCount']->value)->toBe(1);
 });

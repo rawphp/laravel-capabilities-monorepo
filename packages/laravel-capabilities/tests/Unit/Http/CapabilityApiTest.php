@@ -170,6 +170,16 @@ it('fail: route GET /capabilities/health not registered when http disabled [D-00
     expect(RouteTable::has(HttpHelpers::routes(['enabled' => false]), RouteTable::ROUTE_HEALTH))->toBeFalse();
 });
 
+it('happy: GET /capabilities/health reports the wire api_version the CLI probes before run [D-009]', function () {
+    $h = HttpHelpers::harness();
+    $res = $h['controller']->health(HttpHelpers::authedRequest(['method' => 'GET']));
+
+    expect(RouteTable::API_VERSION)->toBe(1)
+        ->and($res->status)->toBe(200)
+        ->and($res->body['data']['api_version'])->toBe(RouteTable::API_VERSION)
+        ->and($res->body['data'])->toHaveKey('surfaces');
+});
+
 it('fail: second invoke controller tree for CLI is refused [D-009]', function () {
     $routes = HttpHelpers::routes(['enabled' => true]);
     $invokeActions = array_filter($routes, fn ($r) => str_contains($r['action'], 'invoke'));

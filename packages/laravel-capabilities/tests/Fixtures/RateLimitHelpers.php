@@ -68,7 +68,7 @@ final class RateLimitHelpers
             ->surfaces(['agent', 'mcp', 'http', 'cli', 'job', 'artisan'])
             ->input(CreateInvoiceInput::class)
             ->output(CreateInvoiceResult::class)
-            ->idempotent('none')
+            ->idempotent($opts['idempotent'] ?? 'none')
             ->audit(false)
             ->allowSystemCallers(true);
 

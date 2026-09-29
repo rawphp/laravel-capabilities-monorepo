@@ -9,6 +9,7 @@ use Rawphp\Capabilities\Adapters\PeerIncompatibleException;
 use Rawphp\Capabilities\Adapters\PeerSurfaceBootstrap;
 use Rawphp\Capabilities\Adapters\PeerSurfaceStatus;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
+use Rawphp\Capabilities\Profiles\ProfileRequiredException;
 use Rawphp\Capabilities\Schema\CatalogHealth;
 use Rawphp\Capabilities\Tests\Fixtures\AdapterHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\CatalogHelpers;
@@ -133,6 +134,16 @@ it('fail: unsupported peer version does not half-register tools [D-011]', functi
     $h = AdapterHelpers::harness(['probe' => $probe]);
     $ai = new AiToolAdapterV1($h['registry'], $probe, surfaceEnabled: true);
     expect(fn () => $ai->register('billing'))->toThrow(PeerIncompatibleException::class);
+    expect($ai->isRegistered())->toBeFalse()
+        ->and($ai->registeredTools())->toBe([]);
+});
+
+it('fail: missing profile on re-register clears prior registration [D-008]', function () {
+    $h = AdapterHelpers::harness();
+    $ai = $h['ai'];
+    expect($ai->register('billing'))->not->toBe([]);
+
+    expect(fn () => $ai->register(''))->toThrow(ProfileRequiredException::class);
     expect($ai->isRegistered())->toBeFalse()
         ->and($ai->registeredTools())->toBe([]);
 });

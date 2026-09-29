@@ -21,6 +21,7 @@ final class Capability
      * @param  array<string, mixed>|bool|null  $audit
      * @param  string|null  $cliDomain  Optional CLI synthesis domain ([a-z][a-z0-9-]*); requires cliVerb
      * @param  string|null  $cliVerb  Optional CLI synthesis verb ([a-z][a-z0-9-]*); requires cliDomain
+     * @param  list<string>  $idempotencyKeyFields  Input fields hashed into a key when the caller sends none
      */
     public function __construct(
         public string $name,
@@ -44,5 +45,6 @@ final class Capability
         public array|bool|null $audit = null,
         public ?string $cliDomain = null,
         public ?string $cliVerb = null,
+        public array $idempotencyKeyFields = [],
     ) {}
 }

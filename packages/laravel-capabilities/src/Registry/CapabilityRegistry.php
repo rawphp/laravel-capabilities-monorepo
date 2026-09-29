@@ -198,12 +198,22 @@ final class CapabilityRegistry implements CapabilityBus
         $this->clock = $clock ?? new SystemClock;
         $this->definitionCatalog = new DefinitionCatalog;
         $this->observation = new InvokeObservation;
+        $auditStage = new InvokeAuditStage(
+            observation: $this->observation,
+            auditWriter: $auditWriter,
+            auditMode: $auditModeResolved,
+            auditEnabled: $auditEnabled,
+            auditRequired: $auditRequired,
+            auditDriver: $auditDriver,
+            auditOutbox: $auditOutbox,
+        );
         $this->toolSurfaceResolver = new ToolSurfaceResolver(
             definitions: $this->definitionCatalog,
             profileSelector: $this->profileSelector,
             observation: $this->observation,
             globallyEnabledSurfaces: $this->globallyEnabledSurfaces,
             toolSurfaceConfig: $this->toolSurfaceConfig,
+            auditStage: $auditStage,
         );
         $this->assertions = new RegistryAssertions($this, $this->observation);
         $this->pipeline = new InvokePipeline(
@@ -217,15 +227,7 @@ final class CapabilityRegistry implements CapabilityBus
             approvalManager: $approvalManager,
             outputValidator: $this->outputValidator,
             observation: $this->observation,
-            auditStage: new InvokeAuditStage(
-                observation: $this->observation,
-                auditWriter: $auditWriter,
-                auditMode: $auditModeResolved,
-                auditEnabled: $auditEnabled,
-                auditRequired: $auditRequired,
-                auditDriver: $auditDriver,
-                auditOutbox: $auditOutbox,
-            ),
+            auditStage: $auditStage,
             wrapRun: $wrapRun,
             eventsEnabled: $eventsEnabled,
             validateOutputEnabled: (bool) ($this->validationConfig['validate_output'] ?? true),
@@ -736,6 +738,8 @@ final class CapabilityRegistry implements CapabilityBus
         }
 
         $options['caller'] = $options['caller'] ?? $surface;
+        // The enforced profile, not a caller claim, is what audit records (D-008 / D-010).
+        $options['tool_profile'] = $profile;
 
         return $this->invoke($name, $input, $options);
     }
@@ -855,18 +859,25 @@ final class CapabilityRegistry implements CapabilityBus
         }
 
         if ($this->resolveName($nameOrAlias) === null) {
-            return $this->pipeline->finishEarly(CapabilityResult::failure(
+            return $this->pipeline->finishUnknown($nameOrAlias, $caller, CapabilityResult::failure(
                 code: 'not_found',
                 message: sprintf('Unknown capability "%s".', $nameOrAlias),
-            ), null);
+            ));
         }
 
         $definition = $this->get($nameOrAlias);
+        $state = new InvokeState(
+            definition: $definition,
+            rawInput: $input,
+            caller: $caller,
+            options: $options,
+            requestId: isset($options['request_id']) ? (string) $options['request_id'] : null,
+        );
 
         // D-012: after sunset_at, canonical and aliases return gone (410) without run().
         $now = $this->clock->now();
         if ($definition->isSunset($now instanceof \DateTimeInterface ? $now : null)) {
-            return $this->pipeline->finishEarly(CapabilityResult::failure(
+            return $this->pipeline->finishGateDeny($state, CapabilityResult::failure(
                 code: 'gone',
                 message: sprintf(
                     'Capability "%s" is past sunset_at (%s).',
@@ -877,26 +888,26 @@ final class CapabilityRegistry implements CapabilityBus
                     'successor' => $definition->successor,
                     'deprecated' => true,
                 ], static fn ($v) => $v !== null),
-            ), null);
+            ));
         }
 
         // Surface gate (PIPE-005): capability not invokable as that surface.
         $effective = $definition->effectiveSurfaces($this->globallyEnabledSurfaces);
         $surface = $caller === 'artisan' ? 'artisan' : $caller;
         if (! in_array($surface, $effective, true)) {
-            return $this->pipeline->finishEarly(CapabilityResult::failure(
+            return $this->pipeline->finishGateDeny($state, CapabilityResult::failure(
                 code: 'forbidden',
                 message: sprintf('Capability "%s" is not invokable via surface "%s".', $definition->name, $surface),
-            ), null);
+            ));
         }
 
-        $state = new InvokeState(
-            definition: $definition,
-            rawInput: $input,
-            caller: $caller,
-            options: $options,
-            requestId: isset($options['request_id']) ? (string) $options['request_id'] : null,
-        );
+        // Chat turns keep caller=agent; the global messaging flag still has to allow them.
+        if ($this->isMessagingOriginated($options) && ($this->globallyEnabledSurfaces['messaging'] ?? false) !== true) {
+            return $this->pipeline->finishGateDeny($state, CapabilityResult::failure(
+                code: 'forbidden',
+                message: sprintf('Capability "%s" is not invokable via surface "messaging".', $definition->name),
+            ));
+        }
 
         return $this->pipeline->execute($state, $forced);
     }
@@ -928,6 +939,19 @@ final class CapabilityRegistry implements CapabilityBus
     public function logs(): array
     {
         return $this->observation->logs;
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     */
+    private function isMessagingOriginated(array $options): bool
+    {
+        $context = $options['context'] ?? null;
+        if ($context instanceof CapabilityContext && $context->messaging() !== null) {
+            return true;
+        }
+
+        return ($options['messaging'] ?? null) !== null;
     }
 
     private function toolsForSurface(string $surface, string|array|null $profile, mixed $actor = null): array
