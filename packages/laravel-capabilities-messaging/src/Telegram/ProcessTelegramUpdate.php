@@ -35,9 +35,12 @@ use Throwable;
  * D-013: an optional core RateLimiter caps agent turns per chat_id per minute
  * (telegram.turns_per_minute), checked before identity so a flooding chat costs nothing.
  *
- * D-005: the agent turn and its tool invokes run at most once per update. A reply that fails to
- * send transiently is kept in the host cache ($pendingReplies) and the job fails; the retry only
- * re-sends it. Without that store the failure is terminal rather than a second turn.
+ * D-005: the agent turn and its tool invokes run at most once per update. Each update claims a
+ * marker in the host cache ($pendingReplies) before its turn, so a redelivery after a worker
+ * timeout or crash ends without calling the agent (M-205). A reply that fails to send
+ * transiently is kept in the same cache and the job fails; the retry only re-sends it. Without
+ * that store a transient reply failure is terminal, and a redelivered update runs a new turn
+ * whose tool calls replay by idempotency key.
  */
 final class ProcessTelegramUpdate
 {
@@ -116,7 +119,7 @@ final class ProcessTelegramUpdate
             return $this->process($update);
         } catch (Throwable $e) {
             // Expected per-user outcomes are warnings; anything else is an error (D-019).
-            $expected = in_array($e->getMessage(), ['identity_unresolved', 'rate_limited'], true);
+            $expected = in_array($e->getMessage(), ['identity_unresolved', 'rate_limited', 'turn_already_started'], true);
             $this->log($expected ? 'warning' : 'error', 'Telegram update failed: '.$e->getMessage(), [
                 'failure' => $e->getMessage(),
                 'tags' => $this->lastTags,
@@ -186,6 +189,8 @@ final class ProcessTelegramUpdate
         if (is_array($pending) && is_string($pending['text'] ?? null)) {
             return $this->resendPendingReply($pendingKey, (string) $chatId, $topicId, $pending);
         }
+
+        $this->claimTurn($update);
 
         $this->enforceChatTurnLimit((string) $chatId);
 
@@ -443,6 +448,27 @@ final class ProcessTelegramUpdate
             'steps' => $this->completedSteps,
             'tags' => $this->lastTags,
         ];
+    }
+
+    /**
+     * D-005 / M-205: claim this update's turn before any of it runs. A redelivery (worker timeout
+     * or crash mid-turn, Telegram resending the webhook) finds the marker and ends here, so the
+     * agent turn and its tool calls start at most once per update. The claim is an atomic cache
+     * add; with no store or no update key there is no marker, and tool calls fall back to replay
+     * by idempotency key.
+     *
+     * @param  array<string, mixed>  $update
+     */
+    private function claimTurn(array $update): void
+    {
+        $key = TelegramUpdateParser::updateKey($update);
+        if ($key === null || $this->pendingReplies === null) {
+            return;
+        }
+
+        if (! $this->pendingReplies->add('capabilities-messaging:turn:'.$key, true, self::PENDING_REPLY_TTL)) {
+            throw new RuntimeException('turn_already_started');
+        }
     }
 
     /**

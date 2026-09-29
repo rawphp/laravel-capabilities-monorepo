@@ -99,11 +99,13 @@ it('edge: a delivered retry drops the pending reply [D-005]', function () {
 
     expect(fn () => $s->processor->handle($update))->toThrow(RetryableUpdateFailure::class);
     $s->processor->handle($update);
-    $s->processor->handle($update);
+    $late = $s->processor->handle($update);
 
-    // The pending reply was consumed: a later redelivery is a new turn again.
-    expect($s->agentCalls)->toBe(4)
-        ->and($s->bot->sent)->toHaveCount(2);
+    // The pending reply was consumed; a later redelivery ends at the turn marker (M-205).
+    expect($s->cache->has('capabilities-messaging:reply:telegram:100:78'))->toBeFalse()
+        ->and($late['error'])->toBe('turn_already_started')
+        ->and($s->agentCalls)->toBe(2)
+        ->and($s->bot->sent)->toHaveCount(1);
 });
 
 it('fail: a retry that fails transiently again keeps the pending reply for the next attempt [D-019]', function () {

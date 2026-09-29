@@ -133,6 +133,15 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
+- **A redelivered Telegram update never starts a second agent turn** — only a transient reply
+  failure was guarded, so a worker timeout, crash or deploy mid-turn (two LLM calls easily pass
+  the worker's default 60s) or a repeated webhook ran a fresh turn whose tool calls replayed only
+  if the new answer matched the old one. `ProcessTelegramUpdate` now claims a per-update marker
+  (`capabilities-messaging:turn:telegram:<chat>:<update_id>`, atomic cache `add`, one hour)
+  before the turn; a redelivery that finds it ends as `turn_already_started` (warning, no reply)
+  without calling the agent. `ProcessTelegramUpdateJob` declares `$timeout = 120`; the queue
+  connection's `retry_after` must be longer.
+
 - **Long and empty agent replies reach the chat** — Telegram rejects text over 4096 characters
   or empty text with a 400, which ended the update with no reply after the agent turn and its
   tool calls had already run. `TelegramAdapter::reply()` now sends long text as consecutive
