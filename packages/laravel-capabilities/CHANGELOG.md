@@ -73,7 +73,9 @@ leaked SQL text and model class names. The run-stage catch now maps:
 The `capabilities_invoke_total` status label follows the new codes.
 
 Consumers: clients or middleware that matched 422 plus "No query results for model"
-or SQL text must switch to 404/`not_found` and 500/`internal`.
+or SQL text must switch to 404/`not_found` and 500/`internal`. A run-stage `internal`
+failure under an Idempotency-Key is stored and replayed for the key's TTL like any other
+failure, so a retry of a transient error needs a new key.
 
 ## [0.5.2] - 2026-08-27
 
