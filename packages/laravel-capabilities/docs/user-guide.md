@@ -216,7 +216,7 @@ Once `mcp` is enabled, who can invoke `send-invoice-reminder`:
 
 Every successful call records `caller: mcp` and `mcp.auth_profile`; `integration` and `user_delegated` also record `mcp.client_id` (`user_pat` only when a client id is supplied and `audit_client_id` is on). An `integration` principal's tenant comes from the trusted credential session (`session.tenant_id`), never from tool input.
 
-For `integration` principals `$ctx->user()` is `null` — an `authorize()` that only checks `$ctx->user() !== null` (like the `create-invoice` example above) will deny every integration call. Branch on `$ctx->actor()` instead. The table is pinned by `tests/Unit/Mcp/AuthProfileCapabilityMatrixTest.php`.
+For `integration` principals `$ctx->user()` is `null` — an `authorize()` that only checks `$ctx->user() !== null` (like the `create-invoice` example above) will deny every integration call. Branch on `$ctx->actor()` instead. The table is pinned by the monorepo unit test [`AuthProfileCapabilityMatrixTest`](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/packages/laravel-capabilities/tests/Unit/Mcp/AuthProfileCapabilityMatrixTest.php).
 
 ### HTTP API (single tree)
 
@@ -359,7 +359,7 @@ Deep state machine detail (monorepo): [spec.md](https://github.com/rawphp/larave
 
 ## Error codes
 
-Every failure is a `CapabilityResult` with `ok: false` and an `error.code`. The source of truth is `src/Support/ErrorCodeMap.php` (D-018); `tests/Unit/Errors/ErrorCodesUserGuideTest.php` fails if this table drifts from it.
+Every failure is a `CapabilityResult` with `ok: false` and an `error.code`. The source of truth is `src/Support/ErrorCodeMap.php` (D-018); the monorepo unit test [`ErrorCodesUserGuideTest`](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/packages/laravel-capabilities/tests/Unit/Errors/ErrorCodesUserGuideTest.php) fails if this table drifts from it.
 
 How one code presents on each surface:
 
