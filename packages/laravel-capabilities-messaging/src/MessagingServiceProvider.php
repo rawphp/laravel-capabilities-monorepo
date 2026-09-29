@@ -5,6 +5,7 @@ namespace Rawphp\CapabilitiesMessaging;
 use Illuminate\Contracts\Bus\Dispatcher as BusDispatcher;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\ServiceProvider;
+use Psr\Log\LoggerInterface;
 use Rawphp\Capabilities\Contracts\ApprovalNotifier;
 use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
@@ -136,6 +137,7 @@ class MessagingServiceProvider extends ServiceProvider
             return new TelegramWebhookController(
                 $app->make(MessagingConfig::class),
                 $app->make(UpdateQueue::class),
+                self::logger($app),
             );
         });
 
@@ -150,6 +152,7 @@ class MessagingServiceProvider extends ServiceProvider
                 $registry,
                 $app->make(TelegramBotClient::class),
                 turnLimiter: $app->bound(RateLimiter::class) ? $app->make(RateLimiter::class) : null,
+                logger: self::logger($app),
             );
         });
     }
@@ -170,6 +173,14 @@ class MessagingServiceProvider extends ServiceProvider
         if ((bool) $this->app['config']->get('capabilities-messaging.telegram.enabled', false)) {
             $this->loadRoutesFrom(__DIR__.'/../routes/messaging.php');
         }
+    }
+
+    /**
+     * Host PSR-3 logger when bound (Laravel aliases LoggerInterface to `log`), else none (D-019).
+     */
+    private static function logger(Container $app): ?LoggerInterface
+    {
+        return $app->bound(LoggerInterface::class) ? $app->make(LoggerInterface::class) : null;
     }
 
     /**

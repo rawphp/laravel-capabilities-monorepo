@@ -35,7 +35,7 @@ it('edge: process update failure at invalid_update_shape is observable in logs o
         $update = ['update_id' => 1, 'message' => ['from' => ['id' => 42], 'text' => 'x']];
     }
     $r = $p->runPipeline($update, ['fail_at' => 'invalid_update_shape']);
-    expect(($r['observable'] ?? false) || $p->logs() !== [] || isset($r['tags']) || isset($r['error']))->toBeTrue();
+    expect(($r['observable'] ?? false) || isset($r['tags']) || isset($r['error']))->toBeTrue();
 });
 
 it('fail: process update handles failure at unknown_chat without domain bypass [MSG-003]', function () {
@@ -68,7 +68,7 @@ it('edge: process update failure at unknown_chat is observable in logs or failed
         $update = ['update_id' => 1, 'message' => ['from' => ['id' => 42], 'text' => 'x']];
     }
     $r = $p->runPipeline($update, ['fail_at' => 'unknown_chat']);
-    expect(($r['observable'] ?? false) || $p->logs() !== [] || isset($r['tags']) || isset($r['error']))->toBeTrue();
+    expect(($r['observable'] ?? false) || isset($r['tags']) || isset($r['error']))->toBeTrue();
 });
 
 it('fail: process update handles failure at identity_unresolved without domain bypass [MSG-003]', function () {
@@ -101,7 +101,7 @@ it('edge: process update failure at identity_unresolved is observable in logs or
         $update = ['update_id' => 1, 'message' => ['from' => ['id' => 42], 'text' => 'x']];
     }
     $r = $p->runPipeline($update, ['fail_at' => 'identity_unresolved']);
-    expect(($r['observable'] ?? false) || $p->logs() !== [] || isset($r['tags']) || isset($r['error']))->toBeTrue();
+    expect(($r['observable'] ?? false) || isset($r['tags']) || isset($r['error']))->toBeTrue();
 });
 
 it('fail: process update handles failure at thread_store_failure without domain bypass [MSG-003]', function () {
@@ -134,7 +134,7 @@ it('edge: process update failure at thread_store_failure is observable in logs o
         $update = ['update_id' => 1, 'message' => ['from' => ['id' => 42], 'text' => 'x']];
     }
     $r = $p->runPipeline($update, ['fail_at' => 'thread_store_failure']);
-    expect(($r['observable'] ?? false) || $p->logs() !== [] || isset($r['tags']) || isset($r['error']))->toBeTrue();
+    expect(($r['observable'] ?? false) || isset($r['tags']) || isset($r['error']))->toBeTrue();
 });
 
 it('fail: process update handles failure at ingress_failure without domain bypass [MSG-003]', function () {
@@ -167,7 +167,7 @@ it('edge: process update failure at ingress_failure is observable in logs or fai
         $update = ['update_id' => 1, 'message' => ['from' => ['id' => 42], 'text' => 'x']];
     }
     $r = $p->runPipeline($update, ['fail_at' => 'ingress_failure']);
-    expect(($r['observable'] ?? false) || $p->logs() !== [] || isset($r['tags']) || isset($r['error']))->toBeTrue();
+    expect(($r['observable'] ?? false) || isset($r['tags']) || isset($r['error']))->toBeTrue();
 });
 
 it('fail: process update handles failure at agent_failure without domain bypass [MSG-003]', function () {
@@ -200,7 +200,7 @@ it('edge: process update failure at agent_failure is observable in logs or faile
         $update = ['update_id' => 1, 'message' => ['from' => ['id' => 42], 'text' => 'x']];
     }
     $r = $p->runPipeline($update, ['fail_at' => 'agent_failure']);
-    expect(($r['observable'] ?? false) || $p->logs() !== [] || isset($r['tags']) || isset($r['error']))->toBeTrue();
+    expect(($r['observable'] ?? false) || isset($r['tags']) || isset($r['error']))->toBeTrue();
 });
 
 it('fail: process update handles failure at tool_registry_failure without domain bypass [MSG-003]', function () {
@@ -233,7 +233,7 @@ it('edge: process update failure at tool_registry_failure is observable in logs 
         $update = ['update_id' => 1, 'message' => ['from' => ['id' => 42], 'text' => 'x']];
     }
     $r = $p->runPipeline($update, ['fail_at' => 'tool_registry_failure']);
-    expect(($r['observable'] ?? false) || $p->logs() !== [] || isset($r['tags']) || isset($r['error']))->toBeTrue();
+    expect(($r['observable'] ?? false) || isset($r['tags']) || isset($r['error']))->toBeTrue();
 });
 
 it('fail: process update handles failure at reply_failure without domain bypass [MSG-003]', function () {
@@ -266,5 +266,5 @@ it('edge: process update failure at reply_failure is observable in logs or faile
         $update = ['update_id' => 1, 'message' => ['from' => ['id' => 42], 'text' => 'x']];
     }
     $r = $p->runPipeline($update, ['fail_at' => 'reply_failure']);
-    expect(($r['observable'] ?? false) || $p->logs() !== [] || isset($r['tags']) || isset($r['error']))->toBeTrue();
+    expect(($r['observable'] ?? false) || isset($r['tags']) || isset($r['error']))->toBeTrue();
 });

@@ -132,9 +132,10 @@ it('webhook requires UpdateQueue and does not default FakeQueue [L-004]', functi
     $ctor = $ref->getConstructor();
     expect($ctor)->not->toBeNull();
     $params = $ctor->getParameters();
-    expect($params)->toHaveCount(2)
+    expect($params)->toHaveCount(3)
         ->and($params[1]->getName())->toBe('queue')
-        ->and($params[1]->allowsNull())->toBeFalse();
+        ->and($params[1]->allowsNull())->toBeFalse()
+        ->and($params[2]->getName())->toBe('logger');
 
     $queue = new FakeQueue;
     $ctrl = new TelegramWebhookController($config, $queue);

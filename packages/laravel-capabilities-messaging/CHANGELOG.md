@@ -38,6 +38,13 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
+- **Failures reach the host logger** — `TelegramWebhookController` and `ProcessTelegramUpdate`
+  take an optional PSR-3 `logger` (the provider injects the bound `LoggerInterface`). Bad
+  secrets, queue failures and every processing failure are logged with the D-019
+  `tags` (`channel`, `chat_id`, `update_id`); unlinked users and rate-limited chats log as
+  `warning`, everything else as `error`. The in-memory `logs()` recorders are removed.
+  Adds `psr/log` to `require`.
+
 - **Telegram updates are really queued** — `ProcessTelegramUpdateJob` now implements `ShouldQueue`
   (`tries = 3`, `backoff = [10, 60]`, public `queue` / `connection`). Before, the Laravel bus ran
   the whole update inline in the webhook request. Transient failures (retryable Bot API errors on

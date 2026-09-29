@@ -192,7 +192,6 @@ it('covers ProcessTelegramUpdate logs tags and profile resolver', function () {
     expect($p->completedSteps())->toContain('conversation_reply');
     expect($p->domainBypassAttempted())->toBeFalse();
     expect($p->failedJobTags())->toHaveKey('channel');
-    expect($p->logs())->toBeArray();
 
     // registry unavailable
     $p2 = new ProcessTelegramUpdate(
@@ -221,7 +220,6 @@ it('covers notifier missing chat and edit without message', function () {
 it('covers webhook logs and secret header case', function () {
     $ctrl = H::webhook();
     $ctrl->handle(['x-telegram-bot-api-secret-token' => 'test-webhook-secret'], H::telegramUpdate());
-    expect($ctrl->logs())->toBeArray();
     expect($ctrl->queue())->toBeInstanceOf(FakeQueue::class);
 });
 

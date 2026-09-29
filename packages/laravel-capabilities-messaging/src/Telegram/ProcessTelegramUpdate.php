@@ -2,6 +2,7 @@
 
 namespace Rawphp\CapabilitiesMessaging\Telegram;
 
+use Psr\Log\LoggerInterface;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Support\CapabilityContext;
@@ -22,6 +23,8 @@ use Throwable;
  *
  * Webhook verify + queue happen earlier (controller). Never domain run outside registry.
  *
+ * D-019: failures go to the optional PSR-3 logger with channel/chat/update tags.
+ *
  * D-013: an optional core RateLimiter caps agent turns per chat_id per minute
  * (telegram.turns_per_minute), checked before identity so a flooding chat costs nothing.
  */
@@ -41,9 +44,6 @@ final class ProcessTelegramUpdate
 
     /** @var list<string> */
     private array $completedSteps = [];
-
-    /** @var list<array{level: string, message: string, context: array<string, mixed>}> */
-    private array $logs = [];
 
     /** @var array<string, mixed>|null */
     private ?array $lastTags = null;
@@ -66,6 +66,7 @@ final class ProcessTelegramUpdate
         ?callable $profileResolver = null,
         ?callable $agentRunner = null,
         private readonly ?RateLimiter $turnLimiter = null,
+        private readonly ?LoggerInterface $logger = null,
     ) {
         $this->profileResolver = $profileResolver;
         $this->agentRunner = $agentRunner;
@@ -83,7 +84,9 @@ final class ProcessTelegramUpdate
         try {
             return $this->process($update);
         } catch (Throwable $e) {
-            $this->log('error', $e->getMessage(), [
+            // Expected per-user outcomes are warnings; anything else is an error (D-019).
+            $expected = in_array($e->getMessage(), ['identity_unresolved', 'rate_limited'], true);
+            $this->log($expected ? 'warning' : 'error', 'Telegram update failed: '.$e->getMessage(), [
                 'failure' => $e->getMessage(),
                 'tags' => $this->lastTags,
             ]);
@@ -171,14 +174,6 @@ final class ProcessTelegramUpdate
         }
 
         return $this->lastTags ?? ['channel' => 'telegram', 'chat_id' => null, 'update_id' => null];
-    }
-
-    /**
-     * @return list<array{level: string, message: string, context: array<string, mixed>}>
-     */
-    public function logs(): array
-    {
-        return $this->logs;
     }
 
     public function domainBypassAttempted(): bool
@@ -460,6 +455,6 @@ final class ProcessTelegramUpdate
      */
     private function log(string $level, string $message, array $context = []): void
     {
-        $this->logs[] = ['level' => $level, 'message' => $message, 'context' => $context];
+        $this->logger?->log($level, $message, $context);
     }
 }
