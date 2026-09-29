@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -136,13 +137,13 @@ func Run(ctx context.Context, opts Options) *Result {
 	if err := ValidateLocal(schema, opts.InputJSON); err != nil {
 		res.ExitCode = ExitValidation
 		res.HTTPCalled = false
-		if ve, ok := err.(*ValidationError); ok {
-			res.Stderr = ve.Error()
-			res.Envelope = localFailEnvelope(api.CodeValidationFailed, ve.Message, ve.Violations)
-		} else {
-			res.Stderr = err.Error()
-			res.Envelope = localFailEnvelope(api.CodeValidationFailed, err.Error(), nil)
+		res.Stderr = err.Error()
+		msg, viol := err.Error(), []api.Violation(nil)
+		var ve *ValidationError
+		if errors.As(err, &ve) {
+			msg, viol = ve.Message, ve.Violations
 		}
+		res.Envelope = localFailEnvelope(api.CodeValidationFailed, msg, viol)
 		return res
 	}
 

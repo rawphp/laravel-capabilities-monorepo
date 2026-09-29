@@ -20,3 +20,12 @@ func TestHumanSuccessSummaryFallback(t *testing.T) {
 		t.Fatal(s)
 	}
 }
+
+func TestHumanSuccessSummaryUsesMessageAndNamesUnknownCapability(t *testing.T) {
+	if s := humanSuccessSummary("x", []byte(`{"ok":true,"data":{"message":"queued"}}`)); s != "ok x queued" {
+		t.Fatal(s)
+	}
+	if s := humanSuccessSummary("  ", []byte(`not json`)); s != "ok ?" {
+		t.Fatal(s)
+	}
+}

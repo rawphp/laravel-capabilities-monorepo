@@ -80,9 +80,6 @@ func ValidateLocal(schemaJSON, inputJSON []byte) error {
 }
 
 func validateNode(path string, schema map[string]any, value any, viol *[]api.Violation) {
-	if schema == nil {
-		return
-	}
 	if t, ok := schema["type"].(string); ok {
 		if !typeMatches(t, value) {
 			*viol = append(*viol, api.Violation{Field: path, Message: "must be " + t})
@@ -99,15 +96,9 @@ func validateNode(path string, schema map[string]any, value any, viol *[]api.Vio
 	}
 	switch schema["type"] {
 	case "object", nil:
-		obj, ok := value.(map[string]any)
-		if !ok {
-			if value == nil {
-				return
-			}
-			if schema["type"] == "object" {
-				return // already reported
-			}
-		} else {
+		// A non-object value was already reported by the type check (or is
+		// untyped), so only objects have required/properties to check.
+		if obj, ok := value.(map[string]any); ok {
 			if req, ok := schema["required"].([]any); ok {
 				for _, r := range req {
 					field, _ := r.(string)
@@ -133,10 +124,7 @@ func validateNode(path string, schema map[string]any, value any, viol *[]api.Vio
 			}
 		}
 	case "array":
-		arr, ok := value.([]any)
-		if !ok {
-			return
-		}
+		arr, _ := value.([]any) // type check already rejected non-arrays
 		if items, ok := schema["items"].(map[string]any); ok {
 			for i, item := range arr {
 				validateNode(fmt.Sprintf("%s[%d]", path, i), items, item, viol)
