@@ -570,6 +570,7 @@ function expectChatErrorEnvelope(array $body, string $code, string $message): vo
         ->and($body['error']['code'])->toBe($code)
         ->and($body['error']['message'])->toBe($message)
         ->and($body['error']['violations'])->toBe([])
+        ->and($body['error']['retryable'])->toBeFalse()
         ->and($body['error'])->toHaveKeys(['approval_id', 'request_id', 'retryable', 'http_status', 'cli_exit'])
         ->and($body)->not->toHaveKey('message');
 }
@@ -786,7 +787,13 @@ it('rejectProposal lets the owner reject, maps missing to 404 and non-pending to
     $accepted = seedHttpProposal((string) $owner->id);
     $accepted->status = Proposal::STATUS_ACCEPTED;
     $accepted->save();
-    expect($controller->rejectProposal($asOwner, $accepted->ulid, httpProposalService($bus))->getStatusCode())->toBe(409);
+    $conflict = $controller->rejectProposal($asOwner, $accepted->ulid, httpProposalService($bus));
+    expect($conflict->getStatusCode())->toBe(409);
+    expectChatErrorEnvelope(
+        $conflict->getData(true),
+        'conflict',
+        "Proposal {$accepted->ulid} cannot be rejected (status=".Proposal::STATUS_ACCEPTED.')',
+    );
 });
 
 it('acceptProposal and rejectProposal map a proposal deleted after the owner check to 404', function () {
