@@ -6,6 +6,7 @@ use Illuminate\Contracts\Bus\Dispatcher as BusDispatcher;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\ServiceProvider;
 use Rawphp\Capabilities\Contracts\ApprovalNotifier;
+use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\ConversationIdentity;
 use Rawphp\Capabilities\Contracts\ConversationIngress;
@@ -121,6 +122,7 @@ class MessagingServiceProvider extends ServiceProvider
                 $app->make(MessagingConfig::class),
                 $app->make(TelegramBotClient::class),
                 $app->make(TelegramCallbackSigner::class),
+                $app->bound(AuditWriter::class) ? $app->make(AuditWriter::class) : null,
             );
         });
         $this->app->alias(TelegramApprovalNotifier::class, ApprovalNotifier::class);
