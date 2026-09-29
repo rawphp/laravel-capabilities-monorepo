@@ -52,6 +52,24 @@ it('fail: past-sunset invoke writes a deny audit entry and emits CapabilityFaile
         ->and($failed[0]->code)->toBe('gone');
 });
 
+it('fail: messaging-disabled invoke writes a deny audit entry and emits CapabilityFailed [PIPE-005]', function () {
+    $h = CatalogHelpers::harness();
+
+    $r = $h['registry']->invoke($h['name'], CatalogHelpers::input(), CatalogHelpers::options('agent', [
+        'messaging' => ['channel' => 'telegram', 'chat_id' => '77'],
+    ]));
+
+    $audit = $h['fakes']->audit->all();
+    $failed = $h['registry']->failedEvents();
+    expect($r->errorCode())->toBe('forbidden')
+        ->and($r->error['message'])->toContain('surface "messaging"')
+        ->and($audit)->toHaveCount(1)
+        ->and($audit[0]['caller'])->toBe('agent')
+        ->and($audit[0]['result'])->toMatchArray(['ok' => false, 'code' => 'forbidden'])
+        ->and($failed)->toHaveCount(1)
+        ->and($failed[0]->code)->toBe('forbidden');
+});
+
 it('fail: unknown capability emits CapabilityFailed and an error log under the requested name without audit [PIPE-001]', function () {
     $h = CatalogHelpers::harness();
 

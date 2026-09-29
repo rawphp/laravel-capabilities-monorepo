@@ -92,6 +92,8 @@ type ErrorBody struct {
 	ApprovalID  *string     `json:"approval_id"`
 	RequestID   string      `json:"request_id,omitempty"`
 	Retryable   bool        `json:"retryable"`
+	// RetryAfter is seconds to wait before retrying a rate_limited call (0 = unknown).
+	RetryAfter  int         `json:"retry_after,omitempty"`
 }
 
 // Violation is a field-level validation error.
@@ -117,6 +119,8 @@ type StructuredError struct {
 	RequestID  string      `json:"request_id,omitempty"`
 	Violations []Violation `json:"violations,omitempty"`
 	ApprovalID *string     `json:"approval_id"`
+	// RetryAfter is seconds from the 429 Retry-After header (0 = unknown).
+	RetryAfter int         `json:"retry_after,omitempty"`
 	// Body is the raw HTTP payload for debugging; omitted from JSON (can be large/binary).
 	Body []byte `json:"-"`
 }
@@ -146,6 +150,9 @@ func (e *StructuredError) PublicData() map[string]any {
 	}
 	if e.RequestID != "" {
 		m["request_id"] = e.RequestID
+	}
+	if e.RetryAfter > 0 {
+		m["retry_after"] = e.RetryAfter
 	}
 	if e.ApprovalID != nil {
 		m["approval_id"] = *e.ApprovalID
@@ -189,6 +196,7 @@ func ParseErrorEnvelope(env ErrorEnvelope, httpStatus int, raw []byte) *Structur
 		RequestID:  env.Error.RequestID,
 		Violations: env.Error.Violations,
 		ApprovalID: env.Error.ApprovalID,
+		RetryAfter: env.Error.RetryAfter,
 		Body:       raw,
 	}
 }

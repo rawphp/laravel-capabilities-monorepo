@@ -9,6 +9,7 @@ use Rawphp\Capabilities\Adapters\Artisan\IntegrationHealthCommand;
 use Rawphp\Capabilities\Adapters\Mcp\McpCredential;
 use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapter;
 use Rawphp\Capabilities\Adapters\ToolSelection;
+use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Tests\Fixtures\AdapterHelpers;
@@ -243,4 +244,76 @@ it('mcp tool count sums tools across multiple planned profiles [ORI-846]', funct
     ));
 
     expect($count)->toBe($billing + $support);
+});
+
+function ihInvokeProgressReady(object $app): ?bool
+{
+    $cmd = new IntegrationHealthCommand;
+    $ref = new ReflectionClass($cmd);
+    $ref->getProperty('laravel')->setValue($cmd, $app);
+    $cb = $ref->getMethod('progressStoreReadyCallback')->invoke($cmd);
+    expect($cb)->toBeCallable();
+
+    return $cb();
+}
+
+it('progress readiness probe resolves the AI ProgressStoreReadiness by class-string', function () {
+    $abstract = 'Rawphp\\CapabilitiesAi\\Contracts\\ProgressStoreReadiness';
+    $probe = static fn (bool $ready): object => new class($ready)
+    {
+        public function __construct(private bool $ready) {}
+
+        public function isReady(): bool
+        {
+            return $this->ready;
+        }
+    };
+
+    expect(ihInvokeProgressReady(ihCommandApp([$abstract => $probe(true)])))->toBeTrue()
+        ->and(ihInvokeProgressReady(ihCommandApp([$abstract => $probe(false)])))->toBeFalse()
+        ->and(ihInvokeProgressReady(ihCommandApp()))->toBeNull()
+        ->and(ihInvokeProgressReady(ihCommandApp([$abstract => new stdClass])))->toBeFalse();
+});
+
+it('progress readiness probe is not ready when resolving the store throws', function () {
+    $app = new class
+    {
+        public function bound(string $abstract): bool
+        {
+            return true;
+        }
+
+        public function make(string $abstract): mixed
+        {
+            throw new RuntimeException('progress.driver=redis requires a Redis client');
+        }
+    };
+
+    expect(ihInvokeProgressReady($app))->toBeFalse();
+});
+
+/**
+ * Invoke private auditWriterWiredCallback against a fake app.
+ */
+function ihInvokeAuditWired(object $app): bool
+{
+    $cmd = new IntegrationHealthCommand;
+    $ref = new ReflectionClass($cmd);
+    $ref->getProperty('laravel')->setValue($cmd, $app);
+    $cb = $ref->getMethod('auditWriterWiredCallback')->invoke($cmd);
+    expect($cb)->toBeCallable();
+
+    return (bool) $cb();
+}
+
+it('audit writer probe reads the live registry writer, not a container binding', function () {
+    $wired = AdapterHelpers::harness()['registry'];
+    $unwired = AdapterHelpers::harness()['registry']->withAuditWriter(null);
+
+    expect(ihInvokeAuditWired(ihCommandApp([CapabilityRegistry::class => $wired])))->toBeTrue()
+        ->and(ihInvokeAuditWired(ihCommandApp([
+            CapabilityRegistry::class => $unwired,
+            AuditWriter::class => $wired->audit(),
+        ])))->toBeFalse()
+        ->and(ihInvokeAuditWired(ihCommandApp([])))->toBeFalse();
 });

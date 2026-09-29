@@ -55,6 +55,8 @@ final class MigrationCatalog
                     'idempotency_key',
                     'result_json',
                     'result_status',
+                    'executor_actor_type',
+                    'executor_actor_id',
                     'decided_by',
                     'decided_at',
                     'decision_reason',

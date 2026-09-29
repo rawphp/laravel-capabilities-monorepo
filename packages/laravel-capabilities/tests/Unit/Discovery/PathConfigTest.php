@@ -64,3 +64,14 @@ it('edge: class without #[Capability] is skipped silently [D-017]', function () 
 
     expect((new AttributeDiscoverer)->fromClass($plain::class))->toBeNull();
 });
+
+it('edge: every class in a scanned file is discovered, not just the first "class" token [D-017]', function () {
+    $path = dirname(__DIR__, 2).'/Fixtures/MultiClassCapabilities';
+
+    $names = array_map(
+        fn ($definition) => $definition->name,
+        (new AttributeDiscoverer)->fromPaths([$path]),
+    );
+
+    expect($names)->toBe(['docblock-and-base']);
+});

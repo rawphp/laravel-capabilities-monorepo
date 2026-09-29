@@ -62,3 +62,66 @@ it('fail: required true never leaves permanent silent drop [D-010]', function ()
     expect($statuses)->not->toBeEmpty();
     expect(in_array(AuditOutbox::STATUS_FAILED, $statuses, true) || in_array(AuditOutbox::STATUS_PENDING, $statuses, true))->toBeTrue();
 });
+
+it('happy: requeueFailed moves failed rows under the attempts cap back to pending [D-010]', function () {
+    $o = new AuditOutbox(new FixedClock(new DateTimeImmutable('2026-01-01T00:00:00+00:00')));
+    $retry = $o->enqueue(['event' => 'capability.invoked']);
+    $o->markProcessing($retry);
+    $o->markFailed($retry, 'disk full');
+    $spent = $o->enqueue(['event' => 'capability.invoked']);
+    $o->markProcessing($spent);
+    $o->markProcessing($spent);
+    $o->markFailed($spent, 'disk full');
+    $done = $o->enqueue(['event' => 'capability.invoked']);
+    $o->markProcessing($done);
+    $o->markCompleted($done);
+
+    $n = $o->requeueFailed(2);
+
+    expect($n)->toBe(1)
+        ->and($o->find($retry)['status'])->toBe(AuditOutbox::STATUS_PENDING)
+        ->and($o->find($retry)['attempts'])->toBe(1)
+        ->and($o->find($retry)['error'])->toBe('disk full')
+        ->and($o->find($spent)['status'])->toBe(AuditOutbox::STATUS_FAILED)
+        ->and($o->find($done)['status'])->toBe(AuditOutbox::STATUS_COMPLETED);
+});
+
+it('edge: requeueFailed with a zero cap leaves failed rows failed [D-010]', function () {
+    $o = new AuditOutbox(new FixedClock(new DateTimeImmutable('2026-01-01T00:00:00+00:00')));
+    $id = $o->enqueue(['event' => 'capability.invoked']);
+    $o->markProcessing($id);
+    $o->markFailed($id, 'disk full');
+
+    expect($o->requeueFailed(0))->toBe(0)
+        ->and($o->find($id)['status'])->toBe(AuditOutbox::STATUS_FAILED);
+});
+
+it('happy: WriteAuditJob retries a failed row on the next drain [D-010]', function () {
+    $clock = new FixedClock(new DateTimeImmutable('2026-01-01T00:00:00+00:00'));
+    $o = new AuditOutbox($clock);
+    $id = $o->enqueue(['event' => 'capability.invoked', 'name' => 'x']);
+    (new WriteAuditJob($o, new FailingAuditWriter('disk full')))->handle();
+    expect($o->find($id)['status'])->toBe(AuditOutbox::STATUS_FAILED);
+
+    $writer = new InMemoryAuditWriter($clock);
+    $n = (new WriteAuditJob($o, $writer))->handle();
+
+    expect($n)->toBe(1)
+        ->and($o->find($id)['status'])->toBe(AuditOutbox::STATUS_COMPLETED)
+        ->and($o->find($id)['attempts'])->toBe(2)
+        ->and($o->find($id)['error'])->toBeNull()
+        ->and($writer->all())->toHaveCount(1);
+});
+
+it('fail: WriteAuditJob stops retrying once maxAttempts is spent [D-010]', function () {
+    $o = new AuditOutbox(new FixedClock(new DateTimeImmutable('2026-01-01T00:00:00+00:00')));
+    $id = $o->enqueue(['event' => 'capability.invoked']);
+    $job = new WriteAuditJob($o, new FailingAuditWriter('disk full'), maxAttempts: 2);
+
+    $job->handle();
+    $job->handle();
+    $job->handle();
+
+    expect($o->find($id)['status'])->toBe(AuditOutbox::STATUS_FAILED)
+        ->and($o->find($id)['attempts'])->toBe(2);
+});
