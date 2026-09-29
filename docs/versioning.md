@@ -256,26 +256,28 @@ Automated package CI stays **unit-only** and must **not** call Packagist, create
 |---|---|---|---|
 | `rawphp/laravel-capabilities` | `packages/laravel-capabilities` | Packagist (Composer) | `https://github.com/rawphp/laravel-capabilities` |
 | `rawphp/laravel-capabilities-messaging` | `packages/laravel-capabilities-messaging` | Packagist (Composer) | `https://github.com/rawphp/laravel-capabilities-messaging` |
+| `rawphp/laravel-capabilities-ai` | `packages/laravel-capabilities-ai` | Packagist (Composer) | `https://github.com/rawphp/laravel-capabilities-ai` |
 | `rawphp/capabilities-cli` (Go / binary `capabilities`) | `packages/capabilities-cli` | **Not Packagist** | GitHub Releases / install docs |
 
 **Monorepo path layout (already solved by split):**
 
 - Submit **package repo** URLs to Packagist (composer.json at repo root after split). Do **not** submit the monorepo URL as the package VCS.
-- Messaging depends on core — publish **core first**, then messaging.
-- Do not invent a third Composer package name.
+- Messaging and AI depend on core — publish **core first**, then messaging and AI.
+- Exactly three Composer packages; do not invent a fourth.
 
 ### Human checklist (maintainer)
 
 1. **Prep**
    - [ ] `branch-alias` remains `dev-main` → `0.x-dev` on all three PHP packages (no top-level `"version"`).
    - [ ] CHANGELOGs: move `[Unreleased]` into a dated `## [0.Y.Z]` section before the tag.
-   - [ ] Confirm monorepo unit suites green (`composer test:core`, messaging as needed).
+   - [ ] Confirm monorepo unit suites green (`composer test`: core, messaging and AI).
    - [ ] Confirm split workflow has mirrored `main` to package remotes (and `SPLIT_GITHUB_TOKEN` is set).
 
 2. **Packagist submit (each PHP package)**
    - [ ] Log into [Packagist](https://packagist.org/) with the org/maintainer account that owns `rawphp/*`.
    - [ ] **Submit package** for `rawphp/laravel-capabilities` → package repo URL above.
    - [ ] **Submit package** for `rawphp/laravel-capabilities-messaging` the same way (after core is listed).
+   - [ ] **Submit package** for `rawphp/laravel-capabilities-ai` the same way (after core is listed).
    - [ ] Confirm package names match `composer.json` `name` fields exactly.
 
 3. **VCS linkage**
@@ -292,7 +294,7 @@ Automated package CI stays **unit-only** and must **not** call Packagist, create
    - [ ] Split workflow mirrors the tag to package remotes; do **not** treat tag create as automated by monorepo unit CI alone.
 
 6. **Verify public install**
-   - [ ] After Packagist indexes the tag: `composer show rawphp/laravel-capabilities` (and messaging) resolves a version.
+   - [ ] After Packagist indexes the tag: `composer show rawphp/laravel-capabilities` (and messaging, AI) resolves a version.
    - [ ] On a **clean** Laravel app (no path repository): `composer require rawphp/laravel-capabilities` succeeds.
    - [ ] Only then update root README / consumer docs to drop “not on Packagist” residual wording for those packages.
 
