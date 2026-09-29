@@ -101,6 +101,14 @@ profile — or no profile — returns `forbidden` with `normalized_code`
 
 ### Changed
 
+- **`QueryTableGateway` writes SQL every supported engine accepts (D-006, L-012).** Scalars
+  bound to JSON columns (the approval row's `scope` tenant id, for example) are now
+  json-encoded like arrays — MySQL and PostgreSQL reject a bare string in a JSON column,
+  SQLite silently accepted it. Timestamps are written as `Y-m-d H:i:s` in the PHP default
+  timezone and read back as DATE_ATOM (MariaDB rejects an offset suffix); the lease-claim
+  predicate compares `IS NULL` / `<=` only and no longer tests a timestamp column against
+  `''`. New optional constructor argument `timestampColumns` (defaults to
+  `DEFAULT_TIMESTAMP_COLUMNS`). Rows written by earlier versions still decode.
 - **Pipeline `rate_limited` sends a backoff hint (D-013, C-007).** The envelope now carries
   `error.retry_after` (seconds until the tripped per-minute / per-capability window frees)
   and `HttpResponse::fromResult` adds `Retry-After` on 429 when it is present (an explicit
