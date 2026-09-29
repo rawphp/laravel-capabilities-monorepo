@@ -72,13 +72,13 @@ func CommandHelp(cmd string) string {
 		return `auth — authenticate the CLI against a deployment
 
 USAGE:
-  capabilities auth login --base-url=URL [--token=PAT] [--code=OAUTH] [--profile=NAME]
+  capabilities auth login --base-url=URL [--token=PAT] [--code=OAUTH] [--profile=NAME] [--json]
   capabilities auth logout [--profile=NAME]
   capabilities auth status [--profile=NAME] [--json]
   capabilities auth list [--json]            list profiles (never prints tokens)
 
 Tokens are stored in the OS config/keychain dir — never printed to stdout by default.
-  --json   D-018 envelope (status: one profile; list: {profiles:[…]}) — never includes tokens
+  --json   D-018 envelope (login: result or {ok:false,error}; status: one profile; list: {profiles:[…]}) — never includes tokens
 `
 	case "catalog":
 		return `catalog — discover capabilities from GET /capabilities
@@ -111,7 +111,7 @@ FLAGS:
   --input=JSON
   --input-file=PATH
   --idempotency-key=KEY   manual key (default: new UUID)
-  --retry-last            reuse last Idempotency-Key after network failure
+  --retry-last            reuse last Idempotency-Key (and input, if none given) after network failure
   --no-cache              re-fetch schema
   --json                  print D-018 envelope (stdout always envelope; flag kept for agents)
   --human                 short ok/fail summary on stderr (stdout stays the envelope)
@@ -136,7 +136,11 @@ USAGE:
 		return `self-update — download and replace this binary from GitHub Releases
 
 USAGE:
-  capabilities self-update
+  capabilities self-update [--json]
+
+FLAGS:
+  --json    Print a D-018 envelope on stdout: {"ok":true,"data":{"outcome",...}}
+            or {"ok":false,"error":{"code":"internal","message",...}}
 
 BEHAVIOUR:
   - Fetches the latest release of rawphp/capabilities-cli (darwin/linux only)

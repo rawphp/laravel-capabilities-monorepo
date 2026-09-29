@@ -54,6 +54,32 @@ final class IdempotencyKey
     }
 
     /**
+     * Deterministic key from the capability's declared key fields (D-005 opt-in).
+     *
+     * Null when no fields are declared or any named field is missing/null — the invoke
+     * then follows the normal no-key path rather than collapsing unrelated operations.
+     *
+     * @param  list<string>  $fields
+     * @param  array<string, mixed>  $input
+     */
+    public static function derive(array $fields, array $input): ?string
+    {
+        if ($fields === []) {
+            return null;
+        }
+
+        $values = [];
+        foreach ($fields as $field) {
+            if (! isset($input[$field])) {
+                return null;
+            }
+            $values[$field] = $input[$field];
+        }
+
+        return 'derived:'.RequestHash::of($values);
+    }
+
+    /**
      * CLI default: generate a UUID v4-style opaque key (D-005).
      */
     public static function generate(): string

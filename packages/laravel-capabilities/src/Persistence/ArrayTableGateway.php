@@ -28,6 +28,16 @@ final class ArrayTableGateway implements TableGateway
         return $row;
     }
 
+    public function insertIfAbsent(array $identity, array $row): ?array
+    {
+        $hash = $this->hashIdentity($identity);
+        if (isset($this->identityIndex[$hash])) {
+            return null;
+        }
+
+        return $this->insertIndexed($hash, $identity, $row);
+    }
+
     public function find(string $id): ?array
     {
         return $this->byId[$id] ?? null;
@@ -107,6 +117,16 @@ final class ArrayTableGateway implements TableGateway
             return $merged;
         }
 
+        return $this->insertIndexed($hash, $identity, $row);
+    }
+
+    /**
+     * @param  array<string, mixed>  $identity
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private function insertIndexed(string $hash, array $identity, array $row): array
+    {
         $inserted = $this->insert(array_merge($row, $identity));
         $this->identityIndex[$hash] = (string) $inserted['id'];
 

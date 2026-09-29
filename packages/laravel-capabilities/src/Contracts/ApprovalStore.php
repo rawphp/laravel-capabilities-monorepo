@@ -24,6 +24,8 @@ use Rawphp\Capabilities\Support\InMemoryApprovalStore;
  *     idempotency_key: string|null,
  *     result_json: mixed,
  *     result_status: string|null,
+ *     executor_actor_type: string|null,
+ *     executor_actor_id: string|null,
  *     decided_by: string|null,
  *     decided_at: string|null,
  *     decision_reason: string|null,

@@ -31,7 +31,7 @@ func cmdCatalog(env Env, args []string) int {
 		fmt.Fprintln(env.Stderr, err.Error())
 		return api.ExitAuth
 	}
-	svc := &catalog.Service{Client: c, Cache: catalog.NewCache(st.SchemaCacheDir(profile)), NoCache: noCache}
+	svc := &catalog.Service{Client: c, Cache: catalog.PrincipalCache(st.SchemaCacheDir(profile), c), NoCache: noCache}
 	var list []catalog.CapabilitySummary
 	// Agent path: --include-schemas (with --json) fetches full rows so tools need no N×describe.
 	if includeSchemas {
