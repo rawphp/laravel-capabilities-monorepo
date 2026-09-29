@@ -861,3 +861,159 @@ it('rejects a non-positive timeout', function () {
     expect(fn () => new AnthropicLlmClient('test-key', timeoutSeconds: 0))
         ->toThrow(InvalidArgumentException::class, 'timeout');
 });
+
+/**
+ * Send one complete() through a faked Anthropic endpoint and return the outbound JSON body.
+ *
+ * @param  list<mixed>  $messages
+ * @param  list<mixed>  $tools
+ * @return array{0: array<string, mixed>, 1: string} decoded body + raw JSON (for {} vs [] checks)
+ */
+function anthropicOutbound(array $messages, array $tools = []): array
+{
+    bootAnthropicHttp();
+    Http::fake(['api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200)]);
+
+    (new AnthropicLlmClient('test-key'))->complete($messages, $tools);
+
+    $raw = Http::recorded()[0][0]->body();
+
+    return [json_decode($raw, true, 512, JSON_THROW_ON_ERROR), $raw];
+}
+
+it('lifts system messages into the top-level system prompt and skips empty and non-array rows', function () {
+    [$body] = anthropicOutbound([
+        ['role' => 'system', 'content' => 'You are helpful.'],
+        'not-a-message',
+        ['role' => 'system', 'content' => ''],
+        ['role' => 'system', 'content' => 'Be brief.'],
+        ['role' => 'user', 'content' => 'hi'],
+    ]);
+
+    expect($body['system'])->toBe("You are helpful.\n\nBe brief.")
+        ->and($body['messages'])->toBe([['role' => 'user', 'content' => 'hi']]);
+});
+
+it('omits system and sends a placeholder user turn when only empty rows are given', function () {
+    [$body] = anthropicOutbound([['role' => 'system', 'content' => '']]);
+
+    expect($body)->not->toHaveKey('system')
+        ->and($body['messages'])->toBe([['role' => 'user', 'content' => '(empty)']]);
+});
+
+it('merges consecutive same-role text rows so roles alternate', function () {
+    [$body] = anthropicOutbound([
+        ['role' => 'user', 'content' => "first  \n"],
+        ['role' => 'user', 'content' => 'second'],
+    ]);
+
+    expect($body['messages'])->toBe([['role' => 'user', 'content' => "first\n\nsecond"]]);
+});
+
+it('merges a text row with a block row as one block list, dropping empty text', function () {
+    $image = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/png', 'data' => 'AAAA']];
+
+    [$body] = anthropicOutbound([
+        ['role' => 'user', 'content' => 'look at this'],
+        ['role' => 'user', 'content' => [$image]],
+        ['role' => 'user', 'content' => ''],
+    ]);
+
+    expect($body['messages'])->toHaveCount(1)
+        ->and($body['messages'][0]['content'])->toBe([
+            ['type' => 'text', 'text' => 'look at this'],
+            $image,
+        ]);
+});
+
+it('tool results without a correlation id fall back to tool_call_unknown and JSON-encode structured content', function () {
+    [$body] = anthropicOutbound([
+        ['role' => 'user', 'content' => 'go'],
+        ['role' => 'tool', 'content' => ['ok' => true, 'id' => 7]],
+    ]);
+
+    expect($body['messages'][0]['content'])->toBe([
+        ['type' => 'text', 'text' => 'go'],
+        ['type' => 'tool_result', 'tool_use_id' => 'tool_call_unknown', 'content' => '{"ok":true,"id":7}'],
+    ]);
+});
+
+it('replays assistant tool calls with text, a fallback id and {} input, skipping malformed calls', function () {
+    [$body, $raw] = anthropicOutbound([
+        ['role' => 'user', 'content' => 'go'],
+        [
+            'role' => 'assistant',
+            'content' => 'calling',
+            'tool_calls' => [
+                'garbage',
+                ['name' => 'invoices.create', 'arguments' => 'not-an-object'],
+            ],
+        ],
+    ]);
+
+    expect($body['messages'][1])->toBe([
+        'role' => 'assistant',
+        'content' => [
+            ['type' => 'text', 'text' => 'calling'],
+            ['type' => 'tool_use', 'id' => 'tool_call_unknown', 'name' => AnthropicLlmClient::encodeToolName('invoices.create'), 'input' => []],
+        ],
+    ])->and($raw)->toContain('"input":{}');
+});
+
+it('sends an empty text block for an assistant row with neither text nor tool calls', function () {
+    [$body] = anthropicOutbound([
+        ['role' => 'user', 'content' => 'go'],
+        ['role' => 'assistant', 'content' => ''],
+    ]);
+
+    expect($body['messages'][1])->toBe(['role' => 'assistant', 'content' => [['type' => 'text', 'text' => '']]]);
+});
+
+it('normalizes tool schemas to Anthropic objects and skips unnamed or malformed tool defs', function () {
+    [$body, $raw] = anthropicOutbound(
+        [['role' => 'user', 'content' => 'go']],
+        [
+            'not-a-tool',
+            ['description' => 'nameless'],
+            ['name' => 'no_schema'],
+            ['name' => 'bad_schema', 'parameters' => 'string-schema'],
+            ['name' => 'untyped', 'input_schema' => ['properties' => ['a' => ['type' => 'string']]]],
+            ['name' => 'empty_props', 'parameters' => ['type' => 'object', 'properties' => []]],
+        ],
+    );
+
+    $byName = array_column($body['tools'], null, 'name');
+
+    expect(array_keys($byName))->toBe(['no_schema', 'bad_schema', 'untyped', 'empty_props'])
+        ->and($byName['no_schema']['input_schema'])->toBe(['type' => 'object', 'properties' => []])
+        ->and($byName['no_schema']['description'])->toBe('')
+        ->and($byName['bad_schema']['input_schema'])->toBe(['type' => 'object', 'properties' => []])
+        ->and($byName['untyped']['input_schema'])->toBe(['properties' => ['a' => ['type' => 'string']], 'type' => 'object'])
+        ->and($byName['empty_props']['input_schema'])->toBe(['type' => 'object', 'properties' => []])
+        ->and(substr_count($raw, '"properties":{}'))->toBe(3);
+});
+
+it('ignores non-array content blocks in the Anthropic response', function () {
+    bootAnthropicHttp();
+    Http::fake(['api.anthropic.com/*' => Http::response([
+        'content' => ['stray', ['type' => 'text', 'text' => 'kept']],
+    ], 200)]);
+
+    $out = (new AnthropicLlmClient('test-key'))->complete([['role' => 'user', 'content' => 'hi']]);
+
+    expect($out)->toBe(['content' => 'kept']);
+});
+
+it('LlmClientDefaults keeps host clients off multi-round tools unless they opt in', function () {
+    $host = new class implements LlmClient
+    {
+        use LlmClientDefaults;
+
+        public function complete(array $messages, array $tools = []): array
+        {
+            return ['content' => ''];
+        }
+    };
+
+    expect($host->supportsToolRounds())->toBeFalse();
+});
