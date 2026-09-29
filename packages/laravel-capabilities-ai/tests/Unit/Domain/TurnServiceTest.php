@@ -119,3 +119,10 @@ it('cancel by another owner leaves the turn queued and publishes nothing', funct
         ->and(Turn::query()->where('ulid', $ids['turn_ulid'])->value('status'))->toBe(Turn::STATUS_QUEUED)
         ->and($progress->since($ids['turn_ulid'], 0))->toBeEmpty();
 });
+
+it('show, cancel and events hide a turn whose conversation has no owner', function (string $method) {
+    $progress = bootTurnServiceSqlite();
+    $ids = (new ConversationService(static fn ($j) => null, $progress))->createUserMessage('ownerless turn');
+
+    (new TurnService($progress))->{$method}($ids['turn_ulid'], 'u1');
+})->with(['show', 'cancel', 'events'])->throws(ModelNotFoundException::class);
