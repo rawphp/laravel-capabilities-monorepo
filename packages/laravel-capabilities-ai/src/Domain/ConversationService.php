@@ -96,14 +96,15 @@ final class ConversationService
             'request_hash' => null,
         ]);
 
-        $job = new RunTurnJob($turn->ulid);
-        $job->timeout = $this->claimTtl;
-        ($this->dispatch)($job);
-
+        // Queued first: a sync driver or fast worker appends running/terminal inside dispatch.
         $this->progress->append($turn->ulid, [
             'kind' => 'status',
             'data' => ['status' => Turn::STATUS_QUEUED],
         ]);
+
+        $job = new RunTurnJob($turn->ulid);
+        $job->timeout = $this->claimTtl;
+        ($this->dispatch)($job);
 
         return [
             'conversation_ulid' => $conversation->ulid,

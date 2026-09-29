@@ -119,3 +119,20 @@ it('defaults job timeout to Package DEFAULT_CLAIM_TTL', function () {
     $service->createUserMessage('default ttl');
     expect($bag->jobs[0]->timeout)->toBe(Package::DEFAULT_CLAIM_TTL);
 });
+
+it('appends the queued status before dispatch so a synchronous worker cannot end the stream on queued', function () {
+    bootCheapCreateSqlite();
+    $progress = new ArrayProgressStore;
+    // Sync queue driver / fast worker: the job starts before dispatch returns.
+    $dispatch = static function (RunTurnJob $job) use ($progress): void {
+        $progress->append($job->turnUlid, ['kind' => 'status', 'data' => ['status' => Turn::STATUS_RUNNING]]);
+    };
+
+    $ids = (new ConversationService($dispatch, $progress))->createUserMessage('sync');
+
+    $statuses = array_map(
+        static fn (array $e): mixed => $e['data']['status'] ?? null,
+        $progress->since($ids['turn_ulid']),
+    );
+    expect($statuses)->toBe([Turn::STATUS_QUEUED, Turn::STATUS_RUNNING]);
+});
