@@ -96,6 +96,15 @@ profile — or no profile — returns `forbidden` with `normalized_code`
 
 ### Changed
 
+- **`transactions.wrap_run = true` now really wraps `run()` (D-010, L-010).** The flag only
+  set a test-visible marker; `run()` was called exactly as with the flag off, so an app that
+  opted in for atomicity got none. The pipeline now executes `run()` inside
+  `ConnectionInterface::transaction()` on the connection the container / `makeRegistry`
+  hands it (`CapabilityRegistry::withTransactionConnection()`); a domain throw rolls back and
+  keeps its `domain_error` mapping. `wrap_run` on with no connection fails closed at invoke
+  with `not_configured` (run never called). The wrap covers `run()` only — output validation,
+  idempotency storage and the audit record still happen after commit, so strict audit
+  failure cannot un-commit a wrapped run (see D-010 audit modes).
 - **`idempotency.*` config now reaches the guard (D-005, L-011).** `enabled`, `ttl_hours`,
   `header` and `warn_missing_key` were published but never applied: the pipeline always used
   `IdempotencyConfig::defaults()`, and the HTTP controller read an undocumented

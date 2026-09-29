@@ -2,6 +2,7 @@
 
 namespace Rawphp\Capabilities\Registry;
 
+use Illuminate\Database\ConnectionInterface;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Audit\AuditLogger;
 use Rawphp\Capabilities\Audit\AuditOutbox;
@@ -450,6 +451,21 @@ final class CapabilityRegistry implements CapabilityBus
     public function lastRunWasWrapped(): bool
     {
         return $this->observation->lastRunWasWrapped;
+    }
+
+    /**
+     * Connection used for the opt-in outer transaction around run() (D-010 transactions.wrap_run).
+     */
+    public function withTransactionConnection(?ConnectionInterface $connection): self
+    {
+        $this->pipeline->transactionConnection = $connection;
+
+        return $this;
+    }
+
+    public function transactionConnection(): ?ConnectionInterface
+    {
+        return $this->pipeline->transactionConnection;
     }
 
     /**

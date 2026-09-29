@@ -4,6 +4,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\Capsule\Manager;
 use Rawphp\Capabilities\Audit\AuditLogger;
 use Rawphp\Capabilities\Audit\AuditOutbox;
 use Rawphp\Capabilities\Audit\WriteAuditJob;
@@ -98,7 +99,9 @@ it('happy: transactions wrap_run false by default does not wrap run [D-010]', fu
 });
 
 it('edge: wrap_run true wraps run optionally with sync audit [D-010]', function () {
-    $h = AuditHelpers::harness(['transactions' => ['wrap_run' => true]]);
+    $capsule = new Manager;
+    $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
+    $h = AuditHelpers::harness(['transactions' => ['wrap_run' => true], 'transaction_connection' => $capsule->getConnection()]);
     expect($h['registry']->transactionsWrapRun())->toBeTrue();
     $r = $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
     expect($r->isOk())->toBeTrue()
@@ -242,10 +245,15 @@ it('happy: run succeeds audit sync fails best_effort keeps domain returns 200 [D
 });
 
 it('edge: run succeeds audit fails strict plus outer txn rolls back if not committed [D-010]', function () {
+    // wrap_run wraps run() only; the outer transaction is committed before the audit stage,
+    // so strict audit failure surfaces audit_failed without un-committing (D-010 audit modes).
+    $capsule = new Manager;
+    $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
     $h = AuditHelpers::harness([
         'mode' => 'strict',
         'fail_audit' => true,
         'transactions' => ['wrap_run' => true],
+        'transaction_connection' => $capsule->getConnection(),
     ]);
     $r = $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
     expect($r->errorCode())->toBe('audit_failed')

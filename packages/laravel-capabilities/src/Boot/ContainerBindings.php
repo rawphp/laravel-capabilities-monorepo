@@ -306,6 +306,8 @@ final class ContainerBindings
         if ($transactions !== []) {
             $registry->withTransactionsConfig($transactions);
         }
+        // wrap_run opens its transaction on the host connection (D-010); none wired → fails closed at invoke.
+        $registry->withTransactionConnection($connection);
 
         $events = (array) ($full['events'] ?? []);
         if ($events !== []) {

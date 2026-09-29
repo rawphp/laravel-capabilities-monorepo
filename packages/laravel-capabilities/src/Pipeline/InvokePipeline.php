@@ -6,6 +6,7 @@ use Closure;
 use Error;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use InvalidArgumentException;
 use PDOException;
@@ -49,6 +50,12 @@ final class InvokePipeline
      * @var Closure(class-string): object
      */
     public Closure $handlerFactory;
+
+    /**
+     * Connection for the opt-in outer transaction (D-010 transactions.wrap_run).
+     * Null with wrap_run on is a configuration error and fails closed.
+     */
+    public ?ConnectionInterface $transactionConnection = null;
 
     /**
      * @param  array{
@@ -872,16 +879,28 @@ final class InvokePipeline
             );
         }
 
+        // Domain owns its transaction by default; wrap_run is opt-in (D-010) and needs a connection.
+        if ($this->wrapRun && $this->transactionConnection === null) {
+            return CapabilityResult::failure(
+                code: 'not_configured',
+                message: 'transactions.wrap_run is enabled but no database connection is wired for the outer transaction (D-010).',
+            );
+        }
+
         try {
             $state->runCalled = true;
             $state->runCount++;
             $state->domainSideEffect = true;
-            // Domain owns its transaction by default; wrap_run is opt-in (D-010).
-            if ($this->wrapRun) {
-                $this->observation->lastRunWasWrapped = true;
-            }
             $this->observation->invokeStartedAt ??= microtime(true);
-            $state->output = $this->executeRun($state->definition, $state->input, $state->context, $this->handler($state));
+            $handler = $this->handler($state);
+            if ($this->wrapRun && $this->transactionConnection !== null) {
+                $this->observation->lastRunWasWrapped = true;
+                $state->output = $this->transactionConnection->transaction(
+                    fn (): mixed => $this->executeRun($state->definition, $state->input, $state->context, $handler),
+                );
+            } else {
+                $state->output = $this->executeRun($state->definition, $state->input, $state->context, $handler);
+            }
         } catch (Throwable $e) {
             return $this->runFailure($e);
         }

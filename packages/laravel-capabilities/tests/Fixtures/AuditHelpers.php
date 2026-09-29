@@ -70,6 +70,9 @@ final class AuditHelpers
         if (isset($opts['throw_on_audit'])) {
             $registry->throwOnAuditFailure((bool) $opts['throw_on_audit']);
         }
+        if (isset($opts['transaction_connection'])) {
+            $registry->withTransactionConnection($opts['transaction_connection']);
+        }
 
         $runCount = new stdClass;
         $runCount->value = 0;
