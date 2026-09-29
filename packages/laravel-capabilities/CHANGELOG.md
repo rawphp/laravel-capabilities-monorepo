@@ -11,6 +11,16 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Added
+
+- **Approval executor identity columns** — `capabilities_approvals` gains nullable
+  `executor_actor_type` / `executor_actor_id` (new migration
+  `2026_09_24_000001_add_executor_actor_to_capabilities_approvals_table`).
+  `ApprovalExecutor::execute()` writes them in the same conditional update as
+  `result_status` on every terminal path (ok, domain failure, stale, original actor
+  forbidden): the deciding user on accept, the `SystemActor` on resume (D-002).
+  Custom `ApprovalStore` / `TableGateway` implementations must persist the two new keys.
+
 ### Changed (BREAKING)
 
 #### Accepted approvals now run the capability
