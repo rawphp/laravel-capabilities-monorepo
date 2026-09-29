@@ -43,7 +43,7 @@ Hosts that construct AI runtime services with `new` (or jobs without container m
 
 | Site | Required now | Notes |
 |------|--------------|--------|
-| `TurnRunner` | `ProgressStore $progress` | Required 3rd ctor arg (`TurnClaim`, `LlmClient`, **`ProgressStore`**, then optional context/tools/bus…). Was optional `?ProgressStore = null`. `TurnClaim` is an interface: pass `new EloquentTurnClaim` (was `new TurnClaim`). Optional last arg `ConversationStore $store`. |
+| `TurnRunner` | `ProgressStore $progress` | Required 3rd ctor arg (`TurnClaim`, `LlmClient`, **`ProgressStore`**, then optional context/tools/bus…). Was optional `?ProgressStore = null`. `TurnClaim` is an interface: pass `new EloquentTurnClaim` (was `new TurnClaim`). Optional `ConversationStore $store`, followed by optional `int $turnBudgetSeconds` (default `claim_ttl`) and `?Closure $clock`. |
 | `ConversationService` | `ProgressStore $progress` | Required 2nd ctor arg after `$dispatch`. **No** silent `ArrayProgressStore` default in ctor. Optional last arg `ConversationStore $store` (default `EloquentConversationStore`) is the row-persistence seam; unit tests pass an in-memory store. |
 | `TurnService` / `StaleTurnReaper` / `ProposalService` | — | Optional trailing `ConversationStore` / `TurnClaim` args, defaulting to the Eloquent implementations. `ResolveConversationActor` takes an optional `ActorLookup` (default `EloquentActorLookup` over the configured user model). |
 | `RunTurnJob::handle` | `handle(TurnRunner $runner)` | Workers resolve `TurnRunner` via **container method injection**. Empty `handle()` is invalid. |

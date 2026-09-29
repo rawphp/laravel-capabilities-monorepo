@@ -1,0 +1,60 @@
+{
+  "auditor": "laravel-auditor",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-audit8/packages/laravel-capabilities",
+  "stack_summary": {
+    "laravel": {
+      "present": true,
+      "version": "11.x|12.x|13.x (illuminate/* components; three packages, not a full app)",
+      "php_version": "8.2+",
+      "key_packages": [
+        "illuminate/support",
+        "illuminate/http",
+        "illuminate/routing",
+        "illuminate/console",
+        "illuminate/bus",
+        "illuminate/events",
+        "illuminate/database",
+        "illuminate/validation",
+        "pestphp/pest",
+        "phpstan/phpstan"
+      ]
+    },
+    "frontend": {
+      "framework": "none",
+      "framework_version": null,
+      "inertia_version": null,
+      "typescript": false,
+      "state_library": "none",
+      "ui_library": "none",
+      "build_tool": "unknown",
+      "key_packages": []
+    },
+    "testing": {
+      "backend": "pest",
+      "frontend": "none"
+    },
+    "tooling": {
+      "linter_backend": "none",
+      "linter_frontend": "none",
+      "formatter_frontend": "none",
+      "types_php": "phpstan"
+    },
+    "infrastructure_hints": {
+      "queue_driver": "unknown",
+      "cache_driver": "unknown",
+      "ci": "github-actions (tests.yml, split-packages.yml)",
+      "deploy": "unknown"
+    },
+    "notes": "Monorepo: packages/laravel-capabilities (core bus, ~22.8k LOC), packages/laravel-capabilities-messaging (~3k), packages/laravel-capabilities-ai (~4.5k), packages/capabilities-cli (Go, ~5.5k). No root app/routes/package.json. Unit-test-only policy (no feature/DB tests), >=95% coverage. Design oracle: docs/spec.md (D-002..D-023). Standing decisions: /Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.do-work/decisions.md (primary checkout, untracked).",
+    "control_plane": {
+      "present": true,
+      "language": "go",
+      "path": "packages/capabilities-cli",
+      "notes": "Go product CLI, HTTP client only (D-016)"
+    }
+  },
+  "scanned_files_count": 16,
+  "findings": [],
+  "notes": "Iteration 8, core only, audit tree HEAD 621883e. The only core src change since iteration 7 is 819f93d (L-601): CapabilityScope::fromRow and a comment in CapabilityRegistry::executeApproval. L-601 verified fixed and complete. (1) fromRow (CapabilityScope.php:87-105) now returns a scope whenever the row has a tenant or an array stamp; the tenant_id column stays the tenant authority (null allowed), team/org/scalar attributes come from the stamp, and only legacy rows with neither tenant nor array stamp return null. (2) Both consumers pick it up with no further change: executeApproval (CapabilityRegistry.php:775, shared by accept, resume and the scheduled sweep) and OriginalActorAuthorizer (OriginalActorAuthorizer.php:50). No other src in core/messaging/AI calls fromRow or executeApproval. (3) A stamped CapabilityScope option short-circuits ResolveTenantFromCaller::resolve (line 34), so the untenanted stamp is not overridden by a fresh resolution. The only readers of the global_system context attribute are ResolveTenantFromCaller and DefaultScopeResolver, both bypassed by the stamp, so the approved run no longer needs the original global_system option. (4) Persistence: an untenanted stamp {tenant_id:null,...,attributes:[]} json-encodes and decodes (assoc=true, QueryTableGateway.php:414) back to an array; DatabaseApprovalStore/InMemoryApprovalStore `scope ?? tenant_id` and ApprovalManager::request's legacy fill still give null for legacy untenanted rows, which fromRow maps to null. (5) Tests: tests/Unit/Approval and tests/Unit/Scope ran green against the audit tree (1006 passed), with the cache directed to the session scratchpad. The audit tree is still clean. The new cases cover system global rows, the legacy no-stamp row, and a team-only host on both accept and resume. spec D-006 step 4 (docs/spec.md:2040) and the CHANGELOG Fixed entry match the code. Considered and not raised: (a) Approver placement (ApprovalPolicy::allows:119, ApprovalResumer:108) compares the tenant only, so on a team-only host whose resolver leaves the tenant null, an approver from another team can pass placement. This is the documented rule ('same tenant as the approval row', spec 'Who may approve'). Such hosts run with tenancy not required, and the CUSTOM policy receives the row and can enforce team. It predates L-601, is a design decision rather than a regression, and is flagged here only as something the owner may want to note. (b) The stamped scope skips the resolve-time `require && tenant===null && !globalSystem` check (ResolveTenantFromCaller:69) on an approved run. The row could only be created after that check passed, so this only matters if the capability definition changes between request and approval. That is deploy drift, and tenanted rows trust their stamp the same way. (c) A resolver-attached query factory is not persisted, so query() goes through the container-bound ScopedQueryFactory. This is the accepted L-501 design, now applied to untenanted rows as well. (d) executeApproval passes job ['tenant_id'=>row tenant] rather than the original job array, so ctx->job() on an approved system run lacks team_id/organization_id. This predates L-601 and is harmless because scope comes from the stamp. Messaging, AI and CLI code were not re-audited because they have not changed since their clean iteration-6 pass. Deferred items were honoured. Decisions read: .do-work/decisions.md (primary checkout), docs/spec.md D-003/D-006, and the core CHANGELOG [Unreleased]."
+}
