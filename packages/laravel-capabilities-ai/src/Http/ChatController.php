@@ -13,6 +13,7 @@ use Rawphp\CapabilitiesAi\Domain\AcceptOutcome;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnCapacityExceededException;
+use Rawphp\CapabilitiesAi\Domain\TurnRateLimitedException;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
 use RuntimeException;
 
@@ -69,7 +70,7 @@ final class ChatController
                 userId: $userId,
                 appId: $request->input('app_id'),
             );
-        } catch (TurnCapacityExceededException $e) {
+        } catch (TurnCapacityExceededException|TurnRateLimitedException $e) {
             return $this->failure('rate_limited', $e->getMessage());
         } catch (ModelNotFoundException) {
             return $this->failure('not_found', 'Conversation not found');

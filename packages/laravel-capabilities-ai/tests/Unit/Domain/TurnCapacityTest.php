@@ -7,8 +7,10 @@ use Illuminate\Database\Capsule\Manager as Capsule;
 use Illuminate\Events\Dispatcher as EventDispatcher;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Schema;
+use Rawphp\Capabilities\Support\InMemoryRateLimiter;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\TurnCapacityExceededException;
+use Rawphp\CapabilitiesAi\Domain\TurnRateLimitedException;
 use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Message;
 use Rawphp\CapabilitiesAi\Models\Turn;
@@ -129,4 +131,88 @@ it('package config ships max_concurrent_turns off by default', function () {
 
     expect($config)->toHaveKey('max_concurrent_turns')
         ->and($config['max_concurrent_turns'])->toBe(0);
+});
+
+it('refuses a user over turns_per_minute before anything is persisted or dispatched (D-013)', function () {
+    $limiter = new InMemoryRateLimiter;
+    $limiter->hit('rl:ai:user:u1', 60);
+    $limiter->hit('rl:ai:user:u1', 60);
+    $jobs = [];
+    $service = new ConversationService(
+        static function (object $job) use (&$jobs): void {
+            $jobs[] = $job;
+        },
+        new ArrayProgressStore,
+        turnLimiter: $limiter,
+        turnsPerMinute: 2,
+    );
+
+    try {
+        $service->createUserMessage('flood', userId: 'u1');
+        $this->fail('expected TurnRateLimitedException');
+    } catch (TurnRateLimitedException $e) {
+        expect($e->limit)->toBe(2)
+            ->and($e->getMessage())->toContain('retry later');
+    }
+
+    expect($jobs)->toBe([])
+        ->and($limiter->remaining('rl:ai:user:u1', 2))->toBe(0);
+});
+
+it('counts one turn per accepted message per user and leaves other users alone', function () {
+    bootTurnCapacitySqlite();
+    $limiter = new InMemoryRateLimiter;
+    $service = new ConversationService(static fn ($j) => null, new ArrayProgressStore, turnLimiter: $limiter, turnsPerMinute: 1);
+
+    $service->createUserMessage('first', userId: 'u1');
+    $service->createUserMessage('other user', userId: 'u2');
+
+    expect(fn () => $service->createUserMessage('second', userId: 'u1'))->toThrow(TurnRateLimitedException::class)
+        ->and(Turn::query()->count())->toBe(2);
+});
+
+it('does not rate-limit when turnsPerMinute is 0 or no limiter or no user is given', function () {
+    bootTurnCapacitySqlite();
+    $limiter = new InMemoryRateLimiter;
+    $services = [
+        new ConversationService(static fn ($j) => null, new ArrayProgressStore, turnLimiter: $limiter, turnsPerMinute: 0),
+        new ConversationService(static fn ($j) => null, new ArrayProgressStore, turnsPerMinute: 1),
+    ];
+    foreach ($services as $service) {
+        $service->createUserMessage('a', userId: 'u1');
+        $service->createUserMessage('b', userId: 'u1');
+    }
+    $limited = new ConversationService(static fn ($j) => null, new ArrayProgressStore, turnLimiter: $limiter, turnsPerMinute: 1);
+    $limited->createUserMessage('server-side, no user');
+    $limited->createUserMessage('server-side, no user');
+
+    expect(Turn::query()->count())->toBe(6);
+});
+
+it('rejects a negative turnsPerMinute', function () {
+    new ConversationService(static fn ($j) => null, new ArrayProgressStore, turnsPerMinute: -1);
+})->throws(InvalidArgumentException::class);
+
+it('makeConversationService wires turns_per_minute and the core RateLimiter', function () {
+    $limiter = new InMemoryRateLimiter;
+    $limiter->hit('rl:ai:user:u9', 60);
+    $service = ContainerBindings::makeConversationService(
+        static fn ($j) => null,
+        new ArrayProgressStore,
+        config: ['turns_per_minute' => 1],
+        turnLimiter: $limiter,
+    );
+
+    expect(fn () => $service->createUserMessage('x', userId: 'u9'))->toThrow(TurnRateLimitedException::class)
+        ->and(ContainerBindings::turnsPerMinuteFromConfig([]))->toBe(ConversationService::DEFAULT_TURNS_PER_MINUTE)
+        ->and(ContainerBindings::turnsPerMinuteFromConfig(['turns_per_minute' => '5']))->toBe(5)
+        ->and(ContainerBindings::turnsPerMinuteFromConfig(['turns_per_minute' => -3]))->toBe(0)
+        ->and(ContainerBindings::turnsPerMinuteFromConfig(['turns_per_minute' => 'lots']))->toBe(ConversationService::DEFAULT_TURNS_PER_MINUTE);
+});
+
+it('package config ships turns_per_minute on by default', function () {
+    $config = require dirname(__DIR__, 3).'/config/capabilities-ai.php';
+
+    expect($config['turns_per_minute'])->toBe(ConversationService::DEFAULT_TURNS_PER_MINUTE)
+        ->and(ConversationService::DEFAULT_TURNS_PER_MINUTE)->toBeGreaterThan(0);
 });

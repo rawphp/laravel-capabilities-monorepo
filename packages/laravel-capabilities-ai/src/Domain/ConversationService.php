@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Domain;
 
+use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Jobs\RunTurnJob;
 use Rawphp\CapabilitiesAi\Models\Conversation;
@@ -17,9 +18,13 @@ use Rawphp\CapabilitiesAi\Package;
  */
 final class ConversationService
 {
+    public const DEFAULT_TURNS_PER_MINUTE = 20;
+
     /**
      * @param  callable(object): mixed  $dispatch  Bus dispatch callable (never runs job inline in tests)
      * @param  int  $maxConcurrentTurns  Ceiling on queued + running turns across all conversations; 0 = unlimited
+     * @param  RateLimiter|null  $turnLimiter  Core D-013 limiter; null = no per-user limit
+     * @param  int  $turnsPerMinute  Accepted messages (turns) per user per minute; 0 = unlimited
      */
     public function __construct(
         private readonly mixed $dispatch,
@@ -27,6 +32,8 @@ final class ConversationService
         private readonly int $claimTtl = Package::DEFAULT_CLAIM_TTL,
         private readonly bool $proposalsEnabled = true,
         private readonly int $maxConcurrentTurns = 0,
+        private readonly ?RateLimiter $turnLimiter = null,
+        private readonly int $turnsPerMinute = 0,
     ) {
         if (! is_callable($this->dispatch)) {
             throw new \InvalidArgumentException('dispatch must be callable');
@@ -37,11 +44,15 @@ final class ConversationService
         if ($this->maxConcurrentTurns < 0) {
             throw new \InvalidArgumentException('maxConcurrentTurns must be zero (unlimited) or positive');
         }
+        if ($this->turnsPerMinute < 0) {
+            throw new \InvalidArgumentException('turnsPerMinute must be zero (unlimited) or positive');
+        }
     }
 
     /**
      * @return array{conversation_ulid: string, message_ulid: string, turn_ulid: string}
      *
+     * @throws TurnRateLimitedException when $userId is over turns_per_minute (nothing persisted)
      * @throws TurnCapacityExceededException when queued + running turns are at the ceiling (nothing persisted)
      */
     public function createUserMessage(
@@ -50,6 +61,7 @@ final class ConversationService
         ?string $userId = null,
         ?string $appId = null,
     ): array {
+        $this->assertTurnRate($userId);
         $this->assertTurnCapacity();
 
         // A given $userId must own an existing conversation: the owner is the turn's bus actor.
@@ -173,6 +185,23 @@ final class ConversationService
             'status' => 'closed',
             'closed' => true,
         ];
+    }
+
+    /**
+     * D-013 per-user turn budget, checked before any query so a flooding user costs nothing.
+     * Server-side creates without a user are not limited here.
+     */
+    private function assertTurnRate(?string $userId): void
+    {
+        if ($this->turnLimiter === null || $this->turnsPerMinute === 0 || $userId === null) {
+            return;
+        }
+
+        $key = 'rl:ai:user:'.$userId;
+        if ($this->turnLimiter->tooManyAttempts($key, $this->turnsPerMinute)) {
+            throw new TurnRateLimitedException($this->turnsPerMinute);
+        }
+        $this->turnLimiter->hit($key, 60);
     }
 
     /**

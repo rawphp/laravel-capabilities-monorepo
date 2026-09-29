@@ -116,6 +116,13 @@ return [
      */
     'max_concurrent_turns' => (int) $env('CAPABILITIES_AI_MAX_CONCURRENT_TURNS', 0),
 
+    /**
+     * D-013: accepted chat messages (each starts an LLM turn) per authenticated user per
+     * minute, via core's RateLimiter. Over the limit → HTTP 429 rate_limited, nothing
+     * persisted or dispatched. 0 disables.
+     */
+    'turns_per_minute' => (int) $env('CAPABILITIES_AI_TURNS_PER_MINUTE', 20),
+
     /** Max tool-call rounds per turn before force-complete/fail. */
     'max_tool_rounds' => (int) $env('CAPABILITIES_AI_MAX_TOOL_ROUNDS', 8),
 

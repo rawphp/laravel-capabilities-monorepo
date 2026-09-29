@@ -177,6 +177,7 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 | Another user's (or ownerless) conversation/turn | **404** `not_found` (same as missing) | history, message append, showTurn, cancelTurn, turnEvents, destroyConversation |
 | `ModelNotFoundException` | **404** `not_found` | history, message create (unknown `conversation_ulid`), showTurn, cancelTurn, turnEvents, destroyConversation, proposal accept/reject |
 | `RuntimeException` (domain conflict) | **409** `conflict` | cancelTurn, destroyConversation, proposal reject |
+| `TurnRateLimitedException` (user over `turns_per_minute`, D-013) | **429** `rate_limited` (`retryable: true`) | storeMessage — checked before any query; nothing persisted or dispatched |
 | `TurnCapacityExceededException` (`max_concurrent_turns` reached) | **429** `rate_limited` (`retryable: true`) | storeMessage — nothing persisted or dispatched; resend later |
 | Success | **200** (message create **201**) | real service payload — not an empty stub |
 

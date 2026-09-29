@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Schema;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\InMemoryRateLimiter;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
@@ -822,4 +823,21 @@ it('acceptProposal and rejectProposal map a proposal deleted after the owner che
 
     expect($controller->acceptProposal($asOwner, seedHttpProposal((string) $owner->id)->ulid, httpProposalService(countingBus()))->getStatusCode())->toBe(404)
         ->and($controller->rejectProposal($asOwner, seedHttpProposal((string) $owner->id)->ulid, httpProposalService(countingBus()))->getStatusCode())->toBe(404);
+});
+
+it('storeMessage returns a 429 rate_limited envelope when the user is over turns_per_minute', function () {
+    $limiter = new InMemoryRateLimiter;
+    $limiter->hit('rl:ai:user:u1', 60);
+    $dispatched = 0;
+    $conversations = new ConversationService(static function () use (&$dispatched): void {
+        $dispatched++;
+    }, new ArrayProgressStore, turnLimiter: $limiter, turnsPerMinute: 1);
+
+    $response = (new ChatController)->storeMessage(chatRequest('u1', 'POST', ['content' => 'hi']), $conversations);
+
+    $body = $response->getData(true);
+    expect($response->getStatusCode())->toBe(429)
+        ->and($body['error']['code'])->toBe('rate_limited')
+        ->and($body['error']['retryable'])->toBeTrue()
+        ->and($dispatched)->toBe(0);
 });

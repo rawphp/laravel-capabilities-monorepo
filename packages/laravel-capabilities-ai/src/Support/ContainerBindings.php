@@ -7,6 +7,7 @@ namespace Rawphp\CapabilitiesAi\Support;
 use InvalidArgumentException;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\Metrics;
+use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
@@ -248,13 +249,15 @@ final class ContainerBindings
 
     /**
      * @param  callable(object): mixed  $dispatch
-     * @param  array<string, mixed>  $config  capabilities-ai config slice (optional proposals.enabled, max_concurrent_turns)
+     * @param  array<string, mixed>  $config  capabilities-ai config slice (optional proposals.enabled, max_concurrent_turns, turns_per_minute)
+     * @param  RateLimiter|null  $turnLimiter  core D-013 limiter (host-bound); null = no per-user turn limit
      */
     public static function makeConversationService(
         callable $dispatch,
         ProgressStore $progress,
         int $claimTtl = Package::DEFAULT_CLAIM_TTL,
         array $config = [],
+        ?RateLimiter $turnLimiter = null,
     ): ConversationService {
         return new ConversationService(
             $dispatch,
@@ -262,7 +265,22 @@ final class ContainerBindings
             $claimTtl,
             proposalsEnabled: (bool) ($config['proposals']['enabled'] ?? true),
             maxConcurrentTurns: self::maxConcurrentTurnsFromConfig($config),
+            turnLimiter: $turnLimiter,
+            turnsPerMinute: self::turnsPerMinuteFromConfig($config),
         );
+    }
+
+    /**
+     * Per-user turns per minute; package default when missing or non-numeric, 0 (off) when negative.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    public static function turnsPerMinuteFromConfig(array $config): int
+    {
+        $raw = $config['turns_per_minute'] ?? ConversationService::DEFAULT_TURNS_PER_MINUTE;
+        $max = is_numeric($raw) ? (int) $raw : ConversationService::DEFAULT_TURNS_PER_MINUTE;
+
+        return max($max, 0);
     }
 
     public static function makeProposalService(
