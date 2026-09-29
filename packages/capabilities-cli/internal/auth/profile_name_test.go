@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -94,6 +95,9 @@ func TestInvalidProfileHasNoPaths(t *testing.T) {
 	}
 	if p := st.LastRunPath("prod.eu"); p != "" {
 		t.Fatalf("last run path for invalid profile: %q", p)
+	}
+	if p := st.LastRunPath("prod"); p != filepath.Join(st.Root, "profiles", "prod", "last_run.json") {
+		t.Fatalf("last run path for valid profile: %q", p)
 	}
 }
 
