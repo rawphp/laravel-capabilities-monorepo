@@ -103,13 +103,15 @@ The command is only recognised in `code_link` mode.
 
 Codes and links are stored in your default Laravel cache store through `Identity\CacheLinkStore`, so a code issued in a web request binds when the queue worker handles the `/start` update, and links survive worker restarts. Codes expire per `identity.code_ttl_seconds` and bind at most once, even when two workers see the same code. Links are stored without expiry, so use a persistent cache store (redis, database) that your deploy does not flush; a lost link fails closed and the user links again. To pick another store, bind `Identity\LinkStore` in your app, e.g. `new CacheLinkStore(Cache::store('redis'))`.
 
+A product user has at most one linked Telegram account per tenant: binding a code from another account revokes the earlier link. To revoke a link yourself (a "disconnect Telegram" button, offboarding, a lost or hijacked Telegram account), call `IdentityLinker::unlinkUser($userId, $tenantId)`, or `IdentityLinker::unlink($telegramUserId)` when you know the Telegram id. Both work in any identity mode and leave other users' links alone.
+
 Client-forged `laravel_user_id` values are never trusted.
 
 ### `allowlist`
 
 Only static entries may bind. `bindWithCode` returns `null` in this mode (and under any unrecognized mode), so a code issued elsewhere cannot bypass the allowlist.
 
-Only static entries resolve, too. Links bound earlier in `code_link` mode stay in the cache but are ignored, so switching to `allowlist` revokes every code-bound user at once (switching back to `code_link` restores them; clear the cache to drop them for good). `IdentityLinker::link()` throws in this mode.
+Only static entries resolve, too. Links bound earlier in `code_link` mode stay in the cache but are ignored, so switching to `allowlist` revokes every code-bound user at once (switching back to `code_link` restores them; `unlink()` / `unlinkUser()` drop one for good). `IdentityLinker::link()` throws in this mode.
 
 Static entries:
 
@@ -145,7 +147,10 @@ $this->app->singleton(AgentTurn::class, SupportChatAgentTurn::class);
 ```
 
 - `toolNames(string $profile): list<string>` — capability names the profile exposes (e.g. the names from `Capability::aiTools($profile)`). Tool calls outside this list are refused.
-- `respond(array $message): array{text, tool_calls?}` — run one turn. `$message` carries `text`, the linked `user`, `thread_id`, `profile`, `tools` and `messaging` metadata. `thread_id` is stable per chat + topic; messaging keeps no history, so store earlier turns yourself (keyed by `thread_id`) if the agent needs them. Return tool calls as `['name' => …, 'input' => […]]`; messaging invokes each one through the capability bus as `caller: agent`, with per-update idempotency keys, then sends `text` as the reply.
+- `respond(array $message): array{text, tool_calls?}` — run one turn. `$message` carries `text`, the linked `user`, `thread_id`, `profile`, `tools` and `messaging` metadata. `thread_id` is stable per chat + topic; messaging keeps no history, so store earlier turns yourself (keyed by `thread_id`) if the agent needs them. Return tool calls as `['name' => …, 'input' => […]]`. With no tool calls, `text` is the reply.
+- `respondWithResults(array $message, array $toolResults): array{text}` — answer the tool results. Messaging invokes the tool calls in order through the capability bus as `caller: agent`, with per-update idempotency keys, and stops at the first result that is not ok. Each entry is `['name' => …, 'input' => […], 'result' => CapabilityResult]`: output (`isOk()`, `data`), approval pending (`isApprovalRequired()`, `approvalId()`), or a refusal or transient failure (`errorCode()`, `isRetryable()`). Messaging does not retry a transient failure, so tell the user to try again. The returned `text` is the reply; tool calls in it are ignored (one tool round per message).
+
+Replies go into the same forum topic when the message came from one. An unlinked user writing in a private chat, in `code_link` mode, gets a fixed reply telling them to link from the app; groups and `allowlist` mode stay silent.
 
 With no `AgentTurn` bound, a linked user's message gets **no reply** and an `agent_turn_unbound` error is logged; the profile exposes no tools.
 
@@ -182,7 +187,7 @@ Button `callback_data` is a compact token that fits Telegram's 64-byte limit: `{
 
 ## If something goes wrong
 
-Webhook rejections (bad secret, queue failure) and update-processing failures are written to your app logger with `tags` `channel`, `chat_id` and `update_id`. Unlinked users and rate-limited chats log as `warning`; anything else as `error`. Updates run on your queue: transient failures (Telegram 429/5xx, retryable capability results) fail the job so it retries and ends in `failed_jobs`.
+Webhook rejections (bad secret, queue failure) and update-processing failures are written to your app logger with `tags` `channel`, `chat_id` and `update_id`. Unlinked users and rate-limited chats log as `warning`; anything else as `error`. Updates run on your queue: a transient Telegram failure (429/5xx) sending the reply keeps the reply in your default cache store for an hour and fails the job so it retries and ends in `failed_jobs`. The retry only re-sends that reply; the agent turn and its tool calls run once per update. Capability results, retryable or not, go back to your `AgentTurn` and never retry the update.
 
 Troubleshooting (monorepo): [Messaging / Telegram](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/troubleshooting.md#messaging-telegram).
 

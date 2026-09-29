@@ -72,9 +72,6 @@ final class TelegramApprovalNotifier implements ApprovalNotifier
                     ['text' => 'Reject', 'callback_data' => $signer->encode($reject)],
                 ]],
             ],
-            'signed_buttons' => true,
-            'accept_payload' => $accept,
-            'reject_payload' => $reject,
         ]));
     }
 

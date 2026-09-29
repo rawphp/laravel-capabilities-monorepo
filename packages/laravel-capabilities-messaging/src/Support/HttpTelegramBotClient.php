@@ -14,6 +14,9 @@ use RuntimeException;
  */
 final class HttpTelegramBotClient implements TelegramBotClient
 {
+    /** Optional Bot API parameters callers may pass; any other payload key is dropped. */
+    private const OPTIONAL_PARAMS = ['message_thread_id', 'reply_markup', 'parse_mode'];
+
     /** @var callable(string, array<string, mixed>, string): array<string, mixed> */
     private $transport;
 
@@ -33,10 +36,10 @@ final class HttpTelegramBotClient implements TelegramBotClient
      */
     public function sendMessage(string $chatId, string $text, array $payload = []): array
     {
-        $params = array_merge($payload, [
+        $params = array_merge([
             'chat_id' => $chatId,
             'text' => $text,
-        ]);
+        ], self::optional($payload));
 
         return $this->call('sendMessage', $params);
     }
@@ -47,13 +50,22 @@ final class HttpTelegramBotClient implements TelegramBotClient
      */
     public function editMessageText(string $chatId, string|int $messageId, string $text, array $payload = []): array
     {
-        $params = array_merge($payload, [
+        $params = array_merge([
             'chat_id' => $chatId,
             'message_id' => $messageId,
             'text' => $text,
-        ]);
+        ], self::optional($payload));
 
         return $this->call('editMessageText', $params);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private static function optional(array $payload): array
+    {
+        return array_intersect_key($payload, array_flip(self::OPTIONAL_PARAMS));
     }
 
     /**

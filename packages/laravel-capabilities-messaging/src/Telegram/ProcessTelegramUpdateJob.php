@@ -9,12 +9,12 @@ use Illuminate\Contracts\Queue\ShouldQueue;
  *
  * Serialisable payload only — domain work stays in ProcessTelegramUpdate.
  * Dispatched by LaravelUpdateQueue production wiring, so the webhook answers Telegram
- * without waiting on the agent turn. A {@see RetryableUpdateFailure} fails the job and
- * the queue retries; terminal outcomes return normally.
+ * without waiting on the agent turn. A {@see RetryableUpdateFailure} (transient reply send
+ * failure) fails the job and the queue retries; terminal outcomes return normally.
  */
 final class ProcessTelegramUpdateJob implements ShouldQueue
 {
-    /** Finite attempts; tool calls replay via per-update idempotency keys (D-005). */
+    /** Finite attempts; a retry only re-sends a reply that failed transiently (D-005). */
     public int $tries = 3;
 
     /** @var list<int> seconds between attempts */

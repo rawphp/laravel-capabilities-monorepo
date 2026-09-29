@@ -119,6 +119,7 @@ final class MessagingHelpers
      *   registry?: FakeCapabilityBus,
      *   bot?: FakeTelegramBotClient,
      *   profile_tools?: list<string>,
+     *   pending_replies?: CacheRepository|null,
      * }  $parts
      */
     public static function processor(array $parts = []): ProcessTelegramUpdate
@@ -139,6 +140,7 @@ final class MessagingHelpers
             registry: $registry,
             bot: $bot,
             profileResolver: static fn (string $profile): array => $tools,
+            pendingReplies: $parts['pending_replies'] ?? null,
         );
     }
 

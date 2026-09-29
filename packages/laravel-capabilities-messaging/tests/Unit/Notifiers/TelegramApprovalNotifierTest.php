@@ -23,8 +23,8 @@ it('happy: notifyPending sends message with signed buttons [D-006]', function ()
     ]);
     expect($bot->calls())->toHaveCount(1);
     expect($bot->calls()[0]['method'])->toBe('sendMessage');
-    expect($bot->calls()[0]['args']['signed_buttons'] ?? false)->toBeTrue();
-    expect($bot->calls()[0]['args']['accept_payload']['sig'] ?? null)->not->toBeNull();
+    $accept = $bot->calls()[0]['args']['reply_markup']['inline_keyboard'][0][0]['callback_data'];
+    expect(H::signer()->verify(H::signer()->decode($accept) ?? []))->toBeTrue();
 });
 
 it('happy: notifier never executes capability [D-006]', function () {

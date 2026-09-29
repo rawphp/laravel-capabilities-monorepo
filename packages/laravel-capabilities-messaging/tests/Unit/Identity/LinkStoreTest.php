@@ -191,3 +191,98 @@ it('fail: explicit link is refused outside code_link mode [MSG-002]', function (
         ->toThrow(RuntimeException::class, 'code_link');
     expect($cache->get(CacheLinkStore::PREFIX.'link:tg-1'))->toBeNull();
 });
+
+/**
+ * Revocation (M-106): a code-bound link is a durable credential, so one link can be revoked
+ * without touching other users, by Telegram id or by product user id.
+ */
+dataset('link stores', [
+    'cache' => [fn () => new CacheLinkStore(new Repository(new ArrayStore))],
+    'in-memory' => [fn () => new InMemoryLinkStore],
+]);
+
+it('happy: unlink revokes one telegram account and leaves other links [MSG-002]', function (LinkStore $store) {
+    $linker = new IdentityLinker(H::config(), store: $store);
+    $linker->link('tg-1', 'user-1', 'tenant-a');
+    $linker->link('tg-2', 'user-2', 'tenant-a');
+
+    $linker->unlink('tg-1');
+
+    expect($linker->resolve(['telegram_user_id' => 'tg-1']))->toBeNull()
+        ->and($linker->isLinked('tg-1'))->toBeFalse()
+        ->and($linker->resolve(['telegram_user_id' => 'tg-2'])?->id)->toBe('user-2')
+        ->and($store->findTelegramUserId('user-1', 'tenant-a'))->toBeNull();
+})->with('link stores');
+
+it('happy: unlinkUser revokes by product user id [MSG-002]', function (LinkStore $store) {
+    $linker = new IdentityLinker(H::config(), store: $store);
+    $linker->bindWithCode('tg-1', $linker->issueLinkCode('user-1', 'tenant-a'));
+    $linker->link('tg-2', 'user-2', 'tenant-a');
+
+    $linker->unlinkUser('user-1', 'tenant-a');
+    $linker->unlinkUser('user-unknown');
+
+    expect($linker->isLinked('tg-1'))->toBeFalse()
+        ->and($linker->isLinked('tg-2'))->toBeTrue();
+})->with('link stores');
+
+it('fail: linking a user from another telegram account revokes the old account [MSG-002]', function (LinkStore $store) {
+    $linker = new IdentityLinker(H::config(), store: $store);
+    $linker->link('tg-old', 'user-1', 'tenant-a');
+
+    $linker->bindWithCode('tg-new', $linker->issueLinkCode('user-1', 'tenant-a'));
+
+    expect($linker->isLinked('tg-old'))->toBeFalse()
+        ->and($linker->resolve(['telegram_user_id' => 'tg-new'])?->id)->toBe('user-1')
+        ->and($store->findTelegramUserId('user-1', 'tenant-a'))->toBe('tg-new');
+})->with('link stores');
+
+it('edge: the same product id in another tenant is a separate link [MSG-002]', function (LinkStore $store) {
+    $linker = new IdentityLinker(H::config(), store: $store);
+    $linker->link('tg-a', 'user-1', 'tenant-a');
+    $linker->link('tg-b', 'user-1', 'tenant-b');
+
+    $linker->unlinkUser('user-1', 'tenant-a');
+
+    expect($linker->isLinked('tg-a'))->toBeFalse()
+        ->and($linker->isLinked('tg-b'))->toBeTrue();
+})->with('link stores');
+
+it('edge: a telegram account moved to another user is not revoked by unlinking the old user [MSG-002]', function (LinkStore $store) {
+    $linker = new IdentityLinker(H::config(), store: $store);
+    $linker->link('tg-1', 'user-old');
+    $linker->link('tg-1', 'user-new');
+
+    $linker->unlinkUser('user-old');
+
+    expect($linker->resolve(['telegram_user_id' => 'tg-1'])?->id)->toBe('user-new')
+        ->and($store->findTelegramUserId('user-old', null))->toBeNull();
+})->with('link stores');
+
+it('edge: unlink is shared across processes and works in any identity mode [MSG-002]', function () {
+    $cache = new Repository(new ArrayStore);
+    linkerOver($cache)->link('tg-1', 'user-1');
+    linkerOver($cache)->link('tg-al', 'user-al');
+    $allowlisted = ['identity' => ['mode' => 'allowlist', 'allowlist' => [
+        ['telegram_user_id' => 'tg-al', 'laravel_user_id' => 'user-al'],
+    ]]];
+
+    // Revoked while the install runs allowlist mode: stays revoked after switching back.
+    linkerOver($cache, $allowlisted)->unlink('tg-1');
+    linkerOver($cache, $allowlisted)->unlink('tg-al');
+
+    expect(linkerOver($cache)->isLinked('tg-1'))->toBeFalse()
+        ->and(linkerOver($cache)->isLinked('tg-al'))->toBeFalse()
+        // Allowlist entries live in config: unlink cannot remove them.
+        ->and(linkerOver($cache, $allowlisted)->resolve(['telegram_user_id' => 'tg-al'])?->id)->toBe('user-al');
+});
+
+it('fail: malformed reverse-index entries fail closed [MSG-002]', function () {
+    $cache = new Repository(new ArrayStore);
+    $store = new CacheLinkStore($cache);
+    $cache->forever(CacheLinkStore::PREFIX.'user:'.rawurlencode('').':'.rawurlencode('user-1'), ['not-an-id']);
+
+    $store->forgetLink('tg-none');
+
+    expect($store->findTelegramUserId('user-1', null))->toBeNull();
+});

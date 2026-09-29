@@ -38,6 +38,16 @@ final class ScriptedAgentTurn implements AgentTurn
 
         return ['text' => 'agent says hi', 'tool_calls' => $this->toolCalls];
     }
+
+    /** @var list<array{message: array<string, mixed>, results: list<array<string, mixed>>}> */
+    public array $followUps = [];
+
+    public function respondWithResults(array $message, array $toolResults): array
+    {
+        $this->followUps[] = ['message' => $message, 'results' => $toolResults];
+
+        return ['text' => 'done: '.implode(',', array_map(static fn (array $r): string => $r['name'], $toolResults))];
+    }
 }
 
 function wiredApp(): Container
@@ -97,6 +107,21 @@ it('happy: tool calls from the bound AgentTurn go through the capability bus as 
     expect($r['ok'])->toBeTrue()
         ->and($bus->invocations()[0]['name'])->toBe('support.ping')
         ->and($bus->invocations()[0]['options']['caller'])->toBe('agent');
+});
+
+it('happy: the bound AgentTurn answers its tool results and that answer is the reply [MSG-003]', function () {
+    $app = wiredApp();
+    $app->instance(CapabilityBus::class, new FakeCapabilityBus);
+    $turn = new ScriptedAgentTurn([['name' => 'support.ping', 'input' => ['n' => 1]]]);
+    $app->instance(AgentTurn::class, $turn);
+
+    $app->make(ProcessTelegramUpdate::class)->handle(H::telegramUpdate(userId: 42));
+
+    expect($turn->followUps)->toHaveCount(1)
+        ->and($turn->followUps[0]['message'])->not->toHaveKey('tool_results')
+        ->and($turn->followUps[0]['message']['text'])->toBe('hello')
+        ->and($turn->followUps[0]['results'][0]['result']->isOk())->toBeTrue()
+        ->and(array_column(array_column($app->make(TelegramBotClient::class)->calls(), 'args'), 'text'))->toBe(['done: support.ping']);
 });
 
 it('fail: a tool call outside the AgentTurn profile tools is refused before the bus [D-008]', function () {

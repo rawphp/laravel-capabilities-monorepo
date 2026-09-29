@@ -39,6 +39,22 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   user's text back with no tools. The unused `$agentRunner` constructor argument of
   `ProcessTelegramUpdate` is removed. **Consumer impact:** bind `AgentTurn` to get replies.
 
+- **Agent turns answer their tool results** — `Contracts\AgentTurn` gains
+  `respondWithResults(array $message, array $toolResults): array{text}`. After messaging invokes
+  the tool calls `respond()` returned, it passes each `['name', 'input', 'result' =>
+  CapabilityResult]` to this method and sends its `text` as the reply. Before, the reply was the
+  text `respond()` wrote before any tool ran, tool output never reached the agent or the user,
+  and any result that was not ok (`approval_required`, `forbidden`, `validation_failed`, …) ended
+  the update with no reply at all. Invocation still stops at the first result that is not ok;
+  tool calls returned from `respondWithResults()` are ignored (one tool round per message). A
+  retryable capability result no longer fails the queued job (a retry re-ran the LLM and could
+  issue different tool calls); it goes to the agent like any other result. The update result
+  reports the last non-ok tool code as `error` with `ok: false`, while still sending the reply.
+  An unlinked user in a private chat in `code_link` mode now gets
+  `ProcessTelegramUpdate::UNLINKED_REPLY` (how to link) instead of silence. **Consumer impact:**
+  implement `respondWithResults()` on your `AgentTurn`; a handler passed to `TelegramAdapter`
+  directly receives the follow-up as a message with a `tool_results` key.
+
 ### Security
 
 - **Allowlist mode ignores code-bound links** — `IdentityLinker::resolve()` and `isLinked()`
@@ -58,6 +74,26 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   that put a Telegram user id (or anything other than the product user id) in
   `approver_hint` must switch to the product user id or send an empty hint.
 
+- **Bot API requests carry Bot API fields only** — `TelegramApprovalNotifier` sent the full
+  signed accept/reject payloads (including `approver_hint`, the product user id) as extra
+  `sendMessage` parameters, and replies forwarded the internal `thread_id`.
+  `HttpTelegramBotClient` now sends `chat_id`, `text` (and `message_id` on edits) plus only
+  `message_thread_id`, `reply_markup` and `parse_mode` from the payload; the notifier sends only
+  `reply_markup`. `TelegramAdapter::reply()` reads `chat_id`, `text` and `topic_id` and ignores
+  every other key. **Consumer impact:** tests that read `accept_payload` / `signed_buttons` from
+  a bot recorder should decode `reply_markup` button `callback_data` with
+  `TelegramCallbackSigner::decode()` instead.
+
+- **Per-user link revocation** — `IdentityLinker::unlink($telegramUserId)` and
+  `unlinkUser($userId, $tenantId)` revoke one code-bound link, in any identity mode, without
+  touching other users. Before this the only revocations were switching the whole install to
+  `allowlist` or flushing the cache. A product user now has at most one stored link per tenant:
+  binding a code (or `link()`) from another Telegram account revokes the earlier link instead of
+  leaving both active. **Consumer impact:** `Identity\LinkStore` gains `forgetLink()` and
+  `findTelegramUserId()`, and `putLink()` must keep the reverse index; custom stores implement
+  them. Links stored before this change have no reverse index: `unlinkUser()` finds them only
+  after the user links again (`unlink()` works on them now).
+
 ### Changed
 
 - **Core constraint is lockstep:** `require.rawphp/laravel-capabilities` is now `self.version` instead of `*`. This package at tag `v0.Y.Z` installs only with core `v0.Y.Z` (and `dev-main` with core `dev-main`). **Hosts:** require the same version of core and this package.
@@ -74,6 +110,18 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   runtime) now fail setup with or without a lookup.
 
 ### Fixed
+
+- **A failed reply retries only the send** — a transient Bot API failure (429/5xx) sending the
+  reply used to fail the job and re-run the whole update on retry: the chat turn limit again,
+  another LLM call through `AgentTurn`, and tool calls that only replayed if the new answer
+  matched the old one. `ProcessTelegramUpdate` now keeps the reply in the host cache (key
+  `capabilities-messaging:reply:telegram:<chat>:<update_id>`, one hour) before failing the job,
+  and the retry sends that reply and nothing else. Without a cache store (container-free
+  `MessagingBindings::build()`), a transient reply failure is terminal instead of a second turn.
+
+- **Replies land in the forum topic the user wrote in** — replies (and link confirmations) to a
+  message in a forum supergroup topic now set `message_thread_id`, so they no longer land in the
+  General topic.
 
 - **Queue workers no longer grow with chat traffic** — `ProcessTelegramUpdate` kept every user
   message and reply in the container-singleton `ThreadStore`, in process memory with no bound,
