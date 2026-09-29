@@ -45,9 +45,6 @@ var constraintKeys = []string{
 // DeriveFields extracts field rows from a JSON Schema input object.
 // Properties are ordered alphabetically for stable output.
 func DeriveFields(inputSchema map[string]any) []Field {
-	if inputSchema == nil {
-		return nil
-	}
 	props, _ := inputSchema["properties"].(map[string]any)
 	if len(props) == 0 {
 		return nil
@@ -115,9 +112,6 @@ func requiredSet(schema map[string]any) map[string]bool {
 }
 
 func schemaTypeLabel(prop map[string]any) string {
-	if prop == nil {
-		return "any"
-	}
 	switch t := prop["type"].(type) {
 	case string:
 		return t
@@ -147,9 +141,6 @@ func schemaTypeLabel(prop map[string]any) string {
 
 func extractConstraints(prop map[string]any) map[string]any {
 	out := map[string]any{}
-	if prop == nil {
-		return out
-	}
 	for _, k := range constraintKeys {
 		if v, ok := prop[k]; ok {
 			out[k] = v

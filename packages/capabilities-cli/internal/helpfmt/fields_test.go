@@ -240,3 +240,51 @@ func TestDeriveFieldsFromJSON(t *testing.T) {
 		t.Fatal("expected error for invalid JSON")
 	}
 }
+
+func TestDeriveFields_noPropertiesYieldsNoRows(t *testing.T) {
+	if got := DeriveFields(nil); got != nil {
+		t.Fatalf("nil schema: %+v", got)
+	}
+	if got := DeriveFields(parseSchema(t, `{"type":"object"}`)); got != nil {
+		t.Fatalf("no properties: %+v", got)
+	}
+	got, err := DeriveFieldsFromJSON(nil)
+	if err != nil || got != nil {
+		t.Fatalf("empty schema JSON: %+v %v", got, err)
+	}
+}
+
+func TestDeriveFields_typeLabelsForUnionsAndUntypedShapes(t *testing.T) {
+	fields := DeriveFields(parseSchema(t, `{
+		"type": "object",
+		"required": ["label", 7, ""],
+		"properties": {
+			"label": {"type": ["string", "null"]},
+			"odd": {"type": [1, 2]},
+			"status": {"enum": ["open", "closed"]},
+			"address": {"properties": {"city": {"type": "string"}}},
+			"tags": {"items": {"type": "string"}},
+			"free": {}
+		}
+	}`))
+	want := map[string]string{
+		"label":   "string|null",
+		"odd":     "any",
+		"status":  "enum",
+		"address": "object",
+		"tags":    "array",
+		"free":    "any",
+	}
+	for name, typ := range want {
+		f, ok := fieldByName(fields, name)
+		if !ok || f.Type != typ {
+			t.Fatalf("%s: want type %q, got %+v", name, typ, f)
+		}
+	}
+	// Non-string and empty entries in "required" are ignored.
+	for _, f := range fields {
+		if f.Required != (f.Name == "label") {
+			t.Fatalf("%s: required=%v", f.Name, f.Required)
+		}
+	}
+}

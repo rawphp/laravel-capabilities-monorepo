@@ -303,7 +303,7 @@ func exampleValue(f Field) any {
 	}
 	// Structured types first — never stringify as "example" (invalid JSON Schema shape).
 	if strings.Contains(f.Type, "array") {
-		if min, ok := asFloat(f.Constraints["minItems"]); ok && min >= 1 {
+		if min, ok := f.Constraints["minItems"].(float64); ok && min >= 1 {
 			// minItems≥1: one empty object placeholder so paste isn't an empty-array fail.
 			return []any{map[string]any{}}
 		}
@@ -314,7 +314,7 @@ func exampleValue(f Field) any {
 	}
 	switch {
 	case strings.Contains(f.Type, "integer"):
-		if min, ok := asFloat(f.Constraints["minimum"]); ok {
+		if min, ok := f.Constraints["minimum"].(float64); ok {
 			return int64(min)
 		}
 		return 42
@@ -359,26 +359,7 @@ func exampleString(f Field) string {
 	return "example"
 }
 
-func asFloat(v any) (float64, bool) {
-	switch n := v.(type) {
-	case float64:
-		return n, true
-	case json.Number:
-		f, err := n.Float64()
-		return f, err == nil
-	case int:
-		return float64(n), true
-	case int64:
-		return float64(n), true
-	default:
-		return 0, false
-	}
-}
-
 func formatConstraints(c map[string]any) string {
-	if len(c) == 0 {
-		return "-"
-	}
 	// Stable key order from constraintKeys.
 	var parts []string
 	for _, k := range constraintKeys {
@@ -386,7 +367,8 @@ func formatConstraints(c map[string]any) string {
 		if !ok {
 			continue
 		}
-		parts = append(parts, fmt.Sprintf("%s=%s", k, compactJSON(v)))
+		b, _ := json.Marshal(v) // decoded JSON values always marshal
+		parts = append(parts, fmt.Sprintf("%s=%s", k, b))
 	}
 	if len(parts) == 0 {
 		return "-"
@@ -398,16 +380,8 @@ func formatConstraints(c map[string]any) string {
 	return s
 }
 
-func compactJSON(v any) string {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return fmt.Sprint(v)
-	}
-	return string(b)
-}
-
 func formatOutputSummary(schema map[string]any) string {
-	if schema == nil || len(schema) == 0 {
+	if len(schema) == 0 {
 		return "  (no output_schema)\n"
 	}
 	props, _ := schema["properties"].(map[string]any)
