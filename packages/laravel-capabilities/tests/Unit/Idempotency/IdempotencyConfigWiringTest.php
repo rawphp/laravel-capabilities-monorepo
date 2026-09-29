@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 use Rawphp\Capabilities\Boot\ContainerBindings;
 use Rawphp\Capabilities\Capability;
+use Rawphp\Capabilities\Idempotency\IdempotencyConfig;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
@@ -105,4 +106,9 @@ it('happy: makeRegistry applies config.idempotency to the guard [L-011]', functi
     expect($registry->idempotencyConfig()->ttlHours)->toBe(3)
         ->and($registry->idempotencyConfig()->header)->toBe('X-Idem')
         ->and($registry->idempotencyConfig()->warnMissingKey)->toBeFalse();
+});
+
+it('fail: idempotency config refuses a TTL under one hour or an empty header [D-005]', function () {
+    expect(fn () => new IdempotencyConfig(ttlHours: 0))->toThrow(InvalidArgumentException::class, 'idempotency.ttl_hours must be >= 1.')
+        ->and(fn () => new IdempotencyConfig(header: ''))->toThrow(InvalidArgumentException::class, 'idempotency.header must not be empty.');
 });
