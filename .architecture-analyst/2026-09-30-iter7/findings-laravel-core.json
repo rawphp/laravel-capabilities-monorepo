@@ -1,0 +1,108 @@
+{
+  "auditor": "laravel-auditor",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-audit7/packages/laravel-capabilities",
+  "stack_summary": {
+    "laravel": {
+      "present": true,
+      "version": "11.x|12.x|13.x (illuminate/* components; three packages, not a full app)",
+      "php_version": "8.2+",
+      "key_packages": [
+        "illuminate/support",
+        "illuminate/http",
+        "illuminate/routing",
+        "illuminate/console",
+        "illuminate/bus",
+        "illuminate/events",
+        "illuminate/database",
+        "illuminate/validation",
+        "pestphp/pest",
+        "phpstan/phpstan"
+      ]
+    },
+    "frontend": {
+      "framework": "none",
+      "framework_version": null,
+      "inertia_version": null,
+      "typescript": false,
+      "state_library": "none",
+      "ui_library": "none",
+      "build_tool": "unknown",
+      "key_packages": []
+    },
+    "testing": {
+      "backend": "pest",
+      "frontend": "none"
+    },
+    "tooling": {
+      "linter_backend": "none",
+      "linter_frontend": "none",
+      "formatter_frontend": "none",
+      "types_php": "phpstan"
+    },
+    "infrastructure_hints": {
+      "queue_driver": "unknown",
+      "cache_driver": "unknown",
+      "ci": "github-actions (tests.yml, split-packages.yml)",
+      "deploy": "unknown"
+    },
+    "notes": "Monorepo: packages/laravel-capabilities (core bus, ~22.8k LOC), packages/laravel-capabilities-messaging (~3k), packages/laravel-capabilities-ai (~4.5k), packages/capabilities-cli (Go, ~5.5k). No root app/routes/package.json. Unit-test-only policy (no feature/DB tests), >=95% coverage. Design oracle: docs/spec.md (D-002..D-023). Standing decisions: /Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.do-work/decisions.md (primary checkout, untracked).",
+    "control_plane": {
+      "present": true,
+      "language": "go",
+      "path": "packages/capabilities-cli",
+      "notes": "Go product CLI, HTTP client only (D-016)"
+    }
+  },
+  "scanned_files_count": 19,
+  "findings": [
+    {
+      "id": "L-601",
+      "title": "Use the stamped scope for untenanted approval rows too; L-501 discards it",
+      "category": "authorization",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": [
+        "security",
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Support/CapabilityScope.php",
+          "line": 88,
+          "snippet": "if (! is_scalar($tenant) || (string) $tenant === '') { return null; }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+          "line": 774,
+          "snippet": "'scope' => CapabilityScope::fromRow($row),"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+          "line": 769,
+          "snippet": "'job' => ['tenant_id' => $tenantId],"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/OriginalActorAuthorizer.php",
+          "line": 50,
+          "snippet": "scope: CapabilityScope::fromRow($row),"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+          "line": 742,
+          "snippet": "'scope' => $ctx->scope()?->toRow(),"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Support/DefaultScopeResolver.php",
+          "line": 76,
+          "snippet": "$teamId = $this->jobField($partial, 'team_id') ?? $this->stringAttr($partial, 'team_id');"
+        }
+      ],
+      "current_state": "InvokePipeline now stamps the whole resolved scope on every approval row, including rows whose tenant is null. But CapabilityScope::fromRow() returns null whenever the row's tenant_id is empty, and it does so before it reads the stamp. The approved run then re-resolves scope from the requester's current state, and the accept re-check does too. Reproduced against the audit tree with the IdempotencyHelpers harness: a host ScopeResolver that returns tenantId null and teamId from current_team_id stamps scope {tenant_id: null, team_id: 'team-A'}. After the requester switches to team-B, accept() runs the capability with ctx [null, 'team-B']. System requesters on untenanted rows (globalSystem jobs carrying team_id / organization_id) fare no better: executeApproval passes only job ['tenant_id' => null], so DefaultScopeResolver:76 resolves team and organization to null.",
+      "recommended_state": "When the row carries an array stamp, fromRow() rebuilds the scope from it whether or not a tenant is present. The tenant_id column stays the tenant authority, which may be null. Only legacy rows (a string, null or missing stamp) without a tenant return null and resolve at execution time.",
+      "rationale": "L-501's contract, stated in the CHANGELOG and in the test comments, is that what the approver saw on the row is what runs (D-006 step 5: 'run under the original caller + scope'). The untenanted branch breaks that contract for the same reason L-401 and L-501 existed: it trusts a fresh resolution of the requester over the stamp. The default resolver always gives user actors a tenant ('default-tenant'), so the affected hosts are narrower: team-only or org-only hosts whose ScopeResolver leaves tenant null, and globalSystem work with team or org dimensions. For those hosts the approved run executes under the requester's new team, or under no team. A ScopedQueryFactory that narrows by $scope->teamId then reads the wrong team's resources on exactly the path a human signed off. The CHANGELOG line 'rows without a tenant (global system work) resolve scope at execution time as before' assumes that untenanted means unscoped, and the stamp shows that it does not.",
+      "implementation_hint": "In CapabilityScope::fromRow: `$stamped = is_array($row['scope'] ?? null) ? $row['scope'] : null; $tenant = <row tenant_id as ?string, '' => null>; if ($tenant === null && $stamped === null) return null;` then `new self(tenantId: $tenant, teamId: ..., organizationId: ..., attributes: ...)` from the stamp (or `[]` when it is null). Update the 'null tenant' dataset case in tests/Unit/Scope/CapabilityScopeRowTest.php so it expects a scope with tenantId null and teamId 'team-9', and keep 'empty tenant' with scope '' and 'no tenant key' as null. Add a case to ApproverTenantResolutionTest: a host resolver returning tenant null plus a team, with the requester switched to another team, runs under the stamped team on both accept and resume. Fix the CHANGELOG sentence."
+    }
+  ],
+  "notes": "Iteration 7, core only, audit tree HEAD 4e48e22. The only core code change since iteration 6 is 4997817 (L-501). L-501 verification, traced end to end. (1) Stamping: InvokePipeline::buildApprovalRequired writes 'scope' => $ctx->scope()?->toRow(), which uses the same ctx as tenant_id, so the stamp and the column cannot disagree. ApprovalManager::request's `array_key_exists('scope')` legacy fill and the `scope ?? tenant_id` fallback in DatabaseApprovalStore/InMemoryApprovalStore only apply when the scope is null, which only happens when ctx scope is null. (2) Persistence: ContainerBindings::APPROVAL_COLUMN_MAP maps scope to scope_json, and QueryTableGateway json_encodes every non-null value in a JSON column (the L-012 portability rule), so the array round-trips. Legacy bare-string rows fail json_decode and pass through as strings, and legacy JSON-string rows decode to strings. Both hit fromRow's tenant-only path. MySQL JSON key reordering is harmless because fromRow reads by key. (3) Consumers: executeApproval (accept and resume share the executor) and OriginalActorAuthorizer both use fromRow, so the tenanted case is correct and complete: tenant from the column, and team/org/scalar attributes from the stamp. The resolver-attached query factory is intentionally not persisted, and the spec (docs/spec.md:1586) routes query() through the container-bound ScopedQueryFactory, so that is consistent. (4) Readers of the string-to-array shape change: grep over the messaging and AI src and the Go CLI found no reader of the approval row's scope field. The Telegram notifier reads only id, approver_hint and messaging. The core Http/Cli notifiers only buffer rows. No HTTP route serializes the row. No breakage. Considered and not raised: toRow() keeps NAN/INF floats and invalid-UTF-8 strings (is_scalar), which would make QueryTableGateway throw on approval request. That needs a host resolver to put such values in scope attributes, which is implausible, so it is not worth a change. The one finding (L-601) is the untenanted branch of fromRow. It was reproduced with a throwaway script in the session scratchpad (i7core/repro.php) against the audit tree's autoload and fixtures, and the audit tree was not modified. Deferred items were honoured."
+}
