@@ -7,12 +7,15 @@ When implemented, the tests are the source of truth for what the product is and 
 
 Policy: **unit tests only**, no DB, mocks/fakes, **≥95% coverage** when implemented (`AGENTS.md`).
 
-**Cases: 5000 total — 5000 implemented, 0 remaining**
+Scope: core, messaging, and CLI. The AI package (`packages/laravel-capabilities-ai`) has no
+inventory rows; its own unit suite and README define its behaviour.
+
+**Cases: 4998 total — 4998 implemented, 0 remaining**
 
 - happy: 2029
 - fail: 1737
 - edge: 977
-- go: 257
+- go: 255
 
 Regenerate scaffold (safe — does not wipe implemented tests):
 
@@ -5580,12 +5583,11 @@ Extend the catalog in the generator and re-run; do not hand-edit pure stubs.
 - [x] TestAliasresolvesbeforerun [D-012]
 - [x] TestCanonicalpreferredinlist [D-012]
 
-### `internal/auth/guards_test.go` (9)
+### `internal/auth/guards_test.go` (8)
 
 - [x] TestRunwithoutauthfails [CLI-AUTH]
 - [x] TestCatalogwithoutauthfails [CLI-AUTH]
 - [x] TestDescribewithoutauthfails [CLI-AUTH]
-- [x] TestMcpwithoutauthNotCommandGuard [CLI-AUTH]
 - [x] TestLogoutidempotentwhenalreadyloggedout [CLI-AUTH]
 - [x] TestStatusshowsloggedout [CLI-AUTH]
 - [x] TestStatusshowsloggedin [CLI-AUTH]
@@ -5701,7 +5703,7 @@ Extend the catalog in the generator and re-run; do not hand-edit pure stubs.
 - [x] TestFailoutputinvalid [CLI-RUN]
 - [x] TestFaildomain [CLI-RUN]
 
-### `internal/auth/command_guards_test.go` (9)
+### `internal/auth/command_guards_test.go` (8)
 
 - [x] TestRunrequiresauth [CLI-AUTH]
 - [x] TestRunfailswithexit3whennotoken [CLI-AUTH]
@@ -5711,7 +5713,6 @@ Extend the catalog in the generator and re-run; do not hand-edit pure stubs.
 - [x] TestDescribefailswithexit3whennotoken [CLI-AUTH]
 - [x] TestApprovalsrequiresauth [CLI-AUTH]
 - [x] TestApprovalsfailswithexit3whennotoken [CLI-AUTH]
-- [x] TestMcpDoesNotRequireAuthAsCommand [CLI-AUTH]
 
 ### `internal/catalog/cache_test.go` (10)
 

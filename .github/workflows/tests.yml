@@ -41,6 +41,12 @@ jobs:
       - name: Pest unit suites (composer test)
         run: composer test
 
+      - name: Inventory tools unit tests
+        run: python3 -m unittest discover -s tools/tests
+
+      - name: Requirements inventory has no gaps
+        run: python3 tools/report_inventory_gaps.py --fail-on-gaps
+
   # Declared support is illuminate/* ^11|^12|^13 on PHP ^8.2 (Laravel 13 needs
   # PHP ^8.3). The lockfile job above covers PHP 8.2 + Laravel 12; these cells
   # cover the lowest and highest ends of the range without the lock.

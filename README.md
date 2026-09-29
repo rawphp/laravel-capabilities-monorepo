@@ -160,6 +160,7 @@ composer test:ai
 composer test:cli          # requires Go
 composer format:test       # Pint (CI gate)
 composer analyse           # PHPStan, phpstan.neon (CI gate)
+python3 tools/report_inventory_gaps.py --fail-on-gaps   # inventory ↔ tests (CI gate)
 ```
 
 See **Package layout** and **Roadmap (indicative)** in `docs/spec.md` for the full `src/` map and phase vs residual status.
