@@ -218,7 +218,19 @@ final class MessagingHelpers
 
             public function get(string $key, mixed $default = null): mixed
             {
-                return array_key_exists($key, $this->values) ? $this->values[$key] : $default;
+                if (array_key_exists($key, $this->values)) {
+                    return $this->values[$key];
+                }
+                // Dotted lookup into the messaging array (e.g. capabilities-messaging.user_model).
+                $cursor = $this->values;
+                foreach (explode('.', $key) as $segment) {
+                    if (! is_array($cursor) || ! array_key_exists($segment, $cursor)) {
+                        return $default;
+                    }
+                    $cursor = $cursor[$segment];
+                }
+
+                return $cursor;
             }
         });
         (new MessagingServiceProvider($app))->register();

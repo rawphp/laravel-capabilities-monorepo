@@ -67,6 +67,7 @@ Config file: `config/capabilities-messaging.php` (merged from the package).
 | `telegram.callback_ttl_seconds` | Callback freshness | `TELEGRAM_CALLBACK_TTL_SECONDS` (900) |
 | `telegram.turns_per_minute` | D-013 agent turns per chat per minute (core `RateLimiter`; `0` disables). Over the cap → `rate_limited`, no reply | `CAPABILITIES_MESSAGING_TURNS_PER_MINUTE` (20) |
 | `agent_profile` | D-008 profile for bot tool list — **never full catalog** | `CAPABILITIES_MESSAGING_AGENT_PROFILE` (default `support`) |
+| `user_model` | Host user model linked chat users resolve to (the `actor` capabilities see); `null` falls back to `auth.providers.users.model` | `CAPABILITIES_MESSAGING_USER_MODEL` |
 | `identity.mode` | `code_link` or `allowlist`; any other value fails `messaging:telegram-setup` validation | `CAPABILITIES_MESSAGING_IDENTITY_MODE` |
 | `identity.code_ttl_seconds` | Link code lifetime | `CAPABILITIES_MESSAGING_LINK_CODE_TTL` (600) |
 | `identity.allowlist` | Static telegram ↔ Laravel user maps | `[]` |
@@ -89,6 +90,8 @@ Point Telegram’s webhook at your app URL for that path. The controller is a th
 ## Identity
 
 Before agent tools may mutate as a user, messaging maps the chat principal to a product user.
+
+A linked Telegram user resolves to an instance of your user model (`user_model`, else `auth.providers.users.model`) loaded with `Model::query()->find($id)`, so capability `authorize()` and policies receive the same type as on HTTP. If no model is configured, or the linked id no longer resolves, the message fails closed (no tools, no reply). This is checked on the first linked-user message, not at boot.
 
 ### `code_link` (default)
 

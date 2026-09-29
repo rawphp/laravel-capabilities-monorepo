@@ -27,6 +27,12 @@ return [
     /** Agent profile (D-008) — never dump full catalog. Required on first bot traffic. */
     'agent_profile' => env('CAPABILITIES_MESSAGING_AGENT_PROFILE', 'support'),
 
+    /**
+     * Host user model linked chat users resolve to (actor for capability invokes).
+     * Null falls back to auth.providers.users.model.
+     */
+    'user_model' => env('CAPABILITIES_MESSAGING_USER_MODEL'),
+
     'identity' => [
         /** code_link | allowlist */
         'mode' => env('CAPABILITIES_MESSAGING_IDENTITY_MODE', 'code_link'),

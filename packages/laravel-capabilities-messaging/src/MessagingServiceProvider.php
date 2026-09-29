@@ -18,6 +18,7 @@ use Rawphp\CapabilitiesMessaging\Boot\MessagingBindings;
 use Rawphp\CapabilitiesMessaging\Boot\MessagingRegistration;
 use Rawphp\CapabilitiesMessaging\Contracts\AgentTurn;
 use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
+use Rawphp\CapabilitiesMessaging\Identity\ModelUserFactory;
 use Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier;
 use Rawphp\CapabilitiesMessaging\Support\FakeQueue;
 use Rawphp\CapabilitiesMessaging\Support\LaravelUpdateQueue;
@@ -104,6 +105,7 @@ class MessagingServiceProvider extends ServiceProvider
         $this->app->singleton(IdentityLinker::class, function ($app) {
             return new IdentityLinker(
                 $app->make(MessagingConfig::class),
+                new ModelUserFactory(self::userModel($app)),
                 metrics: $app->bound(Metrics::class) ? $app->make(Metrics::class) : null,
             );
         });
@@ -181,6 +183,21 @@ class MessagingServiceProvider extends ServiceProvider
         if ((bool) $this->app['config']->get('capabilities-messaging.telegram.enabled', false)) {
             $this->loadRoutesFrom(__DIR__.'/../routes/messaging.php');
         }
+    }
+
+    /**
+     * capabilities-messaging.user_model, else the auth users provider model (same rule as the AI sibling).
+     */
+    private static function userModel(Container $app): ?string
+    {
+        foreach (['capabilities-messaging.user_model', 'auth.providers.users.model'] as $key) {
+            $model = $app['config']->get($key);
+            if (is_string($model) && $model !== '') {
+                return $model;
+            }
+        }
+
+        return null;
     }
 
     private static function agentTurn(Container $app): ?AgentTurn

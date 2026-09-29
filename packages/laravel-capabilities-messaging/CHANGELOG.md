@@ -13,6 +13,14 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Breaking
 
+- **Chat identities resolve to the host user model** — new `user_model` config key
+  (`CAPABILITIES_MESSAGING_USER_MODEL`, falling back to `auth.providers.users.model`). The
+  container-bound `IdentityLinker` now uses `Identity\ModelUserFactory`, which loads the linked
+  id with `Model::query()->find()` and throws when no model is configured, the class is
+  unusable, or the id does not resolve. Capabilities used to receive a `LinkedUser` DTO as the
+  actor for Telegram tool calls. `LinkedUser` stays the default only when `IdentityLinker` is
+  constructed without a factory (tests / `MessagingBindings::build()`).
+
 - **Agent turn is a host binding; no echo default** — chat messages now reach the agent through
   `Contracts\AgentTurn` (`toolNames($profile)` + `respond($message)`), which the host binds (for
   example around a `laravel/ai` agent). The provider wires it into `TelegramAdapter` (ingress) and

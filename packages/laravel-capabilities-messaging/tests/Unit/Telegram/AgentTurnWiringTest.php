@@ -11,6 +11,7 @@ use Rawphp\CapabilitiesMessaging\Support\TelegramBotClient;
 use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdate;
 use Rawphp\CapabilitiesMessaging\Telegram\TelegramAdapter;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\FakeCapabilityBus;
+use Rawphp\CapabilitiesMessaging\Tests\Fixtures\InMemoryUserModel;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers as H;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\RecordingLogger;
 
@@ -41,7 +42,12 @@ final class ScriptedAgentTurn implements AgentTurn
 
 function wiredApp(): Container
 {
-    $app = H::container(['telegram' => ['bot_token' => 't', 'webhook_secret' => 's'], 'agent_profile' => 'support']);
+    InMemoryUserModel::seed(['u1']);
+    $app = H::container([
+        'telegram' => ['bot_token' => 't', 'webhook_secret' => 's'],
+        'agent_profile' => 'support',
+        'user_model' => InMemoryUserModel::class,
+    ]);
     $app->make(IdentityLinker::class)->link('42', 'u1');
 
     return $app;
