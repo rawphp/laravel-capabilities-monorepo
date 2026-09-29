@@ -59,11 +59,11 @@ final class InvokeAuditStage
             $this->auditWriter->write($entry);
         } catch (Throwable $e) {
             if ($state->definition->auditMode($this->auditMode) === 'strict' && $success) {
-                $this->observation->logs[] = [
+                $this->observation->log([
                     'level' => 'error',
                     'message' => 'Audit failed in strict mode: '.$e->getMessage(),
                     'context' => ['capability' => $state->definition->name],
-                ];
+                ]);
 
                 // When required, still enqueue for operators even in strict.
                 if ($this->auditRequired) {
@@ -85,11 +85,11 @@ final class InvokeAuditStage
                 );
             }
 
-            $this->observation->logs[] = [
+            $this->observation->log([
                 'level' => 'warning',
                 'message' => 'Audit failed (best_effort): '.$e->getMessage(),
                 'context' => ['capability' => $state->definition->name],
-            ];
+            ]);
 
             // best_effort + required (or forced): never silent drop — durable outbox intent.
             if ($this->auditRequired || $force) {

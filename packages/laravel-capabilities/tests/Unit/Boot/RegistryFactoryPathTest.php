@@ -215,6 +215,8 @@ it('RegistryFactory path: container-resolved registry shares stores and applies 
     ]);
 
     $app = req046FakeApp($config);
+    // audit.mode=strict needs a writer or boot fails closed (L-006); the unit gateway backs it.
+    $app->instance(TableGateway::class, new ArrayTableGateway);
 
     $registry = $app->make(CapabilityRegistry::class);
     $approval = $app->make(ApprovalManager::class);

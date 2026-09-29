@@ -2,6 +2,7 @@
 
 namespace Rawphp\Capabilities\Approval;
 
+use Illuminate\Contracts\Events\Dispatcher;
 use Rawphp\Capabilities\Contracts\ApprovalStore;
 use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
@@ -27,6 +28,8 @@ final class ApprovalExecutor
      * @var list<object>
      */
     public array $events = [];
+
+    private ?Dispatcher $dispatcher = null;
 
     /**
      * Domain executor: (row, decidedBy) => CapabilityResult|array|mixed
@@ -114,6 +117,14 @@ final class ApprovalExecutor
     {
         $clone = clone $this;
         $clone->audit = $audit;
+
+        return $clone;
+    }
+
+    public function withEventDispatcher(?Dispatcher $dispatcher): self
+    {
+        $clone = clone $this;
+        $clone->dispatcher = $dispatcher;
 
         return $clone;
     }
@@ -247,13 +258,15 @@ final class ApprovalExecutor
 
         $this->completeIdempotency($row, $result);
 
-        $this->events[] = new CapabilityApprovalExecuted(
+        $executed = new CapabilityApprovalExecuted(
             capability: (string) ($row['capability_name'] ?? ''),
             approvalId: $id,
             via: $via,
             replay: false,
             result: $result->toArray(),
         );
+        $this->events[] = $executed;
+        $this->dispatcher?->dispatch($executed);
 
         $this->auditWrite('approval.executed', [
             'approval_id' => $id,

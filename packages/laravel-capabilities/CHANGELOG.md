@@ -13,6 +13,10 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Added
 
+- **`self-update` is a reserved CLI domain (C-008).** `CapabilityDefinition::RESERVED_CLI_DOMAINS`
+  gains `self-update`, matching the Go CLI's meta-command dispatcher, so a capability can no
+  longer claim a `cli` domain the binary would never route to it. Definitions using that
+  domain now fail at registration.
 - **Approval is declared on the capability (D-006, L-002).** Fluent definitions gain
   `->needsApproval(fn (Input $input, CapabilityContext $ctx): bool)`; class capabilities
   use their `needsApproval()` method. Before, approval could only be triggered by the
@@ -23,6 +27,15 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   `2026_09_29_000001_add_approval_policy_to_capabilities_approvals_table`) and its
   `approvalTtlHours` is applied to `expires_at`. Custom `ApprovalStore` / `TableGateway`
   implementations must persist the new key.
+- **The approval crash-recovery sweep is scheduled (D-006 / P2-004, L-014).** New ops command
+  `capabilities:approvals-resume {--id=} {--force}` (`Adapters\Artisan\ResumeApprovalsCommand`,
+  listed in `ArtisanCommandTable`) runs `ResumeApprovedApprovals`. With the default
+  `approval.execution = deferred` and `approval.resume.enabled = true` the service provider
+  schedules it on the console `Schedule` every `resume.every_seconds` (minute granularity,
+  `withoutOverlapping`; pure plan in `Approval\ResumeSchedulePlan`). Before, nothing ran the
+  sweep, so a process crash between `approved` and `executed` left the row in limbo and the
+  `resume.*` keys were inert. Atomic execution schedules nothing. Requires the host's
+  `schedule:run` cron as for any Laravel schedule.
 - **Approval executor identity columns** — `capabilities_approvals` gains nullable
   `executor_actor_type` / `executor_actor_id` (new migration
   `2026_09_24_000001_add_executor_actor_to_capabilities_approvals_table`).
@@ -37,10 +50,23 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 - **`capabilities:integration-health` warns on silent audit loss (D-010).** New
   `audit_writer` check: when `audit.enabled` and any invoke surface is on but the live
   registry has no `AuditWriter`, it reports `warn` (every audit record is otherwise a
-  silent no-op). It probes `CapabilityRegistry::audit()`, not a container binding — the
-  service provider does not inject a bound `AuditWriter`; wire one with
-  `CapabilityRegistry::withAuditWriter(...)`. Warn only; exit code unchanged.
-  `IntegrationHealthChecker::check()` takes an optional seventh `$auditWriterWired` probe.
+  silent no-op). It probes `CapabilityRegistry::audit()`, not a container binding. Warn
+  only; exit code unchanged. `IntegrationHealthChecker::check()` takes an optional seventh
+  `$auditWriterWired` probe.
+- **Audit records are really written (D-010, L-006).** `audit.driver=database` (the default)
+  now has a first-party writer: `Persistence\DatabaseAuditWriter` inserts one row per entry
+  into `capabilities_audit_outbox` (status `pending`, `available_at = now`, full entry in
+  `payload_json`); the row is the durable audit record and a host drain may forward it and
+  mark it `completed`. The service provider wires that writer (or a host-bound
+  `Contracts\AuditWriter`, which wins) into **both** the registry pipeline and the
+  `ApprovalManager`, so `approval.requested` / `approval.decided` / `approval.executed`
+  entries land too; `CapabilityRegistry::withAuditWriter()` forwards to
+  `registry->approvals()`. Before, no production writer existed and every entry was dropped
+  with no error. `ContainerBindings::makeAuditWriter()` and a `makeRegistry(...,
+  auditWriter:)` argument are new. **Fail closed:** `audit.enabled` with `mode = strict` or
+  `required = true` and no writer (memory driver, or database with no connection) now throws
+  `BootException` at boot instead of passing silently; `best_effort` without a writer still
+  boots and `capabilities:integration-health` warns.
 
 #### Audit entry `tool_profile` (D-008 / D-010)
 
@@ -52,7 +78,26 @@ tools themselves (messaging) pass it as an invoke option. `null` for invokes out
 
 ### Changed (BREAKING)
 
-#### Invokes without an actor are refused on every surface (D-002, L-004)
+#### `RunCapabilityJob` really queues (D-002 / D-019, L-016)
+
+`RunCapabilityJob` was a plain object whose static `dispatch()` only built an instance —
+nothing was ever enqueued, and a job pushed onto the bus by hand threw `unresolvableUser`
+for every user id because `handle()` received no `user_resolver`. It now implements
+`ShouldQueue` with `Illuminate\Bus\Queueable` (`onQueue`, `onConnection`, `delay`, …):
+
+- `dispatch(array $payload, ?Dispatcher $bus = null)` validates the actor (D-002), then
+  pushes the job through the given bus or the container's `Illuminate\Contracts\Bus\Dispatcher`;
+  with neither it throws `LogicException` instead of silently doing nothing. Code that used the
+  old return value as a pure builder should call the new `make(array $payload)`.
+- `handle(CapabilityRegistry $registry, array $options = [])` resolves `actingAs` user ids
+  through the registry's requester resolver (the host auth provider the service provider
+  wires — the same lookup approvals use; new `CapabilityRegistry::hasRequesterResolver()` /
+  `resolveRequester()`) when no `user_resolver` option is passed. No resolver anywhere still
+  fails closed.
+- `failed(?Throwable $e)` records the D-019 tags plus the exception (`lastFailure()`) and logs
+  `capability.job.failed` through the bound `log` service when there is one.
+
+
 
 `ResolveActor` used to hand any non-job invoke that omitted `options['actor']` a
 fabricated user (`stdClass`, `id = 1`, `name = default-user`). That principal drove
@@ -101,6 +146,52 @@ profile — or no profile — returns `forbidden` with `normalized_code`
 
 ### Changed
 
+- **`QueryTableGateway` writes SQL every supported engine accepts (D-006, L-012).** Scalars
+  bound to JSON columns (the approval row's `scope` tenant id, for example) are now
+  json-encoded like arrays — MySQL and PostgreSQL reject a bare string in a JSON column,
+  SQLite silently accepted it. Timestamps are written as `Y-m-d H:i:s` in the PHP default
+  timezone and read back as DATE_ATOM (MariaDB rejects an offset suffix); the lease-claim
+  predicate compares `IS NULL` / `<=` only and no longer tests a timestamp column against
+  `''`. New optional constructor argument `timestampColumns` (defaults to
+  `DEFAULT_TIMESTAMP_COLUMNS`). Rows written by earlier versions still decode.
+- **Approval accept/reject honour the execution lease and never recurse (D-006, L-013).** A
+  pending row whose `execution_lease_until` is still live is a Shape B (`approval.execution =
+  atomic`) run in flight: `accept()` and `reject()` now return `conflict` with
+  `in_progress: true` instead of `accept()` re-entering itself until the lease expired (a hot
+  loop) and `reject()` flipping an executing row to `rejected` behind the runner's back.
+  `reject()` uses the lease-aware conditional update; a lost race is settled from one re-read
+  (terminal status → that outcome). `ApprovalStore::claimLease()` attributes need not carry a
+  new lease.
+- **`approval.connection` / `idempotency.connection` now reach the stores (L-008).** The
+  service provider resolved the container's `ConnectionInterface` first; Laravel aliases that
+  to the default `db.connection`, so a configured store connection name was never used and
+  approvals/idempotency silently wrote to the default connection. The configured name is now
+  resolved through the `db` manager first; a name that cannot be resolved fails closed at
+  boot (`BootException`) instead of falling back to the default. The undocumented
+  `capabilities.database.connection` / `capabilities.connection` fallbacks are gone.
+- **Bus events reach Laravel's dispatcher and the in-memory window is bounded (D-010 §5,
+  L-007).** `CapabilityInvoked`, `CapabilityFailed`, `CapabilityApprovalRequested`,
+  `CapabilityApprovalDecided` and `CapabilityApprovalExecuted` were only appended to arrays on
+  the registry singleton — no host listener ever fired, and the arrays grew for the life of a
+  queue worker. The service provider now hands the app `events` dispatcher to the registry and
+  the `ApprovalManager` when `events.enabled` (`CapabilityRegistry::withEventDispatcher()`,
+  `ApprovalManager::withEventDispatcher()`, `ApprovalExecutor::withEventDispatcher()` are new);
+  events are dispatched after `run()`, so listeners that touch the database should still use
+  `afterCommit()`. `registry->invokedEvents()` / `failedEvents()` / `approvalEvents()` /
+  `logs()` keep only the newest `InvokeObservation::MAX_RETAINED` (100) entries — a
+  diagnostic window, not the delivery channel.
+- **Device-code poll contract is spelled out (C-001).** `Contracts\AuthTokenIssuer` now documents
+  what the Go CLI drives: `POST {prefix}/auth/device` starts the flow; the CLI polls
+  `POST {prefix}/auth/token` with `grant_type = AuthTokenIssuer::GRANT_DEVICE_CODE` (new
+  constant) every `interval` seconds (floored to 10 s for the `throttle:6,1` auth stack) and,
+  while undecided, expects `data.status` (or `data.error`) in
+  `AuthTokenIssuer::DEVICE_POLL_STATUSES` — `authorization_pending`, `slow_down`,
+  `access_denied`, `expired_token` — **inside the `ok: true` envelope**, then the token shape.
+  The package's fake issuer fixture and the user guide follow the same contract. Host
+  implementations of `issueToken()` must handle the device-code grant this way.
+- **`surfaces.http.prefix` documents the CLI constraint (C-009).** The Go CLI hardcodes
+  `/capabilities/...` after `--base-url`, so the prefix's last segment must be `capabilities`
+  (config comment + user guide). No behaviour change.
 - **Pipeline `rate_limited` sends a backoff hint (D-013, C-007).** The envelope now carries
   `error.retry_after` (seconds until the tripped per-minute / per-capability window frees)
   and `HttpResponse::fromResult` adds `Retry-After` on 429 when it is present (an explicit

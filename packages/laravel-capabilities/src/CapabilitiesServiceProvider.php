@@ -3,7 +3,9 @@
 namespace Rawphp\Capabilities;
 
 use ArrayAccess;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
+use Illuminate\Contracts\Events\Dispatcher as EventDispatcher;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\ServiceProvider;
 use Rawphp\Capabilities\Adapters\Ai\AiToolAdapter;
@@ -25,6 +27,7 @@ use Rawphp\Capabilities\Adapters\PeerIncompatibleException;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Approval\OriginalActorAuthorizer;
+use Rawphp\Capabilities\Approval\ResumeSchedulePlan;
 use Rawphp\Capabilities\Audit\AuditLogger;
 use Rawphp\Capabilities\Boot\BootGuard;
 use Rawphp\Capabilities\Boot\CapabilitiesConfig;
@@ -32,6 +35,7 @@ use Rawphp\Capabilities\Boot\ContainerBindings;
 use Rawphp\Capabilities\Boot\RegistrationPlan;
 use Rawphp\Capabilities\Boot\SurfaceNames;
 use Rawphp\Capabilities\Contracts\ApprovalGateway;
+use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Contracts\AuthTokenIssuer;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
@@ -46,6 +50,7 @@ use Rawphp\Capabilities\Http\HttpRouteRegistrar;
 use Rawphp\Capabilities\Http\RouteTable;
 use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\Capabilities\Observability\LogFallbackMetrics;
+use Rawphp\Capabilities\Persistence\DatabaseAuditWriter;
 use Rawphp\Capabilities\Persistence\TableGateway;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\CapabilityResult;
@@ -63,6 +68,11 @@ use Rawphp\Capabilities\Support\IlluminateRateLimitCache;
  */
 class CapabilitiesServiceProvider extends ServiceProvider
 {
+    /** Memoised so the registry and the ApprovalManager share one writer (D-010). */
+    private ?AuditWriter $auditWriter = null;
+
+    private bool $auditWriterResolved = false;
+
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/capabilities.php', 'capabilities');
@@ -136,7 +146,9 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 $registry = $app->make(CapabilityRegistry::class);
 
                 return $registry->executeApproval($row);
-            })->withOriginalAuthorizer(static fn (array $row): bool => self::originalActorAllows($app, $row));
+            })->withOriginalAuthorizer(static fn (array $row): bool => self::originalActorAllows($app, $row))
+                ->withAudit($this->auditWriterOrNull($app, $config))
+                ->withEventDispatcher(self::eventDispatcherOrNull($app, $config));
         });
         $this->app->alias(ApprovalManager::class, 'ApprovalManager');
         // Hosts with custom actor lookup rebind this; default resolves users through
@@ -178,10 +190,11 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 self::boundConnectionOrNull($app, $config, null),
                 self::boundRateLimitCacheOrNull($app),
                 $rateLimiter,
+                $this->auditWriterOrNull($app, $config),
             )->withRequesterResolver(
                 // Approved rows execute as the real requester — same lookup as the accept re-check (D-006).
                 static fn (string $type, string $id): ?object => self::authUserOrNull($app, $id),
-            );
+            )->withEventDispatcher(self::eventDispatcherOrNull($app, $config));
         });
         $this->app->alias(CapabilityRegistry::class, 'CapabilityRegistry');
         // CapabilityController type-hints CapabilityBus — same singleton, no second registry (REQ-057).
@@ -279,6 +292,66 @@ class CapabilitiesServiceProvider extends ServiceProvider
             );
         });
         $this->app->alias(AiToolAdapter::class, 'AiToolAdapter');
+    }
+
+    /**
+     * Audit sink shared by the registry pipeline and the ApprovalManager (D-010 / L-006).
+     *
+     * A host-bound {@see AuditWriter} wins; otherwise `audit.driver=database` gets the
+     * first-party {@see DatabaseAuditWriter} on the
+     * default connection. Null only for the memory driver or when no connection exists —
+     * {@see ContainerBindings::makeRegistry} then fails boot for strict/required audit.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    private function auditWriterOrNull(object $app, array $config): ?AuditWriter
+    {
+        if ($this->auditWriterResolved) {
+            return $this->auditWriter;
+        }
+        $this->auditWriterResolved = true;
+
+        try {
+            if (method_exists($app, 'bound') && $app->bound(AuditWriter::class)) {
+                $bound = $app->make(AuditWriter::class);
+                if ($bound instanceof AuditWriter) {
+                    return $this->auditWriter = $bound;
+                }
+            }
+        } catch (\Throwable) {
+            // fall through to the package writer
+        }
+
+        return $this->auditWriter = ContainerBindings::makeAuditWriter(
+            $config,
+            self::boundTableGatewayOrNull($app),
+            self::boundConnectionOrNull($app, $config, null),
+        );
+    }
+
+    /**
+     * The app's event dispatcher for bus events (D-010 §5 / L-007) when `events.enabled`.
+     * Null (events off, or no `events` binding) keeps events in the registry's in-memory window.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    private static function eventDispatcherOrNull(object $app, array $config): ?EventDispatcher
+    {
+        if (! (bool) ($config['events']['enabled'] ?? true)) {
+            return null;
+        }
+
+        try {
+            if (method_exists($app, 'bound') && $app->bound('events')) {
+                $events = $app->make('events');
+
+                return $events instanceof EventDispatcher ? $events : null;
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return null;
     }
 
     /**
@@ -384,15 +457,24 @@ class CapabilitiesServiceProvider extends ServiceProvider
     }
 
     /**
-     * Resolve Illuminate connection for QueryTableGateway construction.
+     * Resolve the Illuminate connection a database-backed store should use.
      *
-     * Order: bound ConnectionInterface → config connection name via db manager → null.
+     * Order (L-008): the store's own `connection` name via the `db` manager → the bound
+     * ConnectionInterface → the `db` manager default. Laravel aliases ConnectionInterface to
+     * `db.connection` (the default), so the configured name must be checked first or it is
+     * never reachable. A configured name that cannot be resolved returns null (the factory
+     * then fails closed) — never silently the default connection.
      *
      * @param  array<string, mixed>  $config
      * @param  'approval'|'idempotency'|null  $storeKey
      */
     private static function boundConnectionOrNull(object $app, array $config, ?string $storeKey): ?ConnectionInterface
     {
+        $name = $storeKey === null ? null : ($config[$storeKey]['connection'] ?? null);
+        if (is_string($name) && $name !== '') {
+            return self::namedConnectionOrNull($app, $name);
+        }
+
         try {
             if (method_exists($app, 'bound') && $app->bound(ConnectionInterface::class)) {
                 $connection = $app->make(ConnectionInterface::class);
@@ -404,35 +486,17 @@ class CapabilitiesServiceProvider extends ServiceProvider
             // try db manager next
         }
 
-        try {
-            $connection = $app->make(ConnectionInterface::class);
-            if ($connection instanceof ConnectionInterface) {
-                return $connection;
-            }
-        } catch (\Throwable) {
-            // try db manager next
-        }
+        return self::namedConnectionOrNull($app, null);
+    }
 
-        $name = null;
-        if ($storeKey === 'approval') {
-            $name = $config['approval']['connection'] ?? null;
-        } elseif ($storeKey === 'idempotency') {
-            $name = $config['idempotency']['connection'] ?? null;
-        }
-        if ($name === null || $name === '') {
-            $name = $config['database']['connection'] ?? $config['connection'] ?? null;
-        }
-        if (is_string($name) && $name === '') {
-            $name = null;
-        }
-
+    private static function namedConnectionOrNull(object $app, ?string $name): ?ConnectionInterface
+    {
         try {
             $db = $app->make('db');
             if (is_object($db) && method_exists($db, 'connection')) {
-                $connection = $db->connection(is_string($name) ? $name : null);
-                if ($connection instanceof ConnectionInterface) {
-                    return $connection;
-                }
+                $connection = $db->connection($name);
+
+                return $connection instanceof ConnectionInterface ? $connection : null;
             }
         } catch (\Throwable) {
             return null;
@@ -452,6 +516,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
         $this->bootHttpRoutes();
         $this->bootCapabilityDiscovery();
         $this->bootArtisanCommands();
+        $this->bootResumeSchedule();
         $this->bootMcpServers();
 
         if ($this->app->runningInConsole()) {
@@ -565,6 +630,35 @@ class CapabilitiesServiceProvider extends ServiceProvider
             // Fail-closed only when plan would register servers (empty plan never reaches peer eval).
             throw $e;
         }
+    }
+
+    /**
+     * Schedule the approval crash-recovery sweep (D-006 / P2-004 / L-014).
+     *
+     * `approval.execution = deferred` + `approval.resume.enabled` → `capabilities:approvals-resume`
+     * on the console Schedule every `resume.every_seconds` (minute granularity), without
+     * overlapping. Atomic execution or `resume.enabled = false` schedules nothing.
+     *
+     * @param  array<string, mixed>|null  $approvalConfig
+     * @return array{command: string, cron: string}|null the applied plan
+     */
+    public function bootResumeSchedule(?array $approvalConfig = null): ?array
+    {
+        $config = $approvalConfig ?? (self::configFromApp($this->app)['approval'] ?? []);
+        $plan = ResumeSchedulePlan::fromConfig(is_array($config) ? $config : []);
+        if ($plan === null || ! method_exists($this->app, 'afterResolving')) {
+            return $plan;
+        }
+
+        $apply = static function (object $schedule) use ($plan): void {
+            ResumeSchedulePlan::apply($schedule, $plan);
+        };
+        $this->app->afterResolving(Schedule::class, $apply);
+        if (method_exists($this->app, 'resolved') && $this->app->resolved(Schedule::class)) {
+            $apply($this->app->make(Schedule::class));
+        }
+
+        return $plan;
     }
 
     /**

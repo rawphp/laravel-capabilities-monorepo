@@ -20,9 +20,17 @@ use JsonException;
  * ]);
  * ```
  *
- * **JSON columns:** arrays/objects are json_encoded on write and decoded on read
- * for names in `$jsonColumns` (defaults cover Database*Store shapes + MigrationCatalog
- * `*_json` names). Logical keys from stores may map to physical columns via `$columnMap`.
+ * **JSON columns:** every non-null value (arrays, objects *and* scalars such as a tenant
+ * id) is json_encoded on write and decoded on read for names in `$jsonColumns` (defaults
+ * cover Database*Store shapes + MigrationCatalog `*_json` names). MySQL and PostgreSQL
+ * reject a bare `acme` in a JSON column; SQLite does not, so this is enforced here, not
+ * left to the driver. Logical keys from stores may map to physical columns via `$columnMap`.
+ *
+ * **Timestamp columns:** stores hand the gateway DATE_ATOM strings. They are written as
+ * `Y-m-d H:i:s` in the PHP default timezone (the form every supported engine accepts —
+ * MariaDB rejects an offset suffix) and read back as DATE_ATOM so ArrayTableGateway and
+ * this gateway agree. Lease predicates compare `NULL` / `<=` only — never `= ''` on a
+ * timestamp column (invalid on PostgreSQL and strict MySQL).
  *
  * **No silent fallback:** a null connection throws {@see InvalidArgumentException};
  * this class never substitutes {@see ArrayTableGateway}.
@@ -44,10 +52,30 @@ final class QueryTableGateway implements TableGateway
         'messaging',
     ];
 
+    /**
+     * Default timestamp columns across MigrationCatalog tables.
+     *
+     * @var list<string>
+     */
+    public const DEFAULT_TIMESTAMP_COLUMNS = [
+        'decided_at',
+        'expires_at',
+        'execution_lease_until',
+        'approved_at',
+        'available_at',
+        'created_at',
+        'updated_at',
+    ];
+
+    private const PORTABLE_TIMESTAMP = 'Y-m-d H:i:s';
+
     private readonly ConnectionInterface $connection;
 
     /** @var list<string> */
     private readonly array $jsonColumns;
+
+    /** @var array<string, true> */
+    private readonly array $timestampColumnSet;
 
     /** @var array<string, string> physical => logical */
     private readonly array $reverseColumnMap;
@@ -58,6 +86,7 @@ final class QueryTableGateway implements TableGateway
     /**
      * @param  list<string>|null  $jsonColumns  null uses {@see DEFAULT_JSON_COLUMNS}
      * @param  array<string, string>  $columnMap  logical store key => physical DB column
+     * @param  list<string>|null  $timestampColumns  null uses {@see DEFAULT_TIMESTAMP_COLUMNS}
      */
     public function __construct(
         ?ConnectionInterface $connection,
@@ -65,6 +94,7 @@ final class QueryTableGateway implements TableGateway
         ?array $jsonColumns = null,
         private readonly array $columnMap = [],
         private readonly string $primaryKey = 'id',
+        ?array $timestampColumns = null,
     ) {
         if ($connection === null) {
             throw new InvalidArgumentException(
@@ -78,6 +108,7 @@ final class QueryTableGateway implements TableGateway
         $this->connection = $connection;
         $this->jsonColumns = array_values($jsonColumns ?? self::DEFAULT_JSON_COLUMNS);
         $this->jsonColumnSet = array_fill_keys($this->jsonColumns, true);
+        $this->timestampColumnSet = array_fill_keys(array_values($timestampColumns ?? self::DEFAULT_TIMESTAMP_COLUMNS), true);
         $this->reverseColumnMap = array_flip($this->columnMap);
     }
 
@@ -172,11 +203,12 @@ final class QueryTableGateway implements TableGateway
         $query = $this->query();
         $this->applyWhere($query, $where);
 
-        // Atomic free-lease predicate: null, empty, or not held past $nowIso (DATE_ATOM-safe).
-        $query->where(function (Builder $q) use ($physicalLease, $nowIso): void {
+        // Atomic free-lease predicate on a nullable timestamp column: NULL or not held past
+        // now. The operand is encoded like the column so the engine compares like with like.
+        $now = $this->encodeValue($leaseColumn, $nowIso);
+        $query->where(function (Builder $q) use ($physicalLease, $now): void {
             $q->whereNull($physicalLease)
-                ->orWhere($physicalLease, '=', '')
-                ->orWhere($physicalLease, '<=', $nowIso);
+                ->orWhere($physicalLease, '<=', $now);
         });
 
         $affected = $query->limit(1)->update($this->encodePhysical($attributes));
@@ -301,7 +333,7 @@ final class QueryTableGateway implements TableGateway
             return null;
         }
 
-        if ($this->isJsonColumn($logicalKey) && (is_array($value) || is_object($value))) {
+        if ($this->isJsonColumn($logicalKey)) {
             try {
                 return json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
             } catch (JsonException $e) {
@@ -313,12 +345,64 @@ final class QueryTableGateway implements TableGateway
             }
         }
 
+        if ($this->isTimestampColumn($logicalKey)) {
+            return $this->encodeTimestamp($value);
+        }
+
         return $value;
+    }
+
+    /**
+     * DATE_ATOM (or any parseable string / DateTimeInterface) → `Y-m-d H:i:s` in the PHP
+     * default timezone. Unparseable values pass through untouched so the engine reports them.
+     */
+    private function encodeTimestamp(mixed $value): mixed
+    {
+        if ($value instanceof \DateTimeInterface) {
+            $at = \DateTimeImmutable::createFromInterface($value);
+        } elseif (is_string($value) && $value !== '') {
+            try {
+                $at = new \DateTimeImmutable($value);
+            } catch (\Exception) {
+                return $value;
+            }
+        } else {
+            return $value;
+        }
+
+        return $at->setTimezone(new \DateTimeZone(date_default_timezone_get()))->format(self::PORTABLE_TIMESTAMP);
+    }
+
+    /**
+     * `Y-m-d H:i:s` as returned by the engine → DATE_ATOM in the PHP default timezone
+     * (the same zone the value was written in). Anything else passes through.
+     */
+    private function decodeTimestamp(mixed $value): mixed
+    {
+        if (! is_string($value) || preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/', $value) !== 1) {
+            return $value;
+        }
+
+        $at = \DateTimeImmutable::createFromFormat(
+            str_contains($value, '.') ? 'Y-m-d H:i:s.u' : self::PORTABLE_TIMESTAMP,
+            $value,
+            new \DateTimeZone(date_default_timezone_get()),
+        );
+
+        return $at === false ? $value : $at->format(DATE_ATOM);
     }
 
     private function decodeValue(string $logicalKey, mixed $value): mixed
     {
-        if ($value === null || ! $this->isJsonColumn($logicalKey)) {
+        if ($value === null) {
+            return null;
+        }
+
+        if ($this->isTimestampColumn($logicalKey)) {
+            return $this->decodeTimestamp($value);
+        }
+
+        if (! $this->isJsonColumn($logicalKey)) {
             return $value;
         }
 
@@ -333,6 +417,12 @@ final class QueryTableGateway implements TableGateway
         }
 
         return $decoded;
+    }
+
+    private function isTimestampColumn(string $logicalKey): bool
+    {
+        return isset($this->timestampColumnSet[$logicalKey])
+            || isset($this->timestampColumnSet[$this->physicalColumn($logicalKey)]);
     }
 
     private function isJsonColumn(string $logicalKey): bool

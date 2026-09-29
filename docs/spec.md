@@ -1989,7 +1989,7 @@ schedule every N minutes (default 1)
 | **Not a second accept** | Resume does not require a second human click; decision already final |
 | **Replay after executed** | Further accept/resume returns stored `result_json` |
 | **Stuck alert** | If `approved` longer than `approval.stuck_after_seconds` (default 300), increment metric and optional log/alert |
-| **Manual repair** | Call `ResumeApprovedApprovals::artisan($id?)` (or `ApprovalManager::artisanResume`) — same path as the scheduled sweep. **Not** a registered Artisan command in core today; host may wrap it in a command or schedule the class directly |
+| **Manual repair** | `php artisan capabilities:approvals-resume --id=… --force` (or `ResumeApprovedApprovals::artisan($id?)` / `ApprovalManager::artisanResume`) — same path as the scheduled sweep. Core registers the command and schedules it every `resume.every_seconds` when `execution = deferred` and `resume.enabled` |
 
 #### Shape B — Atomic accept (no sweeper required for limbo)
 

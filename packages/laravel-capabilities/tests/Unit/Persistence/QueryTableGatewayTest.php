@@ -342,3 +342,83 @@ it('insertIfAbsent rethrows database errors other than a unique violation', func
     expect(fn () => $gateway->insertIfAbsent(['idempotency_key' => 'k1'], ['no_such_column' => 'x']))
         ->toThrow(QueryException::class);
 });
+
+// L-012: SQL shape must be valid on MySQL/Postgres, not only SQLite. Proven on the
+// query log (bindings + predicate text) — no external database.
+it('L-012: scalar values bound to JSON columns are valid JSON documents', function () {
+    [$connection, $gateway] = queryTableGatewayFixture(columnMap: ['scope' => 'scope_json']);
+    $connection->enableQueryLog();
+
+    $row = $gateway->insert(['id' => 'j-1', 'status' => 'pending', 'capability_name' => 'x', 'scope' => 'acme']);
+
+    $insert = collect($connection->getQueryLog())->first(fn (array $q) => str_starts_with($q['query'], 'insert'));
+    $jsonBindings = array_filter($insert['bindings'], fn ($b) => is_string($b) && str_contains($b, 'acme'));
+
+    expect($jsonBindings)->toHaveCount(1)
+        ->and(array_values($jsonBindings)[0])->toBe('"acme"')
+        ->and(json_decode(array_values($jsonBindings)[0], flags: JSON_THROW_ON_ERROR))->toBe('acme')
+        ->and($row['scope'])->toBe('acme')
+        ->and($gateway->find('j-1')['scope'])->toBe('acme');
+});
+
+it('L-012: lease-free predicate never compares the timestamp column with an empty string', function () {
+    [$connection, $gateway] = queryTableGatewayFixture();
+    $gateway->insert(['id' => 'l-1', 'status' => 'approved', 'capability_name' => 'x']);
+    $connection->enableQueryLog();
+
+    $gateway->updateWhereLeaseFree(
+        ['id' => 'l-1', 'status' => 'approved'],
+        'execution_lease_until',
+        '2026-07-27T12:00:00+00:00',
+        ['execution_attempt' => 1],
+    );
+
+    $update = collect($connection->getQueryLog())->first(fn (array $q) => str_starts_with($q['query'], 'update'));
+
+    expect($update['query'])->toContain('is null')
+        ->and($update['query'])->toContain('<=')
+        ->and($update['query'])->not->toMatch('/"execution_lease_until" = \?/')
+        ->and($update['bindings'])->not->toContain('');
+});
+
+it('L-012: timestamps are written in portable Y-m-d H:i:s form and read back as DATE_ATOM', function () {
+    [$connection, $gateway] = queryTableGatewayFixture();
+    $connection->enableQueryLog();
+    $tz = new DateTimeZone(date_default_timezone_get());
+    $expected = (new DateTimeImmutable('2026-07-27T12:05:00+02:00'))->setTimezone($tz);
+
+    $row = $gateway->insert([
+        'id' => 't-1',
+        'status' => 'approved',
+        'capability_name' => 'x',
+        'execution_lease_until' => '2026-07-27T12:05:00+02:00',
+    ]);
+
+    $insert = collect($connection->getQueryLog())->first(fn (array $q) => str_starts_with($q['query'], 'insert'));
+
+    expect($insert['bindings'])->toContain($expected->format('Y-m-d H:i:s'))
+        ->and($insert['bindings'])->not->toContain('2026-07-27T12:05:00+02:00')
+        ->and($row['execution_lease_until'])->toBe($expected->format(DATE_ATOM))
+        ->and($gateway->find('t-1')['execution_lease_until'])->toBe($expected->format(DATE_ATOM));
+});
+
+it('L-012: lease comparison operand uses the same portable timestamp form as the column', function () {
+    [$connection, $gateway] = queryTableGatewayFixture();
+    $gateway->insert([
+        'id' => 'l-2',
+        'status' => 'approved',
+        'capability_name' => 'x',
+        'execution_lease_until' => '2026-07-27T12:05:00+00:00',
+    ]);
+    $connection->enableQueryLog();
+
+    $held = $gateway->updateWhereLeaseFree(['id' => 'l-2', 'status' => 'approved'], 'execution_lease_until', '2026-07-27T12:00:00+00:00', ['execution_attempt' => 1]);
+    $free = $gateway->updateWhereLeaseFree(['id' => 'l-2', 'status' => 'approved'], 'execution_lease_until', '2026-07-27T12:06:00+00:00', ['execution_attempt' => 2]);
+
+    $updates = collect($connection->getQueryLog())->filter(fn (array $q) => str_starts_with($q['query'], 'update'))->values();
+    $tz = new DateTimeZone(date_default_timezone_get());
+
+    expect($held)->toBeNull()
+        ->and($free)->not->toBeNull()
+        ->and($updates[0]['bindings'])->toContain((new DateTimeImmutable('2026-07-27T12:00:00+00:00'))->setTimezone($tz)->format('Y-m-d H:i:s'));
+});

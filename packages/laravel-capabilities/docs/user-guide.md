@@ -78,7 +78,7 @@ Rules (fail closed):
 
 - Domain and verb tokens: lowercase `[a-z][a-z0-9-]*`
 - Incomplete metadata (only domain or only verb) → definition error
-- Domain must not collide with reserved CLI meta-commands (`auth`, `catalog`, `describe`, `run`, `mcp`, `approvals`, `version`, `help`)
+- Domain must not collide with reserved CLI meta-commands (`auth`, `catalog`, `describe`, `run`, `mcp`, `approvals`, `version`, `help`, `self-update`)
 - Two definitions claiming the same `(domain, verb)` → register/boot failure (server authoritative)
 - Omit `cli` when unmapped — entry stays valid; clients use `run <name>` only
 - `cli` is **routing only** — JSON Schema remains the sole input/output contract
@@ -144,7 +144,7 @@ Global switches live in published `config/capabilities.php` under `surfaces.*`:
 | MCP | `surfaces.mcp` | **Product MCP (server):** needs `laravel/mcp`; named profiles; optional `auto_register` (default true) via `McpServerRegistrar`; auth under `surfaces.mcp.auth` |
 | HTTP | `surfaces.http` | Default prefix `capabilities`; middleware `api`, `auth:sanctum` — also the transport the product CLI uses |
 | CLI | `surfaces.cli` | Marks capabilities available to product CLI **HTTP** callers (not an MCP bridge) |
-| Job | `surfaces.job` | Queue/job invokes need an explicit actor (not “null user = allow”) |
+| Job | `surfaces.job` | `RunCapabilityJob::dispatch(['name' => …, 'input' => …, 'actingAs' => $userId \| SystemActor::named('scheduler'), 'tenantId' => …])` queues a real `ShouldQueue` job; the worker runs it through the registry. An explicit actor is required (not “null user = allow”); user ids resolve through the default auth provider |
 | Artisan | `surfaces.artisan` | Optional **in-server** ops — not the downloadable product CLI |
 | Messaging | `surfaces.messaging` | Conversation channel flag; implementation is the **sibling** package. Invokes carrying messaging metadata stay `caller: agent` but are refused while this is off |
 
@@ -238,6 +238,18 @@ The three `auth/*` routes issue credentials, so they skip `auth:*` middleware an
 
 Product CLI is a remote client of **this** API. Do not add a second invoke controller tree.
 
+#### Device-code login (what the CLI expects from your `AuthTokenIssuer`)
+
+`capabilities auth login --base-url=…` runs RFC 8628 against the two `auth/*` routes above; the host binds `Rawphp\Capabilities\Contracts\AuthTokenIssuer` and core only wraps its return value in the `ok: true` envelope.
+
+| Step | Route | Your issuer returns (`data`) |
+|---|---|---|
+| Start | `POST …/auth/device` `{"client_id":"capabilities-cli"}` → `issueDeviceCode()` | `device_code`, `user_code`, `verification_uri`, `expires_in`, `interval` |
+| Poll (every `interval` s, floored to 10 s by the CLI) | `POST …/auth/token` `{"grant_type":"urn:ietf:params:oauth:grant-type:device_code","device_code":…,"client_id":"capabilities-cli"}` → `issueToken()` | while undecided: `{"status":"authorization_pending"}` (or `{"error":"authorization_pending"}`); `{"status":"slow_down"}` adds 5 s; `{"status":"access_denied"}` / `{"status":"expired_token"}` end the login |
+| Approved | same poll | `access_token`, `token_type`, `expires_in` |
+
+Pending statuses travel **inside** `ok: true` — do not throw or return an error envelope for them. The constants `AuthTokenIssuer::GRANT_DEVICE_CODE` and `AuthTokenIssuer::DEVICE_POLL_STATUSES` spell the wire values. Keep `interval >= 10` (the CLI polls no faster) unless `surfaces.http.auth_middleware` replaces the default `throttle:6,1,capabilities-auth` stack; an HTTP 429 makes the CLI back off by `Retry-After`.
+
 Example invoke:
 
 ```http
@@ -263,10 +275,11 @@ Publish: `php artisan vendor:publish --tag=capabilities-config`
 | Agent/MCP profiles | `surfaces.*.profiles`, `require_profile`, tool count limits | Never dump full catalog by default (`name => list<string>` for MCP) |
 | Peer mismatch | `on_incompatible` → `fail` \| `disable` | Boot fail vs soft-disable |
 | MCP register errors | `surfaces.mcp.on_register_error` → `throw` (default) \| `disable` | Mid-mount adapter failure policy for non-empty plans |
-| HTTP | `prefix`, `middleware`, `auth_middleware` | Route mount and auth. The unauthenticated `auth/*` routes drop `auth:*` and get `throttle:6,1,capabilities-auth` unless `auth_middleware` replaces that stack |
-| Approval | `store`, `ttl_hours`, `execution`, `resume.*` | Human-in-the-loop |
+| HTTP | `prefix`, `middleware`, `auth_middleware` | Route mount and auth. The product CLI appends `/capabilities/…` to its `--base-url`, so `prefix` must end in `capabilities` (`api/capabilities` → `--base-url=https://host/api`). The unauthenticated `auth/*` routes drop `auth:*` and get `throttle:6,1,capabilities-auth` unless `auth_middleware` replaces that stack |
+| Approval | `store`, `ttl_hours`, `execution`, `resume.*` | Human-in-the-loop. With `execution=deferred` (default) and `resume.enabled`, the package schedules `capabilities:approvals-resume` every `resume.every_seconds` to finish approvals whose process died after `approved` — keep `schedule:run` in cron |
 | Idempotency | `enabled` (false makes the guard inert: no lookup, no store), `driver` (default `database`; use `memory` only for single-process tests), `ttl_hours` (stored outcome lifetime, default 24), `header` (`Idempotency-Key`; the one HTTP header setting), `warn_missing_key` | Safe retries; AI proposal accept readiness pings this store |
-| Audit | `enabled`, `mode` (`best_effort`), `driver` | Observability of invokes. A single capability can force strict with `->audit(['mode' => 'strict'])` (or `audit: ['mode' => 'strict']` on the attribute); it can only tighten the global mode, never loosen it |
+| Events | `enabled` | Bus events (`CapabilityInvoked`, `CapabilityFailed`, `CapabilityApproval*`) are dispatched to the app's event dispatcher after `run()`; listen with normal Laravel listeners and use `afterCommit()` when you touch the database |
+| Audit | `enabled`, `mode` (`best_effort`), `driver` (`database`), `required` | Observability of invokes and approvals. `driver=database` writes one row per entry to `capabilities_audit_outbox` (`DatabaseAuditWriter`; bind your own `Contracts\AuditWriter` to replace it). `mode=strict` or `required=true` without any writer fails boot (D-010). A single capability can force strict with `->audit(['mode' => 'strict'])` (or `audit: ['mode' => 'strict']` on the attribute); it can only tighten the global mode, never loosen it |
 | Rate limits | `defaults.per_minute`, per-capability, agent turn max tools | Abuse control |
 | Clients | `token_abilities` (e.g. `capabilities:cli` → `cli`), privilege order | Caller derivation |
 | Peers | `peers.support` | Mirrors `PeerSupportMatrix` |
@@ -322,6 +335,7 @@ Two different readiness signals — do not merge:
 
 | Surface | What | Purpose |
 |---------|------|---------|
+| **Artisan** `php artisan capabilities:approvals-resume [--id=…] [--force]` | `ResumeApprovalsCommand` / `ResumeApprovedApprovals` | Crash-recovery sweep for approved-but-not-executed approvals (D-006). Scheduled automatically when `approval.execution=deferred` and `approval.resume.enabled`; `--force --id=…` is the operator repair path that ignores grace and lease |
 | **Artisan** `php artisan capabilities:integration-health` | `IntegrationHealthChecker` / `IntegrationHealthCommand` | Host **product** readiness: bindings, audit writer wired into the registry (warn when audit is on but records would be dropped), AI-chat mode, MCP tool counts, proposals + AlwaysReady safety, live AI progress-store ping (`ai_progress_ready`), progress/queue ops checks when AI package config is present |
 | **HTTP** `GET /{prefix}/health` (default `/capabilities/health`) | `CatalogHealth` / controller | **Surface/catalog** peer health for HTTP clients (D-011 / D-021), plus `api_version` (`RouteTable::API_VERSION`) that the product CLI checks before `run` |
 

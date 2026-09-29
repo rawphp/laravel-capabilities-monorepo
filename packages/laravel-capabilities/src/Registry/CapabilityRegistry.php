@@ -2,6 +2,7 @@
 
 namespace Rawphp\Capabilities\Registry;
 
+use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\ConnectionInterface;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Audit\AuditLogger;
@@ -228,6 +229,9 @@ final class CapabilityRegistry implements CapabilityBus
             toolSurfaceConfig: $this->toolSurfaceConfig,
             auditStage: $auditStage,
         );
+        if ($auditWriter !== null) {
+            $approvalManager = $approvalManager->withAudit($auditWriter);
+        }
         $this->assertions = new RegistryAssertions($this, $this->observation);
         $this->pipeline = new InvokePipeline(
             jsonSchema: $jsonSchema,
@@ -365,9 +369,14 @@ final class CapabilityRegistry implements CapabilityBus
         return $this;
     }
 
+    /**
+     * Audit sink for invokes and for the approval rows this registry requests
+     * (`approval.requested` travels with the same writer — D-006 / D-010).
+     */
     public function withAuditWriter(?AuditWriter $writer): self
     {
         $this->pipeline->auditStage->auditWriter = $writer;
+        $this->pipeline->approvalManager = $this->pipeline->approvalManager->withAudit($writer);
 
         return $this;
     }
@@ -480,6 +489,24 @@ final class CapabilityRegistry implements CapabilityBus
         return $this;
     }
 
+    /**
+     * Host event dispatcher (`events` in a Laravel app). Bus events — CapabilityInvoked,
+     * CapabilityFailed, CapabilityApproval* — are dispatched to it after run() when
+     * `events.enabled` (D-010 §5 / L-007); the approval manager shares it.
+     */
+    public function withEventDispatcher(?Dispatcher $events): self
+    {
+        $this->pipeline->events = $events;
+        $this->pipeline->approvalManager = $this->pipeline->approvalManager->withEventDispatcher($events);
+
+        return $this;
+    }
+
+    public function eventDispatcher(): ?Dispatcher
+    {
+        return $this->pipeline->events;
+    }
+
     public function eventsEnabled(): bool
     {
         return $this->pipeline->eventsEnabled;
@@ -520,7 +547,10 @@ final class CapabilityRegistry implements CapabilityBus
     public function withApprovalStore(ApprovalStore $store): self
     {
         $this->approvalStore = $store;
-        $this->pipeline->approvalManager = (new ApprovalManager($store))->withExecutor($this->executeApproval(...));
+        $this->pipeline->approvalManager = (new ApprovalManager($store))
+            ->withExecutor($this->executeApproval(...))
+            ->withAudit($this->audit())
+            ->withEventDispatcher($this->pipeline->events);
 
         return $this;
     }
@@ -665,6 +695,20 @@ final class CapabilityRegistry implements CapabilityBus
         $this->requesterResolver = $resolver instanceof \Closure ? $resolver : \Closure::fromCallable($resolver);
 
         return $this;
+    }
+
+    public function hasRequesterResolver(): bool
+    {
+        return $this->requesterResolver !== null;
+    }
+
+    /**
+     * Rehydrate a principal by type + id through the wired requester resolver (null when
+     * none is wired or the principal does not exist). Shared by approvals and the job surface.
+     */
+    public function resolveRequester(string $actorType, string $actorId): ?object
+    {
+        return $this->requesterResolver === null ? null : ($this->requesterResolver)($actorType, $actorId);
     }
 
     /**

@@ -32,6 +32,7 @@ final class JobSurface
 
         return [
             RunCapabilityJob::class,
+            'make',
             'dispatch',
             'dispatchSync',
         ];

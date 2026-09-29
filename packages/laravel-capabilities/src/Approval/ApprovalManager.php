@@ -3,6 +3,7 @@
 namespace Rawphp\Capabilities\Approval;
 
 use DateInterval;
+use Illuminate\Contracts\Events\Dispatcher;
 use Rawphp\Capabilities\Contracts\ApprovalGateway;
 use Rawphp\Capabilities\Contracts\ApprovalNotifier;
 use Rawphp\Capabilities\Contracts\ApprovalStore;
@@ -47,6 +48,8 @@ final class ApprovalManager implements ApprovalGateway
     private array $notifiers = [];
 
     private ?AuditWriter $audit;
+
+    private ?Dispatcher $dispatcher = null;
 
     private ?IdempotencyStore $idempotency;
 
@@ -205,6 +208,19 @@ final class ApprovalManager implements ApprovalGateway
         $clone = clone $this;
         $clone->audit = $audit;
         $clone->rowExecutor = $this->rowExecutor->withAudit($audit);
+
+        return $clone;
+    }
+
+    /**
+     * Host event dispatcher for CapabilityApprovalDecided / CapabilityApprovalExecuted
+     * (D-010 §5 / L-007). Null keeps events in the in-memory {@see events()} list only.
+     */
+    public function withEventDispatcher(?Dispatcher $dispatcher): self
+    {
+        $clone = clone $this;
+        $clone->dispatcher = $dispatcher;
+        $clone->rowExecutor = $this->rowExecutor->withEventDispatcher($dispatcher);
 
         return $clone;
     }
@@ -382,6 +398,128 @@ final class ApprovalManager implements ApprovalGateway
             return CapabilityResult::failure('forbidden', 'Approver is not authorized for this approval.');
         }
 
+        $blocked = $this->notAcceptable($row);
+        if ($blocked !== null) {
+            return $blocked;
+        }
+
+        $now = $this->clock->now();
+        $decidedBy = ResolveActor::actorId($approver);
+        $leaseUntil = $now->add(new DateInterval('PT'.$this->leaseSeconds().'S'))->format(DATE_ATOM);
+        $attempt = ((int) ($row['execution_attempt'] ?? 0)) + 1;
+
+        if ($this->isDeferred()) {
+            $updated = $this->store->claimLease(
+                $id,
+                ApprovalStateMachine::STATUS_PENDING,
+                $now->format(DATE_ATOM),
+                [
+                    'status' => ApprovalStateMachine::STATUS_APPROVED,
+                    'decided_by' => $decidedBy,
+                    'decided_at' => $now->format(DATE_ATOM),
+                    'approved_at' => $now->format(DATE_ATOM),
+                    'decision_reason' => $options['reason'] ?? null,
+                    'execution_lease_until' => $leaseUntil,
+                    'execution_attempt' => $attempt,
+                ],
+            );
+
+            if ($updated === null) {
+                return $this->lostAcceptRace($id);
+            }
+
+            $this->emitDecided($updated, 'approved', $decidedBy, $options['reason'] ?? null, $options);
+
+            return $this->executeRow($updated, $approver, via: 'accept');
+        }
+
+        // Shape B — claim lease while status stays pending; flip to executed only after run.
+        $locked = $this->store->claimLease(
+            $id,
+            ApprovalStateMachine::STATUS_PENDING,
+            $now->format(DATE_ATOM),
+            [
+                'decided_by' => $decidedBy,
+                'decided_at' => $now->format(DATE_ATOM),
+                'decision_reason' => $options['reason'] ?? null,
+                'execution_lease_until' => $leaseUntil,
+                'execution_attempt' => $attempt,
+                'approved_at' => $now->format(DATE_ATOM),
+            ],
+        );
+
+        if ($locked === null) {
+            return $this->lostAcceptRace($id);
+        }
+
+        $this->emitDecided($locked, 'approved', $decidedBy, $options['reason'] ?? null, $options);
+
+        return $this->executeRow($locked, $approver, via: 'accept', fromStatus: ApprovalStateMachine::STATUS_PENDING);
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     */
+    public function reject(string $id, object $approver, ?string $reason = null, array $options = []): CapabilityResult
+    {
+        $row = $this->find($id);
+        if ($row === null) {
+            return CapabilityResult::failure('not_found', 'Approval not found.');
+        }
+
+        $blocked = $this->notRejectable($row);
+        if ($blocked !== null) {
+            return $blocked;
+        }
+
+        if (! $this->policy->forRow($row)->allows($row, $approver, $options['tenant_id'] ?? $this->tenantOf($approver))) {
+            return CapabilityResult::failure('forbidden', 'Approver is not authorized for this approval.');
+        }
+
+        if ($this->leaseHeld($row)) {
+            return $this->inProgress($id, 'Approval execution is in progress; it can no longer be rejected.');
+        }
+
+        $now = $this->clock->now()->format(DATE_ATOM);
+        $decidedBy = ResolveActor::actorId($approver);
+        // Lease-aware: a racing accept that just claimed the row (Shape B) keeps status pending
+        // while run() executes — the conditional update must not flip it to rejected.
+        $updated = $this->store->claimLease($id, ApprovalStateMachine::STATUS_PENDING, $now, [
+            'status' => ApprovalStateMachine::STATUS_REJECTED,
+            'decided_by' => $decidedBy,
+            'decided_at' => $now,
+            'decision_reason' => $reason,
+        ]);
+
+        if ($updated === null) {
+            $fresh = $this->find($id);
+            if ($fresh === null) {
+                return CapabilityResult::failure('not_found', 'Approval not found.');
+            }
+
+            return $this->notRejectable($fresh)
+                ?? $this->inProgress($id, 'Approval execution is in progress; it can no longer be rejected.');
+        }
+
+        $this->emitDecided($updated, 'rejected', $decidedBy, $reason, $options);
+
+        return CapabilityResult::failure(
+            'rejected',
+            'Approval rejected.',
+            ['approval_id' => $id, 'decision_reason' => $reason],
+        );
+    }
+
+    /**
+     * Terminal / in-progress outcomes for accept; null only when the row is pending with a
+     * free lease. A pending row with a live lease is a Shape B run in flight (D-006) —
+     * report in_progress, never re-enter accept.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function notAcceptable(array $row): ?CapabilityResult
+    {
+        $id = (string) $row['id'];
         $status = (string) $row['status'];
 
         if ($status === ApprovalStateMachine::STATUS_EXECUTED) {
@@ -408,84 +546,27 @@ final class ApprovalManager implements ApprovalGateway
 
         if ($status === ApprovalStateMachine::STATUS_APPROVED) {
             // Shape A: do not re-run; in-progress or resume owns stuck rows.
-            $this->metrics->increment('approvals_accept_total', 1, ['result' => 'in_progress']);
-
-            return CapabilityResult::failure(
-                'conflict',
-                'Approval already approved; execution in progress or awaiting resume.',
-                ['in_progress' => true, 'approval_id' => $id],
-            );
+            return $this->inProgress($id, 'Approval already approved; execution in progress or awaiting resume.');
         }
 
         if ($status !== ApprovalStateMachine::STATUS_PENDING) {
             return CapabilityResult::failure('conflict', 'Approval is not pending.');
         }
 
-        $now = $this->clock->now();
-        $decidedBy = ResolveActor::actorId($approver);
-        $leaseUntil = $now->add(new DateInterval('PT'.$this->leaseSeconds().'S'))->format(DATE_ATOM);
-        $attempt = ((int) ($row['execution_attempt'] ?? 0)) + 1;
-
-        if ($this->isDeferred()) {
-            $updated = $this->store->claimLease(
-                $id,
-                ApprovalStateMachine::STATUS_PENDING,
-                $now->format(DATE_ATOM),
-                [
-                    'status' => ApprovalStateMachine::STATUS_APPROVED,
-                    'decided_by' => $decidedBy,
-                    'decided_at' => $now->format(DATE_ATOM),
-                    'approved_at' => $now->format(DATE_ATOM),
-                    'decision_reason' => $options['reason'] ?? null,
-                    'execution_lease_until' => $leaseUntil,
-                    'execution_attempt' => $attempt,
-                ],
-            );
-
-            if ($updated === null) {
-                // Lost race — re-read and handle terminal/in-progress.
-                return $this->accept($id, $approver, $options);
-            }
-
-            $this->emitDecided($updated, 'approved', $decidedBy, $options['reason'] ?? null, $options);
-
-            return $this->executeRow($updated, $approver, via: 'accept');
+        if ($this->leaseHeld($row)) {
+            return $this->inProgress($id, 'Approval execution is in progress.');
         }
 
-        // Shape B — claim lease while status stays pending; flip to executed only after run.
-        $locked = $this->store->claimLease(
-            $id,
-            ApprovalStateMachine::STATUS_PENDING,
-            $now->format(DATE_ATOM),
-            [
-                'decided_by' => $decidedBy,
-                'decided_at' => $now->format(DATE_ATOM),
-                'decision_reason' => $options['reason'] ?? null,
-                'execution_lease_until' => $leaseUntil,
-                'execution_attempt' => $attempt,
-                'approved_at' => $now->format(DATE_ATOM),
-            ],
-        );
-
-        if ($locked === null) {
-            return $this->accept($id, $approver, $options);
-        }
-
-        $this->emitDecided($locked, 'approved', $decidedBy, $options['reason'] ?? null, $options);
-
-        return $this->executeRow($locked, $approver, via: 'accept', fromStatus: ApprovalStateMachine::STATUS_PENDING);
+        return null;
     }
 
     /**
-     * @param  array<string, mixed>  $options
+     * Terminal outcomes for reject; null when the row is still pending.
+     *
+     * @param  array<string, mixed>  $row
      */
-    public function reject(string $id, object $approver, ?string $reason = null, array $options = []): CapabilityResult
+    private function notRejectable(array $row): ?CapabilityResult
     {
-        $row = $this->find($id);
-        if ($row === null) {
-            return CapabilityResult::failure('not_found', 'Approval not found.');
-        }
-
         $status = (string) $row['status'];
 
         if ($status === ApprovalStateMachine::STATUS_EXECUTED) {
@@ -509,30 +590,45 @@ final class ApprovalManager implements ApprovalGateway
             return CapabilityResult::failure('conflict', 'Approval is not pending.');
         }
 
-        if (! $this->policy->forRow($row)->allows($row, $approver, $options['tenant_id'] ?? $this->tenantOf($approver))) {
-            return CapabilityResult::failure('forbidden', 'Approver is not authorized for this approval.');
+        return null;
+    }
+
+    /**
+     * The conditional lease claim lost to a concurrent accept/reject/resume: settle from
+     * one re-read (terminal → that outcome; still pending → in progress). No recursion.
+     */
+    private function lostAcceptRace(string $id): CapabilityResult
+    {
+        $fresh = $this->find($id);
+        if ($fresh === null) {
+            return CapabilityResult::failure('not_found', 'Approval not found.');
         }
 
-        $now = $this->clock->now()->format(DATE_ATOM);
-        $decidedBy = ResolveActor::actorId($approver);
-        $updated = $this->store->compareAndUpdate($id, ApprovalStateMachine::STATUS_PENDING, [
-            'status' => ApprovalStateMachine::STATUS_REJECTED,
-            'decided_by' => $decidedBy,
-            'decided_at' => $now,
-            'decision_reason' => $reason,
-        ]);
+        return $this->notAcceptable($fresh) ?? $this->inProgress($id, 'Approval execution is in progress.');
+    }
 
-        if ($updated === null) {
-            return $this->reject($id, $approver, $reason, $options);
+    private function inProgress(string $id, string $message): CapabilityResult
+    {
+        $this->metrics->increment('approvals_accept_total', 1, ['result' => 'in_progress']);
+
+        return CapabilityResult::failure('conflict', $message, ['in_progress' => true, 'approval_id' => $id]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function leaseHeld(array $row): bool
+    {
+        $lease = $row['execution_lease_until'] ?? null;
+        if (! is_string($lease) || $lease === '') {
+            return false;
         }
 
-        $this->emitDecided($updated, 'rejected', $decidedBy, $reason, $options);
-
-        return CapabilityResult::failure(
-            'rejected',
-            'Approval rejected.',
-            ['approval_id' => $id, 'decision_reason' => $reason],
-        );
+        try {
+            return $this->clock->now() < new \DateTimeImmutable($lease);
+        } catch (\Exception) {
+            return false;
+        }
     }
 
     /**
@@ -641,13 +737,15 @@ final class ApprovalManager implements ApprovalGateway
      */
     private function emitDecided(array $row, string $decision, string $decidedBy, ?string $reason, array $options): void
     {
-        $this->events[] = new CapabilityApprovalDecided(
+        $decided = new CapabilityApprovalDecided(
             capability: (string) ($row['capability_name'] ?? ''),
             approvalId: (string) $row['id'],
             decision: $decision,
             decidedBy: $decidedBy,
             reason: $reason,
         );
+        $this->events[] = $decided;
+        $this->dispatcher?->dispatch($decided);
         $this->auditWrite('approval.decided', [
             'approval_id' => $row['id'],
             'decided_by' => $decidedBy,

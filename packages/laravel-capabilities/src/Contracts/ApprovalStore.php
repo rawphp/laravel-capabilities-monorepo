@@ -74,7 +74,8 @@ interface ApprovalStore
      * Claim execution under a free/expired lease while status matches.
      * Returns null when missing, status mismatch, or lease still held past `$now`.
      *
-     * @param  array<string, mixed>  $attributes  Must include execution_lease_until
+     * @param  array<string, mixed>  $attributes  Usually includes the new execution_lease_until;
+     *                                            a terminal flip (e.g. reject) may omit it
      * @return ApprovalRecord|null
      */
     public function claimLease(
