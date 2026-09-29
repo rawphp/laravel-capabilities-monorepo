@@ -346,17 +346,25 @@ These shipped in 0.5.3 and had no callers inside the package:
 
 ### Fixed
 
-- **Approved executions run in the approval row's tenant (D-003 / D-006, L-401).**
-  `CapabilityRegistry::executeApproval()` — the default executor behind accept and resume —
-  re-invoked the capability as the real requester and let the `ScopeResolver` place them
-  again, so a requester who had switched tenant between request and decision (for example a
-  new `current_tenant_id`) had the stored input run in the *new* tenant: the approver was
-  checked against the row's tenant and `authorize()` was re-checked there
-  (`OriginalActorAuthorizer`), but `run()`, audit and the idempotency row landed elsewhere,
-  and the original key stayed `pending_approval`. The executor now passes an explicit
-  `CapabilityScope` for the row's `tenant_id`, so scope, authorization, `run()`, audit and
-  the key row all use the tenant the decision was made in. Rows without a tenant
-  (global system work) resolve scope at execution time as before.
+- **Approved executions run under the scope stamped on the approval row (D-003 / D-006,
+  L-401 / L-501).** `CapabilityRegistry::executeApproval()` — the default executor behind
+  accept and resume — re-invoked the capability as the real requester and let the
+  `ScopeResolver` place them again, so a requester who had switched tenant between request
+  and decision (for example a new `current_tenant_id`) had the stored input run in the *new*
+  tenant: the approver was checked against the row's tenant and `authorize()` was re-checked
+  there (`OriginalActorAuthorizer`), but `run()`, audit and the idempotency row landed
+  elsewhere, and the original key stayed `pending_approval`. The request now stamps the
+  whole resolved scope into the row's `scope` column (`scope_json`) via
+  `CapabilityScope::toRow()` — `tenant_id`, `team_id`, `organization_id` and scalar
+  `attributes`; the query factory is a closure and is not persisted — and both the accept
+  re-check and the executor rebuild it with `CapabilityScope::fromRow()`, so scope,
+  authorization, `run()`, audit and the key row all see exactly what the approver saw. The
+  row's `tenant_id` is the tenant authority; team / organization / attributes are never
+  taken from a fresh resolution of the requester (which could sit in another tenant). A
+  rebuilt scope regains `query()` through the container-bound `ScopedQueryFactory`, the same
+  route as any resolver-produced scope. Rows written before this change (`scope` a bare
+  tenant string) rebuild tenant-only; rows without a tenant (global system work) resolve
+  scope at execution time as before.
 - **Approver placement fails closed on any ScopeResolver error (D-003 / D-006, L-402).**
   `ResolveTenantFromCaller::tenantOfPrincipal()` only treated the package's own scope
   exceptions as "not placed"; a host resolver that threw anything else (a `DomainException`

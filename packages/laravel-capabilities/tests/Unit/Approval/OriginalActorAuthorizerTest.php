@@ -193,3 +193,26 @@ it('fail: denies when the stored input is not an object payload', function () {
 
     expect($authorizer(oaaRow(['input_json' => 'redacted'])))->toBeFalse();
 });
+
+// L-501: the accept re-check authorizes under the scope stamped on the row — team and
+// organization included — so authorize() sees the same shape the request and the run see.
+it('edge: re-checks authorize under the row\'s full stamped scope, tenant-only for legacy rows', function () {
+    $seen = null;
+    $registry = new CapabilityRegistry;
+    $registry->define('create-invoice')
+        ->input(CreateInvoiceInput::class)
+        ->authorize(function (mixed $input, CapabilityContext $ctx) use (&$seen): bool {
+            $seen = [$ctx->tenantId(), $ctx->teamId(), $ctx->organizationId()];
+
+            return true;
+        })
+        ->run(static fn () => 'never')
+        ->register($registry);
+    $authorizer = new OriginalActorAuthorizer($registry, static fn (string $type, string $id) => oaaUser($id));
+
+    expect($authorizer(oaaRow(['scope' => ['tenant_id' => 't1', 'team_id' => 'team-9', 'organization_id' => 'org-3', 'attributes' => []]])))->toBeTrue()
+        ->and($seen)->toBe(['t1', 'team-9', 'org-3']);
+
+    expect($authorizer(oaaRow(['scope' => 't1'])))->toBeTrue()
+        ->and($seen)->toBe(['t1', null, null]);
+});
