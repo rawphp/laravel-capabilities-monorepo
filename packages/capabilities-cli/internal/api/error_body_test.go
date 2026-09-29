@@ -49,3 +49,28 @@ func TestListCapabilitiesWithSchemasQuery(t *testing.T) {
 		t.Fatalf("query %q", rawQuery)
 	}
 }
+
+func TestClientNonEnvelopeHTTPError(t *testing.T) {
+	_, c := testServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(403)
+		w.Write([]byte("forbidden plain"))
+	})
+	res, err := c.ListCapabilities(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Err == nil || res.Err.Code != CodeForbidden || res.Err.Message != "forbidden plain" {
+		t.Fatalf("%#v", res.Err)
+	}
+}
+
+func TestHumanizeHTTPErrorBodyEmptyAndLongBodies(t *testing.T) {
+	if got := humanizeHTTPErrorBody([]byte("  "), 502); got != "HTTP 502 from capability API" {
+		t.Fatal(got)
+	}
+	long := strings.Repeat("x", 500)
+	got := humanizeHTTPErrorBody([]byte(long), 500)
+	if got != strings.Repeat("x", 200)+"…" {
+		t.Fatalf("len %d: %q", len(got), got)
+	}
+}

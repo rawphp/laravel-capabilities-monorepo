@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -184,3 +185,57 @@ func TestClientbaseurlfromprofile(t *testing.T) {
 	}
 	_ = io.Discard
 }
+
+func TestClientWithoutHTTPClientUsesTimeoutDefaults(t *testing.T) {
+	if got := (&Client{}).httpClient().Timeout; got != 30*time.Second {
+		t.Fatalf("default timeout %v", got)
+	}
+	if got := (&Client{Timeout: 5 * time.Second}).httpClient().Timeout; got != 5*time.Second {
+		t.Fatalf("custom timeout %v", got)
+	}
+	if got := (&Client{}).accept(); got != AcceptJSON {
+		t.Fatalf("default accept %q", got)
+	}
+}
+
+func TestClientSendsJSONBodyAndExtraHeadersButNeverCallerClaims(t *testing.T) {
+	var got http.Header
+	var body []byte
+	_, c := testServer(t, func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Clone()
+		body, _ = io.ReadAll(r.Body)
+		w.Write([]byte(`{"ok":true}`))
+	})
+	c.ExtraHeaders = map[string]string{"X-Trace": "t1", "X-Caller": "admin"}
+	if _, err := c.do(context.Background(), http.MethodPost, PathCapabilities, []byte(`{"a":1}`), nil); err != nil {
+		t.Fatal(err)
+	}
+	if got.Get("Content-Type") != "application/json" || string(body) != `{"a":1}` {
+		t.Fatalf("content-type %q body %s", got.Get("Content-Type"), body)
+	}
+	if got.Get("X-Trace") != "t1" || got.Get("X-Caller") != "" {
+		t.Fatalf("headers %v", got)
+	}
+}
+
+func TestClientReportsBadBaseURLAndBodyReadFailure(t *testing.T) {
+	c := NewClient("http://bad\x7fhost", "t")
+	if _, err := c.ListCapabilities(context.Background()); err == nil {
+		t.Fatal("malformed base URL must fail before sending")
+	}
+	c = NewClient("https://api.example", "t")
+	c.HTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(failingReader{})}, nil
+	})}
+	if _, err := c.ListCapabilities(context.Background()); err == nil {
+		t.Fatal("truncated body must be an error")
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+type failingReader struct{}
+
+func (failingReader) Read([]byte) (int, error) { return 0, errors.New("connection reset") }
