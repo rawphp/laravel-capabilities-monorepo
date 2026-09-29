@@ -99,8 +99,9 @@ final class ApprovalResumer
         // Tenant guard when actor is a user.
         if (! ($actor instanceof SystemActor)) {
             $tenant = self::tenantOf($actor);
-            $rowTenant = $row['tenant_id'] ?? null;
-            if ($rowTenant !== null && $tenant !== null && $tenant !== $rowTenant) {
+            $rowTenant = isset($row['tenant_id']) ? (string) $row['tenant_id'] : '';
+            // Unresolved actor tenant on a tenant-scoped row fails closed (D-003).
+            if ($rowTenant !== '' && $tenant !== $rowTenant) {
                 return CapabilityResult::failure('forbidden', 'Resume actor tenant mismatch.');
             }
             // Random users without role/requester: deny for decision matrix.

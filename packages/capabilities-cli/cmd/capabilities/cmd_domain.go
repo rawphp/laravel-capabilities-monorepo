@@ -86,7 +86,7 @@ func loadSynthIndex(env Env, profile string) (*synth.Index, []catalog.Capability
 		fmt.Fprintln(env.Stderr, err.Error())
 		return nil, nil, api.ExitAuth
 	}
-	svc := &catalog.Service{Client: c, Cache: catalog.NewCache(st.SchemaCacheDir(profile))}
+	svc := &catalog.Service{Client: c, Cache: catalog.PrincipalCache(st.SchemaCacheDir(profile), c)}
 	list, _, err := svc.List(context.Background())
 	if err != nil {
 		if se, ok := err.(*api.StructuredError); ok {
@@ -231,7 +231,7 @@ func writeCapabilityHelp(env Env, domain, verb, canonical string, jsonOut bool, 
 			fmt.Fprintln(env.Stderr, err.Error())
 			return api.ExitAuth
 		}
-		svc := &catalog.Service{Client: c, Cache: catalog.NewCache(st.SchemaCacheDir(profile)), NoCache: noCache}
+		svc := &catalog.Service{Client: c, Cache: catalog.PrincipalCache(st.SchemaCacheDir(profile), c), NoCache: noCache}
 		entry, _, err := svc.Describe(context.Background(), canonical)
 		if err != nil {
 			if se, ok := err.(*api.StructuredError); ok {
