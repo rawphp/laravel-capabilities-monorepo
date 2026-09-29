@@ -45,6 +45,8 @@ return [
         'driver' => $env('CAPABILITIES_AI_PROGRESS_DRIVER', 'array'),
         'redis_connection' => $env('CAPABILITIES_AI_PROGRESS_REDIS', 'default'),
         'redis_key_prefix' => $env('CAPABILITIES_AI_PROGRESS_PREFIX', 'capabilities_ai:progress:'),
+        /** Redis key lifetime (seconds) after a turn's last event; progress is transient. */
+        'ttl_seconds' => (int) $env('CAPABILITIES_AI_PROGRESS_TTL', 86400),
     ],
 
     /**

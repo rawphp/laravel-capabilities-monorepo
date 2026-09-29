@@ -55,6 +55,7 @@ Key defaults (`config/capabilities-ai.php`):
 |-----|---------|
 | `table_prefix` | `capabilities_ai_` |
 | `progress.driver` | `array` (or `redis`) — prod: **`redis`**; `array` outside testing throws unless `CAPABILITIES_AI_ALLOW_UNSAFE=1` |
+| `progress.ttl_seconds` | `86400` (`CAPABILITIES_AI_PROGRESS_TTL`) — Redis progress key lifetime after a turn's last event |
 | `llm.driver` | `fake` (set `CAPABILITIES_AI_LLM_DRIVER=anthropic` or bind `LlmClient` for production) — `fake` outside testing throws unless `CAPABILITIES_AI_ALLOW_UNSAFE=1` |
 | `llm.anthropic.model` | `claude-sonnet-4-6` (`CAPABILITIES_AI_ANTHROPIC_MODEL`) |
 | `llm.anthropic.max_tokens` | `64000` (`CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS`) |

@@ -136,7 +136,7 @@ final class ContainerBindings
 
     /**
      * @param  array<string, mixed>  $config
-     * @param  object|null  $redis  Redis client with rPush/lRange (ext-redis or predis-like)
+     * @param  object|null  $redis  Redis client with rPush/lRange/expire (ext-redis or predis-like)
      */
     public static function makeProgressStore(array $config, ?object $redis = null): ProgressStore
     {
@@ -162,7 +162,9 @@ final class ContainerBindings
 
         $prefix = (string) ($config['progress']['redis_key_prefix'] ?? 'capabilities_ai:progress:');
 
-        return new RedisProgressStore($redis, $prefix);
+        $ttl = (int) ($config['progress']['ttl_seconds'] ?? RedisProgressStore::DEFAULT_TTL_SECONDS);
+
+        return new RedisProgressStore($redis, $prefix, $ttl);
     }
 
     /**
