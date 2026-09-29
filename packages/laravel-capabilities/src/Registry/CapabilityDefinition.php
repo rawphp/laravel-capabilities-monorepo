@@ -46,6 +46,7 @@ final class CapabilityDefinition
      * @param  class-string|null  $handlerClass  Attributed class implementing DefinesCapability
      * @param  array<string, mixed>|null  $rateLimit
      * @param  array<string, mixed>|bool|null  $audit
+     * @param  list<string>  $idempotencyKeyFields  Input fields hashed into a key when the caller sends none (D-005)
      * @param  callable|null  $authorize
      * @param  callable|null  $run
      */
@@ -78,6 +79,7 @@ final class CapabilityDefinition
         public readonly mixed $canDiscover = null,
         public readonly ?string $cliDomain = null,
         public readonly ?string $cliVerb = null,
+        public readonly array $idempotencyKeyFields = [],
     ) {
         if (trim($name) === '') {
             throw new InvalidArgumentException('Capability definition name must not be empty.');
@@ -91,6 +93,7 @@ final class CapabilityDefinition
         }
 
         self::assertValidCliRouting($this->cliDomain, $this->cliVerb, $name);
+        $this->assertValidIdempotencyKeyFields();
     }
 
     public function isMutating(): bool
@@ -170,6 +173,29 @@ final class CapabilityDefinition
         }
 
         return $this->idempotent !== self::IDEMPOTENT_NONE;
+    }
+
+    private function assertValidIdempotencyKeyFields(): void
+    {
+        if ($this->idempotencyKeyFields === []) {
+            return;
+        }
+
+        if (! $this->shouldUseIdempotency()) {
+            throw new InvalidArgumentException(sprintf(
+                'Capability "%s" declares idempotency key fields but does not store idempotency keys.',
+                $this->name,
+            ));
+        }
+
+        foreach ($this->idempotencyKeyFields as $field) {
+            if (trim($field) === '') {
+                throw new InvalidArgumentException(sprintf(
+                    'Capability "%s" idempotency key field names must not be empty.',
+                    $this->name,
+                ));
+            }
+        }
     }
 
     /**

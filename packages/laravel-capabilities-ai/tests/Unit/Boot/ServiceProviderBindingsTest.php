@@ -170,6 +170,11 @@ it('defaults IdempotencyReadiness ready when core IdempotencyStore is bound', fu
             return $record;
         }
 
+        public function claim(array $record): bool
+        {
+            return true;
+        }
+
         public function update(?string $tenantId, string $actorType, string $actorId, string $capabilityName, string $key, array $attributes): ?array
         {
             return null;
@@ -285,7 +290,7 @@ it('RunTurnJob handle type-hints TurnRunner (UR-021 wiring allowed)', function (
     $src = file_get_contents($path) ?: '';
 
     // UR-017 only required that DI not own the job body; UR-021 wires handle(TurnRunner).
-    expect($src)->toContain('handle(TurnRunner $runner)')
+    expect($src)->toContain('handle(TurnRunner $runner')
         ->and($src)->toContain('$runner->run($this->turnUlid)');
 });
 

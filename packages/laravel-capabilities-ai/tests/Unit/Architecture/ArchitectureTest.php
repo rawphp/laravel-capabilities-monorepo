@@ -124,6 +124,8 @@ function aiCoreImportAllowed(string $fqcn): bool
         'Rawphp\\Capabilities\\Support\\CapabilityResult',
         'Rawphp\\Capabilities\\Support\\CapabilityContext',
         'Rawphp\\Capabilities\\Support\\CapabilityData',
+        // Pure D-010 key redaction shared with the audit log (no state, no IO).
+        'Rawphp\\Capabilities\\Support\\Redactor',
     ], true);
 }
 

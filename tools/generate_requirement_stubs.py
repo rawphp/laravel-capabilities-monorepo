@@ -1052,11 +1052,11 @@ def build_catalog() -> list[FileSpec]:
     main = F("cli", "cmd/capabilities/main_test.go", language="go", go_package="main")
     for title in [
         "BinaryNameIsCapabilities",
-        "HelpListsAuthCatalogRunMcpApprovals",
+        "HelpListsAuthCatalogRunApprovals",
         "BinaryIsNotArtisan",
         "HelpDocumentsExitCodes",
         "HelpDocumentsJsonFlag",
-        "RootCommandRequiresSubcommand",
+        "TestRootWithoutArgsPrintsHelpOK",
         "VersionCommandExists",
     ]:
         main.add("go", title, "D-016")
@@ -1113,17 +1113,16 @@ def build_catalog() -> list[FileSpec]:
         catal.add("go", title, "CLI-CAT")
     files.append(catal)
 
-    mcpstdio = F("cli", "internal/mcpstdio/mcpstdio_test.go", language="go", go_package="mcpstdio")
+    # ORI-791: CLI MCP stdio hard-removed; product MCP is server-side (laravel/mcp).
+    mcp_removed = F("cli", "cmd/capabilities/mcp_removed_test.go", language="go", go_package="main")
     for title in [
-        "McpStdioProxiesToRemoteHTTPWithStoredToken",
-        "McpStdioNoLocalDomainRun",
-        "McpStdioUsesSameAuthAsCLI",
-        "McpStdioDoesNotBypassServerAuthorization",
-        "McpStdioProfileToolsComeFromServer",
-        "McpStdioForwardsIdempotencyKeys",
+        "TestMcpIsNotARunnableCommand",
+        "TestMcpHelpIsNotWorkingStdioBridge",
+        "TestRootHelpDoesNotListWorkingMcpStdio",
+        "TestMcpUnauthenticatedAlsoNonZero",
     ]:
-        mcpstdio.add("go", title, "CLI-MCP")
-    files.append(mcpstdio)
+        mcp_removed.add("go", title, "D-016")
+    files.append(mcp_removed)
 
     run = F("cli", "internal/run/run_test.go", language="go", go_package="run")
     for title in [
@@ -1579,7 +1578,7 @@ def build_catalog() -> list[FileSpec]:
         "RunWithoutAuthFails",
         "CatalogWithoutAuthFails",
         "DescribeWithoutAuthFails",
-        "McpWithoutAuthFails",
+        "TestMcpwithoutauthNotCommandGuard",
         "LogoutIdempotentWhenAlreadyLoggedOut",
         "StatusShowsLoggedOut",
         "StatusShowsLoggedIn",
@@ -1811,7 +1810,7 @@ def build_catalog() -> list[FileSpec]:
         "HelpCatalog",
         "HelpDescribe",
         "HelpRun",
-        "HelpMcp",
+        "TestHelpmcpNotStdioBridge",
         "HelpApprovals",
         "HelpExitCodesTable",
         "HelpExamplesDoNotShowDomainLogic",
@@ -2078,10 +2077,12 @@ def build_catalog() -> list[FileSpec]:
     # Failure before run × no side effects × all callers already exists
     # Expand CLI commands matrix
     cli_cmd = F("cli", "cmd/capabilities/commands_test.go", language="go", go_package="main")
-    for cmd in ["auth login", "auth logout", "auth status", "catalog", "describe", "run", "mcp", "version", "help"]:
+    for cmd in ["auth login", "auth logout", "auth status", "catalog", "describe", "run", "version", "help"]:
         safe = "".join(p.capitalize() for p in cmd.replace(" ", "_").split("_"))
         cli_cmd.add("go", f"CommandExists_{safe}", "D-016")
         cli_cmd.add("go", f"CommandHelp_{safe}", "D-016")
+    cli_cmd.add("go", "TestCommandexistsMcpFalse", "D-016")
+    cli_cmd.add("go", "TestCommandhelpMcpNotStdioBridge", "D-016")
     files.append(cli_cmd)
 
     # CLI run exit code × each error code (duplicate safe)
@@ -2532,20 +2533,6 @@ def build_catalog() -> list[FileSpec]:
         cef.edge(f"catalog excludes cap when only surface {s} globally disabled", "CAT-001")
     files.append(cef)
 
-    # CLI MCP stdio security
-    ms = F("cli", "internal/mcpstdio/security_test.go", language="go", go_package="mcpstdio")
-    for title in [
-        "NoLocalAuthorize",
-        "NoLocalRun",
-        "UsesStoredTokenOnly",
-        "DoesNotAcceptHostInjectedActor",
-        "DoesNotBypassServerProfile",
-        "PropagatesServerErrors",
-        "PropagatesApprovalRequired",
-    ]:
-        ms.add("go", title, "CLI-MCP")
-    files.append(ms)
-
     # Input edge for define capability fluent vs attribute parity fields
     parity_def = F("core", "Discovery/FluentAttributeParityTest.php")
     for field_name in [
@@ -2962,9 +2949,10 @@ def build_catalog() -> list[FileSpec]:
 
     # CLI command × auth required matrix
     clia = F("cli", "internal/auth/command_guards_test.go", language="go", go_package="auth")
-    for cmd in ["Run", "Catalog", "Describe", "Mcp", "Approvals"]:
+    for cmd in ["Run", "Catalog", "Describe", "Approvals"]:
         clia.add("go", f"{cmd}RequiresAuth", "CLI-AUTH")
         clia.add("go", f"{cmd}FailsWithExit3WhenNoToken", "CLI-AUTH")
+    clia.add("go", "TestMcpDoesNotRequireAuthAsCommand", "CLI-AUTH")
     files.append(clia)
 
     # CLI schema cache scenarios

@@ -26,6 +26,9 @@ final class McpToolAdapterV1 implements McpToolAdapter
 
     private ?string $activeProfile = null;
 
+    /** @var list<string|array<int|string, mixed>> distinct profiles registered on this (shared) adapter */
+    private array $registeredProfiles = [];
+
     public function __construct(
         private readonly CapabilityRegistry $registry,
         private readonly PeerVersionProbe $probe,
@@ -54,6 +57,7 @@ final class McpToolAdapterV1 implements McpToolAdapter
             $this->registered = false;
             $this->registeredTools = [];
             $this->activeProfile = null;
+            $this->registeredProfiles = [];
 
             return [];
         }
@@ -78,6 +82,9 @@ final class McpToolAdapterV1 implements McpToolAdapter
         $this->registered = true;
         $this->registeredTools = $mapped;
         $this->activeProfile = is_string($profile) ? $profile : null;
+        if (! in_array($profile, $this->registeredProfiles, true)) {
+            $this->registeredProfiles[] = $profile;
+        }
 
         return $mapped;
     }
@@ -152,6 +159,18 @@ final class McpToolAdapterV1 implements McpToolAdapter
                 code: $code === 'integration_disabled' ? 'forbidden' : 'unauthenticated',
                 message: $e->getMessage(),
                 extra: ['normalized_code' => $code === 'integration_disabled' ? 'integration_disabled' : 'unauthenticated'],
+            );
+        }
+
+        // Multi-profile boot shares one adapter: never guess which profile a call belongs to (D-008).
+        if (! isset($options['profile']) && count($this->registeredProfiles) > 1) {
+            return CapabilityResult::failure(
+                code: 'not_runnable',
+                message: 'Multiple MCP profiles are registered; pass options[\'profile\'] to select one (D-008).',
+                extra: [
+                    'normalized_code' => 'profile_required',
+                    'registered_profiles' => $this->registeredProfiles,
+                ],
             );
         }
 
