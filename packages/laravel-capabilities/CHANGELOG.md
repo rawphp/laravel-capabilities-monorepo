@@ -280,6 +280,14 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   tagged `CapabilitiesServiceProvider::APPROVAL_NOTIFIER_TAG` (`capabilities.approval_notifiers`),
   each instance once. Hosts and sibling packages register notifiers through those two container
   seams; `withApprovalStore()` remains for bare-store wiring with default config.
+- **Retrying an approval-gated invoke no longer opens duplicate approvals (D-005 §11, L-102).**
+  A repeat invoke with the same `Idempotency-Key` and body whose row is `pending_approval`
+  now replays the stored `approval_required` (same `approval_id`, `idempotent_replay` meta)
+  instead of re-running the approval gate and creating another pending row. Accepted
+  executions run under the row's original key (`CapabilityRegistry::executeApproval()` passes
+  `idempotency_key`), so the key moves to `completed` / `failed` and later retries replay the
+  executed outcome. `IdempotencyGuard::lookup()` gains an optional `executingApprovalId` that
+  lets only that approval's own execution continue past its pending row.
 - **`capability:run` works (D-016 / REQ-024).** `RunCapabilityCommand` called a non-existent
   `ArtisanCapabilityInvoker::invoke()`, so every run printed an "undefined method" error and
   exited 1. It now normalises the flags through `ArtisanCapabilityInvoker::parseFlags()`

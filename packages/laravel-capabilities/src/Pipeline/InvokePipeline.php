@@ -566,11 +566,13 @@ final class InvokePipeline
 
         /** @var CapabilityContext $ctx */
         $ctx = $state->context;
+        $executing = $state->options['executing_approval_id'] ?? null;
         $lookup = $this->idempotencyGuard->lookup(
             $state->definition,
             $ctx,
             $key,
             $state->requestHash,
+            is_scalar($executing) ? (string) $executing : null,
         );
 
         if ($lookup['action'] === 'replay') {
