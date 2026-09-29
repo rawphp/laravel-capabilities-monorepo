@@ -579,6 +579,10 @@ final class InvokePipeline
         }
 
         if ($lookup['action'] === 'conflict' || $lookup['action'] === 'busy') {
+            // This request never claimed the key: its refusal must not overwrite the owning
+            // request's row (a different body, or the run still in flight) — D-005.
+            $state->idempotencyKey = null;
+
             return $lookup['result'];
         }
 

@@ -332,6 +332,12 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   change is the record of truth). Known limit: the first-party `AuditOutbox` that
   `required=true` falls back to is process-local; hosts needing cross-process at-least-once
   should treat `capabilities_audit_outbox` as the durable sink and alert on the metric.
+- **A request refused at the idempotency lookup no longer overwrites the key's owner row
+  (D-005, found under L-202).** Reusing a key with a different body (`conflict`) or retrying
+  while the key is still `processing` (`busy`) used to run the failure finish, which stored the
+  refusal under the key: the owner's `completed` row became `failed/conflict` (its own retries
+  then replayed `conflict` instead of the stored success), and an in-flight row was flipped to
+  `failed` until the run finished. The refused request now never writes the row it did not claim.
 - **A failing approval notifier or `CapabilityApprovalRequested` listener no longer turns a saved
   approval into `internal` (D-006, L-201 / M-201).** `ApprovalManager::request()` now calls each
   `ApprovalNotifier::notifyPending()` inside a guard: a throw (chat API outage, a half-configured
