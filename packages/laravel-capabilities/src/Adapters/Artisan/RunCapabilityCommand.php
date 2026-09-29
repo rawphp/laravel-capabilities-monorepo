@@ -59,6 +59,11 @@ class RunCapabilityCommand extends Command
                 'name' => (string) $this->argument('name'),
                 'input' => $decoded,
                 ...$flags,
+                // --acting-as loads the host's real user through the same lookup approvals use
+                // (D-002 / L-107); with no resolver the invoker refuses instead of fabricating one.
+                'user_resolver' => $registry->hasRequesterResolver()
+                    ? static fn (int|string $id): ?object => $registry->resolveRequester('user', (string) $id)
+                    : null,
             ]);
         } catch (Throwable $e) {
             $this->error($e->getMessage());

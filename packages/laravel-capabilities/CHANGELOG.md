@@ -325,7 +325,17 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   `ArtisanCapabilityInvoker::invoke()`, so every run printed an "undefined method" error and
   exited 1. It now normalises the flags through `ArtisanCapabilityInvoker::parseFlags()`
   (numeric `--acting-as` becomes an int; `--acting-as` with `--system` is refused) and calls
-  `run()`.
+  `run()`. `--acting-as` now loads the host's real user through the registry requester
+  resolver (the same lookup approvals use) and fails closed — `MissingArtisanActorException`
+  — when the registry has none or the id is unknown (D-002, L-107). Before, the invoker built
+  a fabricated `stdClass` "artisan-user-<id>" that `authorize()` implementations calling
+  `$user->can()` would have received.
+- **The approval resume sweep keeps its command when the artisan invoke surface is off (L-108).**
+  `ArtisanCommandRegistrar::classes($artisanConfig, $approvalConfig)` adds
+  `ResumeApprovalsCommand` whenever `ResumeSchedulePlan::fromConfig()` plans a sweep, and the
+  provider passes `approval.*` to it. Before, `surfaces.artisan.enabled=false` unregistered the
+  command while `bootResumeSchedule()` still scheduled it, so `schedule:run` failed every minute
+  and crash recovery never ran.
 - **HTTP routes register once, with their middleware once (REQ-021).** The provider now hands
   the router straight to `HttpRouteRegistrar::registerInto()`, which calls `addRoute()` with a
   `Controller@method` action. Before, the provider set `middleware` in the action and then

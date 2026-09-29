@@ -335,7 +335,7 @@ Two different readiness signals — do not merge:
 
 | Surface | What | Purpose |
 |---------|------|---------|
-| **Artisan** `php artisan capabilities:approvals-resume [--id=…] [--force]` | `ResumeApprovalsCommand` / `ResumeApprovedApprovals` | Crash-recovery sweep for approved-but-not-executed approvals (D-006). Scheduled automatically when `approval.execution=deferred` and `approval.resume.enabled`; `--force --id=…` is the operator repair path that ignores grace and lease |
+| **Artisan** `php artisan capabilities:approvals-resume [--id=…] [--force]` | `ResumeApprovalsCommand` / `ResumeApprovedApprovals` | Crash-recovery sweep for approved-but-not-executed approvals (D-006). Scheduled automatically when `approval.execution=deferred` and `approval.resume.enabled` — and registered whenever it is scheduled, even with `surfaces.artisan.enabled=false`; `--force --id=…` is the operator repair path that ignores grace and lease |
 | **Artisan** `php artisan capabilities:integration-health` | `IntegrationHealthChecker` / `IntegrationHealthCommand` | Host **product** readiness: bindings, audit writer wired into the registry (warn when audit is on but records would be dropped), AI-chat mode, MCP tool counts, proposals + AlwaysReady safety, live AI progress-store ping (`ai_progress_ready`), progress/queue ops checks when AI package config is present |
 | **HTTP** `GET /{prefix}/health` (default `/capabilities/health`) | `CatalogHealth` / controller | **Surface/catalog** peer health for HTTP clients (D-011 / D-021), plus `api_version` (`RouteTable::API_VERSION`) that the product CLI checks before `run` |
 
@@ -367,7 +367,7 @@ How one code presents on each surface:
 - **Product CLI:** `--json` prints the same envelope as HTTP; the process exits with `error.cli_exit` (success is `0`).
 - **Agent / MCP:** tool handles return a structured error (`code`, `message`, `structured: true`, `retryable`, `details`). A few codes are renamed for tool callers (see the last column); `details` still carries the original registry error, including its `code`.
 - **Job / direct `invoke`:** the `CapabilityResult` itself. Branch on `isRetryable()` and `isHardRefuse()`, not on message text.
-- **Artisan `capability:run`** (in-server ops, not the product CLI): prints `error.message` and exits `1` for every code. `cli_exit` applies to the product CLI only.
+- **Artisan `capability:run`** (in-server ops, not the product CLI): prints `error.message` and exits `1` for every code. `cli_exit` applies to the product CLI only. `--acting-as=<id>` runs as the real user returned by the default auth guard's user provider (the registry requester resolver); an unknown id, or a registry without a resolver, exits `1` without running anything. `--system=<name>` runs as a `SystemActor` the capability must allow.
 
 | Code | HTTP | CLI exit | Retryable | Agent / MCP code |
 |---|---|---|---|---|

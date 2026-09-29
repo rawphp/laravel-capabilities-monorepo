@@ -705,14 +705,17 @@ class CapabilitiesServiceProvider extends ServiceProvider
      *
      * @return list<class-string>
      */
-    public function bootArtisanCommands(?array $artisanConfig = null): array
+    public function bootArtisanCommands(?array $artisanConfig = null, ?array $approvalConfig = null): array
     {
-        $config = $artisanConfig ?? (self::configFromApp($this->app)['surfaces']['artisan'] ?? []);
+        $full = self::configFromApp($this->app);
+        $config = $artisanConfig ?? ($full['surfaces']['artisan'] ?? []);
         if (! is_array($config)) {
             $config = [];
         }
+        $approval = $approvalConfig ?? ($full['approval'] ?? []);
 
-        $classes = ArtisanCommandRegistrar::classes($config);
+        // The scheduled sweep (bootResumeSchedule) must always have its command (L-108).
+        $classes = ArtisanCommandRegistrar::classes($config, is_array($approval) ? $approval : []);
         if ($classes === []) {
             return [];
         }

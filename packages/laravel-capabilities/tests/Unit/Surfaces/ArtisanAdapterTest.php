@@ -21,6 +21,7 @@ it('happy: capability run artisan command requires acting-as or system for mutat
         'acting_as' => 7,
         'tenant' => 'tenant-a',
         'mutating' => true,
+        'user_resolver' => static fn ($id) => H::user($id, 'tenant-a'),
     ]);
     expect($withUser->isOk())->toBeTrue()
         ->and($h['registry']->lastState()?->context?->caller())->toBe('artisan');

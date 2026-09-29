@@ -2,6 +2,8 @@
 
 namespace Rawphp\Capabilities\Adapters\Artisan;
 
+use Rawphp\Capabilities\Approval\ResumeSchedulePlan;
+
 /**
  * Pure Artisan ops command registration plan (REQ-024).
  *
@@ -29,12 +31,24 @@ final class ArtisanCommandRegistrar
     }
 
     /**
+     * Command classes to register. The ops invoke surface (`surfaces.artisan.enabled`) owns
+     * the table; the approval crash-recovery sweep is approval infrastructure and is added
+     * whenever `approval.*` schedules it, even with that surface off (L-108 / L-014).
+     *
      * @param  array{enabled?: bool}  $artisanConfig
+     * @param  array<string, mixed>|null  $approvalConfig  `config('capabilities.approval')`; null = do not consider
      * @return list<class-string>
      */
-    public static function classes(array $artisanConfig = []): array
+    public static function classes(array $artisanConfig = [], ?array $approvalConfig = null): array
     {
-        return ArtisanCommandTable::commandClasses($artisanConfig);
+        $classes = ArtisanCommandTable::commandClasses($artisanConfig);
+        if ($approvalConfig !== null
+            && ResumeSchedulePlan::fromConfig($approvalConfig) !== null
+            && ! in_array(ResumeApprovalsCommand::class, $classes, true)) {
+            $classes[] = ResumeApprovalsCommand::class;
+        }
+
+        return $classes;
     }
 
     /**

@@ -26,8 +26,15 @@ it('runs a capability as --system and prints the result envelope [D-002]', funct
         ->and($h['registry']->lastState()?->context?->actor())->toBeInstanceOf(SystemActor::class);
 });
 
-it('runs a capability as --acting-as with the numeric id normalised [D-002]', function () {
+it('runs a capability as --acting-as, resolving the real user through the registry requester resolver [D-002 / L-107]', function () {
     $h = H::scopeHarness(['allowSystemCallers' => true]);
+    $seen = [];
+    $user = H::user(1, 'tenant-a');
+    $h['registry']->withRequesterResolver(function (string $type, string $id) use (&$seen, $user): ?object {
+        $seen[] = [$type, $id];
+
+        return $type === 'user' && $id === '1' ? $user : null;
+    });
 
     $r = ArtisanCommandHarness::run(new RunCapabilityCommand($h['registry']), [
         'name' => $h['name'],
@@ -37,7 +44,37 @@ it('runs a capability as --acting-as with the numeric id normalised [D-002]', fu
     ]);
 
     expect($r['exit'])->toBe(0)
-        ->and($h['registry']->lastState()?->context?->actor()?->id)->toBe(1);
+        ->and($seen)->toBe([['user', '1']])
+        ->and($h['registry']->lastState()?->context?->actor())->toBe($user);
+});
+
+it('fails closed when --acting-as names a user the resolver cannot find [D-002 / L-107]', function () {
+    $h = H::scopeHarness(['allowSystemCallers' => true]);
+    $h['registry']->withRequesterResolver(static fn (): ?object => null);
+
+    $r = ArtisanCommandHarness::run(new RunCapabilityCommand($h['registry']), [
+        'name' => $h['name'],
+        '--acting-as' => '404',
+        '--input' => json_encode(H::homeInput()),
+    ]);
+
+    expect($r['exit'])->toBe(1)
+        ->and($r['output'])->toContain('404')
+        ->and($h['registry']->lastState())->toBeNull();
+});
+
+it('fails closed when --acting-as is given but the registry has no requester resolver [D-002 / L-107]', function () {
+    $h = H::scopeHarness(['allowSystemCallers' => true]);
+
+    $r = ArtisanCommandHarness::run(new RunCapabilityCommand($h['registry']), [
+        'name' => $h['name'],
+        '--acting-as' => '1',
+        '--input' => json_encode(H::homeInput()),
+    ]);
+
+    expect($r['exit'])->toBe(1)
+        ->and($r['output'])->toContain('user_resolver')
+        ->and($h['registry']->lastState())->toBeNull();
 });
 
 it('fails without --acting-as or --system and never runs the capability [D-002]', function () {
