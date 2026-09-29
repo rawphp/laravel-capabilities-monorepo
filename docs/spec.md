@@ -2037,7 +2037,7 @@ Validation at **request** time is not enough. On accept, the pipeline re-runs:
 1. JSON Schema (portable) on stored input  
 2. Server-only rules (`exists`, etc.)  
 3. **D-003** scoped re-resolve of every resource id  
-4. `authorize()` for the **original actor** under current scope (default)
+4. `authorize()` for the **original actor** under the scope persisted on the approval row at request time (default): the tenant is the row's `tenant_id`; team, organization and scalar attributes come from the stamped `scope`; legacy rows (bare tenant `scope`) rebuild tenant-only; untenanted rows (global system work) resolve scope at execution. The approved `run()`, audit and idempotency row use the same stamped scope. The `ScopeResolver` does **not** place the requester again, so current tenant membership is not re-checked: a requester removed from that tenant after requesting still runs there unless the capability's `authorize()` checks membership.
 
 If the customer was deleted, moved tenants, or the actor lost permission:
 
