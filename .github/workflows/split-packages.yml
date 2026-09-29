@@ -27,12 +27,13 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
-# Serialize ALL splits (main + v* tags share package remotes). Per-ref groups
-# raced: simultaneous main + tag runs both cloned the same tip, committed the
-# same tree, and the loser failed with "cannot lock ref … expected OLD".
+# One group per ref. Main runs serialize (a newer pending main run replaces an
+# older pending one: the latest tree wins). Each tag gets its own group, so a
+# later main push can never cancel a pending tag run and drop a release. Main
+# and tag runs no longer race on package main: a tag run pushes only its tag.
 # Never cancel-in-progress: a cancelled matrix leaves partial package remotes.
 concurrency:
-  group: split-packages
+  group: split-packages-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:

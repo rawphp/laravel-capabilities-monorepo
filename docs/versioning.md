@@ -46,7 +46,7 @@ The PHP job also runs two static gates before the suites, and `scripts/release.s
 
 Level 1 is the highest level that passes today without a baseline. Level 2 mostly reports Eloquent magic attributes on package models. The intent is to raise the level one step at a time as those are typed, toward the `max` target in `AGENTS.md`. Each raise must pass cleanly; do not add a baseline to climb.
 
-All split runs (`main`, `v*` tags, `workflow_dispatch`) share one concurrency group, `split-packages`, with `cancel-in-progress: false`. Runs queue one after another and are never cancelled mid-matrix, so a main push and a tag push cannot race on the same package remote or leave it partially mirrored.
+Split runs use one concurrency group per ref (`split-packages-<ref>`) with `cancel-in-progress: false`, so a running split is never cancelled mid-matrix and never leaves a package remote partially mirrored. Main runs serialize: a newer pending main run replaces an older pending one, because the latest tree wins. Each tag has its own group, so a later main push cannot cancel a pending tag run and drop that release. Main and tag runs do not race on package `main`, because a tag run pushes only its tag. A tag run that overlaps a main run may point at a sync commit whose parent is the previous package `main`; that is the same side-commit shape a hotfix tag already has.
 
 **Implications:**
 
@@ -65,7 +65,7 @@ Setup (repo secrets / empty package remotes) is documented in the workflow file 
 |---|---|
 | Preflight | `main`/`master` only, clean tree, fetch tags, `HEAD` vs `origin` rules |
 | Version | `patch` / `minor` / `major` / explicit `vX.Y.Z` (first release: patch/minor → `v0.1.0`) |
-| Optional `--squash` | Soft-reset BASE..HEAD into one clean commit (`-m` message), `git push --force-with-lease` branch. BASE = latest `v*` tag reachable from HEAD, or `origin/<branch>` when none is |
+| Optional `--squash` | Fold the commits not yet on origin (`origin/<branch>..HEAD`, e.g. the CHANGELOG promotion) into one clean commit (`-m` message) and push the branch as a fast-forward. Refuses when nothing is unpushed; history already on origin is never rewritten, and the script never force-pushes |
 | Gates | `composer format:test` (Pint) + `composer analyse` (PHPStan) + `composer test` (core + messaging + AI Pest) + `gofmt -l` + `composer test:cli` (`go test ./...`) — CI's gates without the coverage floor, which CI already enforced on the PR |
 | Tag + push | Annotated monorepo `v*` tag → `git push origin refs/tags/…` → split workflow + CLI GoReleaser |
 
@@ -73,10 +73,13 @@ Setup (repo secrets / empty package remotes) is documented in the workflow file 
 # Dry-run (gates only; no tag/push):
 ./scripts/release.sh --dry-run
 
-# First public cut (example):
-./scripts/release.sh --yes --squash -m "Pre-stable monorepo: core, messaging, CLI" v0.1.0
+# Release (CHANGELOG promotion already pushed):
+./scripts/release.sh --yes patch
 
-# Ship-path self-test (no full suites / no network):
+# Fold the unpushed promotion commit(s) into one release commit:
+./scripts/release.sh --yes --squash -m "Release v0.6.0" minor
+
+# Ship-path self-test (no full suites / no network; CI runs it in the PHP job):
 bash scripts/lib/test-release.sh
 ```
 
@@ -238,7 +241,7 @@ Per package `CHANGELOG.md`:
 
 `scripts/release.sh` checks the structure before tagging: a real release refuses when any `packages/*/CHANGELOG.md` does not have exactly one `## [Unreleased]` or has no `## [0.Y.Z]` section for the tag it is about to cut (`--dry-run` only warns). Commit and push the promotion first.
 
-**Hotfix tags:** a tag cut off `main` (e.g. `v0.5.3` on a fix branch) is outside `scripts/release.sh`. The split publishes it as a tag only; package `main` does not move. `release.sh` still bumps from the global max tag (so the next patch after `v0.5.3` is `v0.5.4`), but takes the commit range and `--squash` base from the latest tag reachable from HEAD (`v0.5.2`), since the hotfix tag is not in `main`'s history.
+**Hotfix tags:** a tag cut off `main` (e.g. `v0.5.3` on a fix branch) is outside `scripts/release.sh`. The split publishes it as a tag only; package `main` does not move. `release.sh` still bumps from the global max tag (so the next patch after `v0.5.3` is `v0.5.4`), but takes the commit range from the latest tag reachable from HEAD (`v0.5.2`), since the hotfix tag is not in `main`'s history.
 
 **History:** tags `v0.1.0`–`v0.5.0` were cut before this rule, so their entries sit in one cumulative `[0.5.0]` section per package (`[0.5.1]` for AI). Tags with no section recorded no entries for that package.
 
