@@ -22,7 +22,7 @@ it('documents supportsToolRounds host upgrade callouts', function () {
         ->and($docs)->toContain('LlmClientDefaults')
         ->and($changelog)->toContain('supportsToolRounds()')
         ->and($changelog)->toMatch('/Breaking \(upgrade for hosts\)/i')
-        ->and($readme)->toContain('upgrade-for-hosts-llmclient-tool-rounds');
+        ->and($readme)->toContain('upgrade-for-hosts-llmclient--tool-rounds');
 });
 
 it('ships LICENSE and SECURITY.md at the package root for the split remote', function () {

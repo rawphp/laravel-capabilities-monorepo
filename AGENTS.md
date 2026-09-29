@@ -16,7 +16,7 @@ One sentence: *Define what the product can do once; let every agent-era channel 
 
 ## Essential files
 
-- `@docs/spec.md` — full design: philosophy, config, pipeline, decisions D-002–D-023, package layout, roadmap  
+- `@docs/spec.md` — full design: philosophy, config, pipeline, decisions D-002–D-024, package layout, roadmap  
   **Read when:** implementing, changing architecture, debating surfaces/governance, writing APIs or adapters
 - `@README.md` — monorepo map and install intent  
   **Read when:** orienting a new session

@@ -22,23 +22,21 @@ Requires [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabil
 | User guide | [docs/user-guide.md](docs/user-guide.md) |
 | **Upgrade (accept/reject wire)** | [docs/user-guide.md#upgrade-for-hosts-acceptreject-wire](docs/user-guide.md#upgrade-for-hosts-acceptreject-wire) · [CHANGELOG Unreleased Breaking](CHANGELOG.md) |
 | **Upgrade (chat HTTP non-proposal routes)** | [docs/user-guide.md#upgrade-for-hosts-chat-http-non-proposal-routes](docs/user-guide.md#upgrade-for-hosts-chat-http-non-proposal-routes) · [CHANGELOG Unreleased Breaking](CHANGELOG.md) (history / showTurn / cancelTurn / turnEvents / destroyConversation; **404** / **409**; `routes.enabled`) |
-| **Upgrade (LlmClient / tool rounds)** | [docs/user-guide.md#upgrade-for-hosts-llmclient-tool-rounds](docs/user-guide.md#upgrade-for-hosts-llmclient-tool-rounds) · [CHANGELOG Unreleased Breaking](CHANGELOG.md) |
-| **Upgrade (tool progress + tool messages)** | [docs/user-guide.md#upgrade-for-hosts-tool-progress-and-tool-messages](docs/user-guide.md#upgrade-for-hosts-tool-progress-and-tool-messages) · [CHANGELOG Unreleased Breaking](CHANGELOG.md) |
+| **Upgrade (LlmClient / tool rounds)** | [docs/user-guide.md#upgrade-for-hosts-llmclient--tool-rounds](docs/user-guide.md#upgrade-for-hosts-llmclient--tool-rounds) · [CHANGELOG Unreleased Breaking](CHANGELOG.md) |
+| **Upgrade (tool progress + tool messages)** | [docs/user-guide.md#upgrade-for-hosts-tool-progress--tool-messages](docs/user-guide.md#upgrade-for-hosts-tool-progress--tool-messages) · [CHANGELOG Unreleased Breaking](CHANGELOG.md) |
 | **Upgrade (Anthropic default model ID)** | [docs/user-guide.md#upgrade-for-hosts-anthropic-default-model-id](docs/user-guide.md#upgrade-for-hosts-anthropic-default-model-id) · [CHANGELOG Unreleased Breaking](CHANGELOG.md) |
-| **Upgrade (manual DI / constructor / job handle)** | [docs/user-guide.md#upgrade-for-hosts-manual-di-constructor-job-handle](docs/user-guide.md#upgrade-for-hosts-manual-di-constructor-job-handle) · [CHANGELOG Unreleased Breaking](CHANGELOG.md#manual-di--constructor--job-handle) |
+| **Upgrade (manual DI / constructor / job handle)** | [docs/user-guide.md#upgrade-for-hosts-manual-di--constructor--job-handle](docs/user-guide.md#upgrade-for-hosts-manual-di--constructor--job-handle) · [CHANGELOG Unreleased Breaking](CHANGELOG.md#manual-di--constructor--job-handle) |
 | Core package | [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities) |
 | Messaging sibling | [rawphp/laravel-capabilities-messaging](https://github.com/rawphp/laravel-capabilities-messaging) |
 | Monorepo design | [laravel-capabilities-monorepo](https://github.com/rawphp/laravel-capabilities-monorepo) |
 
-## Install (path package)
+## Install
 
 ```bash
-# monorepo root already path-wires this package
-composer update rawphp/laravel-capabilities-ai
-composer test:ai
+composer require rawphp/laravel-capabilities-ai
 ```
 
-Host app: require `rawphp/laravel-capabilities-ai` and register `Rawphp\CapabilitiesAi\CapabilitiesAiServiceProvider` (auto-discovery via `extra.laravel.providers`).
+`Rawphp\CapabilitiesAi\CapabilitiesAiServiceProvider` is auto-discovered (`extra.laravel.providers`).
 
 **Tests and contributions:** the unit suite, `phpunit.xml`, and dev tooling live only in the [monorepo](https://github.com/rawphp/laravel-capabilities-monorepo); this package remote is a read-only split and ships no tests. Open issues and PRs against the monorepo and run `composer test:ai` there.
 
@@ -120,7 +118,7 @@ $app->bind(LlmClient::class, fn () => new AnthropicLlmClient(
 ));
 ```
 
-**Custom `LlmClient`:** implement `supportsToolRounds()`. Prefer `use LlmClientDefaults` (returns false) and override to `true` **only** if the client accepts tool-result messages on the next `complete()` (OpenAI-style `role=tool` or Anthropic `tool_result` blocks). Lying opens a bus-then-crash path. (PHP interfaces still cannot ship method bodies on supported PHP; the trait is the fail-closed default for hosts.) **Host upgrade callouts:** [user guide](docs/user-guide.md#upgrade-for-hosts-llmclient-tool-rounds) · [CHANGELOG Breaking](CHANGELOG.md).
+**Custom `LlmClient`:** implement `supportsToolRounds()`. Prefer `use LlmClientDefaults` (returns false) and override to `true` **only** if the client accepts tool-result messages on the next `complete()` (OpenAI-style `role=tool` or Anthropic `tool_result` blocks). Lying opens a bus-then-crash path. (PHP interfaces still cannot ship method bodies on supported PHP; the trait is the fail-closed default for hosts.) **Host upgrade callouts:** [user guide](docs/user-guide.md#upgrade-for-hosts-llmclient--tool-rounds) · [CHANGELOG Breaking](CHANGELOG.md).
 
 **Transient LLM errors:** throw `RetryableLlmException` (rate limit, overload, 5xx, connection) from `complete()`; `AnthropicLlmClient` already does. The turn still ends `failed`, but its progress `error` event carries `retryable: true` (+ `retry_after_seconds` when the provider sent one) so callers can try again; other errors report `retryable: false`.
 

@@ -103,7 +103,7 @@ Accept HTTP (from `AcceptOutcome.httpStatus` when set, else controller kind defa
 
 #### LlmClient `supportsToolRounds()` (compile / runtime)
 
-`LlmClient` now **requires** `supportsToolRounds(): bool`. Custom host implementors fail type-check / runtime until they add the method or `use LlmClientDefaults` (returns **false**). Full host upgrade: [docs/user-guide.md](docs/user-guide.md#upgrade-for-hosts-llmclient-tool-rounds).
+`LlmClient` now **requires** `supportsToolRounds(): bool`. Custom host implementors fail type-check / runtime until they add the method or `use LlmClientDefaults` (returns **false**). Full host upgrade: [docs/user-guide.md](docs/user-guide.md#upgrade-for-hosts-llmclient--tool-rounds).
 
 | Client | `supportsToolRounds()` | Effect |
 |--------|------------------------|--------|
@@ -116,7 +116,7 @@ Honesty rule: return **true** only if the next `complete()` accepts tool-result 
 
 #### Tool progress + tool-role message content
 
-Progress `kind=tool` events and multi-round tool-role message `content` are **honest bus wire** (0.x pre-stable). Hosts that assumed always-ok tool content or a `{name,payload}`-only progress shape must adapt. Full tables: [docs/user-guide.md](docs/user-guide.md#upgrade-for-hosts-tool-progress-and-tool-messages).
+Progress `kind=tool` events and multi-round tool-role message `content` are **honest bus wire** (0.x pre-stable). Hosts that assumed always-ok tool content or a `{name,payload}`-only progress shape must adapt. Full tables: [docs/user-guide.md](docs/user-guide.md#upgrade-for-hosts-tool-progress--tool-messages).
 
 **Progress `kind=tool` `data`:**
 
@@ -171,7 +171,7 @@ Authoritative mapping: `ChatController` (`history`, `showTurn`, `cancelTurn`, `t
 
 #### Manual DI / constructor / job handle
 
-Constructor and job-handle DI tightened for hosts that construct services outside the package service provider (0.x pre-stable). Preferred path remains **`CapabilitiesAiServiceProvider` / `ContainerBindings`** — manual `new` is advanced. Full host upgrade: [docs/user-guide.md](docs/user-guide.md#upgrade-for-hosts-manual-di-constructor-job-handle).
+Constructor and job-handle DI tightened for hosts that construct services outside the package service provider (0.x pre-stable). Preferred path remains **`CapabilitiesAiServiceProvider` / `ContainerBindings`** — manual `new` is advanced. Full host upgrade: [docs/user-guide.md](docs/user-guide.md#upgrade-for-hosts-manual-di--constructor--job-handle).
 
 | Site | Old expectation | Current |
 |------|-----------------|--------|

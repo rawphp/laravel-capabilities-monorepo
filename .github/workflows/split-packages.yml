@@ -1,6 +1,11 @@
 # Mirror each packages/* tree into its public package repo on every push to main,
 # and re-publish monorepo tags (v*) onto those repos for Packagist / releases.
 #
+# Only a monorepo main run moves package-remote main. A tag run builds its sync
+# commit off to the side (parent: package-remote main) and pushes only the tag,
+# so a tag cut off main (e.g. a hotfix branch) never rolls package main back.
+# workflow_dispatch is a no-op unless run from main or a v* tag.
+#
 # CLI binary GitHub Release is package-owned: after this workflow force-pushes a
 # v* tag to rawphp/capabilities-cli, that repo's .github/workflows/release.yml
 # (GoReleaser) builds assets — do not re-implement binary release here.
@@ -40,6 +45,8 @@ jobs:
 
   split:
     needs: tests
+    # A dispatch from any other ref must not publish its tree anywhere.
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -108,16 +115,25 @@ jobs:
 
           git -C "$work" add -A
 
+          committed=0
           if git -C "$work" diff --cached --quiet; then
             echo "No file changes for ${TARGET_REPO}"
           else
             msg="sync: monorepo ${SOURCE_SHA:0:7} (${PACKAGE_PATH})"
             git -C "$work" commit -m "$msg"
+            committed=1
+          fi
+
+          # Only monorepo main advances package-remote main. A tag run keeps its
+          # sync commit local (off to the side) and publishes it via the tag below.
+          if [[ "$SOURCE_REF" != "refs/heads/main" ]]; then
+            echo "Source ref ${SOURCE_REF} is not main; leaving ${TARGET_REPO} main untouched"
+          elif (( committed )); then
             # main tracking branch may not exist yet on first push
             if ! git -C "$work" rev-parse --verify main >/dev/null 2>&1; then
               git -C "$work" branch -M main
             fi
-            # Push with retry: concurrent main+tag split can race on the same tree.
+            # Push with retry: remote main can move between clone and push.
             # If remote tip already has an identical tree, treat as success (CAS race).
             attempt=1
             max_attempts=5
@@ -148,7 +164,7 @@ jobs:
           # Monorepo tags (v*) are mirrored onto each package repo for Packagist.
           if [[ "$SOURCE_REF_TYPE" == "tag" ]]; then
             tag="$SOURCE_REF_NAME"
-            # Point tag at current package tree (after sync commit if any).
+            # Point tag at the tag's package tree (the side sync commit if any).
             git -C "$work" tag -f "$tag"
             git -C "$work" push origin "refs/tags/${tag}" --force
             echo "Pushed tag ${tag} → ${TARGET_REPO}"

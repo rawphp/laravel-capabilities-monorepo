@@ -257,7 +257,7 @@ capabilities auth profiles [--json]
 
 Human output lists profile name, base URL, and logged-in status (**never tokens**). `--json` returns a machine envelope with a `profiles` array. You can still inspect directories under `~/.config/capabilities/profiles/` if needed.
 
-Deep dive: **[authentication.md](authentication.md#multiple-projects--multi-deployment-profiles)**.
+Deep dive: **[authentication.md](authentication.md#multi-project--multi-deployment-profiles)**.
 
 ---
 

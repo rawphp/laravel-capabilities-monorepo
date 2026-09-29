@@ -106,6 +106,9 @@ jobs:
           go-version-file: packages/capabilities-cli/go.mod
           cache-dependency-path: packages/capabilities-cli/go.sum
 
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+
       # go test with a coverage profile; fails if the module total is below 95% (AGENTS.md).
       - name: go test + coverage floor (scripts/coverage.sh)
         run: bash scripts/coverage.sh
