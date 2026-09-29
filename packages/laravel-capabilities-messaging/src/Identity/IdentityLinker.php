@@ -12,17 +12,22 @@ use RuntimeException;
  * Maps Telegram (etc.) user → product principal before agent tools may mutate.
  *
  * Modes: code_link | allowlist. Never trusts client-forged laravel_user_id.
+ * Codes and code-bound links live in a {@see LinkStore} (cache-backed in the container, so a
+ * code issued in the web process binds on the queue worker); allowlist entries stay in config.
  * Denials (forged bind, cross-tenant resolve) are counted on the optional core Metrics contract (D-019).
  */
 final class IdentityLinker implements ConversationIdentity
 {
     public const METRIC_BIND_DENIED = 'messaging_identity_bind_denied_total';
 
-    /** @var array<string, array{user_id: string, tenant_id: string|null, telegram_user_id: string}> */
-    private array $links = [];
+    /**
+     * Allowlist entries from config (never written to the store, so removing one revokes it).
+     *
+     * @var array<string, array{user_id: string, tenant_id: string|null, telegram_user_id: string}>
+     */
+    private array $allowlisted = [];
 
-    /** @var array<string, array{user_id: string, tenant_id: string|null, exp: int, used: bool}> */
-    private array $codes = [];
+    private readonly LinkStore $store;
 
     /**
      * Optional user factory for allowlist / code bind: (userId, tenantId) => object
@@ -35,7 +40,9 @@ final class IdentityLinker implements ConversationIdentity
         private readonly MessagingConfig $config = new MessagingConfig([]),
         ?callable $userFactory = null,
         private readonly ?Metrics $metrics = null,
+        ?LinkStore $store = null,
     ) {
+        $this->store = $store ?? new InMemoryLinkStore;
         $this->userFactory = $userFactory ?? static fn (string $id, ?string $tenantId): LinkedUser => new LinkedUser(
             id: $id,
             tenantId: $tenantId,
@@ -49,7 +56,7 @@ final class IdentityLinker implements ConversationIdentity
             if ($tg === '' || $uid === '') {
                 continue;
             }
-            $this->links[$tg] = [
+            $this->allowlisted[$tg] = [
                 'user_id' => $uid,
                 'tenant_id' => isset($entry['tenant_id']) ? (string) $entry['tenant_id'] : null,
                 'telegram_user_id' => $tg,
@@ -63,13 +70,13 @@ final class IdentityLinker implements ConversationIdentity
     public function issueLinkCode(string $laravelUserId, ?string $tenantId = null, ?int $now = null): string
     {
         $now ??= time();
+        $ttl = $this->config->codeTtlSeconds();
         $code = bin2hex(random_bytes(8));
-        $this->codes[$code] = [
+        $this->store->putCode($code, [
             'user_id' => $laravelUserId,
             'tenant_id' => $tenantId,
-            'exp' => $now + $this->config->codeTtlSeconds(),
-            'used' => false,
-        ];
+            'exp' => $now + $ttl,
+        ], $ttl);
 
         return $code;
     }
@@ -85,17 +92,17 @@ final class IdentityLinker implements ConversationIdentity
         }
 
         $now ??= time();
-        $entry = $this->codes[$code] ?? null;
-        if ($entry === null || $entry['used'] || $entry['exp'] < $now) {
+        // Taken before the expiry check: a code is spent on first presentation either way.
+        $entry = $this->store->takeCode($code);
+        if ($entry === null || $entry['exp'] < $now) {
             return null;
         }
 
-        $this->codes[$code]['used'] = true;
-        $this->links[$telegramUserId] = [
+        $this->store->putLink($telegramUserId, [
             'user_id' => $entry['user_id'],
             'tenant_id' => $entry['tenant_id'],
             'telegram_user_id' => $telegramUserId,
-        ];
+        ]);
 
         return ($this->userFactory)($entry['user_id'], $entry['tenant_id']);
     }
@@ -105,11 +112,11 @@ final class IdentityLinker implements ConversationIdentity
      */
     public function link(string $telegramUserId, string $laravelUserId, ?string $tenantId = null): object
     {
-        $this->links[$telegramUserId] = [
+        $this->store->putLink($telegramUserId, [
             'user_id' => $laravelUserId,
             'tenant_id' => $tenantId,
             'telegram_user_id' => $telegramUserId,
-        ];
+        ]);
 
         return ($this->userFactory)($laravelUserId, $tenantId);
     }
@@ -129,7 +136,7 @@ final class IdentityLinker implements ConversationIdentity
             // Ignore client-claimed Laravel id entirely.
         }
 
-        $link = $this->links[$telegramUserId] ?? null;
+        $link = $this->findLink($telegramUserId);
         if ($link === null) {
             return null;
         }
@@ -156,7 +163,17 @@ final class IdentityLinker implements ConversationIdentity
 
     public function isLinked(string $telegramUserId): bool
     {
-        return isset($this->links[$telegramUserId]);
+        return $this->findLink($telegramUserId) !== null;
+    }
+
+    /**
+     * A code-bound or explicit link wins over an allowlist entry for the same Telegram user.
+     *
+     * @return array{user_id: string, tenant_id: string|null, telegram_user_id: string}|null
+     */
+    private function findLink(string $telegramUserId): ?array
+    {
+        return $this->store->findLink($telegramUserId) ?? $this->allowlisted[$telegramUserId] ?? null;
     }
 
     public function canUseTools(?object $user): bool

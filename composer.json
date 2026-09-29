@@ -11,6 +11,7 @@
         "rawphp/laravel-capabilities-ai": "*@dev"
     },
     "require-dev": {
+        "illuminate/cache": "^11.0|^12.0|^13.0",
         "laravel/pint": "^1.30",
         "pestphp/pest": "^3.0",
         "phpstan/phpstan": "^2.0"

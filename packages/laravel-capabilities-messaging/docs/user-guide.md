@@ -52,7 +52,7 @@ Publish config when you need overrides:
 php artisan vendor:publish --tag=capabilities-messaging-config
 ```
 
-**Migrations:** the package still exposes publish tag `capabilities-messaging-migrations`, but the migrations directory is **empty** today (only a placeholder). Identity and threads are **process-local in-memory** (L-006 residual) — there is no package schema to migrate yet. Do not expect `php artisan migrate` to create messaging tables after publishing that tag.
+**Migrations:** the package still exposes publish tag `capabilities-messaging-migrations`, but the migrations directory is **empty** today (only a placeholder). Link codes and identity links live in your Laravel cache (see Identity below) and thread history is process-local in-memory (L-006 residual), so there is no package schema to migrate yet. Do not expect `php artisan migrate` to create messaging tables after publishing that tag.
 
 ## Configure
 
@@ -99,9 +99,11 @@ A linked Telegram user resolves to an instance of your user model (`user_model`,
 2. The Telegram user sends `/start <code>` or `/link <code>` to the bot. A deep link `https://t.me/<bot>?start=<code>` sends `/start <code>` for them.
 3. The update pipeline calls `bindWithCode` before identity resolution and replies with a fixed confirmation or refusal; no agent turn or tool runs. Expired, reused, or unknown codes are refused (`link_code_invalid`, logged as a warning).
 
-The command is only recognised in `code_link` mode. Codes live in the process-local `IdentityLinker` (L-006 residual): the process that issues a code must be the one that handles the `/start` update, so until a durable store exists this flow does not work across a web process and a separate queue worker.
+The command is only recognised in `code_link` mode.
 
-Codes expire per `identity.code_ttl_seconds`. Client-forged `laravel_user_id` values are never trusted.
+Codes and links are stored in your default Laravel cache store through `Identity\CacheLinkStore`, so a code issued in a web request binds when the queue worker handles the `/start` update, and links survive worker restarts. Codes expire per `identity.code_ttl_seconds` and bind at most once, even when two workers see the same code. Links are stored without expiry, so use a persistent cache store (redis, database) that your deploy does not flush; a lost link fails closed and the user links again. To pick another store, bind `Identity\LinkStore` in your app, e.g. `new CacheLinkStore(Cache::store('redis'))`.
+
+Client-forged `laravel_user_id` values are never trusted.
 
 ### `allowlist`
 

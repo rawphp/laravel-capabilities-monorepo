@@ -45,7 +45,7 @@ Hard invariants shared across packages:
 | | |
 |---|---|
 | **Is** | Conversation **ingress** (Telegram first): webhooks, identity link/allowlist, threads (process-local today), approval notifiers; feeds the agent; tools are registry capabilities |
-| **Is not** | Domain `run()` or second write path; full multi-tenant identity product (durable identity/threads still residual L-006); core bus governance; product CLI; general notification platform for non-capability flows |
+| **Is not** | Domain `run()` or second write path; full multi-tenant identity product (thread history still process-local — residual L-006; link codes and links use the host cache); core bus governance; product CLI; general notification platform for non-capability flows |
 
 #### 3. `rawphp/laravel-capabilities-ai`
 

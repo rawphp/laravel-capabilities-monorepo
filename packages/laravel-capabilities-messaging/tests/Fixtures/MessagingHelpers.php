@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesMessaging\Tests\Fixtures;
 
+use Illuminate\Cache\ArrayStore;
+use Illuminate\Cache\Repository;
 use Illuminate\Container\Container;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Foundation\CachesConfiguration;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Contracts\ApprovalGateway;
@@ -185,8 +188,9 @@ final class MessagingHelpers
      *
      * @param  array<string, mixed>  $messagingConfig  value of config('capabilities-messaging')
      * @param  array<string, mixed>  $otherConfig  other dotted keys (e.g. auth.providers.users.model)
+     * @param  CacheRepository|null  $cache  host cache store (array store by default; share one to model web + worker)
      */
-    public static function container(array $messagingConfig = [], array $otherConfig = []): Container
+    public static function container(array $messagingConfig = [], array $otherConfig = [], ?CacheRepository $cache = null): Container
     {
         $app = new class extends Container implements CachesConfiguration
         {
@@ -233,6 +237,7 @@ final class MessagingHelpers
                 return $cursor;
             }
         });
+        $app->instance(CacheRepository::class, $cache ?? new Repository(new ArrayStore));
         (new MessagingServiceProvider($app))->register();
 
         return $app;

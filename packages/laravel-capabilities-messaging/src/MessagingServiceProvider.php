@@ -3,6 +3,7 @@
 namespace Rawphp\CapabilitiesMessaging;
 
 use Illuminate\Contracts\Bus\Dispatcher as BusDispatcher;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\ServiceProvider;
 use Psr\Log\LoggerInterface;
@@ -17,7 +18,9 @@ use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\CapabilitiesMessaging\Boot\MessagingBindings;
 use Rawphp\CapabilitiesMessaging\Boot\MessagingRegistration;
 use Rawphp\CapabilitiesMessaging\Contracts\AgentTurn;
+use Rawphp\CapabilitiesMessaging\Identity\CacheLinkStore;
 use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
+use Rawphp\CapabilitiesMessaging\Identity\LinkStore;
 use Rawphp\CapabilitiesMessaging\Identity\ModelUserFactory;
 use Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier;
 use Rawphp\CapabilitiesMessaging\Support\FakeQueue;
@@ -43,8 +46,8 @@ use RuntimeException;
  * ProcessTelegramUpdate, and related services. FakeQueue / FakeTelegramBotClient
  * only when queue_driver/bot_driver=fake or APP_ENV=testing (auto).
  *
- * L-006 residual: IdentityLinker and ThreadStore remain process-local in-memory;
- * durable DB stores are deferred — see README.
+ * Link codes and identity links use a {@see LinkStore} on the host cache repository, shared by
+ * web and queue workers. L-006 residual: ThreadStore history stays process-local — see README.
  *
  * Container wiring is unit-tested via {@see MessagingBindings} /
  * {@see registrationPlan()} without booting Laravel.
@@ -102,11 +105,14 @@ class MessagingServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(ThreadStore::class, static fn () => new ThreadStore);
+        // Codes are issued in the web process and bound on the queue worker: shared host cache.
+        $this->app->singleton(LinkStore::class, static fn ($app) => new CacheLinkStore($app->make(CacheRepository::class)));
         $this->app->singleton(IdentityLinker::class, function ($app) {
             return new IdentityLinker(
                 $app->make(MessagingConfig::class),
                 new ModelUserFactory(self::userModel($app)),
                 metrics: $app->bound(Metrics::class) ? $app->make(Metrics::class) : null,
+                store: $app->make(LinkStore::class),
             );
         });
         $this->app->alias(IdentityLinker::class, ConversationIdentity::class);
