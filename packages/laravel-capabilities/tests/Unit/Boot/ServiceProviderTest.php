@@ -5,7 +5,12 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Adapters\Ai\AiToolAdapter;
+use Rawphp\Capabilities\Adapters\Ai\AiToolAdapterV1;
 use Rawphp\Capabilities\Adapters\Http\CapabilityController;
+use Rawphp\Capabilities\Adapters\Mcp\McpCredential;
+use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapter;
+use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapterV1;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Boot\CapabilitiesConfig;
 use Rawphp\Capabilities\Boot\SurfaceNames;
@@ -23,6 +28,7 @@ use Rawphp\Capabilities\Persistence\TableGateway;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
+use Rawphp\Capabilities\Tests\Fixtures\AdapterHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\BootHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
@@ -638,4 +644,36 @@ it('happy: the container CapabilityController reads the key from idempotency.hea
     ]), 'idem-header');
 
     expect($controller->lastInvokeOptions()['idempotency_key'] ?? null)->toBe(str_repeat('k', 16));
+});
+
+// --- L-017: tool adapters take require_profile from config ---
+
+it('happy: the container adapters take require_profile from surfaces.agent / surfaces.mcp [L-017]', function () {
+    $strict = req048FakeApp(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+        'surfaces' => [
+            'agent' => ['enabled' => true, 'on_incompatible' => 'disable'],
+            'mcp' => ['enabled' => true, 'on_incompatible' => 'disable', 'auth' => ['user_pat' => true]],
+        ],
+    ]));
+    $relaxed = req048FakeApp(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+        'surfaces' => [
+            'agent' => ['enabled' => true, 'on_incompatible' => 'disable', 'require_profile' => false],
+            'mcp' => ['enabled' => true, 'on_incompatible' => 'disable', 'require_profile' => false, 'auth' => ['user_pat' => true]],
+        ],
+    ]));
+
+    foreach ([$strict, $relaxed] as $app) {
+        expect($app->make(AiToolAdapter::class))->toBeInstanceOf(AiToolAdapterV1::class)
+            ->and($app->make(McpToolAdapter::class))->toBeInstanceOf(McpToolAdapterV1::class);
+    }
+
+    $user = AdapterHelpers::user();
+    expect($strict->make(AiToolAdapter::class)->handle('missing-cap', [], $user)->error['normalized_code'] ?? null)->toBe('profile_required')
+        ->and($strict->make(McpToolAdapter::class)->handle('missing-cap', [], McpCredential::userPat($user))->error['normalized_code'] ?? null)->toBe('profile_required')
+        ->and($relaxed->make(AiToolAdapter::class)->handle('missing-cap', [], $user)->errorCode())->toBe('not_found')
+        ->and($relaxed->make(McpToolAdapter::class)->handle('missing-cap', [], McpCredential::userPat($user))->errorCode())->toBe('not_found');
 });

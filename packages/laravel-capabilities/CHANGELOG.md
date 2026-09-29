@@ -147,6 +147,14 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   `#[Capability]` that does not implement `DefinesCapability` now throws `BootException`
   during discovery instead of being silently dropped from the catalog. Add
   `implements DefinesCapability` or remove the attribute.
+- **Agent / MCP `handle()` refuse to run outside a profile (D-008, L-017).** With no
+  registered profile and no `options['profile']` the adapters used to fall back to a bare
+  `registry->invoke()` — a model could name any capability outside its tool list and, subject
+  only to `authorize()`, run it. With `surfaces.<agent|mcp>.require_profile` (default `true`,
+  new constructor argument `requireProfile` on `AiToolAdapterV1` / `McpToolAdapterV1`) such
+  a call now returns `not_runnable` (`normalized_code: profile_required`) before the registry,
+  matching the tool-list rule. `require_profile: false` keeps the old fallback. The service
+  provider now also binds an `AiToolAdapter` singleton from `surfaces.agent.*` beside the MCP one.
 - **MCP handle requires a profile after multi-profile register (D-008).** Once
   `McpToolAdapterV1` has registered more than one distinct profile, `handle()` /
   `handleStructured()` without `options['profile']` return `not_runnable`

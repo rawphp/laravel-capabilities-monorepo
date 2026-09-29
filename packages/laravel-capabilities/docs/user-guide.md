@@ -277,7 +277,7 @@ Agent and MCP tool exposure uses **profiles** (D-008). Configure named profile â
 
 Rules of thumb:
 
-- Profiles limit **discovery** of tools.
+- Profiles limit **discovery** of tools â€” and execution: with `require_profile` (default) an adapter `handle()` with no registered or per-call profile returns `not_runnable` / `profile_required` instead of running a capability by name.
 - `authorize()` still runs on every invoke.
 - Messaging sets `agent_profile` so bots do not see the entire bus.
 

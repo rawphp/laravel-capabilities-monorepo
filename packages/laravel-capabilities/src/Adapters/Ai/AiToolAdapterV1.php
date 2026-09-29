@@ -41,6 +41,7 @@ final class AiToolAdapterV1 implements AiToolAdapter
         private readonly bool $requireCompatiblePeer = true,
         private readonly ?AgentTurnBudget $turnBudget = null,
         private readonly int $adapterApi = AdapterApi::V1,
+        private readonly bool $requireProfile = true,
     ) {}
 
     public function supportsInstalledPeer(): bool
@@ -190,7 +191,25 @@ final class AiToolAdapterV1 implements AiToolAdapter
             );
         }
 
+        // Execution obeys the same rule as the tool list (D-008): no profile, no full-catalog run.
+        if ($this->requireProfile) {
+            return self::profileRequired('agent');
+        }
+
         return $this->registry->invoke($name, $clean, $invokeOptions);
+    }
+
+    /**
+     * surfaces.agent.require_profile (default true): a call outside any registered or
+     * per-call profile is refused before the registry, like an unscoped tool list.
+     */
+    public static function profileRequired(string $surface): CapabilityResult
+    {
+        return CapabilityResult::failure(
+            code: 'not_runnable',
+            message: sprintf('No %s tool profile is active; register a profile or pass options[\'profile\'] (D-008).', $surface),
+            extra: ['normalized_code' => 'profile_required'],
+        );
     }
 
     public function handleStructured(string $name, array $input, object $actor, array $options = []): array
