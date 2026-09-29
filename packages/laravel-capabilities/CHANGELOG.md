@@ -173,6 +173,42 @@ profile — or no profile — returns `forbidden` with `normalized_code`
 **Upgrade:** add an `integration_profiles` entry for every client in
 `integration_actors`, or its tool calls will be refused.
 
+#### `DefaultScopeResolver` reads `tenant_id` / `tenantId` as membership (D-003, M-301)
+
+The package default resolver used to place a user actor by the host's `user_tenants` map or
+the principal's `current_tenant_id` only. A principal that carried `tenant_id` or `tenantId`
+but no `current_tenant_id` resolved to a trusted `tenant_id` invoke option when one was
+passed, otherwise to `default-tenant`. Those attributes are server-side membership facts
+(a `users.tenant_id` column, the messaging `LinkedUser::$tenantId`), and D-003 makes
+membership the authority for user scope, so the resolver now reads them: `user_tenants`,
+then `current_tenant_id`, then `tenant_id`, then `tenantId` — first set wins. This applies to
+every invoke, not only to approval decisions.
+
+Hosts that see different tenants after upgrading are the ones **without their own
+`ScopeResolver` binding** whose principals carry `tenant_id` / `tenantId` but not
+`current_tenant_id`:
+
+| Principal | Invoke option | Before | After |
+|---|---|---|---|
+| `tenant_id = acme` | — | `default-tenant` | `acme` |
+| `tenant_id = acme` | `tenant_id => other` | `other` | `acme` |
+| `tenantId = acme` (LinkedUser) | — | `default-tenant` | `acme` |
+| `current_tenant_id = acme`, `tenant_id = other` | any | `acme` | `acme` (unchanged) |
+| no tenant attribute | `tenant_id => other` | `other` | `other` (unchanged) |
+
+The resolved tenant is the `CapabilityScope` `authorize()` / `run()` receive and the tenant
+stamped on audit, idempotency and approval rows. On invokes, membership now wins over a
+trusted `tenant_id` option for these principals; on `ApprovalGateway::accept()` /
+`reject()` the `tenant_id` option no longer overrides the approver's tenant — it fills in
+only when the approver has no membership tenant.
+
+**Upgrade:** rows and host data stamped `default-tenant` for these users no longer match
+the scope they resolve to, and in-flight idempotency keys for them start a new identity.
+Server-side `tenant_id` options passed to `invoke()` / `accept()` / `reject()` are now
+ignored for principals with a membership tenant — pass the right principal instead. To keep
+the previous rule, bind a `ScopeResolver` in the host
+(`$this->app->singleton(ScopeResolver::class, ...)`) that reads only `current_tenant_id`.
+
 #### Unused public helpers removed
 
 These shipped in 0.5.3 and had no callers inside the package:
@@ -341,11 +377,10 @@ These shipped in 0.5.3 and had no callers inside the package:
   constructor `scopeResolver:`; `CapabilityRegistry::withApprovalManager()` and
   `withScopeResolver()` hand the registry's resolver to the manager; the provider gives the
   `ApprovalManager` singleton and the registry the container's `ScopeResolver` binding, so a
-  host resolver governs invokes and approval decisions alike. `DefaultScopeResolver` reads a
-  principal's `current_tenant_id`, then `tenant_id`, then `tenantId` as membership (first set
-  wins). The `tenant_id` accept / reject option is a trusted server-side tenant that fills in
-  only when the approver has no membership tenant; a cross-tenant approver is still refused,
-  and a resolver that cannot place the approver fails closed as `forbidden`.
+  host resolver governs invokes and approval decisions alike. A cross-tenant approver is still
+  refused, and a resolver that cannot place the approver fails closed as `forbidden`. The
+  companion `DefaultScopeResolver` change (it now reads `tenant_id` / `tenantId` as
+  membership, on every invoke) is under *Changed (BREAKING)* above with its upgrade note.
 - **One configured ApprovalManager for every approval (D-006, L-101).** The registry pipeline
   used to build its own `new ApprovalManager($store)` from the provider's store, so
   `approval_required` rows ignored `approval.ttl_hours` (always 24 h) and no
