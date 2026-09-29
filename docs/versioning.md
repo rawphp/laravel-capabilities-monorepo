@@ -27,14 +27,15 @@ Source of truth for day-to-day development is this monorepo. Publication of pack
 
 ### Test gate (split blocked until green)
 
-Split / package-remote publish is **gated on green monorepo unit tests**. The split workflow’s `split` job `needs:` a reusable call to [`.github/workflows/tests.yml`](../.github/workflows/tests.yml) (PHP 8.2 Pest via root `composer test` = core + messaging + AI on the committed lock, and `go test ./...` for the CLI). If any unit suite fails, package trees and tags are **not** mirrored.
+Split / package-remote publish is **gated on green monorepo unit tests**. The split workflow’s `split` job `needs:` a reusable call to [`.github/workflows/tests.yml`](../.github/workflows/tests.yml) (PHP 8.2 Pest with pcov via `composer coverage:core` / `coverage:messaging` / `coverage:ai` on the committed lock, and `scripts/coverage.sh` (`go test -coverprofile ./...`) for the CLI). If any unit suite fails, package trees and tags are **not** mirrored.
 
 | Surface | CI |
 |---|---|
 | PR + push to `main` | `tests.yml` runs unit suites standalone |
 | Split (`main`, `v*` tags, `workflow_dispatch`) | Same suites via `workflow_call` before any rsync / tag force-push |
 | Declared PHP / Laravel range | `php-compat` cells re-resolve without the lock: PHP 8.2 + illuminate `^11.0` (`prefer-lowest`) and PHP 8.5 + illuminate `^13.0` (`prefer-stable`). The lock job covers PHP 8.2 + Laravel 12 |
-| Coverage floor / Packagist API | **Not** enforced here (unit exit codes only; Packagist remains human checklist) |
+| Coverage floor | **95%** line coverage per PHP package (`pest --coverage --min=95`) and on the Go module total, main PHP job + Go job only (`php-compat` cells run without coverage) |
+| Packagist API | **Not** enforced here (Packagist remains human checklist) |
 
 The PHP job also runs two static gates before the suites, and `scripts/release.sh` runs the same commands:
 
@@ -65,7 +66,7 @@ Setup (repo secrets / empty package remotes) is documented in the workflow file 
 | Preflight | `main`/`master` only, clean tree, fetch tags, `HEAD` vs `origin` rules |
 | Version | `patch` / `minor` / `major` / explicit `vX.Y.Z` (first release: patch/minor → `v0.1.0`) |
 | Optional `--squash` | Soft-reset BASE..HEAD into one clean commit (`-m` message), `git push --force-with-lease` branch. BASE = prior `v*` tag, or `origin/<branch>` when no tag yet |
-| Gates | `composer format:test` (Pint) + `composer analyse` (PHPStan) + `composer test` (core + messaging + AI Pest) + `composer test:cli` (`go test ./...`) — same gates as CI |
+| Gates | `composer format:test` (Pint) + `composer analyse` (PHPStan) + `composer test` (core + messaging + AI Pest) + `composer test:cli` (`go test ./...`) — CI's gates without the coverage floor, which CI already enforced on the PR |
 | Tag + push | Annotated monorepo `v*` tag → `git push origin refs/tags/…` → split workflow + CLI GoReleaser |
 
 ```bash

@@ -65,7 +65,16 @@
         "test:core": "pest --configuration=packages/laravel-capabilities/phpunit.xml --colors=always",
         "test:messaging": "pest --configuration=packages/laravel-capabilities-messaging/phpunit.xml --colors=always",
         "test:cli": "cd packages/capabilities-cli && go test ./...",
-        "test:ai": "pest --configuration=packages/laravel-capabilities-ai/phpunit.xml --colors=always"
+        "test:ai": "pest --configuration=packages/laravel-capabilities-ai/phpunit.xml --colors=always",
+        "coverage": [
+            "@coverage:core",
+            "@coverage:messaging",
+            "@coverage:ai"
+        ],
+        "coverage:core": "pest --configuration=packages/laravel-capabilities/phpunit.xml --coverage --min=95",
+        "coverage:messaging": "pest --configuration=packages/laravel-capabilities-messaging/phpunit.xml --coverage --min=95",
+        "coverage:ai": "pest --configuration=packages/laravel-capabilities-ai/phpunit.xml --coverage --min=95",
+        "coverage:cli": "cd packages/capabilities-cli && bash scripts/coverage.sh"
     },
     "minimum-stability": "dev",
     "prefer-stable": true,

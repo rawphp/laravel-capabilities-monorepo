@@ -80,7 +80,7 @@ Root `composer.json` path-requires the PHP packages for local work. CLI is Go (`
 ### Coverage floor (blocking)
 
 - **Minimum: 95%** unit-test coverage on package source (`packages/laravel-capabilities/src`, `packages/laravel-capabilities-messaging/src`, `packages/laravel-capabilities-ai/src`, and Go packages for the CLI).
-- Measured with Pest/PCOV (or Xdebug) for PHP and `go test -cover` for the CLI — exact CI commands live with the test harness when added.
+- Measured with Pest/PCOV (or Xdebug) for PHP and `go test -coverprofile` for the CLI. CI (`.github/workflows/tests.yml`, main PHP job + Go job) runs the same commands: `composer coverage:core` · `composer coverage:messaging` · `composer coverage:ai` (each `pest --coverage --min=95` on that package; `composer coverage` runs all three) and `composer coverage:cli` (`packages/capabilities-cli/scripts/coverage.sh`). For Go the 95% bar is on the **module total** from `go tool cover -func`, not per package.
 - Coverage is **necessary but not sufficient**: 95% of weak asserts does not pass review. Tests must exercise real behaviour (happy path + intentional edges).
 - Do **not** game coverage with empty asserts, `@codeCoverageIgnore` on production logic, or shipping dead code to “raise %.”
 - New code that drops the package below 95% must not be committed. Raise tests (or delete dead paths) before marking done.
