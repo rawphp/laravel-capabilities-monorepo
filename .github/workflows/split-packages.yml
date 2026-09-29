@@ -104,6 +104,8 @@ jobs:
             --exclude 'dist/*' \
             --exclude 'coverage/' \
             --exclude '.phpunit.result.cache' \
+            --exclude '/tests/' \
+            --exclude '/phpunit.xml' \
             "${PACKAGE_PATH}/" "$work/"
 
           git -C "$work" config user.name "github-actions[bot]"

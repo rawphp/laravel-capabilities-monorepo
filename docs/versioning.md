@@ -21,7 +21,7 @@ Source of truth for day-to-day development is this monorepo. Publication of pack
 
 | Trigger | What happens |
 |---|---|
-| Push to monorepo `main` | [`.github/workflows/split-packages.yml`](../.github/workflows/split-packages.yml) rsyncs each `packages/<name>/` tree into the matching public repo’s `main` (package root becomes repo root) |
+| Push to monorepo `main` | [`.github/workflows/split-packages.yml`](../.github/workflows/split-packages.yml) rsyncs each `packages/<name>/` tree into the matching public repo’s `main` (package root becomes repo root). PHP package-root `tests/` and `phpunit.xml` are excluded: the unit suite only runs in the monorepo |
 | Push monorepo tag `v*` | Same workflow force-updates that tag on **each** package remote (for Packagist / releases) |
 | Manual | `workflow_dispatch` on the same workflow |
 
@@ -41,6 +41,7 @@ Tag concurrency uses `cancel-in-progress: false` for tags so a release mirror is
 
 - Consumer VCS installs and Packagist submissions use the **package repos**, not `laravel-capabilities-monorepo`.
 - Package `README.md`, `docs/user-guide.md`, and `CHANGELOG.md` must work standalone after split (no relative links into monorepo-only `docs/`).
+- PHP package remotes ship no test suite: the split drops `tests/` and `phpunit.xml`, package `composer.json` files carry no `require-dev` / `autoload-dev` / `test` script, and each package `.gitattributes` export-ignores the same paths from dist archives. The monorepo is the only test authority.
 - Monorepo design docs (`docs/spec.md`, tutorials, inventory) stay monorepo-only; link them with absolute monorepo URLs if a package doc needs them.
 
 Setup (repo secrets / empty package remotes) is documented in the workflow file header.
