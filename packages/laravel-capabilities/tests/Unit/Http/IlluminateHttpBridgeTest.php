@@ -450,3 +450,47 @@ it('provider-built auth wrapper fails closed when the bound AuthTokenIssuer is t
     expect(bridgeOutcome($wrongType->make(IlluminateAuthController::class)->token($guest)))->toBe(['status' => 501, 'code' => 'not_configured'])
         ->and(bridgeOutcome($throws->make(IlluminateAuthController::class)->token($guest)))->toBe(['status' => 501, 'code' => 'not_configured']);
 });
+
+// --- L-110: authKind is CLI only for an ability mapped to `cli` in clients.token_abilities ---
+
+it('classifies authKind by exact token_abilities mapping, not by a "cli" substring [L-110]', function (array $abilities, string $expected) {
+    $ctx = IlluminateHttpBridge::fromArray(['authenticated' => true, 'user' => new stdClass, 'token_abilities' => $abilities]);
+
+    expect($ctx->authKind)->toBe($expected);
+})->with([
+    'exact default ability' => [['capabilities:cli'], HttpAuthGate::AUTH_CLI_TOKEN],
+    'case-insensitive exact match' => [['Capabilities:CLI'], HttpAuthGate::AUTH_CLI_TOKEN],
+    'client scope that merely contains cli' => [['client:read'], HttpAuthGate::AUTH_USER],
+    'clinic wildcard' => [['clinic:*'], HttpAuthGate::AUTH_USER],
+    'decline' => [['decline'], HttpAuthGate::AUTH_USER],
+    'api token' => [['capabilities:api'], HttpAuthGate::AUTH_API_TOKEN],
+    'wildcard PAT' => [['*'], HttpAuthGate::AUTH_USER],
+]);
+
+it('reads the same clients.token_abilities map CallerDeriver uses [L-110]', function () {
+    $map = ['ops:remote' => 'cli', 'capabilities:read' => 'http'];
+
+    $remote = IlluminateHttpBridge::fromArray(['authenticated' => true, 'user' => new stdClass, 'token_abilities' => ['ops:remote']], $map);
+    $default = IlluminateHttpBridge::fromArray(['authenticated' => true, 'user' => new stdClass, 'token_abilities' => ['capabilities:cli']], $map);
+    $read = IlluminateHttpBridge::fromArray(['authenticated' => true, 'user' => new stdClass, 'token_abilities' => ['capabilities:read']], $map);
+
+    expect($remote->authKind)->toBe(HttpAuthGate::AUTH_CLI_TOKEN)
+        ->and($default->authKind)->toBe(HttpAuthGate::AUTH_USER)
+        ->and($read->authKind)->toBe(HttpAuthGate::AUTH_USER);
+});
+
+it('provider-built Illuminate wrappers carry clients.token_abilities into the bridge [L-110]', function () {
+    $app = FakeProviderApp::registered(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+        'audit' => ['driver' => 'memory'],
+        'clients' => ['token_abilities' => ['ops:remote' => 'cli']],
+    ]));
+
+    foreach ([IlluminateCapabilityController::class, IlluminateAuthController::class, IlluminateApprovalController::class] as $wrapper) {
+        $instance = $app->make($wrapper);
+        $map = (new ReflectionClass($instance))->getProperty('tokenAbilityMap')->getValue($instance);
+        // Published defaults merge under host config, so the default ability stays mapped too.
+        expect($map)->toBe(['capabilities:cli' => 'cli', 'ops:remote' => 'cli']);
+    }
+});

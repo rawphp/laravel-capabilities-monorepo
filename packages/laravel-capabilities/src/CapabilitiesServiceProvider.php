@@ -255,14 +255,18 @@ class CapabilitiesServiceProvider extends ServiceProvider
             );
         });
 
+        // Wrappers classify authKind from the same clients.token_abilities map CallerDeriver uses (L-110).
         $this->app->singleton(IlluminateCapabilityController::class, static fn ($app) => new IlluminateCapabilityController(
             $app->make(CapabilityController::class),
+            self::tokenAbilityMap($app),
         ));
         $this->app->singleton(IlluminateAuthController::class, static fn ($app) => new IlluminateAuthController(
             $app->make(AuthController::class),
+            self::tokenAbilityMap($app),
         ));
         $this->app->singleton(IlluminateApprovalController::class, static fn ($app) => new IlluminateApprovalController(
             $app->make(ApprovalController::class),
+            self::tokenAbilityMap($app),
         ));
 
         // MCP adapter bindings (ContainerBindings plan BOOT-001) — real Laravel singletons.
@@ -309,6 +313,29 @@ class CapabilitiesServiceProvider extends ServiceProvider
             );
         });
         $this->app->alias(AiToolAdapter::class, 'AiToolAdapter');
+    }
+
+    /**
+     * `clients.token_abilities` (ability => caller) as an array<string, string>.
+     *
+     * @return array<string, string>
+     */
+    private static function tokenAbilityMap(object $app): array
+    {
+        $config = self::configFromApp($app);
+        $map = $config['clients']['token_abilities'] ?? [];
+        if (! is_array($map)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($map as $ability => $caller) {
+            if (is_string($ability) && is_string($caller)) {
+                $out[$ability] = $caller;
+            }
+        }
+
+        return $out;
     }
 
     /**

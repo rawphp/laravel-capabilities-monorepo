@@ -14,35 +14,39 @@ use Rawphp\Capabilities\Http\IlluminateHttpBridge;
  */
 final class IlluminateCapabilityController
 {
+    /**
+     * @param  array<string, string>  $tokenAbilityMap  `clients.token_abilities` for authKind (L-110)
+     */
     public function __construct(
         private readonly CapabilityController $inner,
+        private readonly array $tokenAbilityMap = [],
     ) {}
 
     public function list(Request $request): JsonResponse
     {
         return IlluminateHttpBridge::toIlluminate(
-            $this->inner->list(IlluminateHttpBridge::fromIlluminate($request)),
+            $this->inner->list(IlluminateHttpBridge::fromIlluminate($request, $this->tokenAbilityMap)),
         );
     }
 
     public function describe(Request $request, string $name): JsonResponse
     {
         return IlluminateHttpBridge::toIlluminate(
-            $this->inner->describe(IlluminateHttpBridge::fromIlluminate($request), $name),
+            $this->inner->describe(IlluminateHttpBridge::fromIlluminate($request, $this->tokenAbilityMap), $name),
         );
     }
 
     public function invoke(Request $request, string $name): JsonResponse
     {
         return IlluminateHttpBridge::toIlluminate(
-            $this->inner->invoke(IlluminateHttpBridge::fromIlluminate($request), $name),
+            $this->inner->invoke(IlluminateHttpBridge::fromIlluminate($request, $this->tokenAbilityMap), $name),
         );
     }
 
     public function health(Request $request): JsonResponse
     {
         return IlluminateHttpBridge::toIlluminate(
-            $this->inner->health(IlluminateHttpBridge::fromIlluminate($request)),
+            $this->inner->health(IlluminateHttpBridge::fromIlluminate($request, $this->tokenAbilityMap)),
         );
     }
 }

@@ -321,6 +321,19 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   invoke keeps its success, the idempotency row stays `completed` (so retries replay instead of
   double-applying) and an executed approval stays `executed/ok`. Before, the L-009 outer catch
   rewrote the completed key as `failed/internal` for the whole TTL.
+- **`authKind` is `cli_token` only for a `cli`-mapped ability (L-110).** `IlluminateHttpBridge`
+  used to flag any token whose ability merely contained `cli` (`client:read`, `clinic:*`,
+  `decline`) as a CLI token, disagreeing with `CallerDeriver`. `fromIlluminate()` / `fromArray()`
+  take the `clients.token_abilities` map (the Illuminate wrapper controllers receive it from the
+  provider) and match exactly, case-insensitively, on abilities mapped to `cli` (default
+  `capabilities:cli`).
+- **`HttpAuthGate::PROTECTED` no longer lists the auth issuance routes (L-109).** `auth_token`
+  and `auth_device` are how the CLI logs in; `isProtected()` returns `false` for every
+  `RouteTable::isAuthIssuanceRoute()` key so nothing built on it can lock out device-code login.
+- **`AuthTokenIssuer` docblock and the device-code guide state the `capabilities:cli` ability (C-103).**
+  Tokens minted for the product CLI must carry the ability mapped to caller `cli` in
+  `clients.token_abilities`, or the CLI is an `http` caller and `cli`-only capabilities silently
+  vanish from its catalog.
 - **`capability:run` works (D-016 / REQ-024).** `RunCapabilityCommand` called a non-existent
   `ArtisanCapabilityInvoker::invoke()`, so every run printed an "undefined method" error and
   exited 1. It now normalises the flags through `ArtisanCapabilityInvoker::parseFlags()`

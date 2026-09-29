@@ -19,7 +19,8 @@ final class HttpAuthGate
     public const AUTH_API_TOKEN = 'api_token';
 
     /**
-     * Routes that always require authentication.
+     * Routes that always require authentication. The auth issuance routes
+     * ({@see RouteTable::isAuthIssuanceRoute}) are how a CLI logs in — never here (L-109 / C-001).
      *
      * @var list<string>
      */
@@ -29,8 +30,6 @@ final class HttpAuthGate
         RouteTable::ROUTE_INVOKE,
         RouteTable::ROUTE_APPROVAL_ACCEPT,
         RouteTable::ROUTE_APPROVAL_REJECT,
-        RouteTable::ROUTE_AUTH_TOKEN,
-        RouteTable::ROUTE_AUTH_DEVICE,
     ];
 
     /**
@@ -83,6 +82,9 @@ final class HttpAuthGate
     {
         if ($routeKey === RouteTable::ROUTE_HEALTH) {
             return ! (bool) ($this->options['health_public'] ?? false);
+        }
+        if (RouteTable::isAuthIssuanceRoute($routeKey)) {
+            return false;
         }
 
         return in_array($routeKey, self::PROTECTED, true);

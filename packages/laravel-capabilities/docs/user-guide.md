@@ -246,7 +246,9 @@ Product CLI is a remote client of **this** API. Do not add a second invoke contr
 |---|---|---|
 | Start | `POST …/auth/device` `{"client_id":"capabilities-cli"}` → `issueDeviceCode()` | `device_code`, `user_code`, `verification_uri`, `expires_in`, `interval` |
 | Poll (every `interval` s, floored to 10 s by the CLI) | `POST …/auth/token` `{"grant_type":"urn:ietf:params:oauth:grant-type:device_code","device_code":…,"client_id":"capabilities-cli"}` → `issueToken()` | while undecided: `{"status":"authorization_pending"}` (or `{"error":"authorization_pending"}`); `{"status":"slow_down"}` adds 5 s; `{"status":"access_denied"}` / `{"status":"expired_token"}` end the login |
-| Approved | same poll | `access_token`, `token_type`, `expires_in` |
+| Approved | same poll | `access_token`, `token_type`, `expires_in` — minted **with the CLI ability** (see below) |
+
+The token your issuer mints (and any PAT a user pastes into `capabilities auth login --token`) must carry the ability mapped to caller `cli` in `clients.token_abilities` — by default `capabilities:cli`, e.g. `$user->createToken('cli', ['capabilities:cli'])->plainTextToken`. Core derives the caller from that ability alone (D-022): a token without it is an `http` caller, so capabilities exposed on `cli` but not `http` disappear from the CLI catalog and `run` returns `not_found` with nothing pointing at the credential. The same map decides the request's `authKind` (`cli_token` only for an exact match on a `cli`-mapped ability).
 
 Pending statuses travel **inside** `ok: true` — do not throw or return an error envelope for them. The constants `AuthTokenIssuer::GRANT_DEVICE_CODE` and `AuthTokenIssuer::DEVICE_POLL_STATUSES` spell the wire values. Keep `interval >= 10` (the CLI polls no faster) unless `surfaces.http.auth_middleware` replaces the default `throttle:6,1,capabilities-auth` stack; an HTTP 429 makes the CLI back off by `Retry-After`.
 
