@@ -135,6 +135,18 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   (the meta-command wins). It is now reported as `reserved_domain`, matching
   the server, which rejects that domain at definition time.
 
+### Security
+
+- **Capability names and approval ids must be one URL path segment** — `run`,
+  `describe`, `run <name> --help`, domain/verb dispatch and `approvals
+  accept|reject` now refuse a name or id that is empty, `.` or `..`, or holds
+  `/`, `\`, `%`, `?`, `#`, whitespace or control characters. They exit 2 with a
+  `validation_failed` envelope and make no HTTP call. Before, the value was
+  joined into the path unchecked, so `run approvals/<id>/accept` reached the
+  approval accept route and bypassed a harness that allows `run` but not
+  `approvals`. The API client applies the same check to every path it builds.
+  Dotted and kebab names (`billing.create-invoice`) are unaffected.
+
 ### Documentation
 
 
