@@ -235,5 +235,5 @@ it('webhook controller source does not hard-default FakeQueue [L-004]', function
 it('README documents L-006 residual for identity/threads [L-004]', function () {
     $readme = file_get_contents(H::MSG_ROOT.'/README.md');
     expect($readme)->toContain('L-006')
-        ->and($readme)->toMatch('/in-memory|process-local|not durable/i');
+        ->and($readme)->toContain('no thread history');
 });

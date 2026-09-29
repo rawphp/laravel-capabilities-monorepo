@@ -82,6 +82,22 @@ it('happy: thread store maps chat topic to conversation thread [MSG-004]', funct
     expect($r['thread_id'])->toBe($threads->threadIdFor('100', 3));
 });
 
+it('edge: a long-lived worker keeps no per-chat thread state across updates [MSG-004]', function () {
+    // Nothing reads thread history back, so the queue-worker singleton must not grow with traffic.
+    $identity = H::identity();
+    $identity->link('42', 'u1');
+    $threads = H::threads();
+    $p = H::processor(['identity' => $identity, 'threads' => $threads]);
+
+    foreach ([[100, 3, 1], [100, 3, 2], [200, null, 3]] as [$chat, $topic, $update]) {
+        expect($p->handle(H::telegramUpdate(chatId: $chat, topicId: $topic, updateId: $update))['ok'])->toBeTrue();
+    }
+
+    expect($threads->find('100', 3))->toBeNull()
+        ->and($threads->find('200'))->toBeNull()
+        ->and($threads->history($threads->threadIdFor('100', 3)))->toBe([]);
+});
+
 it('edge: failed ProcessTelegramUpdate tags channel for failed jobs [D-019]', function () {
     $p = H::processor();
     $tags = $p->failedJobTags(H::telegramUpdate(chatId: 5, updateId: 9));

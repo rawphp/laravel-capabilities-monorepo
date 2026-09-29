@@ -47,7 +47,7 @@ use RuntimeException;
  * only when queue_driver/bot_driver=fake or APP_ENV=testing (auto).
  *
  * Link codes and identity links use a {@see LinkStore} on the host cache repository, shared by
- * web and queue workers. L-006 residual: ThreadStore history stays process-local — see README.
+ * web and queue workers. L-006: the pipeline keeps no thread history (thread ids only) — see README.
  *
  * Container wiring is unit-tested via {@see MessagingBindings} /
  * {@see registrationPlan()} without booting Laravel.

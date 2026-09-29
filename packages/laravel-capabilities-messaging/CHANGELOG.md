@@ -41,6 +41,15 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Security
 
+- **Allowlist mode ignores code-bound links** — `IdentityLinker::resolve()` and `isLinked()`
+  read the `LinkStore` only in `code_link` mode. Links are durable in the host cache, so before
+  this, switching `identity.mode` to `allowlist` still let every user bound by `/start <code>`
+  run tools. Now only `identity.allowlist` entries resolve in `allowlist` mode (fail closed);
+  the stored links stay in the cache and come back if you switch to `code_link` again.
+  `IdentityLinker::link()` now throws outside `code_link` mode instead of writing a link that
+  would never resolve. **Consumer impact:** in `allowlist` mode, list every chat user you want
+  in `identity.allowlist`.
+
 - **CallbackHandler approver binding** — a non-empty signed `approver_hint` now binds the
   callback to that product principal id (the linked user's `id`, else `getAuthIdentifier()`).
   A different linked Telegram user clicking a forwarded/leaked button gets
@@ -66,6 +75,13 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
+- **Queue workers no longer grow with chat traffic** — `ProcessTelegramUpdate` kept every user
+  message and reply in the container-singleton `ThreadStore`, in process memory with no bound,
+  and nothing read it back. The `map_thread` step now only derives the id
+  (`ThreadStore::threadIdFor()`) and stores nothing. The `thread_id` passed to `AgentTurn` is
+  unchanged. **Consumer impact:** messaging keeps no thread history; an `AgentTurn` that needs
+  earlier turns stores them itself, keyed by `thread_id`.
+
 - **Link codes and identity links are shared across processes** — `/start <code>` runs on the
   queue worker, but codes and links lived in the process-local `IdentityLinker`, so a code
   issued in a web request never bound and links vanished on restart. They now live behind
@@ -74,8 +90,7 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   an atomic claim so a code binds at most once across workers. `InMemoryLinkStore` stays the
   default for a bare `new IdentityLinker(...)` and `MessagingBindings::build()`. Allowlist
   entries stay in config. **Consumer impact:** links persist in your cache without expiry — use
-  a persistent store, or bind `LinkStore` to `new CacheLinkStore(Cache::store(...))`. The L-006
-  residual now covers `ThreadStore` history only.
+  a persistent store, or bind `LinkStore` to `new CacheLinkStore(Cache::store(...))`.
 
 - **Failures reach the host logger** — `TelegramWebhookController` and `ProcessTelegramUpdate`
   take an optional PSR-3 `logger` (the provider injects the bound `LoggerInterface`). Bad

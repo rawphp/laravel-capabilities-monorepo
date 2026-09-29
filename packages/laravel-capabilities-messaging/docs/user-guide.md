@@ -52,7 +52,7 @@ Publish config when you need overrides:
 php artisan vendor:publish --tag=capabilities-messaging-config
 ```
 
-**Migrations:** the package still exposes publish tag `capabilities-messaging-migrations`, but the migrations directory is **empty** today (only a placeholder). Link codes and identity links live in your Laravel cache (see Identity below) and thread history is process-local in-memory (L-006 residual), so there is no package schema to migrate yet. Do not expect `php artisan migrate` to create messaging tables after publishing that tag.
+**Migrations:** the package still exposes publish tag `capabilities-messaging-migrations`, but the migrations directory is **empty** today (only a placeholder). Link codes and identity links live in your Laravel cache (see Identity below) and messaging keeps no thread history (L-006), so there is no package schema to migrate yet. Do not expect `php artisan migrate` to create messaging tables after publishing that tag.
 
 ## Configure
 
@@ -109,6 +109,8 @@ Client-forged `laravel_user_id` values are never trusted.
 
 Only static entries may bind. `bindWithCode` returns `null` in this mode (and under any unrecognized mode), so a code issued elsewhere cannot bypass the allowlist.
 
+Only static entries resolve, too. Links bound earlier in `code_link` mode stay in the cache but are ignored, so switching to `allowlist` revokes every code-bound user at once (switching back to `code_link` restores them; clear the cache to drop them for good). `IdentityLinker::link()` throws in this mode.
+
 Static entries:
 
 ```php
@@ -143,7 +145,7 @@ $this->app->singleton(AgentTurn::class, SupportChatAgentTurn::class);
 ```
 
 - `toolNames(string $profile): list<string>` — capability names the profile exposes (e.g. the names from `Capability::aiTools($profile)`). Tool calls outside this list are refused.
-- `respond(array $message): array{text, tool_calls?}` — run one turn. `$message` carries `text`, the linked `user`, `thread_id`, `profile`, `tools` and `messaging` metadata. Return tool calls as `['name' => …, 'input' => […]]`; messaging invokes each one through the capability bus as `caller: agent`, with per-update idempotency keys, then sends `text` as the reply.
+- `respond(array $message): array{text, tool_calls?}` — run one turn. `$message` carries `text`, the linked `user`, `thread_id`, `profile`, `tools` and `messaging` metadata. `thread_id` is stable per chat + topic; messaging keeps no history, so store earlier turns yourself (keyed by `thread_id`) if the agent needs them. Return tool calls as `['name' => …, 'input' => […]]`; messaging invokes each one through the capability bus as `caller: agent`, with per-update idempotency keys, then sends `text` as the reply.
 
 With no `AgentTurn` bound, a linked user's message gets **no reply** and an `agent_turn_unbound` error is logged; the profile exposes no tools.
 
