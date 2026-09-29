@@ -84,6 +84,16 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   to `pending` until it has used `maxAttempts` (new constructor argument, default `3`).
   Before, one failed write left the row `failed` forever. Rows at the cap stay `failed`.
 
+### Fixed (HTTP surface)
+
+- **Sanctum CLI tokens now run as `caller: cli` (D-022).** `IlluminateHttpBridge` added
+  `adapter: http` to every authenticated credential, which shadowed
+  `clients.token_abilities` / `clients.oauth` in `CallerDeriver`, so a
+  `capabilities:cli` token always ran as `http`. The bridge now sets `adapter: http`
+  only for a session user with no token abilities or OAuth client. CLI tokens are now
+  subject to `surfaces.cli.enabled` and per-capability `surfaces` (a CLI token against an
+  `http`-only capability gets `forbidden`). Unmapped abilities still derive `http`.
+
 ## [0.5.3] - 2026-09-29
 
 ### Changed

@@ -48,7 +48,7 @@ it('maps array fixture stand-in to HttpRequestContext with server-derived auth',
         ->and($ctx->query['include_schemas'] ?? null)->toBe('1')
         ->and($ctx->authKind)->toBe(HttpAuthGate::AUTH_CLI_TOKEN)
         ->and($ctx->credential['token_abilities'] ?? null)->toBe(['capabilities:cli'])
-        ->and($ctx->credential['adapter'] ?? null)->toBe('http');
+        ->and($ctx->credential)->not->toHaveKey('adapter'); // abilities drive caller (L-003)
 });
 
 it('maps unauthenticated Illuminate Request defaults closed', function () {
@@ -85,7 +85,7 @@ it('maps authenticated Illuminate Request user and token abilities from server r
     expect($ctx->authenticated)->toBeTrue()
         ->and($ctx->user)->toBe($user)
         ->and($ctx->authKind)->toBe(HttpAuthGate::AUTH_USER)
-        ->and($ctx->credential['adapter'] ?? null)->toBe('http')
+        ->and($ctx->credential)->not->toHaveKey('adapter')
         ->and($ctx->credential['token_abilities'] ?? null)->toBe(['*']);
 });
 
@@ -320,4 +320,64 @@ it('array fixture without user stays unauthenticated by default', function () {
         ->and($ctx->user)->toBeNull()
         ->and($ctx->authKind)->toBe(HttpAuthGate::AUTH_NONE)
         ->and($ctx->credential)->toBe([]);
+});
+
+// L-003: bridge + deriver composed — Sanctum CLI token must derive caller=cli (D-022).
+it('derives caller cli for a Sanctum token with capabilities:cli through bridge and controller', function () {
+    $user = new class
+    {
+        public int $id = 5;
+
+        public function currentAccessToken(): object
+        {
+            return (object) ['abilities' => ['capabilities:cli']];
+        }
+    };
+    $request = Request::create('/capabilities', 'GET');
+    $request->setUserResolver(static fn () => $user);
+
+    $ctx = IlluminateHttpBridge::fromIlluminate($request);
+    $resolved = (new CapabilityController(HttpHelpers::mockBus()))->resolveCaller($ctx);
+
+    expect($ctx->credential)->not->toHaveKey('adapter')
+        ->and($resolved['derived'])->toBe('cli')
+        ->and($resolved['caller'])->toBe('cli');
+});
+
+it('derives caller from the oauth client map, not a defaulted http adapter', function () {
+    $ctx = IlluminateHttpBridge::fromArray([
+        'authenticated' => true,
+        'user' => HttpHelpers::user(2),
+        'oauth_client_id' => 'cli-app',
+    ]);
+    $controller = new CapabilityController(HttpHelpers::mockBus(), ['oauth' => ['cli-app' => 'cli']]);
+
+    expect($controller->resolveCaller($ctx)['derived'])->toBe('cli');
+});
+
+it('keeps unmapped token abilities as caller http', function () {
+    $ctx = IlluminateHttpBridge::fromArray([
+        'authenticated' => true,
+        'user' => HttpHelpers::user(2),
+        'token_abilities' => ['*'],
+    ]);
+
+    expect((new CapabilityController(HttpHelpers::mockBus()))->resolveCaller($ctx)['derived'])->toBe('http');
+});
+
+it('forbids a CLI token from invoking an http-only capability', function () {
+    $h = HttpHelpers::harness(['cap_surfaces' => ['http']]);
+    $ctx = IlluminateHttpBridge::fromArray([
+        'method' => 'POST',
+        'authenticated' => true,
+        'user' => $h['user'],
+        'token_abilities' => ['capabilities:cli'],
+        'json' => ['customer_id' => 1, 'amount_cents' => 100, 'currency' => 'USD'],
+    ]);
+
+    $res = $h['controller']->invoke($ctx, $h['name']);
+
+    expect($res->body['ok'])->toBeFalse()
+        ->and($res->body['error']['code'])->toBe('forbidden')
+        ->and($res->body['meta']['caller'])->toBe('cli');
 });
