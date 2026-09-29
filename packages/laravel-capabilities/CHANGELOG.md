@@ -270,6 +270,11 @@ profile — or no profile — returns `forbidden` with `normalized_code`
 
 ### Fixed
 
+- **`capability:run` works (D-016 / REQ-024).** `RunCapabilityCommand` called a non-existent
+  `ArtisanCapabilityInvoker::invoke()`, so every run printed an "undefined method" error and
+  exited 1. It now normalises the flags through `ArtisanCapabilityInvoker::parseFlags()`
+  (numeric `--acting-as` becomes an int; `--acting-as` with `--system` is refused) and calls
+  `run()`.
 - **Agent turn budget (D-013) is no longer agent-caller only:** the pipeline enforces `rate_limits.agent_turn.max_tool_calls` whenever an in-process adapter supplies `agent_turn_tool_calls`, whatever the caller. AI turns (`caller=job` from `rawphp/laravel-capabilities-ai`) are now capped. The option is never read from HTTP or tool input, and it can only deny.
 
 ### Fixed (HTTP surface)
