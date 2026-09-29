@@ -51,9 +51,14 @@ contract was never checked.
   use it by default.
 - **Fail closed** — a manager with no executor now records `executed` + `failed` with
   `not_configured` instead of reporting success.
-- **Host note** — the requester is rebuilt as a plain principal (`id`, `tenant_id`). If
-  your authorizer needs a real user model, bind your own with
-  `ApprovalManager::withExecutor(...)`.
+- **Runs as the real requester (L-005)** — the container registry resolves the original
+  requester through the default auth guard's user provider (the same lookup as the accept
+  re-check) via `CapabilityRegistry::withRequesterResolver(fn (string $type, string $id): ?object)`,
+  so `authorize()` / `run()` receive the host's user model (`$actor->can(...)` works). An
+  unresolvable requester fails closed: `forbidden`, row `executed` + `failed`, `run()` not
+  called. `SystemActor` requesters never touch the resolver. Registries built without a
+  resolver (unit tests, manual `ContainerBindings::makeRegistry`) still rebuild a plain
+  principal (`id`, `tenant_id`); wire a resolver for real user models.
 
 #### MCP integration clients are bound to configured profiles (D-023)
 

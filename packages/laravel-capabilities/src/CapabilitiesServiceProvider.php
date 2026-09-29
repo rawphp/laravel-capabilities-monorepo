@@ -176,6 +176,9 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 self::boundConnectionOrNull($app, $config, null),
                 self::boundRateLimitCacheOrNull($app),
                 $rateLimiter,
+            )->withRequesterResolver(
+                // Approved rows execute as the real requester — same lookup as the accept re-check (D-006).
+                static fn (string $type, string $id): ?object => self::authUserOrNull($app, $id),
             );
         });
         $this->app->alias(CapabilityRegistry::class, 'CapabilityRegistry');

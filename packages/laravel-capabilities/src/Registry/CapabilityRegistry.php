@@ -73,6 +73,14 @@ final class CapabilityRegistry implements CapabilityBus
     private Clock $clock;
 
     /**
+     * Host lookup for the original requester of an approved row (D-006): (actor type, id) => user or null.
+     * Null (unit default) rebuilds a plain principal from the row.
+     *
+     * @var (\Closure(string, string): ?object)|null
+     */
+    private ?\Closure $requesterResolver = null;
+
+    /**
      * @var array{
      *     agent?: array{
      *         profiles?: array<string, list<string>>,
@@ -590,6 +598,20 @@ final class CapabilityRegistry implements CapabilityBus
     }
 
     /**
+     * How the original requester of an approved row is rehydrated for execution (D-006).
+     * The service provider wires the default auth guard's user provider — the same lookup
+     * the accept re-check uses — so authorize() / run() see the real user model.
+     *
+     * @param  callable(string $actorType, string $actorId): ?object  $resolver
+     */
+    public function withRequesterResolver(callable $resolver): self
+    {
+        $this->requesterResolver = $resolver instanceof \Closure ? $resolver : \Closure::fromCallable($resolver);
+
+        return $this;
+    }
+
+    /**
      * Default approval executor (D-006): re-run the stored invoke through this pipeline
      * as the original requester — re-validate, re-scope, authorize, run once, check output.
      *
@@ -602,9 +624,16 @@ final class CapabilityRegistry implements CapabilityBus
             : $default;
         $tenantId = $str('tenant_id', null);
         $actorId = (string) $str('requester_actor_id', '');
+        $actorType = (string) $str('requester_actor_type', 'user');
 
-        if ($str('requester_actor_type', 'user') === 'system') {
+        if ($actorType === 'system') {
             $actor = SystemActor::named($actorId);
+        } elseif ($this->requesterResolver !== null) {
+            $actor = ($this->requesterResolver)($actorType, $actorId);
+            if ($actor === null) {
+                // Fail closed: never run an approved request as a fabricated principal.
+                return CapabilityResult::failure('forbidden', 'Original requester could not be resolved; approved request was not run.');
+            }
         } else {
             $actor = new stdClass;
             $actor->id = $actorId;

@@ -535,8 +535,66 @@ it('happy: provider-wired accept re-authorizes the requester via the default aut
 
     $result = $app->make(ApprovalManager::class)->accept($id, oaaProviderApprover());
 
+    // Looked up twice: once for the accept re-check, once to run as the real requester (L-005).
     expect($result->isOk())->toBeTrue()
-        ->and($looked)->toBe(['7']);
+        ->and($looked)->toBe(['7', '7']);
+});
+
+it('happy: provider-wired approved execution runs as the rehydrated user, not a stub [L-005]', function () {
+    $provider = new class
+    {
+        public function retrieveById(mixed $id): ?object
+        {
+            return new class((string) $id)
+            {
+                public function __construct(public string $id) {}
+
+                public function can(string $ability): bool
+                {
+                    return true;
+                }
+            };
+        }
+    };
+    $guard = new class($provider)
+    {
+        public function __construct(private object $provider) {}
+
+        public function getProvider(): object
+        {
+            return $this->provider;
+        }
+    };
+    $app = req048FakeApp(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+    ]));
+    $app->instance('auth', oaaProviderAuth($guard));
+    $registry = $app->make(CapabilityRegistry::class);
+    $runActors = [];
+    $registry->define('create-invoice')
+        ->input(CreateInvoiceInput::class)
+        ->authorize(static fn (mixed $input, $ctx): bool => $ctx->actor()->can('create'))
+        ->run(function (mixed $input, $ctx) use (&$runActors) {
+            $runActors[] = $ctx->actor();
+
+            return ['ok' => true];
+        })
+        ->register($registry);
+    $row = $app->make(ApprovalManager::class)->request([
+        'capability_name' => 'create-invoice',
+        'requester_actor_type' => 'user',
+        'requester_actor_id' => '7',
+        'original_caller' => 'http',
+        'input_json' => ['customer_id' => 1, 'amount_cents' => 500, 'currency' => 'AUD'],
+    ]);
+
+    $result = $app->make(ApprovalManager::class)->accept((string) $row['id'], oaaProviderApprover());
+
+    expect($result->isOk())->toBeTrue()
+        ->and($runActors)->toHaveCount(1)
+        ->and($runActors[0])->not->toBeInstanceOf(stdClass::class)
+        ->and($runActors[0]->id)->toBe('7');
 });
 
 // --- D-019: provider-built CapabilityController counts unauthenticated denials on the bound Metrics ---
