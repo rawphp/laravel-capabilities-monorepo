@@ -41,6 +41,15 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Security
 
+- **Allowlist mode ignores code-bound links** — `IdentityLinker::resolve()` and `isLinked()`
+  read the `LinkStore` only in `code_link` mode. Links are durable in the host cache, so before
+  this, switching `identity.mode` to `allowlist` still let every user bound by `/start <code>`
+  run tools. Now only `identity.allowlist` entries resolve in `allowlist` mode (fail closed);
+  the stored links stay in the cache and come back if you switch to `code_link` again.
+  `IdentityLinker::link()` now throws outside `code_link` mode instead of writing a link that
+  would never resolve. **Consumer impact:** in `allowlist` mode, list every chat user you want
+  in `identity.allowlist`.
+
 - **CallbackHandler approver binding** — a non-empty signed `approver_hint` now binds the
   callback to that product principal id (the linked user's `id`, else `getAuthIdentifier()`).
   A different linked Telegram user clicking a forwarded/leaked button gets

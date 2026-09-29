@@ -156,3 +156,38 @@ it('happy: the container binds a cache-backed LinkStore shared by web and worker
     expect($web->make(LinkStore::class))->toBeInstanceOf(CacheLinkStore::class)
         ->and($web->make(IdentityLinker::class)->isLinked('tg-1'))->toBeTrue();
 });
+
+it('fail: switching identity.mode to allowlist stops code-bound links resolving [MSG-002]', function () {
+    $cache = new Repository(new ArrayStore);
+    $codeLink = linkerOver($cache);
+    $codeLink->bindWithCode('tg-1', $codeLink->issueLinkCode('user-code'));
+    $codeLink->link('tg-2', 'user-admin');
+
+    $allowlist = linkerOver($cache, ['identity' => ['mode' => 'allowlist', 'allowlist' => [
+        ['telegram_user_id' => 'tg-al', 'laravel_user_id' => 'user-al'],
+    ]]]);
+
+    expect($allowlist->resolve(['telegram_user_id' => 'tg-1']))->toBeNull()
+        ->and($allowlist->resolve(['telegram_user_id' => 'tg-2']))->toBeNull()
+        ->and($allowlist->isLinked('tg-1'))->toBeFalse()
+        ->and($allowlist->resolve(['telegram_user_id' => 'tg-al'])?->id)->toBe('user-al');
+});
+
+it('fail: an allowlisted telegram user resolves to the allowlist entry, not an old code link [MSG-002]', function () {
+    $cache = new Repository(new ArrayStore);
+    linkerOver($cache)->link('tg-1', 'user-code');
+
+    $allowlist = linkerOver($cache, ['identity' => ['mode' => 'allowlist', 'allowlist' => [
+        ['telegram_user_id' => 'tg-1', 'laravel_user_id' => 'user-al'],
+    ]]]);
+
+    expect($allowlist->resolve(['telegram_user_id' => 'tg-1'])?->id)->toBe('user-al');
+});
+
+it('fail: explicit link is refused outside code_link mode [MSG-002]', function () {
+    $cache = new Repository(new ArrayStore);
+
+    expect(fn () => linkerOver($cache, ['identity' => ['mode' => 'allowlist']])->link('tg-1', 'user-1'))
+        ->toThrow(RuntimeException::class, 'code_link');
+    expect($cache->get(CacheLinkStore::PREFIX.'link:tg-1'))->toBeNull();
+});

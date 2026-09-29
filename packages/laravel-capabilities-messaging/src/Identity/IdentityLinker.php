@@ -14,6 +14,7 @@ use RuntimeException;
  * Modes: code_link | allowlist. Never trusts client-forged laravel_user_id.
  * Codes and code-bound links live in a {@see LinkStore} (cache-backed in the container, so a
  * code issued in the web process binds on the queue worker); allowlist entries stay in config.
+ * Stored links resolve only in code_link mode: switching to allowlist leaves only config entries.
  * Denials (forged bind, cross-tenant resolve) are counted on the optional core Metrics contract (D-019).
  */
 final class IdentityLinker implements ConversationIdentity
@@ -109,9 +110,14 @@ final class IdentityLinker implements ConversationIdentity
 
     /**
      * Explicit link (tests / admin). Not available from untrusted webhook fields.
+     * Refused outside code_link mode, where stored links would never resolve.
      */
     public function link(string $telegramUserId, string $laravelUserId, ?string $tenantId = null): object
     {
+        if ($this->config->identityMode() !== 'code_link') {
+            throw new RuntimeException('Explicit identity links need identity.mode code_link (MSG-002).');
+        }
+
         $this->store->putLink($telegramUserId, [
             'user_id' => $laravelUserId,
             'tenant_id' => $tenantId,
@@ -167,13 +173,17 @@ final class IdentityLinker implements ConversationIdentity
     }
 
     /**
-     * A code-bound or explicit link wins over an allowlist entry for the same Telegram user.
+     * In code_link mode a code-bound or explicit link wins over an allowlist entry for the same
+     * Telegram user. In any other mode stored links are ignored, so switching to allowlist revokes
+     * every code-bound user without touching the store (fail closed).
      *
      * @return array{user_id: string, tenant_id: string|null, telegram_user_id: string}|null
      */
     private function findLink(string $telegramUserId): ?array
     {
-        return $this->store->findLink($telegramUserId) ?? $this->allowlisted[$telegramUserId] ?? null;
+        $stored = $this->config->identityMode() === 'code_link' ? $this->store->findLink($telegramUserId) : null;
+
+        return $stored ?? $this->allowlisted[$telegramUserId] ?? null;
     }
 
     public function canUseTools(?object $user): bool

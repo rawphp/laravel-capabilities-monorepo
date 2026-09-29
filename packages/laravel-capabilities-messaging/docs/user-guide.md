@@ -109,6 +109,8 @@ Client-forged `laravel_user_id` values are never trusted.
 
 Only static entries may bind. `bindWithCode` returns `null` in this mode (and under any unrecognized mode), so a code issued elsewhere cannot bypass the allowlist.
 
+Only static entries resolve, too. Links bound earlier in `code_link` mode stay in the cache but are ignored, so switching to `allowlist` revokes every code-bound user at once (switching back to `code_link` restores them; clear the cache to drop them for good). `IdentityLinker::link()` throws in this mode.
+
 Static entries:
 
 ```php
