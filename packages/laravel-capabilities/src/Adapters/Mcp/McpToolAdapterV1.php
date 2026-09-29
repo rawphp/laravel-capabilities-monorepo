@@ -3,6 +3,7 @@
 namespace Rawphp\Capabilities\Adapters\Mcp;
 
 use Rawphp\Capabilities\Adapters\AdapterApi;
+use Rawphp\Capabilities\Adapters\Ai\AiToolAdapterV1;
 use Rawphp\Capabilities\Adapters\PeerIncompatibleException;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 use Rawphp\Capabilities\Adapters\StructuredToolResponse;
@@ -36,6 +37,7 @@ final class McpToolAdapterV1 implements McpToolAdapter
         private readonly bool $surfaceEnabled = true,
         private readonly bool $requireCompatiblePeer = true,
         private readonly int $adapterApi = AdapterApi::V1,
+        private readonly bool $requireProfile = true,
     ) {}
 
     public function supportsInstalledPeer(): bool
@@ -222,6 +224,11 @@ final class McpToolAdapterV1 implements McpToolAdapter
                 $clean,
                 $invokeOptions,
             );
+        }
+
+        // Execution obeys the same rule as the tool list (D-008): no profile, no full-catalog run.
+        if ($this->requireProfile) {
+            return AiToolAdapterV1::profileRequired('mcp');
         }
 
         return $this->registry->invoke($name, $clean, $invokeOptions);

@@ -6,6 +6,8 @@ use ArrayAccess;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\ServiceProvider;
+use Rawphp\Capabilities\Adapters\Ai\AiToolAdapter;
+use Rawphp\Capabilities\Adapters\Ai\AiToolAdapterV1;
 use Rawphp\Capabilities\Adapters\Artisan\ArtisanCommandRegistrar;
 use Rawphp\Capabilities\Adapters\Artisan\ArtisanCommandTable;
 use Rawphp\Capabilities\Adapters\Http\ApprovalController;
@@ -176,6 +178,9 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 self::boundConnectionOrNull($app, $config, null),
                 self::boundRateLimitCacheOrNull($app),
                 $rateLimiter,
+            )->withRequesterResolver(
+                // Approved rows execute as the real requester — same lookup as the accept re-check (D-006).
+                static fn (string $type, string $id): ?object => self::authUserOrNull($app, $id),
             );
         });
         $this->app->alias(CapabilityRegistry::class, 'CapabilityRegistry');
@@ -188,6 +193,8 @@ class CapabilitiesServiceProvider extends ServiceProvider
         $this->app->singleton(CapabilityController::class, function ($app) {
             $config = self::configFromApp($app);
             $http = is_array($config['surfaces']['http'] ?? null) ? $config['surfaces']['http'] : [];
+            // One header setting: idempotency.header (D-005 / L-011).
+            $http['idempotency_header'] ??= (string) ($config['idempotency']['header'] ?? 'Idempotency-Key');
             $clients = is_array($config['clients'] ?? null) ? $config['clients'] : [];
 
             return new CapabilityController(
@@ -252,9 +259,26 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 authResolver: $app->make(McpAuthProfileResolver::class),
                 surfaceEnabled: $enabled,
                 requireCompatiblePeer: $requirePeer,
+                requireProfile: (bool) ($mcp['require_profile'] ?? true),
             );
         });
         $this->app->alias(McpToolAdapter::class, 'McpToolAdapter');
+
+        // Agent adapter singleton — same config knobs as MCP (surfaces.agent.*), incl. require_profile (D-008).
+        $this->app->singleton(AiToolAdapter::class, function ($app) {
+            $config = self::configFromApp($app);
+            $agent = is_array($config['surfaces']['agent'] ?? null) ? $config['surfaces']['agent'] : [];
+            $requirePeer = (string) ($agent['on_incompatible'] ?? 'fail') !== 'disable';
+
+            return new AiToolAdapterV1(
+                registry: $app->make(CapabilityRegistry::class),
+                probe: $app->make(PeerVersionProbe::class),
+                surfaceEnabled: (bool) ($agent['enabled'] ?? false),
+                requireCompatiblePeer: $requirePeer,
+                requireProfile: (bool) ($agent['require_profile'] ?? true),
+            );
+        });
+        $this->app->alias(AiToolAdapter::class, 'AiToolAdapter');
     }
 
     /**

@@ -6,6 +6,7 @@ use Closure;
 use Error;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use InvalidArgumentException;
 use PDOException;
@@ -43,11 +44,26 @@ use Throwable;
 final class InvokePipeline
 {
     /**
+     * Builds the #[Capability] class handler (D-017). Defaults to the container so
+     * constructor dependencies resolve; units inject a factory.
+     *
+     * @var Closure(class-string): object
+     */
+    public Closure $handlerFactory;
+
+    /**
+     * Connection for the opt-in outer transaction (D-010 transactions.wrap_run).
+     * Null with wrap_run on is a configuration error and fails closed.
+     */
+    public ?ConnectionInterface $transactionConnection = null;
+
+    /**
      * @param  array{
      *     enabled?: bool,
      *     defaults?: array{per_minute?: int, per_capability_per_minute?: int},
      *     agent_turn?: array{max_tool_calls?: int}
      * }  $rateLimitConfig
+     * @param  (Closure(class-string): object)|null  $handlerFactory
      */
     public function __construct(
         public JsonSchemaValidator $jsonSchema,
@@ -74,7 +90,11 @@ final class InvokePipeline
                 'max_tool_calls' => 16,
             ],
         ],
-    ) {}
+        ?Closure $handlerFactory = null,
+    ) {
+        $this->handlerFactory = $handlerFactory
+            ?? static fn (string $class): object => Container::getInstance()->make($class);
+    }
 
     public function agentTurnBudget(): AgentTurnBudget
     {
@@ -199,16 +219,43 @@ final class InvokePipeline
                 $successMeta,
             ));
         } catch (Throwable $e) {
+            return $this->finishUncaught($state, $e);
+        }
+    }
+
+    /**
+     * A throwable escaping any stage (authorize callables, stores, rate limiter, output
+     * validation, strict audit) is a bug-class failure: report it, hide the message, and
+     * still run the failure finish so a claimed Idempotency-Key is stored as failed rather
+     * than left `processing` until its TTL (D-005). The finish itself may be what is broken,
+     * so a second throw falls back to a bare envelope.
+     */
+    private function finishUncaught(InvokeState $state, Throwable $e): CapabilityResult
+    {
+        $this->reportThrowable($e);
+        $failure = CapabilityResult::failure(code: 'internal', message: 'Internal error.');
+
+        try {
+            return $this->results()->finishFailure($state, $failure);
+        } catch (Throwable $finishFailed) {
+            $this->reportThrowable($finishFailed);
             $state->mark(PipelineStages::WIRE_RESPONSE);
             $this->observation->lastState = $state;
             $this->observation->lastStages = $state->stages;
-            $this->results()->recordFailure($state->definition->name, $e->getMessage(), $state->caller, 'internal');
 
             return CapabilityResult::failure(
                 code: 'internal',
-                message: $e->getMessage(),
+                message: 'Internal error.',
                 meta: ['request_id' => $state->requestId, 'stages' => $state->stages],
             );
+        }
+    }
+
+    private function reportThrowable(Throwable $e): void
+    {
+        $container = Container::getInstance();
+        if ($container->bound(ExceptionHandler::class)) {
+            $container->make(ExceptionHandler::class)->report($e);
         }
     }
 
@@ -543,11 +590,28 @@ final class InvokePipeline
     {
         try {
             $input = $this->hydrate($definition, $rawInput);
+
+            return $this->allows($definition, $input, $context, $this->makeHandler($definition));
         } catch (Throwable) {
             return false;
         }
+    }
 
-        return $this->allows($definition, $input, $context);
+    /**
+     * Resolve the D-017 class handler once per invoke (null for fluent definitions).
+     */
+    private function handler(InvokeState $state): ?object
+    {
+        return $state->handler ??= $this->makeHandler($state->definition);
+    }
+
+    private function makeHandler(CapabilityDefinition $definition): ?object
+    {
+        if ($definition->handlerClass === null) {
+            return null;
+        }
+
+        return ($this->handlerFactory)($definition->handlerClass);
     }
 
     /**
@@ -569,11 +633,19 @@ final class InvokePipeline
         return $inputClass::validate($rawInput);
     }
 
-    private function allows(CapabilityDefinition $definition, mixed $input, mixed $context): bool
+    /**
+     * Authorize decision order (D-017): fluent authorize callable → class authorize()
+     * → host Authorizer (deny by default, L-003).
+     */
+    private function allows(CapabilityDefinition $definition, mixed $input, mixed $context, ?object $handler): bool
     {
         $definitionAuth = $definition->authorize;
         if (is_callable($definitionAuth)) {
             return (bool) $definitionAuth($input, $context);
+        }
+
+        if ($handler !== null && method_exists($handler, 'authorize')) {
+            return (bool) self::callWithArity([$handler, 'authorize'], $input, $context);
         }
 
         return $this->authorizer->authorize($definition->name, $input, $context);
@@ -593,7 +665,7 @@ final class InvokePipeline
             );
         }
 
-        if (! $this->allows($state->definition, $state->input, $state->context)) {
+        if (! $this->allows($state->definition, $state->input, $state->context, $this->handler($state))) {
             return CapabilityResult::failure(
                 code: 'forbidden',
                 message: sprintf('Not authorized to invoke "%s".', $state->definition->name),
@@ -614,9 +686,25 @@ final class InvokePipeline
             return $this->buildApprovalRequired($state, forced: true);
         }
 
+        // Executing an already-approved request (D-006 accept / resume): the decision was
+        // made; asking again would loop the row back to pending.
+        if (isset($state->options['executing_approval_id'])) {
+            return null;
+        }
+
         $needs = (bool) ($state->options['needs_approval'] ?? false);
         if (! $needs && is_callable($state->options['needs_approval_callback'] ?? null)) {
             $needs = (bool) $state->options['needs_approval_callback']($state->input, $state->context);
+        }
+
+        // The capability's own rule — governance is part of the definition (D-006 / D-017):
+        // fluent needsApproval(callable) or the class handler's needsApproval().
+        if (! $needs && is_callable($state->definition->needsApproval)) {
+            $needs = (bool) self::callWithArity($state->definition->needsApproval, $state->input, $state->context);
+        }
+        $handler = $this->handler($state);
+        if (! $needs && $handler !== null && method_exists($handler, 'needsApproval')) {
+            $needs = (bool) self::callWithArity([$handler, 'needsApproval'], $state->input, $state->context);
         }
 
         // Explicit approval policy + option gate; bare policy does not always require.
@@ -647,6 +735,9 @@ final class InvokePipeline
                 : $state->rawInput,
             'input_hash' => $state->requestHash,
             'idempotency_key' => $state->idempotencyKey,
+            // The capability's own governance travels with the row (D-006): who may decide, how long.
+            'approval_policy' => $state->definition->approvalPolicy,
+            'approval_ttl_hours' => $state->definition->approvalTtlHours,
         ]);
 
         $state->approvalId = (string) $record['id'];
@@ -741,11 +832,11 @@ final class InvokePipeline
         }
 
         if ($this->rateLimiter->tooManyAttempts($actorKey, $perMinute)) {
-            return $this->rateLimitedResult('Rate limit exceeded (per_minute).');
+            return $this->rateLimitedResult('Rate limit exceeded (per_minute).', $this->rateLimiter->availableIn($actorKey));
         }
 
         if ($this->rateLimiter->tooManyAttempts($capKey, $perCap)) {
-            return $this->rateLimitedResult('Rate limit exceeded (per_capability_per_minute).');
+            return $this->rateLimitedResult('Rate limit exceeded (per_capability_per_minute).', $this->rateLimiter->availableIn($capKey));
         }
 
         $decay = (int) ($override['decay'] ?? 60);
@@ -755,15 +846,17 @@ final class InvokePipeline
         return null;
     }
 
-    private function rateLimitedResult(string $message): CapabilityResult
+    /**
+     * @param  int  $retryAfter  seconds until the tripped window frees (C-007); omitted when unknown
+     */
+    private function rateLimitedResult(string $message, int $retryAfter = 0): CapabilityResult
     {
-        return CapabilityResult::failure(
-            code: 'rate_limited',
-            message: $message,
-            extra: array_merge(ErrorCodeMap::wireFields('rate_limited'), [
-                'retryable' => true,
-            ]),
-        );
+        $extra = array_merge(ErrorCodeMap::wireFields('rate_limited'), ['retryable' => true]);
+        if ($retryAfter > 0) {
+            $extra['retry_after'] = $retryAfter;
+        }
+
+        return CapabilityResult::failure(code: 'rate_limited', message: $message, extra: $extra);
     }
 
     /**
@@ -788,16 +881,28 @@ final class InvokePipeline
             );
         }
 
+        // Domain owns its transaction by default; wrap_run is opt-in (D-010) and needs a connection.
+        if ($this->wrapRun && $this->transactionConnection === null) {
+            return CapabilityResult::failure(
+                code: 'not_configured',
+                message: 'transactions.wrap_run is enabled but no database connection is wired for the outer transaction (D-010).',
+            );
+        }
+
         try {
             $state->runCalled = true;
             $state->runCount++;
             $state->domainSideEffect = true;
-            // Domain owns its transaction by default; wrap_run is opt-in (D-010).
-            if ($this->wrapRun) {
-                $this->observation->lastRunWasWrapped = true;
-            }
             $this->observation->invokeStartedAt ??= microtime(true);
-            $state->output = $this->executeRun($state->definition, $state->input, $state->context);
+            $handler = $this->handler($state);
+            if ($this->wrapRun && $this->transactionConnection !== null) {
+                $this->observation->lastRunWasWrapped = true;
+                $state->output = $this->transactionConnection->transaction(
+                    fn (): mixed => $this->executeRun($state->definition, $state->input, $state->context, $handler),
+                );
+            } else {
+                $state->output = $this->executeRun($state->definition, $state->input, $state->context, $handler);
+            }
         } catch (Throwable $e) {
             return $this->runFailure($e);
         }
@@ -817,10 +922,7 @@ final class InvokePipeline
 
         // QueryException is a PDOException.
         if ($e instanceof Error || $e instanceof PDOException) {
-            $container = Container::getInstance();
-            if ($container->bound(ExceptionHandler::class)) {
-                $container->make(ExceptionHandler::class)->report($e);
-            }
+            $this->reportThrowable($e);
 
             return CapabilityResult::failure(code: 'internal', message: 'Internal error.');
         }
@@ -884,40 +986,44 @@ final class InvokePipeline
         return $this->auditStage->record($state, $success, $failure);
     }
 
-    private function executeRun(CapabilityDefinition $definition, mixed $input, mixed $context = null): mixed
+    private function executeRun(CapabilityDefinition $definition, mixed $input, mixed $context, ?object $handler): mixed
     {
         if (is_callable($definition->run)) {
-            $run = Closure::fromCallable($definition->run);
-
-            return self::acceptsContext(new ReflectionFunction($run))
-                ? $run($input, $context)
-                : $run($input);
+            return self::callWithArity($definition->run, $input, $context);
         }
 
-        if ($definition->handlerClass !== null) {
-            $handler = new ($definition->handlerClass);
+        if ($handler !== null) {
             if (! method_exists($handler, 'run')) {
                 throw new InvalidArgumentException(sprintf(
                     'Handler %s has no run() method.',
-                    $definition->handlerClass,
+                    $handler::class,
                 ));
             }
 
-            return self::acceptsContext(new ReflectionMethod($handler, 'run'))
-                ? $handler->run($input, $context)
-                : $handler->run($input);
+            return self::callWithArity([$handler, 'run'], $input, $context);
         }
 
         throw new InvalidArgumentException('No run handler.');
     }
 
     /**
-     * D-003: pass context to run() only when its signature takes a second argument.
-     * Decided up front so a run() is never invoked twice for one invoke.
+     * D-003: pass context only when the signature takes a second argument. Decided
+     * up front from the signature so a callable is never invoked twice for one invoke.
      */
-    private static function acceptsContext(ReflectionFunctionAbstract $run): bool
+    private static function callWithArity(callable $callable, mixed $input, mixed $context): mixed
     {
-        return $run->isVariadic() || $run->getNumberOfParameters() >= 2;
+        $reflection = is_array($callable)
+            ? new ReflectionMethod($callable[0], $callable[1])
+            : new ReflectionFunction(Closure::fromCallable($callable));
+
+        return self::acceptsContext($reflection)
+            ? $callable($input, $context)
+            : $callable($input);
+    }
+
+    private static function acceptsContext(ReflectionFunctionAbstract $callable): bool
+    {
+        return $callable->isVariadic() || $callable->getNumberOfParameters() >= 2;
     }
 
     /**

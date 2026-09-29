@@ -52,6 +52,7 @@ final class CapabilityDefinition
      * @param  array<string, mixed>|bool|null  $audit
      * @param  list<string>  $idempotencyKeyFields  Input fields hashed into a key when the caller sends none (D-005)
      * @param  callable|null  $authorize
+     * @param  callable|null  $needsApproval  (input, context) => bool; the capability's own approval rule (D-006)
      * @param  callable|null  $run
      */
     public function __construct(
@@ -78,6 +79,7 @@ final class CapabilityDefinition
         public readonly ?string $handlerClass = null,
         public readonly mixed $authorize = null,
         public readonly mixed $run = null,
+        public readonly mixed $needsApproval = null,
         public readonly string $schemaVersion = '1',
         public readonly string $source = 'attribute',
         public readonly mixed $canDiscover = null,

@@ -122,6 +122,7 @@ final class AdapterHelpers
             probe: $probe,
             surfaceEnabled: (bool) ($opts['agent_enabled'] ?? true),
             requireCompatiblePeer: (bool) ($opts['require_peer'] ?? true),
+            requireProfile: (bool) ($opts['require_profile'] ?? true),
         );
 
         $mcp = new McpToolAdapterV1(
@@ -130,6 +131,7 @@ final class AdapterHelpers
             authResolver: $auth,
             surfaceEnabled: (bool) ($opts['mcp_enabled'] ?? true),
             requireCompatiblePeer: (bool) ($opts['require_peer'] ?? true),
+            requireProfile: (bool) ($opts['require_profile'] ?? true),
         );
 
         return [

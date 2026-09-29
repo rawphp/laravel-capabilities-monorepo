@@ -19,6 +19,9 @@ final class InMemoryRateLimiter implements RateLimiter
 
     private ?string $lastKey = null;
 
+    /** @var array<string, int> decay window (seconds) recorded on the last hit per key */
+    private array $decays = [];
+
     public function tooManyAttempts(string $key, int $maxAttempts): bool
     {
         return $this->attemptCount($key) >= $maxAttempts;
@@ -29,6 +32,7 @@ final class InMemoryRateLimiter implements RateLimiter
         $now = microtime(true);
         $this->prune($key, $now, $decaySeconds);
         $this->hits[$key][] = $now;
+        $this->decays[$key] = $decaySeconds;
         $this->lastKey = $key;
 
         return count($this->hits[$key]);
@@ -39,9 +43,20 @@ final class InMemoryRateLimiter implements RateLimiter
         return max(0, $maxAttempts - $this->attemptCount($key));
     }
 
+    public function availableIn(string $key): int
+    {
+        $decay = $this->decays[$key] ?? 60;
+        $this->prune($key, microtime(true), $decay);
+        if (($this->hits[$key] ?? []) === []) {
+            return 0;
+        }
+
+        return max(0, (int) ceil(min($this->hits[$key]) + $decay - microtime(true)));
+    }
+
     public function clear(string $key): void
     {
-        unset($this->hits[$key]);
+        unset($this->hits[$key], $this->decays[$key]);
     }
 
     /**

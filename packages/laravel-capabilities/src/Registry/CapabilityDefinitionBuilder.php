@@ -61,6 +61,8 @@ final class CapabilityDefinitionBuilder
 
     private mixed $authorize = null;
 
+    private mixed $needsApproval = null;
+
     private mixed $run = null;
 
     private string $schemaVersion = '1';
@@ -265,6 +267,17 @@ final class CapabilityDefinitionBuilder
         return $this;
     }
 
+    /**
+     * The capability's own approval rule (D-006): `(Input $input, CapabilityContext $ctx): bool`.
+     * True stores an approval request and returns approval_required instead of running.
+     */
+    public function needsApproval(callable $needsApproval): self
+    {
+        $this->needsApproval = $needsApproval;
+
+        return $this;
+    }
+
     public function run(callable $run): self
     {
         $this->run = $run;
@@ -316,6 +329,7 @@ final class CapabilityDefinitionBuilder
             handlerClass: null,
             authorize: $this->authorize,
             run: $this->run,
+            needsApproval: $this->needsApproval,
             schemaVersion: $this->schemaVersion,
             source: 'fluent',
             canDiscover: $this->canDiscover,

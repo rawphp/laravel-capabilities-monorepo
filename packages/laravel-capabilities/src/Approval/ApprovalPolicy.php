@@ -55,6 +55,23 @@ final class ApprovalPolicy
         return $this->policy;
     }
 
+    /**
+     * The policy that governs one approval row: the capability's declared
+     * `approvalPolicy` stored on the row when present, otherwise this (global) one.
+     * Host role / staff / custom checkers are kept.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    public function forRow(array $row): self
+    {
+        $declared = $row['approval_policy'] ?? null;
+        if (! is_string($declared) || $declared === '' || $declared === $this->policy) {
+            return $this;
+        }
+
+        return new self($declared, $this->customChecker, $this->roleChecker, $this->staffChecker, $this->defaultRole);
+    }
+
     public function isDefaultMultiTenantSafe(): bool
     {
         // Silent "any authenticated user" is not the default in multi-tenant installs.

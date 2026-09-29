@@ -375,7 +375,8 @@ final class ApprovalManager implements ApprovalGateway
         }
 
         // Scope before status: a replay or terminal status must not leak to an out-of-policy caller.
-        if (! $this->policy->allows($row, $approver, $options['tenant_id'] ?? $this->tenantOf($approver))) {
+        // The row carries the capability's declared policy (D-006); the manager's is the fallback.
+        if (! $this->policy->forRow($row)->allows($row, $approver, $options['tenant_id'] ?? $this->tenantOf($approver))) {
             $this->metrics->increment('approvals_accept_total', 1, ['result' => 'forbidden']);
 
             return CapabilityResult::failure('forbidden', 'Approver is not authorized for this approval.');
@@ -508,7 +509,7 @@ final class ApprovalManager implements ApprovalGateway
             return CapabilityResult::failure('conflict', 'Approval is not pending.');
         }
 
-        if (! $this->policy->allows($row, $approver, $options['tenant_id'] ?? $this->tenantOf($approver))) {
+        if (! $this->policy->forRow($row)->allows($row, $approver, $options['tenant_id'] ?? $this->tenantOf($approver))) {
             return CapabilityResult::failure('forbidden', 'Approver is not authorized for this approval.');
         }
 

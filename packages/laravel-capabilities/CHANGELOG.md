@@ -13,6 +13,16 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Added
 
+- **Approval is declared on the capability (D-006, L-002).** Fluent definitions gain
+  `->needsApproval(fn (Input $input, CapabilityContext $ctx): bool)`; class capabilities
+  use their `needsApproval()` method. Before, approval could only be triggered by the
+  internal invoke options `needs_approval` / `needs_approval_callback` / `require_approval`,
+  which no adapter sets — so the whole approval state machine was unreachable from a real
+  surface. The row now also stores the capability's `approvalPolicy` (`approval_policy`,
+  new nullable column via migration
+  `2026_09_29_000001_add_approval_policy_to_capabilities_approvals_table`) and its
+  `approvalTtlHours` is applied to `expires_at`. Custom `ApprovalStore` / `TableGateway`
+  implementations must persist the new key.
 - **Approval executor identity columns** — `capabilities_approvals` gains nullable
   `executor_actor_type` / `executor_actor_id` (new migration
   `2026_09_24_000001_add_executor_actor_to_capabilities_approvals_table`).
@@ -42,6 +52,17 @@ tools themselves (messaging) pass it as an invoke option. `null` for invokes out
 
 ### Changed (BREAKING)
 
+#### Invokes without an actor are refused on every surface (D-002, L-004)
+
+`ResolveActor` used to hand any non-job invoke that omitted `options['actor']` a
+fabricated user (`stdClass`, `id = 1`, `name = default-user`). That principal drove
+`authorize()`, rate-limit keys, idempotency identity and audit — usually as the id of the
+first (admin) user. The fallback is gone: a missing actor now fails closed with
+`unauthenticated` before `run()`, exactly as jobs and explicit `null` already did. Pass
+`'actor' => $request->user()` (or a `SystemActor` / `CapabilityContext`) on every in-process
+`invoke()`; adapters already do. `ResolveActor::defaultUser()` is removed — build your own
+test principal.
+
 #### Accepted approvals now run the capability
 
 Before this change, an `ApprovalManager` with no executor bound — which included the
@@ -57,9 +78,14 @@ contract was never checked.
   use it by default.
 - **Fail closed** — a manager with no executor now records `executed` + `failed` with
   `not_configured` instead of reporting success.
-- **Host note** — the requester is rebuilt as a plain principal (`id`, `tenant_id`). If
-  your authorizer needs a real user model, bind your own with
-  `ApprovalManager::withExecutor(...)`.
+- **Runs as the real requester (L-005)** — the container registry resolves the original
+  requester through the default auth guard's user provider (the same lookup as the accept
+  re-check) via `CapabilityRegistry::withRequesterResolver(fn (string $type, string $id): ?object)`,
+  so `authorize()` / `run()` receive the host's user model (`$actor->can(...)` works). An
+  unresolvable requester fails closed: `forbidden`, row `executed` + `failed`, `run()` not
+  called. `SystemActor` requesters never touch the resolver. Registries built without a
+  resolver (unit tests, manual `ContainerBindings::makeRegistry`) still rebuild a plain
+  principal (`id`, `tenant_id`); wire a resolver for real user models.
 
 #### MCP integration clients are bound to configured profiles (D-023)
 
@@ -75,10 +101,72 @@ profile — or no profile — returns `forbidden` with `normalized_code`
 
 ### Changed
 
+- **Pipeline `rate_limited` sends a backoff hint (D-013, C-007).** The envelope now carries
+  `error.retry_after` (seconds until the tripped per-minute / per-capability window frees)
+  and `HttpResponse::fromResult` adds `Retry-After` on 429 when it is present (an explicit
+  header passed by the caller wins). The zero-limit edge and the agent turn budget send none.
+  **Contract change:** `Contracts\RateLimiter` gains `availableIn(string $key): int`;
+  `InMemoryRateLimiter` and `LaravelCacheRateLimiter` implement it — host implementations
+  must add it (return `0` when unknown).
+- **`transactions.wrap_run = true` now really wraps `run()` (D-010, L-010).** The flag only
+  set a test-visible marker; `run()` was called exactly as with the flag off, so an app that
+  opted in for atomicity got none. The pipeline now executes `run()` inside
+  `ConnectionInterface::transaction()` on the connection the container / `makeRegistry`
+  hands it (`CapabilityRegistry::withTransactionConnection()`); a domain throw rolls back and
+  keeps its `domain_error` mapping. `wrap_run` on with no connection fails closed at invoke
+  with `not_configured` (run never called). The wrap covers `run()` only — output validation,
+  idempotency storage and the audit record still happen after commit, so strict audit
+  failure cannot un-commit a wrapped run (see D-010 audit modes).
+- **`idempotency.*` config now reaches the guard (D-005, L-011).** `enabled`, `ttl_hours`,
+  `header` and `warn_missing_key` were published but never applied: the pipeline always used
+  `IdempotencyConfig::defaults()`, and the HTTP controller read an undocumented
+  `surfaces.http.idempotency_header`. `ContainerBindings::makeRegistry` (and the container
+  registry) now apply `config('capabilities.idempotency')`; `CapabilityRegistry` gains
+  `withIdempotencyConfig(array|IdempotencyConfig)`, `idempotencyConfig()` and
+  `idempotencyWarnings()`, and a constructor `idempotencyConfig` array. `withIdempotencyStore()`
+  / `withClock()` keep the configured TTL. `enabled: false` makes the guard inert (no lookup,
+  no store, no key policy). The container `CapabilityController` reads the header name from
+  `idempotency.header`; an explicit `surfaces.http.idempotency_header` still wins.
+- **Uncaught pipeline throwables are reported, hidden, and release the idempotency key (L-009).**
+  An exception escaping a non-run stage (an `authorize()` callable, a store, the rate
+  limiter, output validation, strict audit) returned `internal` with the raw
+  `$e->getMessage()` on the wire — SQL text and bindings included — without reporting it,
+  and skipped the failure finish, so a key claimed at idempotency lookup stayed
+  `processing` (every retry answered `busy`) until its TTL. The catch now reports through
+  the bound `ExceptionHandler`, answers `internal` / `Internal error.` (same as run-stage
+  bugs), and runs the normal failure finish: the key is stored `failed` and a retry replays
+  that failure. If the finish itself throws, that is reported too and a bare `internal`
+  envelope is returned.
+- **Accept / reject / forced resume enforce the capability's `approvalPolicy` (D-006, L-002).**
+  `ApprovalManager` applied only its global `approval.default_policy`
+  (`requester_or_role`), so a capability declaring `approvalPolicy: 'role:finance'` still let
+  the requester self-approve. Decisions now use `ApprovalPolicy::forRow($row)`: the row's
+  stored policy when present (host role / staff / custom checkers are kept), otherwise the
+  global default. Rows written before this release have no stored policy and behave as before.
+  The approved execution passes `executing_approval_id` to the pipeline so the needs-approval
+  gate does not re-request approval for an already-decided row.
+- **Class capabilities run their own `authorize()` / `needsApproval()` (D-017, L-001).**
+  For `#[Capability]` classes the pipeline previously called only `run()`: the class's
+  `authorize()` was never consulted (the invoke fell through to the host `Authorizer`,
+  deny by default) and `needsApproval()` was never read. Now the handler is resolved
+  **once per invoke through the container** (constructor dependencies inject; was `new`),
+  and its `authorize()` is the authorize-stage decision (also on approval accept re-check),
+  its `needsApproval()` gates the approval stage, and the same instance runs. A class
+  without `authorize()` still goes through the host `Authorizer`. Fluent `->authorize()`
+  callables are unchanged. `CapabilityRegistry::withHandlerFactory(callable)` swaps the
+  construction path (unit tests).
 - **Discovery fails closed on half-written capability classes (D-017).** A class carrying
   `#[Capability]` that does not implement `DefinesCapability` now throws `BootException`
   during discovery instead of being silently dropped from the catalog. Add
   `implements DefinesCapability` or remove the attribute.
+- **Agent / MCP `handle()` refuse to run outside a profile (D-008, L-017).** With no
+  registered profile and no `options['profile']` the adapters used to fall back to a bare
+  `registry->invoke()` — a model could name any capability outside its tool list and, subject
+  only to `authorize()`, run it. With `surfaces.<agent|mcp>.require_profile` (default `true`,
+  new constructor argument `requireProfile` on `AiToolAdapterV1` / `McpToolAdapterV1`) such
+  a call now returns `not_runnable` (`normalized_code: profile_required`) before the registry,
+  matching the tool-list rule. `require_profile: false` keeps the old fallback. The service
+  provider now also binds an `AiToolAdapter` singleton from `surfaces.agent.*` beside the MCP one.
 - **MCP handle requires a profile after multi-profile register (D-008).** Once
   `McpToolAdapterV1` has registered more than one distinct profile, `handle()` /
   `handleStructured()` without `options['profile']` return `not_runnable`

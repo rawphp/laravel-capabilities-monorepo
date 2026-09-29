@@ -47,7 +47,7 @@ Capability::define('create-invoice')
     ->register($registry);
 ```
 
-Builder highlights (non-exhaustive): `description`, `surfaces`, `input`, `output`, `aliases`, deprecation fields, `groups`, `tags`, `idempotent`, `idempotencyKeyFields` (derive a key from named input fields when the caller sends none), `authorize`, `run`, approval-related setters, `register`.
+Builder highlights (non-exhaustive): `description`, `surfaces`, `input`, `output`, `aliases`, deprecation fields, `groups`, `tags`, `idempotent`, `idempotencyKeyFields` (derive a key from named input fields when the caller sends none), `authorize`, `needsApproval` (`(Input, CapabilityContext): bool` — true stores an approval request and returns `approval_required` instead of running), `approvalPolicy` / `approvalTtlHours` (who may decide, and for how long the request stays pending — both travel on the approval row), `run`, `register`.
 
 ### CLI routing metadata (`domain` / `verb`)
 
@@ -88,6 +88,14 @@ Rules (fail closed):
 
 Place classes under `config('capabilities.path')` (default `app/Capabilities`) with `#[Rawphp\Capabilities\Attributes\Capability]` implementing `Rawphp\Capabilities\Contracts\DefinesCapability`. Boot discovery runs through the service provider — do not invent a third registration mechanism.
 
+The class owns its governance. On every invoke the pipeline resolves the handler **once through the container** (constructor injection works) and calls, in order:
+
+- `authorize(Input $input, CapabilityContext $ctx): bool` — the decision for this capability. Without it, the host `Authorizer` decides (deny by default).
+- `needsApproval(Input $input, CapabilityContext $ctx): bool` — optional; `true` stores an approval request and returns `approval_required` without calling `run()`.
+- `run(Input $input, CapabilityContext $ctx)` — the single mutation path.
+
+Each method may declare `(Input $input)` alone; the context is passed only when the signature takes a second argument. Unit tests swap construction with `CapabilityRegistry::withHandlerFactory(fn (string $class) => ...)`.
+
 Full teaching sample (monorepo): [First capability tutorial](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/tutorials/first-capability.md).
 
 ### Input / output DTOs
@@ -111,6 +119,8 @@ $result = $registry->invoke('create-invoice', [
 ], [
     // caller is normally set by the adapter
     'caller' => 'http',
+    // who is acting — required on every surface (D-002); never inferred
+    'actor' => $request->user(),
 ]);
 
 if ($result->ok) {
@@ -255,7 +265,7 @@ Publish: `php artisan vendor:publish --tag=capabilities-config`
 | MCP register errors | `surfaces.mcp.on_register_error` → `throw` (default) \| `disable` | Mid-mount adapter failure policy for non-empty plans |
 | HTTP | `prefix`, `middleware`, `auth_middleware` | Route mount and auth. The unauthenticated `auth/*` routes drop `auth:*` and get `throttle:6,1,capabilities-auth` unless `auth_middleware` replaces that stack |
 | Approval | `store`, `ttl_hours`, `execution`, `resume.*` | Human-in-the-loop |
-| Idempotency | `enabled`, `driver` (default `database`; use `memory` only for single-process tests), `header` (`Idempotency-Key`) | Safe retries; AI proposal accept readiness pings this store |
+| Idempotency | `enabled` (false makes the guard inert: no lookup, no store), `driver` (default `database`; use `memory` only for single-process tests), `ttl_hours` (stored outcome lifetime, default 24), `header` (`Idempotency-Key`; the one HTTP header setting), `warn_missing_key` | Safe retries; AI proposal accept readiness pings this store |
 | Audit | `enabled`, `mode` (`best_effort`), `driver` | Observability of invokes. A single capability can force strict with `->audit(['mode' => 'strict'])` (or `audit: ['mode' => 'strict']` on the attribute); it can only tighten the global mode, never loosen it |
 | Rate limits | `defaults.per_minute`, per-capability, agent turn max tools | Abuse control |
 | Clients | `token_abilities` (e.g. `capabilities:cli` → `cli`), privilege order | Caller derivation |
@@ -269,7 +279,7 @@ Agent and MCP tool exposure uses **profiles** (D-008). Configure named profile �
 
 Rules of thumb:
 
-- Profiles limit **discovery** of tools.
+- Profiles limit **discovery** of tools — and execution: with `require_profile` (default) an adapter `handle()` with no registered or per-call profile returns `not_runnable` / `profile_required` instead of running a capability by name.
 - `authorize()` still runs on every invoke.
 - Messaging sets `agent_profile` so bots do not see the entire bus.
 
@@ -326,7 +336,7 @@ Greenfield AI-chat hosts use this after queue/progress/proposals config — see 
 
 ## Approval and idempotency (operator view)
 
-- **Approval:** definitions may require approval before `run()` finishes. HTTP accept/reject routes are on the capability prefix. Notifier contracts allow CLI/HTTP/Telegram-style prompts; messaging package supplies conversation-side notify implementation.
+- **Approval:** a definition's `needsApproval` (fluent callable or class method) decides per invoke; `true` stores a pending row and returns `approval_required` without calling `run()`. Who may accept or reject is the capability's `approvalPolicy` when declared (stored on the row), otherwise `approval.default_policy`. HTTP accept/reject routes are on the capability prefix. Notifier contracts allow CLI/HTTP/Telegram-style prompts; messaging package supplies conversation-side notify implementation.
 - **Idempotency:** when enabled and the definition uses it, repeated keys replay stored outcomes instead of double-applying. CLI always sends a key on `run`.
 
 **Telegram approval notifiers (upgrade):** For in-memory recording doubles (tests/fakes — **no** Bot API in core), use `RecordingTelegramApprovalNotifier` (`Rawphp\Capabilities\Approval\Notifiers\RecordingTelegramApprovalNotifier`). Core still ships a **deprecated soft-landing** empty subclass `TelegramApprovalNotifier` of that recording double (still loadable; recording-only). Production Telegram Bot API delivery is the **messaging** package FQCN `Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier` — a different class, unchanged by this rename. Full consumer impact: package [CHANGELOG](../CHANGELOG.md) Unreleased **Breaking** and [README](../README.md) Telegram notifier / sibling notes. Pre-stable monorepo design surface — not a Packagist-stable API claim; soft-landing remains until a later removal.
@@ -339,7 +349,7 @@ Every failure is a `CapabilityResult` with `ok: false` and an `error.code`. The 
 
 How one code presents on each surface:
 
-- **HTTP:** the response status is `error.http_status` and the body is the result envelope (`ok`, `error`, `meta`).
+- **HTTP:** the response status is `error.http_status` and the body is the result envelope (`ok`, `error`, `meta`). A pipeline `rate_limited` carries `error.retry_after` (seconds until the tripped window frees) and the 429 response repeats it as `Retry-After`; the product CLI prints it as its backoff hint.
 - **Product CLI:** `--json` prints the same envelope as HTTP; the process exits with `error.cli_exit` (success is `0`).
 - **Agent / MCP:** tool handles return a structured error (`code`, `message`, `structured: true`, `retryable`, `details`). A few codes are renamed for tool callers (see the last column); `details` still carries the original registry error, including its `code`.
 - **Job / direct `invoke`:** the `CapabilityResult` itself. Branch on `isRetryable()` and `isHardRefuse()`, not on message text.

@@ -6,7 +6,6 @@ namespace Rawphp\Capabilities\Tests\Fixtures;
 
 use Rawphp\Capabilities\Capability;
 use Rawphp\Capabilities\Http\CallerDeriver;
-use Rawphp\Capabilities\Pipeline\ResolveActor;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\CapabilityContext;
 use Rawphp\Capabilities\Support\CapabilityScope;
@@ -69,7 +68,7 @@ final class ScopeCallerJobHelpers
 
     public static function user(int|string $id = 7, ?string $tenantId = 'tenant-a'): object
     {
-        $user = ResolveActor::defaultUser($id);
+        $user = PipelineHelpers::userActor($id);
         if ($tenantId !== null) {
             $user->current_tenant_id = $tenantId;
         }

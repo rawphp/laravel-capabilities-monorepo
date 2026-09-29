@@ -15,6 +15,7 @@ use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
 use Rawphp\Capabilities\Tests\Fixtures\CustomSchemaType;
 use Rawphp\Capabilities\Tests\Fixtures\DiscoveryHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\NestedInput;
+use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 use Spatie\LaravelData\Data;
 
 it('happy: CapabilityData reflects to JSON Schema draft 2020-12 [D-015]', function () {
@@ -75,7 +76,7 @@ it('happy: exists unique server rules run only on server validation pass [D-004]
         'customer_id' => 1,
         'amount_cents' => 100,
         'currency' => 'USD',
-    ]);
+    ], ['actor' => PipelineHelpers::userActor()]);
     expect($result->isOk())->toBeFalse()
         ->and($result->errorCode())->toBe('validation_failed');
 });
@@ -96,7 +97,7 @@ it('fail: structural invalid input never reaches hydrate or run [D-004]', functi
         'customer_id' => 'not-int',
         'amount_cents' => 100,
         'currency' => 'USD',
-    ]);
+    ], ['actor' => PipelineHelpers::userActor()]);
     expect($result->isOk())->toBeFalse()
         ->and($ran)->toBeFalse();
 });
@@ -118,7 +119,7 @@ it('fail: server-only validation failure never reaches run [D-004]', function ()
         'customer_id' => 1,
         'amount_cents' => 100,
         'currency' => 'USD',
-    ]);
+    ], ['actor' => PipelineHelpers::userActor()]);
     expect($result->isOk())->toBeFalse()->and($ran)->toBeFalse();
 });
 
@@ -138,7 +139,7 @@ it('happy: array wire format only at edge run receives typed DTO [D-015]', funct
         'customer_id' => 3,
         'amount_cents' => 50,
         'currency' => 'EUR',
-    ]);
+    ], ['actor' => PipelineHelpers::userActor()]);
     expect($seen)->toBeInstanceOf(CreateInvoiceInput::class)
         ->and($seen)->toBeInstanceOf(CapabilityData::class)
         ->and($seen->customer_id)->toBe(3);

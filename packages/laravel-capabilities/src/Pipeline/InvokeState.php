@@ -36,6 +36,9 @@ final class InvokeState
 
     public ?string $approvalId = null;
 
+    /** Class handler (D-017), resolved once per invoke and shared by authorize / needsApproval / run. */
+    public ?object $handler = null;
+
     /**
      * @param  array<string, mixed>  $rawInput
      * @param  array<string, mixed>  $options

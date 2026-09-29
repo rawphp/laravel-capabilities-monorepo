@@ -2,6 +2,7 @@
 
 namespace Rawphp\Capabilities\Registry;
 
+use Illuminate\Database\ConnectionInterface;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Audit\AuditLogger;
 use Rawphp\Capabilities\Audit\AuditOutbox;
@@ -13,6 +14,7 @@ use Rawphp\Capabilities\Contracts\Clock;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\ScopeResolver;
+use Rawphp\Capabilities\Idempotency\IdempotencyConfig;
 use Rawphp\Capabilities\Pipeline\IdempotencyGuard;
 use Rawphp\Capabilities\Pipeline\InvokeAuditStage;
 use Rawphp\Capabilities\Pipeline\InvokeObservation;
@@ -73,6 +75,14 @@ final class CapabilityRegistry implements CapabilityBus
     private Clock $clock;
 
     /**
+     * Host lookup for the original requester of an approved row (D-006): (actor type, id) => user or null.
+     * Null (unit default) rebuilds a plain principal from the row.
+     *
+     * @var (\Closure(string, string): ?object)|null
+     */
+    private ?\Closure $requesterResolver = null;
+
+    /**
      * @var array{
      *     agent?: array{
      *         profiles?: array<string, list<string>>,
@@ -123,6 +133,7 @@ final class CapabilityRegistry implements CapabilityBus
      * @param  array<string, mixed>  $transactionsConfig
      * @param  array<string, mixed>  $eventsConfig
      * @param  array<string, mixed>  $toolSurfaceConfig
+     * @param  array{enabled?: bool, ttl_hours?: int, header?: string, warn_missing_key?: bool}  $idempotencyConfig
      */
     public function __construct(
         private array $globallyEnabledSurfaces = [
@@ -153,6 +164,7 @@ final class CapabilityRegistry implements CapabilityBus
         ?AuditOutbox $auditOutbox = null,
         array $toolSurfaceConfig = [],
         ?Clock $clock = null,
+        array $idempotencyConfig = [],
     ) {
         $this->inputValidator = $inputValidator ?? new InputValidator;
         $this->outputValidator = $outputValidator ?? new OutputValidator;
@@ -161,7 +173,9 @@ final class CapabilityRegistry implements CapabilityBus
         $resolveActor = new ResolveActor;
         $this->scopeResolver = $scopeResolver;
         $resolveTenant = new ResolveTenantFromCaller($scopeResolver);
-        $idempotencyGuard = new IdempotencyGuard($idempotencyStore);
+        $this->clock = $clock ?? new SystemClock;
+        // Published idempotency.* config (ttl_hours, enabled, warn_missing_key) reaches the guard (L-011).
+        $idempotencyGuard = new IdempotencyGuard($idempotencyStore, $this->clock, IdempotencyConfig::fromArray($idempotencyConfig));
         // Fail closed (L-003 / REQ-070): no per-capability authorize and no host
         // authorizer → deny. Tests and hosts must pass StubAuthorizer::allow() or
         // withAuthorizer(...) / a capability authorize callable explicitly.
@@ -195,7 +209,6 @@ final class CapabilityRegistry implements CapabilityBus
             $this->toolSurfaceConfig = array_replace_recursive($this->toolSurfaceConfig, $toolSurfaceConfig);
         }
         $this->profileSelector = new ProfileSelector;
-        $this->clock = $clock ?? new SystemClock;
         $this->definitionCatalog = new DefinitionCatalog;
         $this->observation = new InvokeObservation;
         $auditStage = new InvokeAuditStage(
@@ -332,6 +345,19 @@ final class CapabilityRegistry implements CapabilityBus
         return $this;
     }
 
+    /**
+     * How #[Capability] class handlers are built (D-017). Default: the Illuminate container,
+     * so constructor dependencies resolve. Units pass a closure.
+     *
+     * @param  callable(class-string): object  $factory
+     */
+    public function withHandlerFactory(callable $factory): self
+    {
+        $this->pipeline->handlerFactory = $factory instanceof \Closure ? $factory : \Closure::fromCallable($factory);
+
+        return $this;
+    }
+
     public function withServerRuleChecker(ServerRuleChecker $checker): self
     {
         $this->pipeline->serverRuleChecker = $checker;
@@ -428,6 +454,21 @@ final class CapabilityRegistry implements CapabilityBus
     }
 
     /**
+     * Connection used for the opt-in outer transaction around run() (D-010 transactions.wrap_run).
+     */
+    public function withTransactionConnection(?ConnectionInterface $connection): self
+    {
+        $this->pipeline->transactionConnection = $connection;
+
+        return $this;
+    }
+
+    public function transactionConnection(): ?ConnectionInterface
+    {
+        return $this->pipeline->transactionConnection;
+    }
+
+    /**
      * @param  array{enabled?: bool}  $config
      */
     public function withEventsConfig(array $config): self
@@ -491,7 +532,7 @@ final class CapabilityRegistry implements CapabilityBus
 
     public function withIdempotencyStore(IdempotencyStore $store): self
     {
-        $this->pipeline->idempotencyGuard = new IdempotencyGuard($store);
+        $this->rebuildIdempotencyGuard($store, $this->pipeline->idempotencyGuard->config());
 
         return $this;
     }
@@ -499,6 +540,42 @@ final class CapabilityRegistry implements CapabilityBus
     public function idempotencyStore(): ?IdempotencyStore
     {
         return $this->pipeline->idempotencyGuard->store();
+    }
+
+    /**
+     * Apply published `idempotency.*` settings (enabled, ttl_hours, header, warn_missing_key)
+     * to the guard the pipeline uses; the store and clock are kept (L-011 / D-005).
+     *
+     * @param  array{enabled?: bool, ttl_hours?: int, header?: string, warn_missing_key?: bool}|IdempotencyConfig  $config
+     */
+    public function withIdempotencyConfig(array|IdempotencyConfig $config): self
+    {
+        $this->rebuildIdempotencyGuard(
+            $this->pipeline->idempotencyGuard->store(),
+            $config instanceof IdempotencyConfig ? $config : IdempotencyConfig::fromArray($config),
+        );
+
+        return $this;
+    }
+
+    public function idempotencyConfig(): IdempotencyConfig
+    {
+        return $this->pipeline->idempotencyGuard->config();
+    }
+
+    /**
+     * Missing-key warnings recorded by the guard (D-005 warn_missing_key).
+     *
+     * @return list<array{capability: string, caller: string, message: string}>
+     */
+    public function idempotencyWarnings(): array
+    {
+        return $this->pipeline->idempotencyGuard->warner()->warnings();
+    }
+
+    private function rebuildIdempotencyGuard(?IdempotencyStore $store, IdempotencyConfig $config): void
+    {
+        $this->pipeline->idempotencyGuard = new IdempotencyGuard($store, $this->clock, $config);
     }
 
     public function withRateLimiter(RateLimiter $limiter): self
@@ -577,6 +654,20 @@ final class CapabilityRegistry implements CapabilityBus
     }
 
     /**
+     * How the original requester of an approved row is rehydrated for execution (D-006).
+     * The service provider wires the default auth guard's user provider — the same lookup
+     * the accept re-check uses — so authorize() / run() see the real user model.
+     *
+     * @param  callable(string $actorType, string $actorId): ?object  $resolver
+     */
+    public function withRequesterResolver(callable $resolver): self
+    {
+        $this->requesterResolver = $resolver instanceof \Closure ? $resolver : \Closure::fromCallable($resolver);
+
+        return $this;
+    }
+
+    /**
      * Default approval executor (D-006): re-run the stored invoke through this pipeline
      * as the original requester — re-validate, re-scope, authorize, run once, check output.
      *
@@ -589,9 +680,16 @@ final class CapabilityRegistry implements CapabilityBus
             : $default;
         $tenantId = $str('tenant_id', null);
         $actorId = (string) $str('requester_actor_id', '');
+        $actorType = (string) $str('requester_actor_type', 'user');
 
-        if ($str('requester_actor_type', 'user') === 'system') {
+        if ($actorType === 'system') {
             $actor = SystemActor::named($actorId);
+        } elseif ($this->requesterResolver !== null) {
+            $actor = ($this->requesterResolver)($actorType, $actorId);
+            if ($actor === null) {
+                // Fail closed: never run an approved request as a fabricated principal.
+                return CapabilityResult::failure('forbidden', 'Original requester could not be resolved; approved request was not run.');
+            }
         } else {
             $actor = new stdClass;
             $actor->id = $actorId;
@@ -606,6 +704,8 @@ final class CapabilityRegistry implements CapabilityBus
             'actor' => $actor,
             'tenant_id' => $tenantId,
             'job' => ['tenant_id' => $tenantId],
+            // Decision already made: the needs-approval gate must not re-request (D-006).
+            'executing_approval_id' => (string) $str('id', ''),
         ]);
     }
 
@@ -654,6 +754,8 @@ final class CapabilityRegistry implements CapabilityBus
     public function withClock(Clock $clock): self
     {
         $this->clock = $clock;
+        // The guard stamps expires_at from the registry clock.
+        $this->rebuildIdempotencyGuard($this->pipeline->idempotencyGuard->store(), $this->pipeline->idempotencyGuard->config());
 
         return $this;
     }

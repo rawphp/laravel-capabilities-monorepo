@@ -62,6 +62,12 @@ final class HttpResponse implements Responsable
         $code = $result->errorCode() ?? 'internal';
         $status = (int) ($result->error['http_status'] ?? ErrorCodeMap::httpStatus($code));
 
+        // Mirror the pipeline's backoff hint as the transport signal clients already parse (C-007).
+        $retryAfter = $result->error['retry_after'] ?? null;
+        if ($status === 429 && is_numeric($retryAfter) && (int) $retryAfter > 0 && ! isset($headers['Retry-After'])) {
+            $headers['Retry-After'] = (string) (int) $retryAfter;
+        }
+
         return new self(status: $status, body: $body, headers: $headers);
     }
 

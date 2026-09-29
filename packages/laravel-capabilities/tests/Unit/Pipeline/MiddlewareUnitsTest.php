@@ -39,10 +39,23 @@ it('fail: bus invoke as job with omitted actor fails closed before run [D-002]',
         ->and($h['runCount']->value)->toBe(0);
 });
 
-it('happy: non-job caller with omitted actor still gets the in-process default user [PIPE-010]', function () {
-    $actor = (new ResolveActor)->resolve('http', []);
-    expect($actor->id)->toBe(1);
+it('fail: a non-job caller with omitted actor is refused, never given a fabricated user [D-002 / L-004]', function () {
+    expect(fn () => (new ResolveActor)->resolve('http', []))
+        ->toThrow(RuntimeException::class, 'Actor principal is required');
 });
+
+foreach (['http', 'cli', 'mcp', 'agent', 'artisan'] as $caller) {
+    it("fail: bus invoke as {$caller} with omitted actor is unauthenticated before run [D-002 / L-004]", function () use ($caller) {
+        $h = PipelineHelpers::harness();
+        $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), [
+            'caller' => $caller,
+            'tenant_id' => 't-1',
+        ]);
+        expect($result->isOk())->toBeFalse()
+            ->and($result->error['code'])->toBe('unauthenticated')
+            ->and($h['runCount']->value)->toBe(0);
+    });
+}
 
 it('happy: ResolveTenantFromCaller attaches scope [D-003]', function () {
     $ctx = CapabilityContext::make([
