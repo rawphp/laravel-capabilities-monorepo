@@ -17,7 +17,12 @@ use RuntimeException;
  */
 final class TelegramAdapter implements ConversationIngress, ConversationReply
 {
-    /** @var callable|null agent turn: (message) => array{text: string, tool_calls?: list} */
+    /**
+     * Agent turn: (message) => array{text: string, tool_calls?: list}. A follow-up message carrying
+     * `tool_results` asks the agent to answer the results of its tool calls.
+     *
+     * @var callable|null
+     */
     private $ingressHandler;
 
     public function __construct(

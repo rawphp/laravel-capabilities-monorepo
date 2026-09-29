@@ -72,10 +72,11 @@ it('fail: Telegram turn stops invoking tools once the core turn budget is exhaus
 
     $r = $t['processor']->handle(H::telegramUpdate(userId: 42));
 
+    // The budget refusal goes back to the agent, which tells the user; no further tool runs.
     expect($r['ok'])->toBeFalse()
         ->and($r['error'])->toBe('rate_limited')
         ->and($registry->invokeCount())->toBe(3)
-        ->and($r['steps'])->not->toContain('conversation_reply');
+        ->and($r['steps'])->toContain('conversation_reply');
 });
 
 it('edge: the tool-call count resets for each Telegram update [D-013]', function () {

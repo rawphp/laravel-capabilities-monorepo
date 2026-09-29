@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdate;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\PipelineScenario as S;
 
 /**
@@ -60,10 +61,11 @@ it('fail: pipeline aborts before tools when step resolve_identity fails if prior
 
     $r = $s->run();
 
+    // No agent turn and no agent reply; the unlinked user only gets the how-to-link message.
     expect($r['ok'])->toBeFalse()
         ->and($r['steps'])->not->toContain('map_thread')
         ->and($r['steps'])->not->toContain('conversation_reply')
-        ->and($s->bot->calls())->toBe([]);
+        ->and(array_column(array_column($s->bot->calls(), 'args'), 'text'))->toBe([ProcessTelegramUpdate::UNLINKED_REPLY]);
     expect($r['tools_reached'])->toBeFalse()
         ->and($s->registry->invokeCount())->toBe(0);
 });
@@ -141,7 +143,7 @@ it('fail: pipeline aborts before tools when step tool_calls_registry fails if pr
     $r = $s->run();
 
     expect($r['ok'])->toBeFalse()
-        ->and($r['steps'])->not->toContain('conversation_reply')
+        ->and($r['error'])->toBe('tool_not_in_profile')
         ->and($r['steps'])->not->toContain('conversation_reply')
         ->and($s->bot->calls())->toBe([]);
 });
@@ -159,7 +161,7 @@ it('fail: pipeline aborts before tools when step conversation_reply fails if pri
     $r = $s->run();
 
     expect($r['ok'])->toBeFalse()
-        ->and($r['steps'])->not->toContain('conversation_reply')
+        ->and($r['error'])->toStartWith('reply_send_fail')
         ->and($r['steps'])->not->toContain('conversation_reply')
         ->and($s->bot->calls())->toBe([]);
 });

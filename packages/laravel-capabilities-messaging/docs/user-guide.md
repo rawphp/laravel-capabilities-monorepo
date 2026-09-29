@@ -147,7 +147,10 @@ $this->app->singleton(AgentTurn::class, SupportChatAgentTurn::class);
 ```
 
 - `toolNames(string $profile): list<string>` — capability names the profile exposes (e.g. the names from `Capability::aiTools($profile)`). Tool calls outside this list are refused.
-- `respond(array $message): array{text, tool_calls?}` — run one turn. `$message` carries `text`, the linked `user`, `thread_id`, `profile`, `tools` and `messaging` metadata. `thread_id` is stable per chat + topic; messaging keeps no history, so store earlier turns yourself (keyed by `thread_id`) if the agent needs them. Return tool calls as `['name' => …, 'input' => […]]`; messaging invokes each one through the capability bus as `caller: agent`, with per-update idempotency keys, then sends `text` as the reply (into the same forum topic when the message came from one).
+- `respond(array $message): array{text, tool_calls?}` — run one turn. `$message` carries `text`, the linked `user`, `thread_id`, `profile`, `tools` and `messaging` metadata. `thread_id` is stable per chat + topic; messaging keeps no history, so store earlier turns yourself (keyed by `thread_id`) if the agent needs them. Return tool calls as `['name' => …, 'input' => […]]`. With no tool calls, `text` is the reply.
+- `respondWithResults(array $message, array $toolResults): array{text}` — answer the tool results. Messaging invokes the tool calls in order through the capability bus as `caller: agent`, with per-update idempotency keys, and stops at the first result that is not ok. Each entry is `['name' => …, 'input' => […], 'result' => CapabilityResult]`: output (`isOk()`, `data`), approval pending (`isApprovalRequired()`, `approvalId()`), or a refusal or transient failure (`errorCode()`, `isRetryable()`). Messaging does not retry a transient failure, so tell the user to try again. The returned `text` is the reply; tool calls in it are ignored (one tool round per message).
+
+Replies go into the same forum topic when the message came from one. An unlinked user writing in a private chat, in `code_link` mode, gets a fixed reply telling them to link from the app; groups and `allowlist` mode stay silent.
 
 With no `AgentTurn` bound, a linked user's message gets **no reply** and an `agent_turn_unbound` error is logged; the profile exposes no tools.
 
@@ -184,7 +187,7 @@ Button `callback_data` is a compact token that fits Telegram's 64-byte limit: `{
 
 ## If something goes wrong
 
-Webhook rejections (bad secret, queue failure) and update-processing failures are written to your app logger with `tags` `channel`, `chat_id` and `update_id`. Unlinked users and rate-limited chats log as `warning`; anything else as `error`. Updates run on your queue: transient failures (Telegram 429/5xx, retryable capability results) fail the job so it retries and ends in `failed_jobs`.
+Webhook rejections (bad secret, queue failure) and update-processing failures are written to your app logger with `tags` `channel`, `chat_id` and `update_id`. Unlinked users and rate-limited chats log as `warning`; anything else as `error`. Updates run on your queue: a transient Telegram failure (429/5xx) sending the reply fails the job so it retries and ends in `failed_jobs`. Capability results, retryable or not, go back to your `AgentTurn` and never retry the update.
 
 Troubleshooting (monorepo): [Messaging / Telegram](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/troubleshooting.md#messaging-telegram).
 

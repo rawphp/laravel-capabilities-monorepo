@@ -2,11 +2,13 @@
 
 declare(strict_types=1);
 
+use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdate;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\PipelineScenario as S;
 
 /**
- * MSG-003 / D-007: each failure in the messaging chain fails closed (no reply, no second
- * mutation path). Tool invocations only ever happen through the capability bus.
+ * MSG-003 / D-007: each failure in the messaging chain fails closed (no mutation, no second
+ * mutation path). Tool invocations only ever happen through the capability bus. Governed tool
+ * outcomes and unlinked private chats still get a reply telling the user what happened.
  */
 it('fail: messaging chain fails closed at bad_secret [MSG-003]', function () {
     $s = S::failingAt('bad_secret');
@@ -34,7 +36,7 @@ it('fail: messaging chain fails closed at unlinked_user [MSG-003]', function () 
 
     expect($r['ok'])->toBeFalse()
         ->and($r['error'])->toBe('identity_unresolved')
-        ->and($s->bot->calls())->toBe([]);
+        ->and(array_column(array_column($s->bot->calls(), 'args'), 'text'))->toBe([ProcessTelegramUpdate::UNLINKED_REPLY]);
 });
 
 it('fail: messaging chain at unlinked_user never bypasses registry for mutation [D-007]', function () {
@@ -89,9 +91,11 @@ it('fail: messaging chain fails closed at registry_forbidden [MSG-003]', functio
 
     $r = $s->run();
 
+    // The agent answers the refusal; its reply is the only message sent.
     expect($r['ok'])->toBeFalse()
-        ->and($r['error'])->toBe('registry_forbidden')
-        ->and($s->bot->calls())->toBe([]);
+        ->and($r['error'])->toBe('forbidden')
+        ->and($s->bot->calls())->toHaveCount(1)
+        ->and($r['steps'])->toContain('conversation_reply');
 });
 
 it('fail: messaging chain at registry_forbidden never bypasses registry for mutation [D-007]', function () {
@@ -108,9 +112,11 @@ it('fail: messaging chain fails closed at registry_validation [MSG-003]', functi
 
     $r = $s->run();
 
+    // The agent answers the refusal; its reply is the only message sent.
     expect($r['ok'])->toBeFalse()
         ->and($r['error'])->toBe('validation_failed')
-        ->and($s->bot->calls())->toBe([]);
+        ->and($s->bot->calls())->toHaveCount(1)
+        ->and($r['steps'])->toContain('conversation_reply');
 });
 
 it('fail: messaging chain at registry_validation never bypasses registry for mutation [D-007]', function () {
@@ -127,9 +133,11 @@ it('fail: messaging chain fails closed at approval_required [MSG-003]', function
 
     $r = $s->run();
 
+    // The agent answers the refusal; its reply is the only message sent.
     expect($r['ok'])->toBeFalse()
         ->and($r['error'])->toBe('approval_required')
-        ->and($s->bot->calls())->toBe([]);
+        ->and($s->bot->calls())->toHaveCount(1)
+        ->and($r['steps'])->toContain('conversation_reply');
 });
 
 it('fail: messaging chain at approval_required never bypasses registry for mutation [D-007]', function () {

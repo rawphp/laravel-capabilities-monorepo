@@ -34,6 +34,14 @@ final class TelegramUpdateParser
     /**
      * @param  array<string, mixed>  $update
      */
+    public static function isPrivateChat(array $update): bool
+    {
+        return ($update['message']['chat']['type'] ?? null) === 'private';
+    }
+
+    /**
+     * @param  array<string, mixed>  $update
+     */
     public static function telegramUserId(array $update): ?string
     {
         $id = $update['message']['from']['id']

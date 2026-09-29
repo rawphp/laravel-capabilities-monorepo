@@ -131,7 +131,9 @@ class MessagingServiceProvider extends ServiceProvider
 
             return new TelegramAdapter(
                 $app->make(TelegramBotClient::class),
-                $turn === null ? null : static fn (array $message): array => $turn->respond($message),
+                $turn === null ? null : static fn (array $message): array => isset($message['tool_results'])
+                    ? $turn->respondWithResults(array_diff_key($message, ['tool_results' => true]), $message['tool_results'])
+                    : $turn->respond($message),
             );
         });
         $this->app->alias(TelegramAdapter::class, ConversationIngress::class);

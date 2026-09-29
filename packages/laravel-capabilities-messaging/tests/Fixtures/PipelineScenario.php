@@ -28,7 +28,8 @@ final class PipelineScenario
         'map_thread' => 'thread_store_failure',
         'conversation_ingress' => 'ingress_failure',
         'agent_tools_profile' => 'profile_missing',
-        'tool_calls_registry' => 'tool_registry_failure',
+        // A tool outcome (even a failure) is answered by the agent; an out-of-profile call breaks the step.
+        'tool_calls_registry' => 'tool_not_in_profile',
         'conversation_reply' => 'reply_failure',
     ];
 

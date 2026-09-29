@@ -39,6 +39,22 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   user's text back with no tools. The unused `$agentRunner` constructor argument of
   `ProcessTelegramUpdate` is removed. **Consumer impact:** bind `AgentTurn` to get replies.
 
+- **Agent turns answer their tool results** — `Contracts\AgentTurn` gains
+  `respondWithResults(array $message, array $toolResults): array{text}`. After messaging invokes
+  the tool calls `respond()` returned, it passes each `['name', 'input', 'result' =>
+  CapabilityResult]` to this method and sends its `text` as the reply. Before, the reply was the
+  text `respond()` wrote before any tool ran, tool output never reached the agent or the user,
+  and any result that was not ok (`approval_required`, `forbidden`, `validation_failed`, …) ended
+  the update with no reply at all. Invocation still stops at the first result that is not ok;
+  tool calls returned from `respondWithResults()` are ignored (one tool round per message). A
+  retryable capability result no longer fails the queued job (a retry re-ran the LLM and could
+  issue different tool calls); it goes to the agent like any other result. The update result
+  reports the last non-ok tool code as `error` with `ok: false`, while still sending the reply.
+  An unlinked user in a private chat in `code_link` mode now gets
+  `ProcessTelegramUpdate::UNLINKED_REPLY` (how to link) instead of silence. **Consumer impact:**
+  implement `respondWithResults()` on your `AgentTurn`; a handler passed to `TelegramAdapter`
+  directly receives the follow-up as a message with a `tool_results` key.
+
 ### Security
 
 - **Allowlist mode ignores code-bound links** — `IdentityLinker::resolve()` and `isLinked()`

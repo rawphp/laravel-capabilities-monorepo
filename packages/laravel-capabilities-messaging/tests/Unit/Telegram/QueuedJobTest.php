@@ -74,20 +74,27 @@ it('edge: a non-retryable Bot API reply failure is terminal (no retry) [D-019]',
         ->and($result['error'])->toContain('reply_send_fail');
 });
 
-it('fail: a retryable registry result fails the job so the queue retries [D-019]', function () {
+it('edge: a retryable registry result is answered by the agent, not retried with a new turn [D-005]', function () {
+    // Retrying the job would ask the LLM again and could issue different tool calls.
     $bus = new FakeCapabilityBus;
     $bus->when('support.ping', CapabilityResult::failure(code: 'internal', message: 'db blip'));
+    $agentCalls = 0;
     $processor = H::processor([
         'identity' => linkedIdentity(),
         'registry' => $bus,
-        'adapter' => new TelegramAdapter(H::bot(), static fn () => [
-            'text' => 'x',
-            'tool_calls' => [['name' => 'support.ping', 'input' => []]],
-        ]),
+        'adapter' => new TelegramAdapter(H::bot(), static function () use (&$agentCalls): array {
+            $agentCalls++;
+
+            return ['text' => 'x', 'tool_calls' => [['name' => 'support.ping', 'input' => []]]];
+        }),
     ]);
 
-    expect(fn () => (new ProcessTelegramUpdateJob(H::telegramUpdate(userId: 42)))->handle($processor))
-        ->toThrow(RetryableUpdateFailure::class, 'internal');
+    $result = (new ProcessTelegramUpdateJob(H::telegramUpdate(userId: 42)))->handle($processor);
+
+    expect($result['error'])->toBe('internal')
+        ->and($result['steps'])->toContain('conversation_reply')
+        ->and($bus->invokeCount())->toBe(1)
+        ->and($agentCalls)->toBe(2);
 });
 
 it('edge: terminal outcomes return without throwing (identity_unresolved, forbidden) [D-019]', function () {
