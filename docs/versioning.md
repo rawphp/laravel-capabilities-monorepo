@@ -153,7 +153,7 @@ Install from module path / built binary — not Composer. See the CLI package RE
 | Git tags | Human-gated on the monorepo; mirrored to package remotes by the split workflow. |
 | Packagist | **Not claimed** until human submit + first tag. Root README install snippets are the intended end-state. |
 
-Messaging’s `require` on core uses `"rawphp/laravel-capabilities": "*"` so path/symlink monorepo resolution works; consumers should pin once they leave path install.
+Messaging and AI require core as `"rawphp/laravel-capabilities": "self.version"`. Coordinated `v*` tags hit every package, so sibling tag `v0.Y.Z` installs only with core `v0.Y.Z` (the set CI tested), and `dev-main` pairs with core `dev-main`. Composer refuses mixed pairs such as messaging `v0.3.0` with core `v0.5.3`. Path / symlink monorepo installs resolve because all packages share the checkout's version. The release script needs no constraint bump.
 
 ### Branch-alias consistency (0.x-dev policy)
 

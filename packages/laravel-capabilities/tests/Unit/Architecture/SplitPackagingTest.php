@@ -42,3 +42,15 @@ it('package .gitattributes export-ignores tests and phpunit.xml from dist archiv
     expect($attributes)->toMatch('#^/tests\s+export-ignore$#m')
         ->and($attributes)->toMatch('#^/phpunit\.xml\s+export-ignore$#m');
 })->with('php packages');
+
+it('sibling packages require core in lockstep with their own tag', function (string $package) {
+    $composer = json_decode(
+        (string) file_get_contents(A::MONOREPO_ROOT.'/packages/'.$package.'/composer.json'),
+        true,
+        512,
+        JSON_THROW_ON_ERROR
+    );
+
+    // Coordinated v* tags hit every package; a sibling tag is only tested against the same core tag.
+    expect($composer['require']['rawphp/laravel-capabilities'] ?? null)->toBe('self.version');
+})->with(['laravel-capabilities-messaging', 'laravel-capabilities-ai']);

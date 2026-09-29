@@ -2807,7 +2807,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/laravel-capabilities-ai",
-                "reference": "80c899621b4ffbb548e561a043dc1743b23bc69f"
+                "reference": "41265cdb275ac3b960bcd8770c9574480d8dbabc"
             },
             "require": {
                 "illuminate/contracts": "^11.0|^12.0|^13.0",
@@ -2815,7 +2815,7 @@
                 "illuminate/http": "^11.0|^12.0|^13.0",
                 "illuminate/support": "^11.0|^12.0|^13.0",
                 "php": "^8.2",
-                "rawphp/laravel-capabilities": "*"
+                "rawphp/laravel-capabilities": "self.version"
             },
             "type": "library",
             "extra": {
@@ -2860,7 +2860,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/laravel-capabilities-messaging",
-                "reference": "5c7e26c0c1c5c8a5506c685ae863a4ba097acb58"
+                "reference": "6b893b9a8b6926b1f422d8c0a176effd16d22bcc"
             },
             "require": {
                 "illuminate/database": "^11.0|^12.0|^13.0",
@@ -2869,7 +2869,7 @@
                 "illuminate/routing": "^11.0|^12.0|^13.0",
                 "illuminate/support": "^11.0|^12.0|^13.0",
                 "php": "^8.2",
-                "rawphp/laravel-capabilities": "*"
+                "rawphp/laravel-capabilities": "self.version"
             },
             "suggest": {
                 "laravel/ai": "Required for agent turns behind conversation ingress"

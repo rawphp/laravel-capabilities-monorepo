@@ -38,6 +38,7 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Changed
 
+- **Core constraint is lockstep:** `require.rawphp/laravel-capabilities` is now `self.version` instead of `*`. This package at tag `v0.Y.Z` installs only with core `v0.Y.Z` (and `dev-main` with core `dev-main`). **Hosts:** require the same version of core and this package.
 - **Internal extract** — `TelegramUpdateParser` peels pure Update field extraction from
   `ProcessTelegramUpdate` (pipeline behaviour unchanged; MSG-003 handler remains the public entry).
 
