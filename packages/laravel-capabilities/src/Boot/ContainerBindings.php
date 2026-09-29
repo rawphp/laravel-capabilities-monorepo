@@ -276,6 +276,11 @@ final class ContainerBindings
         }
         $registry->withIdempotencyStore($idempotencyStore);
 
+        $idempotencyConfig = (array) ($full['idempotency'] ?? []);
+        if ($idempotencyConfig !== []) {
+            $registry->withIdempotencyConfig($idempotencyConfig);
+        }
+
         $registry->withScopeResolver(new DefaultScopeResolver);
 
         $audit = (array) ($full['audit'] ?? []);

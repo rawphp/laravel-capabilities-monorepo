@@ -20,6 +20,7 @@ use RuntimeException;
  * Pipeline step: store outcomes and replay when Idempotency-Key matches (D-005).
  *
  * Behaviours:
+ * - idempotency.enabled=false → the guard is inert (no lookup, no store, no key policy)
  * - no key / flag none / readOnly → continue (non-idempotent path)
  * - first key → atomically claim with a processing row, continue (a lost claim is busy)
  * - completed + same hash → replay
@@ -82,7 +83,7 @@ final class IdempotencyGuard
         ?string $key,
         string $caller = 'http',
     ): ?CapabilityResult {
-        if (! $definition->shouldUseIdempotency()) {
+        if (! $this->config->enabled || ! $definition->shouldUseIdempotency()) {
             return null;
         }
 
@@ -124,7 +125,7 @@ final class IdempotencyGuard
         ?string $key,
         string $requestHash,
     ): array {
-        if ($key === null || $key === '' || ! $definition->shouldUseIdempotency() || $this->store === null) {
+        if (! $this->config->enabled || $key === null || $key === '' || ! $definition->shouldUseIdempotency() || $this->store === null) {
             return ['action' => 'continue'];
         }
 
@@ -258,7 +259,7 @@ final class IdempotencyGuard
         CapabilityResult $result,
         ?string $approvalId = null,
     ): void {
-        if ($this->store === null || ! $definition->shouldUseIdempotency()) {
+        if (! $this->config->enabled || $this->store === null || ! $definition->shouldUseIdempotency()) {
             return;
         }
 

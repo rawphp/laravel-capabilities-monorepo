@@ -263,7 +263,7 @@ Publish: `php artisan vendor:publish --tag=capabilities-config`
 | MCP register errors | `surfaces.mcp.on_register_error` → `throw` (default) \| `disable` | Mid-mount adapter failure policy for non-empty plans |
 | HTTP | `prefix`, `middleware` | Route mount and auth |
 | Approval | `store`, `ttl_hours`, `execution`, `resume.*` | Human-in-the-loop |
-| Idempotency | `enabled`, `driver` (default `database`; use `memory` only for single-process tests), `header` (`Idempotency-Key`) | Safe retries; AI proposal accept readiness pings this store |
+| Idempotency | `enabled` (false makes the guard inert: no lookup, no store), `driver` (default `database`; use `memory` only for single-process tests), `ttl_hours` (stored outcome lifetime, default 24), `header` (`Idempotency-Key`; the one HTTP header setting), `warn_missing_key` | Safe retries; AI proposal accept readiness pings this store |
 | Audit | `enabled`, `mode` (`best_effort`), `driver` | Observability of invokes. A single capability can force strict with `->audit(['mode' => 'strict'])` (or `audit: ['mode' => 'strict']` on the attribute); it can only tighten the global mode, never loosen it |
 | Rate limits | `defaults.per_minute`, per-capability, agent turn max tools | Abuse control |
 | Clients | `token_abilities` (e.g. `capabilities:cli` → `cli`), privilege order | Caller derivation |

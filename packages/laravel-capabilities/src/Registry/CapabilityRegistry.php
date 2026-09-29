@@ -13,6 +13,7 @@ use Rawphp\Capabilities\Contracts\Clock;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\ScopeResolver;
+use Rawphp\Capabilities\Idempotency\IdempotencyConfig;
 use Rawphp\Capabilities\Pipeline\IdempotencyGuard;
 use Rawphp\Capabilities\Pipeline\InvokeAuditStage;
 use Rawphp\Capabilities\Pipeline\InvokeObservation;
@@ -131,6 +132,7 @@ final class CapabilityRegistry implements CapabilityBus
      * @param  array<string, mixed>  $transactionsConfig
      * @param  array<string, mixed>  $eventsConfig
      * @param  array<string, mixed>  $toolSurfaceConfig
+     * @param  array{enabled?: bool, ttl_hours?: int, header?: string, warn_missing_key?: bool}  $idempotencyConfig
      */
     public function __construct(
         private array $globallyEnabledSurfaces = [
@@ -161,6 +163,7 @@ final class CapabilityRegistry implements CapabilityBus
         ?AuditOutbox $auditOutbox = null,
         array $toolSurfaceConfig = [],
         ?Clock $clock = null,
+        array $idempotencyConfig = [],
     ) {
         $this->inputValidator = $inputValidator ?? new InputValidator;
         $this->outputValidator = $outputValidator ?? new OutputValidator;
@@ -169,7 +172,9 @@ final class CapabilityRegistry implements CapabilityBus
         $resolveActor = new ResolveActor;
         $this->scopeResolver = $scopeResolver;
         $resolveTenant = new ResolveTenantFromCaller($scopeResolver);
-        $idempotencyGuard = new IdempotencyGuard($idempotencyStore);
+        $this->clock = $clock ?? new SystemClock;
+        // Published idempotency.* config (ttl_hours, enabled, warn_missing_key) reaches the guard (L-011).
+        $idempotencyGuard = new IdempotencyGuard($idempotencyStore, $this->clock, IdempotencyConfig::fromArray($idempotencyConfig));
         // Fail closed (L-003 / REQ-070): no per-capability authorize and no host
         // authorizer → deny. Tests and hosts must pass StubAuthorizer::allow() or
         // withAuthorizer(...) / a capability authorize callable explicitly.
@@ -203,7 +208,6 @@ final class CapabilityRegistry implements CapabilityBus
             $this->toolSurfaceConfig = array_replace_recursive($this->toolSurfaceConfig, $toolSurfaceConfig);
         }
         $this->profileSelector = new ProfileSelector;
-        $this->clock = $clock ?? new SystemClock;
         $this->definitionCatalog = new DefinitionCatalog;
         $this->observation = new InvokeObservation;
         $auditStage = new InvokeAuditStage(
@@ -512,7 +516,7 @@ final class CapabilityRegistry implements CapabilityBus
 
     public function withIdempotencyStore(IdempotencyStore $store): self
     {
-        $this->pipeline->idempotencyGuard = new IdempotencyGuard($store);
+        $this->rebuildIdempotencyGuard($store, $this->pipeline->idempotencyGuard->config());
 
         return $this;
     }
@@ -520,6 +524,42 @@ final class CapabilityRegistry implements CapabilityBus
     public function idempotencyStore(): ?IdempotencyStore
     {
         return $this->pipeline->idempotencyGuard->store();
+    }
+
+    /**
+     * Apply published `idempotency.*` settings (enabled, ttl_hours, header, warn_missing_key)
+     * to the guard the pipeline uses; the store and clock are kept (L-011 / D-005).
+     *
+     * @param  array{enabled?: bool, ttl_hours?: int, header?: string, warn_missing_key?: bool}|IdempotencyConfig  $config
+     */
+    public function withIdempotencyConfig(array|IdempotencyConfig $config): self
+    {
+        $this->rebuildIdempotencyGuard(
+            $this->pipeline->idempotencyGuard->store(),
+            $config instanceof IdempotencyConfig ? $config : IdempotencyConfig::fromArray($config),
+        );
+
+        return $this;
+    }
+
+    public function idempotencyConfig(): IdempotencyConfig
+    {
+        return $this->pipeline->idempotencyGuard->config();
+    }
+
+    /**
+     * Missing-key warnings recorded by the guard (D-005 warn_missing_key).
+     *
+     * @return list<array{capability: string, caller: string, message: string}>
+     */
+    public function idempotencyWarnings(): array
+    {
+        return $this->pipeline->idempotencyGuard->warner()->warnings();
+    }
+
+    private function rebuildIdempotencyGuard(?IdempotencyStore $store, IdempotencyConfig $config): void
+    {
+        $this->pipeline->idempotencyGuard = new IdempotencyGuard($store, $this->clock, $config);
     }
 
     public function withRateLimiter(RateLimiter $limiter): self
@@ -698,6 +738,8 @@ final class CapabilityRegistry implements CapabilityBus
     public function withClock(Clock $clock): self
     {
         $this->clock = $clock;
+        // The guard stamps expires_at from the registry clock.
+        $this->rebuildIdempotencyGuard($this->pipeline->idempotencyGuard->store(), $this->pipeline->idempotencyGuard->config());
 
         return $this;
     }

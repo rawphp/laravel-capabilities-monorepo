@@ -96,6 +96,16 @@ profile — or no profile — returns `forbidden` with `normalized_code`
 
 ### Changed
 
+- **`idempotency.*` config now reaches the guard (D-005, L-011).** `enabled`, `ttl_hours`,
+  `header` and `warn_missing_key` were published but never applied: the pipeline always used
+  `IdempotencyConfig::defaults()`, and the HTTP controller read an undocumented
+  `surfaces.http.idempotency_header`. `ContainerBindings::makeRegistry` (and the container
+  registry) now apply `config('capabilities.idempotency')`; `CapabilityRegistry` gains
+  `withIdempotencyConfig(array|IdempotencyConfig)`, `idempotencyConfig()` and
+  `idempotencyWarnings()`, and a constructor `idempotencyConfig` array. `withIdempotencyStore()`
+  / `withClock()` keep the configured TTL. `enabled: false` makes the guard inert (no lookup,
+  no store, no key policy). The container `CapabilityController` reads the header name from
+  `idempotency.header`; an explicit `surfaces.http.idempotency_header` still wins.
 - **Uncaught pipeline throwables are reported, hidden, and release the idempotency key (L-009).**
   An exception escaping a non-run stage (an `authorize()` callable, a store, the rate
   limiter, output validation, strict audit) returned `internal` with the raw

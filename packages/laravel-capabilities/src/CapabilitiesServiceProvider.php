@@ -191,6 +191,8 @@ class CapabilitiesServiceProvider extends ServiceProvider
         $this->app->singleton(CapabilityController::class, function ($app) {
             $config = self::configFromApp($app);
             $http = is_array($config['surfaces']['http'] ?? null) ? $config['surfaces']['http'] : [];
+            // One header setting: idempotency.header (D-005 / L-011).
+            $http['idempotency_header'] ??= (string) ($config['idempotency']['header'] ?? 'Idempotency-Key');
             $clients = is_array($config['clients'] ?? null) ? $config['clients'] : [];
 
             return new CapabilityController(

@@ -613,3 +613,29 @@ it('D-019: container CapabilityController records unauthenticated denials on the
         ['route' => 'list', 'auth' => 'none'],
     ))->toBe(1);
 });
+
+// --- L-011: idempotency.header is the one header setting ---
+
+it('happy: the container CapabilityController reads the key from idempotency.header [L-011]', function () {
+    $app = req048FakeApp(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory', 'header' => 'X-Idem'],
+    ]));
+    $registry = $app->make(CapabilityRegistry::class);
+    Capability::define('idem-header')
+        ->description('header wiring')
+        ->input(CreateInvoiceInput::class)
+        ->output(CreateInvoiceResult::class)
+        ->authorize(fn () => true)
+        ->run(fn () => new CreateInvoiceResult(invoice_id: 1))
+        ->register($registry);
+
+    $controller = $app->make(CapabilityController::class);
+    $controller->invoke(HttpHelpers::authedRequest([
+        'method' => 'POST',
+        'jsonBody' => PipelineHelpers::validInput(),
+        'headers' => ['x-idem' => str_repeat('k', 16)],
+    ]), 'idem-header');
+
+    expect($controller->lastInvokeOptions()['idempotency_key'] ?? null)->toBe(str_repeat('k', 16));
+});
