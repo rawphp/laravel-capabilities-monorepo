@@ -70,6 +70,16 @@ profile — or no profile — returns `forbidden` with `normalized_code`
 
 ### Changed
 
+- **Class capabilities run their own `authorize()` / `needsApproval()` (D-017, L-001).**
+  For `#[Capability]` classes the pipeline previously called only `run()`: the class's
+  `authorize()` was never consulted (the invoke fell through to the host `Authorizer`,
+  deny by default) and `needsApproval()` was never read. Now the handler is resolved
+  **once per invoke through the container** (constructor dependencies inject; was `new`),
+  and its `authorize()` is the authorize-stage decision (also on approval accept re-check),
+  its `needsApproval()` gates the approval stage, and the same instance runs. A class
+  without `authorize()` still goes through the host `Authorizer`. Fluent `->authorize()`
+  callables are unchanged. `CapabilityRegistry::withHandlerFactory(callable)` swaps the
+  construction path (unit tests).
 - **Discovery fails closed on half-written capability classes (D-017).** A class carrying
   `#[Capability]` that does not implement `DefinesCapability` now throws `BootException`
   during discovery instead of being silently dropped from the catalog. Add

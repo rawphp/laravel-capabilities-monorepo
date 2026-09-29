@@ -332,6 +332,19 @@ final class CapabilityRegistry implements CapabilityBus
         return $this;
     }
 
+    /**
+     * How #[Capability] class handlers are built (D-017). Default: the Illuminate container,
+     * so constructor dependencies resolve. Units pass a closure.
+     *
+     * @param  callable(class-string): object  $factory
+     */
+    public function withHandlerFactory(callable $factory): self
+    {
+        $this->pipeline->handlerFactory = $factory instanceof \Closure ? $factory : \Closure::fromCallable($factory);
+
+        return $this;
+    }
+
     public function withServerRuleChecker(ServerRuleChecker $checker): self
     {
         $this->pipeline->serverRuleChecker = $checker;

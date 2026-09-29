@@ -43,11 +43,20 @@ use Throwable;
 final class InvokePipeline
 {
     /**
+     * Builds the #[Capability] class handler (D-017). Defaults to the container so
+     * constructor dependencies resolve; units inject a factory.
+     *
+     * @var Closure(class-string): object
+     */
+    public Closure $handlerFactory;
+
+    /**
      * @param  array{
      *     enabled?: bool,
      *     defaults?: array{per_minute?: int, per_capability_per_minute?: int},
      *     agent_turn?: array{max_tool_calls?: int}
      * }  $rateLimitConfig
+     * @param  (Closure(class-string): object)|null  $handlerFactory
      */
     public function __construct(
         public JsonSchemaValidator $jsonSchema,
@@ -74,7 +83,11 @@ final class InvokePipeline
                 'max_tool_calls' => 16,
             ],
         ],
-    ) {}
+        ?Closure $handlerFactory = null,
+    ) {
+        $this->handlerFactory = $handlerFactory
+            ?? static fn (string $class): object => Container::getInstance()->make($class);
+    }
 
     public function agentTurnBudget(): AgentTurnBudget
     {
@@ -543,11 +556,28 @@ final class InvokePipeline
     {
         try {
             $input = $this->hydrate($definition, $rawInput);
+
+            return $this->allows($definition, $input, $context, $this->makeHandler($definition));
         } catch (Throwable) {
             return false;
         }
+    }
 
-        return $this->allows($definition, $input, $context);
+    /**
+     * Resolve the D-017 class handler once per invoke (null for fluent definitions).
+     */
+    private function handler(InvokeState $state): ?object
+    {
+        return $state->handler ??= $this->makeHandler($state->definition);
+    }
+
+    private function makeHandler(CapabilityDefinition $definition): ?object
+    {
+        if ($definition->handlerClass === null) {
+            return null;
+        }
+
+        return ($this->handlerFactory)($definition->handlerClass);
     }
 
     /**
@@ -569,11 +599,19 @@ final class InvokePipeline
         return $inputClass::validate($rawInput);
     }
 
-    private function allows(CapabilityDefinition $definition, mixed $input, mixed $context): bool
+    /**
+     * Authorize decision order (D-017): fluent authorize callable → class authorize()
+     * → host Authorizer (deny by default, L-003).
+     */
+    private function allows(CapabilityDefinition $definition, mixed $input, mixed $context, ?object $handler): bool
     {
         $definitionAuth = $definition->authorize;
         if (is_callable($definitionAuth)) {
             return (bool) $definitionAuth($input, $context);
+        }
+
+        if ($handler !== null && method_exists($handler, 'authorize')) {
+            return (bool) self::callWithArity([$handler, 'authorize'], $input, $context);
         }
 
         return $this->authorizer->authorize($definition->name, $input, $context);
@@ -593,7 +631,7 @@ final class InvokePipeline
             );
         }
 
-        if (! $this->allows($state->definition, $state->input, $state->context)) {
+        if (! $this->allows($state->definition, $state->input, $state->context, $this->handler($state))) {
             return CapabilityResult::failure(
                 code: 'forbidden',
                 message: sprintf('Not authorized to invoke "%s".', $state->definition->name),
@@ -617,6 +655,12 @@ final class InvokePipeline
         $needs = (bool) ($state->options['needs_approval'] ?? false);
         if (! $needs && is_callable($state->options['needs_approval_callback'] ?? null)) {
             $needs = (bool) $state->options['needs_approval_callback']($state->input, $state->context);
+        }
+
+        // The capability's own rule (D-017 class needsApproval()) — governance is part of the definition.
+        $handler = $this->handler($state);
+        if (! $needs && $handler !== null && method_exists($handler, 'needsApproval')) {
+            $needs = (bool) self::callWithArity([$handler, 'needsApproval'], $state->input, $state->context);
         }
 
         // Explicit approval policy + option gate; bare policy does not always require.
@@ -797,7 +841,7 @@ final class InvokePipeline
                 $this->observation->lastRunWasWrapped = true;
             }
             $this->observation->invokeStartedAt ??= microtime(true);
-            $state->output = $this->executeRun($state->definition, $state->input, $state->context);
+            $state->output = $this->executeRun($state->definition, $state->input, $state->context, $this->handler($state));
         } catch (Throwable $e) {
             return $this->runFailure($e);
         }
@@ -884,40 +928,44 @@ final class InvokePipeline
         return $this->auditStage->record($state, $success, $failure);
     }
 
-    private function executeRun(CapabilityDefinition $definition, mixed $input, mixed $context = null): mixed
+    private function executeRun(CapabilityDefinition $definition, mixed $input, mixed $context, ?object $handler): mixed
     {
         if (is_callable($definition->run)) {
-            $run = Closure::fromCallable($definition->run);
-
-            return self::acceptsContext(new ReflectionFunction($run))
-                ? $run($input, $context)
-                : $run($input);
+            return self::callWithArity($definition->run, $input, $context);
         }
 
-        if ($definition->handlerClass !== null) {
-            $handler = new ($definition->handlerClass);
+        if ($handler !== null) {
             if (! method_exists($handler, 'run')) {
                 throw new InvalidArgumentException(sprintf(
                     'Handler %s has no run() method.',
-                    $definition->handlerClass,
+                    $handler::class,
                 ));
             }
 
-            return self::acceptsContext(new ReflectionMethod($handler, 'run'))
-                ? $handler->run($input, $context)
-                : $handler->run($input);
+            return self::callWithArity([$handler, 'run'], $input, $context);
         }
 
         throw new InvalidArgumentException('No run handler.');
     }
 
     /**
-     * D-003: pass context to run() only when its signature takes a second argument.
-     * Decided up front so a run() is never invoked twice for one invoke.
+     * D-003: pass context only when the signature takes a second argument. Decided
+     * up front from the signature so a callable is never invoked twice for one invoke.
      */
-    private static function acceptsContext(ReflectionFunctionAbstract $run): bool
+    private static function callWithArity(callable $callable, mixed $input, mixed $context): mixed
     {
-        return $run->isVariadic() || $run->getNumberOfParameters() >= 2;
+        $reflection = is_array($callable)
+            ? new ReflectionMethod($callable[0], $callable[1])
+            : new ReflectionFunction(Closure::fromCallable($callable));
+
+        return self::acceptsContext($reflection)
+            ? $callable($input, $context)
+            : $callable($input);
+    }
+
+    private static function acceptsContext(ReflectionFunctionAbstract $callable): bool
+    {
+        return $callable->isVariadic() || $callable->getNumberOfParameters() >= 2;
     }
 
     /**

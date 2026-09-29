@@ -88,6 +88,14 @@ Rules (fail closed):
 
 Place classes under `config('capabilities.path')` (default `app/Capabilities`) with `#[Rawphp\Capabilities\Attributes\Capability]` implementing `Rawphp\Capabilities\Contracts\DefinesCapability`. Boot discovery runs through the service provider — do not invent a third registration mechanism.
 
+The class owns its governance. On every invoke the pipeline resolves the handler **once through the container** (constructor injection works) and calls, in order:
+
+- `authorize(Input $input, CapabilityContext $ctx): bool` — the decision for this capability. Without it, the host `Authorizer` decides (deny by default).
+- `needsApproval(Input $input, CapabilityContext $ctx): bool` — optional; `true` stores an approval request and returns `approval_required` without calling `run()`.
+- `run(Input $input, CapabilityContext $ctx)` — the single mutation path.
+
+Each method may declare `(Input $input)` alone; the context is passed only when the signature takes a second argument. Unit tests swap construction with `CapabilityRegistry::withHandlerFactory(fn (string $class) => ...)`.
+
 Full teaching sample (monorepo): [First capability tutorial](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/tutorials/first-capability.md).
 
 ### Input / output DTOs
