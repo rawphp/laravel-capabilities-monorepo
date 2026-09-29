@@ -104,6 +104,11 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   third `$caller` and reads as unknown when the capability is not in that caller's
   effective surfaces; the controller passes the derived caller, so HTTP now returns
   `not_found`, matching list.
+- **`CapabilityController` no longer keeps the last request's actor.** The container
+  singleton stored every invoke's options (including the authenticated user) for a test
+  hook, which leaked across requests on Octane / long-lived workers. The
+  `lastInvokeOptions()` method is removed; assert invoke options through a recording
+  `CapabilityBus` instead.
 
 ## [0.5.3] - 2026-09-29
 
