@@ -356,8 +356,14 @@ final class ApprovalManager implements ApprovalGateway
             'idempotency_key' => $row['idempotency_key'] ?? null,
         ]);
 
+        // The row is saved: a notifier is a side channel and cannot change the outcome.
+        // Report its failure and keep notifying the rest (L-201 / L-103).
         foreach ($this->notifiers as $notifier) {
-            $notifier->notifyPending($row);
+            try {
+                $notifier->notifyPending($row);
+            } catch (Throwable $e) {
+                FailureReporter::reportAndCount($e, FailureReporter::APPROVAL_NOTIFY_FAILED, ['notifier' => $notifier::class]);
+            }
         }
 
         return $row;

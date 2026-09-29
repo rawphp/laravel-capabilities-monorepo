@@ -757,7 +757,8 @@ final class InvokePipeline
         );
         $this->observation->recordApproval($requested);
         if ($this->eventsEnabled) {
-            $this->events?->dispatch($requested);
+            // The approval row is saved; a listener cannot turn it into `internal` (L-201).
+            $this->results()->dispatch($requested);
         }
 
         return CapabilityResult::approvalRequired(

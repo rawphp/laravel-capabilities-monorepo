@@ -332,6 +332,17 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   change is the record of truth). Known limit: the first-party `AuditOutbox` that
   `required=true` falls back to is process-local; hosts needing cross-process at-least-once
   should treat `capabilities_audit_outbox` as the durable sink and alert on the metric.
+- **A failing approval notifier or `CapabilityApprovalRequested` listener no longer turns a saved
+  approval into `internal` (D-006, L-201 / M-201).** `ApprovalManager::request()` now calls each
+  `ApprovalNotifier::notifyPending()` inside a guard: a throw (chat API outage, a half-configured
+  channel) is reported to the `ExceptionHandler` and counted as
+  `approval_notify_failed_total{notifier}`, and the remaining notifiers still run. The
+  `CapabilityApprovalRequested` event goes through the same guarded dispatch as the other bus
+  events (`bus_listener_failed_total{event}`). The caller gets the normal `approval_required`
+  with its approval id, and a keyed invoke's idempotency row stays `pending_approval`. Before,
+  the pending row was saved but the caller saw `internal` and the key was stored as `failed`, so
+  accepting that row replayed `internal` instead of running, and an unkeyed retry opened a second
+  approval.
 - **A throwing bus-event listener no longer turns a committed run into `internal` (D-010, L-103).**
   `CapabilityInvoked`, `CapabilityFailed`, `CapabilityApprovalDecided` and
   `CapabilityApprovalExecuted` are dispatched inside a guard: a sync listener that throws, or a
