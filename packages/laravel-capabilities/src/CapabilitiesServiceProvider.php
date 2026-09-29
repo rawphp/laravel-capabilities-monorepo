@@ -4,6 +4,7 @@ namespace Rawphp\Capabilities;
 
 use ArrayAccess;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
+use Illuminate\Contracts\Events\Dispatcher as EventDispatcher;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\ServiceProvider;
 use Rawphp\Capabilities\Adapters\Ai\AiToolAdapter;
@@ -144,7 +145,8 @@ class CapabilitiesServiceProvider extends ServiceProvider
 
                 return $registry->executeApproval($row);
             })->withOriginalAuthorizer(static fn (array $row): bool => self::originalActorAllows($app, $row))
-                ->withAudit($this->auditWriterOrNull($app, $config));
+                ->withAudit($this->auditWriterOrNull($app, $config))
+                ->withEventDispatcher(self::eventDispatcherOrNull($app, $config));
         });
         $this->app->alias(ApprovalManager::class, 'ApprovalManager');
         // Hosts with custom actor lookup rebind this; default resolves users through
@@ -190,7 +192,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
             )->withRequesterResolver(
                 // Approved rows execute as the real requester — same lookup as the accept re-check (D-006).
                 static fn (string $type, string $id): ?object => self::authUserOrNull($app, $id),
-            );
+            )->withEventDispatcher(self::eventDispatcherOrNull($app, $config));
         });
         $this->app->alias(CapabilityRegistry::class, 'CapabilityRegistry');
         // CapabilityController type-hints CapabilityBus — same singleton, no second registry (REQ-057).
@@ -323,6 +325,31 @@ class CapabilitiesServiceProvider extends ServiceProvider
             self::boundTableGatewayOrNull($app),
             self::boundConnectionOrNull($app, $config, null),
         );
+    }
+
+    /**
+     * The app's event dispatcher for bus events (D-010 §5 / L-007) when `events.enabled`.
+     * Null (events off, or no `events` binding) keeps events in the registry's in-memory window.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    private static function eventDispatcherOrNull(object $app, array $config): ?EventDispatcher
+    {
+        if (! (bool) ($config['events']['enabled'] ?? true)) {
+            return null;
+        }
+
+        try {
+            if (method_exists($app, 'bound') && $app->bound('events')) {
+                $events = $app->make('events');
+
+                return $events instanceof EventDispatcher ? $events : null;
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return null;
     }
 
     /**

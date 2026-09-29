@@ -6,6 +6,7 @@ use Closure;
 use Error;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use InvalidArgumentException;
@@ -56,6 +57,11 @@ final class InvokePipeline
      * Null with wrap_run on is a configuration error and fails closed.
      */
     public ?ConnectionInterface $transactionConnection = null;
+
+    /**
+     * Host event dispatcher for bus events (D-010 §5 / L-007); null keeps events in-memory only.
+     */
+    public ?Dispatcher $events = null;
 
     /**
      * @param  array{
@@ -287,6 +293,7 @@ final class InvokePipeline
             auditStage: $this->auditStage,
             idempotencyGuard: $this->idempotencyGuard,
             eventsEnabled: $this->eventsEnabled,
+            events: $this->events,
         );
     }
 
@@ -741,11 +748,15 @@ final class InvokePipeline
         ]);
 
         $state->approvalId = (string) $record['id'];
-        $this->observation->approvalEvents[] = new CapabilityApprovalRequested(
+        $requested = new CapabilityApprovalRequested(
             capability: $state->definition->name,
             approvalId: $state->approvalId,
             caller: $state->caller,
         );
+        $this->observation->recordApproval($requested);
+        if ($this->eventsEnabled) {
+            $this->events?->dispatch($requested);
+        }
 
         return CapabilityResult::approvalRequired(
             approvalId: $state->approvalId,

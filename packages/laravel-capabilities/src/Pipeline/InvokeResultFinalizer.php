@@ -2,6 +2,7 @@
 
 namespace Rawphp\Capabilities\Pipeline;
 
+use Illuminate\Contracts\Events\Dispatcher;
 use Rawphp\Capabilities\Events\CapabilityFailed;
 use Rawphp\Capabilities\Events\CapabilityInvoked;
 use Rawphp\Capabilities\Support\CapabilityResult;
@@ -19,7 +20,18 @@ final class InvokeResultFinalizer
         public InvokeAuditStage $auditStage,
         public IdempotencyGuard $idempotencyGuard,
         public bool $eventsEnabled = true,
+        public ?Dispatcher $events = null,
     ) {}
+
+    /**
+     * Bus event → host listeners (D-010 §5) and the bounded diagnostic window.
+     * Called after run() so listeners never see phantom success; DB-touching listeners
+     * should still use afterCommit().
+     */
+    public function dispatch(object $event): void
+    {
+        $this->events?->dispatch($event);
+    }
 
     public function finishEarly(CapabilityResult $result, ?InvokeState $state): CapabilityResult
     {
@@ -158,7 +170,8 @@ final class InvokeResultFinalizer
                     'stages' => $state->stages,
                 ],
             );
-            $this->observation->invokedEvents[] = $event;
+            $this->observation->recordInvoked($event);
+            $this->dispatch($event);
         } elseif ($failure !== null) {
             $this->recordFailure(
                 $state->definition->name,
@@ -181,8 +194,8 @@ final class InvokeResultFinalizer
             message: $message,
             caller: $caller,
         );
-        $this->observation->failedEvents[] = $event;
-        $this->observation->logs[] = [
+        $this->observation->recordFailed($event);
+        $this->observation->log([
             'level' => 'error',
             'message' => $message,
             'context' => [
@@ -190,7 +203,10 @@ final class InvokeResultFinalizer
                 'code' => $code,
                 'caller' => $caller,
             ],
-        ];
+        ]);
+        if ($this->eventsEnabled) {
+            $this->dispatch($event);
+        }
     }
 
     private function recordAudit(InvokeState $state, bool $success, ?CapabilityResult $failure = null, bool $force = false): ?CapabilityResult

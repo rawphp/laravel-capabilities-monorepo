@@ -3,6 +3,7 @@
 namespace Rawphp\Capabilities\Approval;
 
 use DateInterval;
+use Illuminate\Contracts\Events\Dispatcher;
 use Rawphp\Capabilities\Contracts\ApprovalGateway;
 use Rawphp\Capabilities\Contracts\ApprovalNotifier;
 use Rawphp\Capabilities\Contracts\ApprovalStore;
@@ -47,6 +48,8 @@ final class ApprovalManager implements ApprovalGateway
     private array $notifiers = [];
 
     private ?AuditWriter $audit;
+
+    private ?Dispatcher $dispatcher = null;
 
     private ?IdempotencyStore $idempotency;
 
@@ -205,6 +208,19 @@ final class ApprovalManager implements ApprovalGateway
         $clone = clone $this;
         $clone->audit = $audit;
         $clone->rowExecutor = $this->rowExecutor->withAudit($audit);
+
+        return $clone;
+    }
+
+    /**
+     * Host event dispatcher for CapabilityApprovalDecided / CapabilityApprovalExecuted
+     * (D-010 §5 / L-007). Null keeps events in the in-memory {@see events()} list only.
+     */
+    public function withEventDispatcher(?Dispatcher $dispatcher): self
+    {
+        $clone = clone $this;
+        $clone->dispatcher = $dispatcher;
+        $clone->rowExecutor = $this->rowExecutor->withEventDispatcher($dispatcher);
 
         return $clone;
     }
@@ -721,13 +737,15 @@ final class ApprovalManager implements ApprovalGateway
      */
     private function emitDecided(array $row, string $decision, string $decidedBy, ?string $reason, array $options): void
     {
-        $this->events[] = new CapabilityApprovalDecided(
+        $decided = new CapabilityApprovalDecided(
             capability: (string) ($row['capability_name'] ?? ''),
             approvalId: (string) $row['id'],
             decision: $decision,
             decidedBy: $decidedBy,
             reason: $reason,
         );
+        $this->events[] = $decided;
+        $this->dispatcher?->dispatch($decided);
         $this->auditWrite('approval.decided', [
             'approval_id' => $row['id'],
             'decided_by' => $decidedBy,

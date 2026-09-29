@@ -2,6 +2,7 @@
 
 namespace Rawphp\Capabilities\Registry;
 
+use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\ConnectionInterface;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Audit\AuditLogger;
@@ -488,6 +489,24 @@ final class CapabilityRegistry implements CapabilityBus
         return $this;
     }
 
+    /**
+     * Host event dispatcher (`events` in a Laravel app). Bus events — CapabilityInvoked,
+     * CapabilityFailed, CapabilityApproval* — are dispatched to it after run() when
+     * `events.enabled` (D-010 §5 / L-007); the approval manager shares it.
+     */
+    public function withEventDispatcher(?Dispatcher $events): self
+    {
+        $this->pipeline->events = $events;
+        $this->pipeline->approvalManager = $this->pipeline->approvalManager->withEventDispatcher($events);
+
+        return $this;
+    }
+
+    public function eventDispatcher(): ?Dispatcher
+    {
+        return $this->pipeline->events;
+    }
+
     public function eventsEnabled(): bool
     {
         return $this->pipeline->eventsEnabled;
@@ -530,7 +549,8 @@ final class CapabilityRegistry implements CapabilityBus
         $this->approvalStore = $store;
         $this->pipeline->approvalManager = (new ApprovalManager($store))
             ->withExecutor($this->executeApproval(...))
-            ->withAudit($this->audit());
+            ->withAudit($this->audit())
+            ->withEventDispatcher($this->pipeline->events);
 
         return $this;
     }

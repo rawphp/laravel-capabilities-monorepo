@@ -137,6 +137,17 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   resolved through the `db` manager first; a name that cannot be resolved fails closed at
   boot (`BootException`) instead of falling back to the default. The undocumented
   `capabilities.database.connection` / `capabilities.connection` fallbacks are gone.
+- **Bus events reach Laravel's dispatcher and the in-memory window is bounded (D-010 §5,
+  L-007).** `CapabilityInvoked`, `CapabilityFailed`, `CapabilityApprovalRequested`,
+  `CapabilityApprovalDecided` and `CapabilityApprovalExecuted` were only appended to arrays on
+  the registry singleton — no host listener ever fired, and the arrays grew for the life of a
+  queue worker. The service provider now hands the app `events` dispatcher to the registry and
+  the `ApprovalManager` when `events.enabled` (`CapabilityRegistry::withEventDispatcher()`,
+  `ApprovalManager::withEventDispatcher()`, `ApprovalExecutor::withEventDispatcher()` are new);
+  events are dispatched after `run()`, so listeners that touch the database should still use
+  `afterCommit()`. `registry->invokedEvents()` / `failedEvents()` / `approvalEvents()` /
+  `logs()` keep only the newest `InvokeObservation::MAX_RETAINED` (100) entries — a
+  diagnostic window, not the delivery channel.
 - **Pipeline `rate_limited` sends a backoff hint (D-013, C-007).** The envelope now carries
   `error.retry_after` (seconds until the tripped per-minute / per-capability window frees)
   and `HttpResponse::fromResult` adds `Retry-After` on 429 when it is present (an explicit
