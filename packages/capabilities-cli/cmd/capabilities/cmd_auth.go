@@ -71,7 +71,7 @@ func cmdAuth(env Env, args []string) int {
 			if env.NewClient != nil {
 				c = env.NewClient(base, tok)
 			}
-			svc := &catalog.Service{Client: c, Cache: catalog.NewCache(st.SchemaCacheDir(profile))}
+			svc := &catalog.Service{Client: c, Cache: catalog.PrincipalCache(st.SchemaCacheDir(profile), c)}
 			_, _ = svc.Refresh(context.Background())
 		}
 		// Never print token.
@@ -87,7 +87,10 @@ func cmdAuth(env Env, args []string) int {
 		fmt.Fprintf(env.Stdout, "logged in profile=%s base_url=%s\n", profile, base)
 		return api.ExitOK
 	case "logout":
-		_ = auth.Logout(st, profile)
+		if err := auth.Logout(st, profile); err != nil {
+			fmt.Fprintln(env.Stderr, err.Error())
+			return api.ExitValidation
+		}
 		fmt.Fprintf(env.Stdout, "logged out profile=%s\n", profile)
 		return api.ExitOK
 	case "status":
