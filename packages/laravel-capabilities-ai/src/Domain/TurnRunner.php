@@ -99,10 +99,12 @@ final class TurnRunner
                     );
                 }
 
-                // Principal once per tool-using round: conversation user as actor + caller=job.
+                // Principal once per tool-using round: conversation user as actor + caller=agent
+                // (LLM-chosen tool calls are the agent surface, D-022), so the agent kill switch,
+                // per-capability surface narrowing and agent approval rules apply.
                 // Missing/invalid user_id fails closed (never ResolveActor::defaultUser).
                 $actor = $this->actors->resolve($conversation->user_id);
-                $invokeOptions = $this->actors->invokeOptions($actor);
+                $invokeOptions = $this->actors->invokeOptions($actor, ResolveConversationActor::CALLER_AGENT);
 
                 // Normalize ids first so assistant tool_use and role=tool share the same id.
                 $normalizedCalls = [];

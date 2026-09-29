@@ -3822,7 +3822,7 @@ Without fixing this, D-006 approval differences by surface and D-008/D-013 surfa
 |---|---|
 | Sanctum personal access token | Mapped ability (e.g. `capabilities:cli` → `cli`) or token name pattern in `config/capabilities.php` `clients.token_abilities`. Unmapped → `http`. |
 | OAuth / device-code (`client_id`) | Registered client type in `clients.oauth` → `cli`, `http`, etc. Unregistered → `http` (or reject if `cli` surface requires registration). |
-| In-process AI adapter | Sets `caller: agent` in code when invoking the registry (model never supplies caller). |
+| In-process AI adapter | Sets `caller: agent` in code when invoking the registry (model never supplies caller). Includes the AI package's `TurnRunner` tool calls; its proposal accept (a human confirming over HTTP) keeps `caller: job` until decided separately. |
 | In-process MCP adapter | Sets `caller: mcp` in code. |
 | Jobs / scheduler | Sets `caller: job` via `RunCapability` / dispatch helpers ([D-002](#d-002--job--scheduler-caller-identity)). |
 | In-process app code | Explicit `Capability::invoke(..., caller: 'http'\|…)` argument — trusted only because it is **server code**, not the wire. |

@@ -14,7 +14,10 @@ use RuntimeException;
  */
 final class ResolveConversationActor
 {
-    /** In-process coach / job surface (legacy RunCoachCommandHandler shape). */
+    /** LLM-chosen tool calls in a turn: the agent surface (D-022 in-process AI adapter). */
+    public const CALLER_AGENT = 'agent';
+
+    /** Proposal accept: legacy job shape until the spec decides the accept surface. */
     public const CALLER_JOB = 'job';
 
     /**
@@ -96,17 +99,18 @@ final class ResolveConversationActor
     }
 
     /**
-     * Bus invoke options matching legacy coach job principal.
+     * Bus invoke options: server-chosen caller + resolved actor (never overridable by $extra).
      *
-     * @param  array<string, mixed>  $extra  Merged after caller/actor (e.g. idempotency_key)
+     * @param  self::CALLER_*  $caller
+     * @param  array<string, mixed>  $extra  Additional options (e.g. idempotency_key)
      * @return array<string, mixed>
      */
-    public function invokeOptions(object $actor, array $extra = []): array
+    public function invokeOptions(object $actor, string $caller, array $extra = []): array
     {
-        return array_merge([
-            'caller' => self::CALLER_JOB,
+        return [
+            'caller' => $caller,
             'actor' => $actor,
-        ], $extra);
+        ] + $extra;
     }
 
     /**

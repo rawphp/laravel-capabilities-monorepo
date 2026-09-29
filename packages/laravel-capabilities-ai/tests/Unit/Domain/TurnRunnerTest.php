@@ -209,7 +209,7 @@ it('tool call path invokes CapabilityBus exactly once with expected name/payload
         ->and($bus->invokes)->toBe(1)
         ->and($bus->lastName)->toBe('demo.tool')
         ->and($bus->lastInput)->toBe(['x' => 1])
-        ->and($bus->lastOptions['caller'] ?? null)->toBe(ResolveConversationActor::CALLER_JOB)
+        ->and($bus->lastOptions['caller'] ?? null)->toBe(ResolveConversationActor::CALLER_AGENT)
         ->and($bus->lastOptions['actor'] ?? null)->toBeInstanceOf(TurnRunnerTestUser::class)
         ->and((string) ($bus->lastOptions['actor']->id ?? ''))->toBe((string) $seeded['user']->id);
 
@@ -316,7 +316,7 @@ it('tool invokes carry a 1-based per-turn tool-call count across rounds for the 
 
     expect(array_column($first->allOptions, 'agent_turn_tool_calls'))->toBe([1, 2, 3])
         ->and(array_column($second->allOptions, 'agent_turn_tool_calls'))->toBe([1, 2, 3])
-        ->and(array_unique(array_column($first->allOptions, 'caller')))->toBe([ResolveConversationActor::CALLER_JOB]);
+        ->and(array_unique(array_column($first->allOptions, 'caller')))->toBe([ResolveConversationActor::CALLER_AGENT]);
 });
 
 it('lifts tool arg idempotency_key into bus options and strips it from capability input (D-005)', function () {

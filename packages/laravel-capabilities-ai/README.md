@@ -76,7 +76,7 @@ Key defaults (`config/capabilities-ai.php`):
 
 Progress events live in array/Redis — **not** MySQL product tables.
 
-**Bus principal (tool + accept invokes):** `TurnRunner` and `ProposalService` resolve the conversation’s Laravel user via `user_model` / auth provider and pass `caller=job` plus that user as `actor` on `CapabilityBus::invoke`. Missing/unresolvable `conversation.user_id` fails closed (no silent default user). When `CapabilityBus` is bound, provider boot also fails closed if the user model is unset, missing, or has no `query()` (class check only, no DB). Tool invokes pass `idempotency_key` only when the model supplies it as a tool argument (D-005; stripped from capability input) — otherwise they carry no key.
+**Bus principal (tool + accept invokes):** `TurnRunner` and `ProposalService` resolve the conversation’s Laravel user via `user_model` / auth provider and pass that user as `actor` on `CapabilityBus::invoke`. Turn tool calls use `caller=agent` (D-022), so the agent surface flag, per-capability `surfaces` narrowing and agent approval rules apply; proposal accept uses `caller=job`. Missing/unresolvable `conversation.user_id` fails closed (no silent default user). When `CapabilityBus` is bound, provider boot also fails closed if the user model is unset, missing, or has no `query()` (class check only, no DB). Tool invokes pass `idempotency_key` only when the model supplies it as a tool argument (D-005; stripped from capability input) — otherwise they carry no key.
 
 ### Host integration (D-024 seams)
 

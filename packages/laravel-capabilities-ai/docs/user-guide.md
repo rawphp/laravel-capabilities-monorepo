@@ -30,7 +30,7 @@ The ALTER is idempotent (no-op if the column already exists). Greenfield install
 
 ### Bus principal (job + conversation user)
 
-`TurnRunner` (tool invokes) and `ProposalService` (accept) resolve the conversation’s Laravel user and pass **`caller=job`** plus that user as **`actor`** on every `CapabilityBus::invoke`. Missing or unresolvable `conversation.user_id` fails closed. Tool invokes carry `idempotency_key` only when the model passes it as a tool argument (D-005); the key is stripped from capability input. Proposal accept always sets `proposal:{ulid}`.
+`TurnRunner` (tool invokes) and `ProposalService` (accept) resolve the conversation’s Laravel user and pass that user as **`actor`** on every `CapabilityBus::invoke`. Tool invokes use **`caller=agent`** (D-022): `CAPABILITIES_SURFACE_AGENT=false` stops them, and a capability whose `surfaces` omit `agent` is refused. Proposal accept uses **`caller=job`**. Missing or unresolvable `conversation.user_id` fails closed. Tool invokes carry `idempotency_key` only when the model passes it as a tool argument (D-005); the key is stripped from capability input. Proposal accept always sets `proposal:{ulid}`.
 
 ### Upgrade for hosts (manual DI / constructor / job handle)
 
