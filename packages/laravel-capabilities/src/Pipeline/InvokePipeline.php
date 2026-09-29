@@ -212,16 +212,43 @@ final class InvokePipeline
                 $successMeta,
             ));
         } catch (Throwable $e) {
+            return $this->finishUncaught($state, $e);
+        }
+    }
+
+    /**
+     * A throwable escaping any stage (authorize callables, stores, rate limiter, output
+     * validation, strict audit) is a bug-class failure: report it, hide the message, and
+     * still run the failure finish so a claimed Idempotency-Key is stored as failed rather
+     * than left `processing` until its TTL (D-005). The finish itself may be what is broken,
+     * so a second throw falls back to a bare envelope.
+     */
+    private function finishUncaught(InvokeState $state, Throwable $e): CapabilityResult
+    {
+        $this->reportThrowable($e);
+        $failure = CapabilityResult::failure(code: 'internal', message: 'Internal error.');
+
+        try {
+            return $this->results()->finishFailure($state, $failure);
+        } catch (Throwable $finishFailed) {
+            $this->reportThrowable($finishFailed);
             $state->mark(PipelineStages::WIRE_RESPONSE);
             $this->observation->lastState = $state;
             $this->observation->lastStages = $state->stages;
-            $this->results()->recordFailure($state->definition->name, $e->getMessage(), $state->caller, 'internal');
 
             return CapabilityResult::failure(
                 code: 'internal',
-                message: $e->getMessage(),
+                message: 'Internal error.',
                 meta: ['request_id' => $state->requestId, 'stages' => $state->stages],
             );
+        }
+    }
+
+    private function reportThrowable(Throwable $e): void
+    {
+        $container = Container::getInstance();
+        if ($container->bound(ExceptionHandler::class)) {
+            $container->make(ExceptionHandler::class)->report($e);
         }
     }
 
@@ -874,10 +901,7 @@ final class InvokePipeline
 
         // QueryException is a PDOException.
         if ($e instanceof Error || $e instanceof PDOException) {
-            $container = Container::getInstance();
-            if ($container->bound(ExceptionHandler::class)) {
-                $container->make(ExceptionHandler::class)->report($e);
-            }
+            $this->reportThrowable($e);
 
             return CapabilityResult::failure(code: 'internal', message: 'Internal error.');
         }

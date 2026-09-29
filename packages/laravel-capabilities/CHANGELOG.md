@@ -96,6 +96,16 @@ profile — or no profile — returns `forbidden` with `normalized_code`
 
 ### Changed
 
+- **Uncaught pipeline throwables are reported, hidden, and release the idempotency key (L-009).**
+  An exception escaping a non-run stage (an `authorize()` callable, a store, the rate
+  limiter, output validation, strict audit) returned `internal` with the raw
+  `$e->getMessage()` on the wire — SQL text and bindings included — without reporting it,
+  and skipped the failure finish, so a key claimed at idempotency lookup stayed
+  `processing` (every retry answered `busy`) until its TTL. The catch now reports through
+  the bound `ExceptionHandler`, answers `internal` / `Internal error.` (same as run-stage
+  bugs), and runs the normal failure finish: the key is stored `failed` and a retry replays
+  that failure. If the finish itself throws, that is reported too and a bare `internal`
+  envelope is returned.
 - **Accept / reject / forced resume enforce the capability's `approvalPolicy` (D-006, L-002).**
   `ApprovalManager` applied only its global `approval.default_policy`
   (`requester_or_role`), so a capability declaring `approvalPolicy: 'role:finance'` still let
