@@ -117,6 +117,13 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   `reject()` uses the lease-aware conditional update; a lost race is settled from one re-read
   (terminal status → that outcome). `ApprovalStore::claimLease()` attributes need not carry a
   new lease.
+- **`approval.connection` / `idempotency.connection` now reach the stores (L-008).** The
+  service provider resolved the container's `ConnectionInterface` first; Laravel aliases that
+  to the default `db.connection`, so a configured store connection name was never used and
+  approvals/idempotency silently wrote to the default connection. The configured name is now
+  resolved through the `db` manager first; a name that cannot be resolved fails closed at
+  boot (`BootException`) instead of falling back to the default. The undocumented
+  `capabilities.database.connection` / `capabilities.connection` fallbacks are gone.
 - **Pipeline `rate_limited` sends a backoff hint (D-013, C-007).** The envelope now carries
   `error.retry_after` (seconds until the tripped per-minute / per-capability window frees)
   and `HttpResponse::fromResult` adds `Retry-After` on 429 when it is present (an explicit

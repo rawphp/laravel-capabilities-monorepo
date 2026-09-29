@@ -384,15 +384,24 @@ class CapabilitiesServiceProvider extends ServiceProvider
     }
 
     /**
-     * Resolve Illuminate connection for QueryTableGateway construction.
+     * Resolve the Illuminate connection a database-backed store should use.
      *
-     * Order: bound ConnectionInterface → config connection name via db manager → null.
+     * Order (L-008): the store's own `connection` name via the `db` manager → the bound
+     * ConnectionInterface → the `db` manager default. Laravel aliases ConnectionInterface to
+     * `db.connection` (the default), so the configured name must be checked first or it is
+     * never reachable. A configured name that cannot be resolved returns null (the factory
+     * then fails closed) — never silently the default connection.
      *
      * @param  array<string, mixed>  $config
      * @param  'approval'|'idempotency'|null  $storeKey
      */
     private static function boundConnectionOrNull(object $app, array $config, ?string $storeKey): ?ConnectionInterface
     {
+        $name = $storeKey === null ? null : ($config[$storeKey]['connection'] ?? null);
+        if (is_string($name) && $name !== '') {
+            return self::namedConnectionOrNull($app, $name);
+        }
+
         try {
             if (method_exists($app, 'bound') && $app->bound(ConnectionInterface::class)) {
                 $connection = $app->make(ConnectionInterface::class);
@@ -404,35 +413,17 @@ class CapabilitiesServiceProvider extends ServiceProvider
             // try db manager next
         }
 
-        try {
-            $connection = $app->make(ConnectionInterface::class);
-            if ($connection instanceof ConnectionInterface) {
-                return $connection;
-            }
-        } catch (\Throwable) {
-            // try db manager next
-        }
+        return self::namedConnectionOrNull($app, null);
+    }
 
-        $name = null;
-        if ($storeKey === 'approval') {
-            $name = $config['approval']['connection'] ?? null;
-        } elseif ($storeKey === 'idempotency') {
-            $name = $config['idempotency']['connection'] ?? null;
-        }
-        if ($name === null || $name === '') {
-            $name = $config['database']['connection'] ?? $config['connection'] ?? null;
-        }
-        if (is_string($name) && $name === '') {
-            $name = null;
-        }
-
+    private static function namedConnectionOrNull(object $app, ?string $name): ?ConnectionInterface
+    {
         try {
             $db = $app->make('db');
             if (is_object($db) && method_exists($db, 'connection')) {
-                $connection = $db->connection(is_string($name) ? $name : null);
-                if ($connection instanceof ConnectionInterface) {
-                    return $connection;
-                }
+                $connection = $db->connection($name);
+
+                return $connection instanceof ConnectionInterface ? $connection : null;
             }
         } catch (\Throwable) {
             return null;
