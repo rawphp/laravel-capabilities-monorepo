@@ -162,6 +162,17 @@ profile — or no profile — returns `forbidden` with `normalized_code`
 **Upgrade:** add an `integration_profiles` entry for every client in
 `integration_actors`, or its tool calls will be refused.
 
+#### Unused public helpers removed
+
+These shipped in 0.5.3 and had no callers inside the package:
+
+- `Boot\SurfaceNames::isKnown()`
+- `Boot\BootGuard::fromDefaults()` and `BootGuard::evaluatePeer()`: the provider builds
+  `BootGuard`, and `validate()['surfaces']` carries each peer surface's status.
+- `Support\SchemaSnapshot::document()`
+- `Adapters\PeerSupportMatrix::supports()`: use
+  `PeerSupportMatrix::versionSatisfies($version, PeerSupportMatrix::for($peer))`.
+
 ### Changed
 
 - **`QueryTableGateway` writes SQL every supported engine accepts (D-006, L-012).** Scalars
@@ -362,9 +373,9 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   a fabricated `stdClass` "artisan-user-<id>" that `authorize()` implementations calling
   `$user->can()` would have received.
 - **The approval resume sweep keeps its command when the artisan invoke surface is off (L-108).**
-  `ArtisanCommandRegistrar::classes($artisanConfig, $approvalConfig)` adds
-  `ResumeApprovalsCommand` whenever `ResumeSchedulePlan::fromConfig()` plans a sweep, and the
-  provider passes `approval.*` to it. Before, `surfaces.artisan.enabled=false` unregistered the
+  `ArtisanCommandRegistrar::infrastructure($approvalConfig)` (the provider registers it via
+  `all()`) adds `ResumeApprovalsCommand` whenever `ResumeSchedulePlan::fromConfig()` plans a
+  sweep, and the provider passes `approval.*` to it. Before, `surfaces.artisan.enabled=false` unregistered the
   command while `bootResumeSchedule()` still scheduled it, so `schedule:run` failed every minute
   and crash recovery never ran.
 - **HTTP routes register once, with their middleware once (REQ-021).** The provider now hands
