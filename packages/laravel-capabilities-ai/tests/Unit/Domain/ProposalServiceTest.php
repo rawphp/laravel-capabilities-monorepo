@@ -12,14 +12,17 @@ use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
+use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
 use Rawphp\CapabilitiesAi\Domain\AcceptOutcome;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
+use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\AlwaysReadyIdempotency;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
+use Rawphp\CapabilitiesAi\Support\ToolSchemaHash;
 
 /**
  * Minimal user model for ProposalService principal resolution unit tests.
@@ -60,16 +63,44 @@ function proposalActors(): ResolveConversationActor
     return new ResolveConversationActor(ProposalServiceTestUser::class);
 }
 
-function makeProposalService(CapabilityBus $bus, ?IdempotencyReadiness $idempotency = null): ProposalService
+/**
+ * Host tool profile fake; names are mutable so a test can narrow the profile after propose-time.
+ *
+ * @param  list<string>  $names
+ */
+function proposalTools(array $names = ['demo.cap']): object
 {
+    return new class($names) implements ToolCatalog
+    {
+        /** @var list<array{0: string, 1: string}> */
+        public array $calls = [];
+
+        /** @param  list<string>  $names */
+        public function __construct(public array $names) {}
+
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            $this->calls[] = [$conversationUlid, $turnUlid];
+
+            return array_map(static fn (string $name): array => ['name' => $name], $this->names);
+        }
+    };
+}
+
+function makeProposalService(
+    CapabilityBus $bus,
+    ?IdempotencyReadiness $idempotency = null,
+    ?ToolCatalog $tools = null,
+): ProposalService {
     return new ProposalService(
         $bus,
         $idempotency ?? new AlwaysReadyIdempotency,
         proposalActors(),
+        $tools ?? proposalTools(),
     );
 }
 
-function seedPendingProposal(?string $target = 'demo.cap', array $payload = ['a' => 1], bool $withUser = true): Proposal
+function seedPendingProposal(?string $target = 'demo.cap', array $payload = ['a' => 1], bool $withUser = true, ?string $schemaHash = null): Proposal
 {
     $userId = null;
     if ($withUser) {
@@ -88,6 +119,7 @@ function seedPendingProposal(?string $target = 'demo.cap', array $payload = ['a'
         'type' => 'action',
         'payload' => $payload,
         'target_capability' => $target,
+        'schema_hash' => $schemaHash,
         'status' => Proposal::STATUS_PENDING,
     ]);
 }
@@ -161,6 +193,78 @@ it('accept invokes bus and returns accepted outcome', function () {
         ->and($bus->lastOptions['idempotency_key'] ?? null)->toBe('proposal:'.$proposal->ulid);
 });
 
+it('accept refuses a target narrowed out of the tool profile after propose-time without invoking the bus', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $tools = proposalTools(['demo.cap', 'demo.other']);
+    $tools->names = ['demo.other'];
+    $bus = proposalBus();
+    $out = makeProposalService($bus, tools: $tools)->accept($proposal->ulid);
+    $turn = Turn::query()->findOrFail($proposal->turn_id);
+    $conversation = Conversation::query()->findOrFail($proposal->conversation_id);
+
+    expect($out->kind)->toBe(AcceptOutcome::KIND_REFUSE)
+        ->and($out->httpStatus)->toBe(403)
+        ->and($out->error['code'] ?? null)->toBe('capability_not_in_profile')
+        ->and($out->proposal->status)->toBe(Proposal::STATUS_FAILED)
+        ->and($out->proposal->last_error)->toStartWith('capability_not_in_profile:')
+        ->and($bus->invokes)->toBe(0)
+        ->and($tools->calls)->toBe([[$conversation->ulid, $turn->ulid]]);
+});
+
+it('accept refuses a proposal whose target input schema changed since creation without invoking the bus', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal(schemaHash: ToolSchemaHash::of(['parameters' => ['type' => 'object']]));
+    $bus = proposalBus();
+    $out = makeProposalService($bus)->accept($proposal->ulid);
+
+    expect($out->kind)->toBe(AcceptOutcome::KIND_REFUSE)
+        ->and($out->httpStatus)->toBe(409)
+        ->and($out->error['code'] ?? null)->toBe('conflict')
+        ->and($out->error['reason'] ?? null)->toBe('schema_changed')
+        ->and($out->error['retryable'] ?? null)->toBeFalse()
+        ->and($out->message)->toContain('input schema changed')
+        ->and($out->proposal->status)->toBe(Proposal::STATUS_FAILED)
+        ->and($out->proposal->last_error)->toStartWith('conflict:')
+        ->and($bus->invokes)->toBe(0);
+});
+
+it('accept invokes when the stamped schema hash still matches the live tool schema', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal(schemaHash: ToolSchemaHash::of(['name' => 'demo.cap']));
+    $bus = proposalBus();
+    $out = makeProposalService($bus)->accept($proposal->ulid);
+
+    expect($out->kind)->toBe(AcceptOutcome::KIND_ACCEPTED)
+        ->and($bus->invokes)->toBe(1);
+});
+
+it('accept fails closed with not_in_profile when no ToolCatalog is bound', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $bus = proposalBus();
+    $service = new ProposalService($bus, new AlwaysReadyIdempotency, proposalActors());
+    $out = $service->accept($proposal->ulid);
+
+    expect($out->kind)->toBe(AcceptOutcome::KIND_REFUSE)
+        ->and($out->error['code'] ?? null)->toBe('capability_not_in_profile')
+        ->and($bus->invokes)->toBe(0);
+});
+
+it('accept fails closed with not_in_profile when the proposal turn row is gone', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    Proposal::query()->whereKey($proposal->id)->update(['turn_id' => 999999]);
+    $tools = proposalTools();
+    $bus = proposalBus();
+    $out = makeProposalService($bus, tools: $tools)->accept($proposal->ulid);
+
+    expect($out->kind)->toBe(AcceptOutcome::KIND_REFUSE)
+        ->and($out->error['code'] ?? null)->toBe('capability_not_in_profile')
+        ->and($tools->calls)->toBe([])
+        ->and($bus->invokes)->toBe(0);
+});
+
 it('accept fails closed when conversation has no user_id', function () {
     bootProposalSqlite();
     $proposal = seedPendingProposal(withUser: false);
@@ -198,7 +302,7 @@ it('actor resolver misconfiguration leaves proposal accepting for re-drive after
     bootProposalSqlite();
     $proposal = seedPendingProposal();
     $bus = proposalBus();
-    $service = new ProposalService($bus, new AlwaysReadyIdempotency, new ResolveConversationActor('NoSuchUserModel'));
+    $service = new ProposalService($bus, new AlwaysReadyIdempotency, new ResolveConversationActor('NoSuchUserModel'), proposalTools());
 
     expect(fn () => $service->accept($proposal->ulid))
         ->toThrow(RuntimeException::class, 'does not exist');
@@ -445,4 +549,22 @@ it('accept expired returns refuse outcome without throw', function () {
     expect($out->kind)->toBe(AcceptOutcome::KIND_REFUSE)
         ->and($out->httpStatus)->toBe(410)
         ->and($bus->invokes)->toBe(0);
+});
+
+it('ownedBy is true only for the owner of the proposal conversation', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $ownerId = (string) Conversation::query()->whereKey($proposal->conversation_id)->value('user_id');
+    $service = makeProposalService(proposalBus());
+
+    expect($service->ownedBy($proposal->ulid, $ownerId))->toBeTrue()
+        ->and($service->ownedBy($proposal->ulid, $ownerId.'9'))->toBeFalse()
+        ->and($service->ownedBy('PROPDOESNOTEXIST0001', $ownerId))->toBeFalse();
+});
+
+it('ownedBy is false for a proposal whose conversation has no owner', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal(withUser: false);
+
+    expect(makeProposalService(proposalBus())->ownedBy($proposal->ulid, ''))->toBeFalse();
 });

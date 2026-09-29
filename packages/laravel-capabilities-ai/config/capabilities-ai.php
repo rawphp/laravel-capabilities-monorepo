@@ -61,6 +61,8 @@ return [
             'base_url' => $env('CAPABILITIES_AI_ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
             /** Host-parity default (was hard-coded 1024; truncated long coach replies). */
             'max_tokens' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS', 64000),
+            /** 429 retries per request (honours Retry-After, capped at 60s); 0 disables. */
+            'max_retries' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_RETRIES', 2),
         ],
     ],
 
@@ -99,6 +101,13 @@ return [
         'stale_queued_minutes' => (int) $env('CAPABILITIES_AI_REAPER_STALE_QUEUED', 30),
         'stale_running_grace_seconds' => (int) $env('CAPABILITIES_AI_REAPER_RUNNING_GRACE', 60),
     ],
+
+    /**
+     * Pressure valve: ceiling on queued + running turns across all conversations.
+     * At the ceiling, new messages are refused (HTTP 429, outcome=retryable) with
+     * nothing persisted or dispatched. 0 = unlimited (default).
+     */
+    'max_concurrent_turns' => (int) $env('CAPABILITIES_AI_MAX_CONCURRENT_TURNS', 0),
 
     /** Max tool-call rounds per turn before force-complete/fail. */
     'max_tool_rounds' => (int) $env('CAPABILITIES_AI_MAX_TOOL_ROUNDS', 8),

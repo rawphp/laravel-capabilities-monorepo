@@ -6,6 +6,8 @@ namespace Rawphp\CapabilitiesAi\Support;
 
 use InvalidArgumentException;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
+use Rawphp\Capabilities\Contracts\Metrics;
+use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
@@ -109,8 +111,10 @@ final class ContainerBindings
 
     /**
      * @param  array<string, mixed>  $config
+     * @param  Metrics|null  $metrics  core D-019 metrics (host-bound); null = no LLM telemetry
+     * @param  Tracer|null  $tracer  core D-019 tracer (host-bound); null = no LLM spans
      */
-    public static function makeLlmClient(array $config): LlmClient
+    public static function makeLlmClient(array $config, ?Metrics $metrics = null, ?Tracer $tracer = null): LlmClient
     {
         $driver = (string) (($config['llm']['driver'] ?? null) ?: 'fake');
         $resolved = self::resolveLlmDriver($driver);
@@ -122,6 +126,9 @@ final class ContainerBindings
                 model: (string) ($config['llm']['anthropic']['model'] ?? 'claude-sonnet-4-6'),
                 baseUrl: (string) ($config['llm']['anthropic']['base_url'] ?? 'https://api.anthropic.com'),
                 maxTokens: (int) ($config['llm']['anthropic']['max_tokens'] ?? 64000),
+                metrics: $metrics,
+                tracer: $tracer,
+                maxRetries: (int) ($config['llm']['anthropic']['max_retries'] ?? 2),
             ),
         };
     }
@@ -238,7 +245,7 @@ final class ContainerBindings
 
     /**
      * @param  callable(object): mixed  $dispatch
-     * @param  array<string, mixed>  $config  capabilities-ai config slice (optional proposals.enabled)
+     * @param  array<string, mixed>  $config  capabilities-ai config slice (optional proposals.enabled, max_concurrent_turns)
      */
     public static function makeConversationService(
         callable $dispatch,
@@ -251,6 +258,7 @@ final class ContainerBindings
             $progress,
             $claimTtl,
             proposalsEnabled: (bool) ($config['proposals']['enabled'] ?? true),
+            maxConcurrentTurns: self::maxConcurrentTurnsFromConfig($config),
         );
     }
 
@@ -258,6 +266,7 @@ final class ContainerBindings
         CapabilityBus $bus,
         IdempotencyReadiness $idempotency,
         ?string $userModel = null,
+        ?ToolCatalog $tools = null,
     ): ProposalService {
         return new ProposalService(
             $bus,
@@ -265,6 +274,7 @@ final class ContainerBindings
             new ResolveConversationActor(
                 is_string($userModel) && $userModel !== '' ? $userModel : null,
             ),
+            $tools,
         );
     }
 
@@ -284,5 +294,18 @@ final class ContainerBindings
         $ttl = is_numeric($raw) ? (int) $raw : Package::DEFAULT_CLAIM_TTL;
 
         return $ttl > 0 ? $ttl : Package::DEFAULT_CLAIM_TTL;
+    }
+
+    /**
+     * Ceiling on queued + running turns; 0 (unlimited) when missing, non-numeric, or negative.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    public static function maxConcurrentTurnsFromConfig(array $config): int
+    {
+        $raw = $config['max_concurrent_turns'] ?? 0;
+        $max = is_numeric($raw) ? (int) $raw : 0;
+
+        return max($max, 0);
     }
 }

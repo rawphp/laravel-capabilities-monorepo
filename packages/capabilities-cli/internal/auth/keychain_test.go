@@ -12,7 +12,8 @@ func TestStoretokenencryptedoroskeychain(t *testing.T) {
 		t.Fatal(err)
 	}
 	// File mode 0600
-	info, err := os.Stat(filepath.Join(st.profileDir("default"), "token"))
+	dir, _ := st.profileDir("default")
+	info, err := os.Stat(filepath.Join(dir, "token"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +74,7 @@ func TestMultipleprofilesisolated(t *testing.T) {
 
 func TestCorruptkeychainhandled(t *testing.T) {
 	st := tempStore(t)
-	dir := st.profileDir("default")
+	dir, _ := st.profileDir("default")
 	_ = os.MkdirAll(dir, 0o700)
 	// Write non-token garbage as empty after trim → ErrNoToken
 	_ = os.WriteFile(filepath.Join(dir, "token"), []byte("   \n"), 0o600)

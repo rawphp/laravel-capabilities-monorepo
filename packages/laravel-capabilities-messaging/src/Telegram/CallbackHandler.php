@@ -12,6 +12,10 @@ use RuntimeException;
  *
  * Never executes domain run() itself — only accept/reject on the shared SM via
  * the core port (not concrete ApprovalManager).
+ *
+ * A non-empty signed approver_hint binds the buttons to one product principal id:
+ * a different linked user clicking a forwarded/leaked callback is forbidden.
+ * An empty hint leaves the decision to the approval policy alone.
  */
 final class CallbackHandler
 {
@@ -43,16 +47,6 @@ final class CallbackHandler
             return ['status' => 'invalid', 'message' => 'unsupported_action'];
         }
 
-        $telegramUserId = (string) ($telegramUser['id'] ?? $telegramUser['telegram_user_id'] ?? '');
-        $user = $this->identity->resolve([
-            'channel' => 'telegram',
-            'telegram_user_id' => $telegramUserId,
-        ]);
-
-        if ($user === null) {
-            return ['status' => 'forbidden', 'message' => 'unlinked_approver'];
-        }
-
         if ($this->approvals === null) {
             throw new RuntimeException('ApprovalGateway is required to process callbacks.');
         }
@@ -60,6 +54,26 @@ final class CallbackHandler
         $approvalId = (string) $callbackPayload['approval_id'];
         // Use gateway find() so lazy TTL expiry matches HTTP/accept paths (D-006).
         $row = $this->approvals->find($approvalId);
+
+        // Resolve the link under the row's tenant: an approver linked in another
+        // tenant resolves to no one (D-003), whatever the approval policy says.
+        $telegramUserId = (string) ($telegramUser['id'] ?? $telegramUser['telegram_user_id'] ?? '');
+        $user = $this->identity->resolve([
+            'channel' => 'telegram',
+            'telegram_user_id' => $telegramUserId,
+            'expected_tenant_id' => $row['tenant_id'] ?? null,
+        ]);
+
+        if ($user === null) {
+            return ['status' => 'forbidden', 'message' => 'unlinked_approver'];
+        }
+
+        $approverHint = (string) ($callbackPayload['approver_hint'] ?? '');
+        if ($approverHint !== '' && $approverHint !== $this->principalId($user)) {
+            return ['status' => 'forbidden', 'message' => 'approver_mismatch'];
+        }
+
+        // Identity is checked first so unlinked users cannot probe approval ids.
         if ($row === null) {
             return ['status' => 'not_found', 'message' => 'unknown_approval'];
         }
@@ -88,5 +102,21 @@ final class CallbackHandler
             'callback_had_input' => array_key_exists('input', $callbackPayload)
                 || array_key_exists('input_json', $callbackPayload),
         ];
+    }
+
+    /**
+     * Same id core records as decided_by: `id`, then getAuthIdentifier(); null fails closed.
+     */
+    private function principalId(object $user): ?string
+    {
+        if (isset($user->id)) {
+            return (string) $user->id;
+        }
+
+        if (method_exists($user, 'getAuthIdentifier')) {
+            return (string) $user->getAuthIdentifier();
+        }
+
+        return null;
     }
 }

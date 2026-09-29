@@ -7,7 +7,6 @@ use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\MissingJobActorException;
 use Rawphp\Capabilities\Support\MissingJobTenantException;
 use Rawphp\Capabilities\Support\SystemActor;
-use stdClass;
 
 /**
  * Queue / scheduler invoke surface — requires explicit actor (D-002 / P2-005).
@@ -204,20 +203,13 @@ final class RunCapabilityJob
 
         if (is_int($this->actingAs) || is_string($this->actingAs)) {
             $resolver = $options['user_resolver'] ?? null;
-            if (is_callable($resolver)) {
-                $user = $resolver($this->actingAs);
-                if ($user === null) {
-                    throw new \RuntimeException(sprintf('User id "%s" not found for job actingAs (D-002).', (string) $this->actingAs));
-                }
-
-                return $user;
+            if (! is_callable($resolver)) {
+                throw MissingJobActorException::unresolvableUser($this->actingAs);
             }
 
-            $user = new stdClass;
-            $user->id = $this->actingAs;
-            $user->name = 'job-user-'.$this->actingAs;
-            if ($this->tenantId !== null) {
-                $user->current_tenant_id = $this->tenantId;
+            $user = $resolver($this->actingAs);
+            if ($user === null) {
+                throw new \RuntimeException(sprintf('User id "%s" not found for job actingAs (D-002).', (string) $this->actingAs));
             }
 
             return $user;

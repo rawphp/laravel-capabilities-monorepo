@@ -48,8 +48,33 @@ final class ResolveConversationActor
             );
         }
 
-        $modelClass = $this->userModelClass();
-        if ($modelClass === null) {
+        $modelClass = self::assertQueryableModel($this->userModelClass());
+
+        $user = $modelClass::query()->find($id);
+        if ($user === null && ctype_digit($id)) {
+            $user = $modelClass::query()->find((int) $id);
+        }
+
+        if ($user === null || ! is_object($user)) {
+            throw new UnresolvedConversationActorException(
+                "Conversation user_id [{$id}] does not resolve to a user; refusing bus invoke"
+            );
+        }
+
+        return $user;
+    }
+
+    /**
+     * Fail closed on a missing, unknown, or non-queryable user model. Never queries.
+     * Also run at provider boot so misconfiguration surfaces before the first turn.
+     *
+     * @return class-string
+     *
+     * @throws RuntimeException
+     */
+    public static function assertQueryableModel(?string $modelClass): string
+    {
+        if ($modelClass === null || $modelClass === '') {
             throw new RuntimeException(
                 'No user model configured for conversation actor resolution (set capabilities-ai.user_model or auth.providers.users.model)'
             );
@@ -67,18 +92,7 @@ final class ResolveConversationActor
             );
         }
 
-        $user = $modelClass::query()->find($id);
-        if ($user === null && ctype_digit($id)) {
-            $user = $modelClass::query()->find((int) $id);
-        }
-
-        if ($user === null || ! is_object($user)) {
-            throw new UnresolvedConversationActorException(
-                "Conversation user_id [{$id}] does not resolve to a user; refusing bus invoke"
-            );
-        }
-
-        return $user;
+        return $modelClass;
     }
 
     /**

@@ -10,6 +10,7 @@ use Rawphp\Capabilities\Support\CapabilityData;
  *
  * Portable constraints (min/max/enum/format/…) appear in {@see CapabilityData::jsonSchema()}.
  * Server-only rules stay on {@see CapabilityData::rules()}.
+ * `sensitive: true` emits `writeOnly: true`; the audit log redacts that field (D-010).
  */
 #[Attribute(Attribute::TARGET_PROPERTY | Attribute::TARGET_PARAMETER)]
 final class Field
@@ -18,6 +19,7 @@ final class Field
      * @param  list<string|int|float|bool>|null  $enum
      * @param  class-string|null  $items  SchemaProvider / CapabilityData class for array items
      * @param  class-string|null  $of  Nested object SchemaProvider class (when property is object)
+     * @param  bool  $tenantScoped  Output field holding the owning tenant id; must equal the invoking tenant (D-003)
      */
     public function __construct(
         public string $description = '',
@@ -31,5 +33,7 @@ final class Field
         public ?string $format = null,
         public ?string $items = null,
         public ?string $of = null,
+        public bool $sensitive = false,
+        public bool $tenantScoped = false,
     ) {}
 }

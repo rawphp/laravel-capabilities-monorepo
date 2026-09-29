@@ -7,6 +7,7 @@ use Rawphp\Capabilities\Adapters\PeerIncompatibleException;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 use Rawphp\Capabilities\Adapters\StructuredToolResponse;
 use Rawphp\Capabilities\Adapters\ToolSelection;
+use Rawphp\Capabilities\Profiles\ProfileRequiredException;
 use Rawphp\Capabilities\RateLimiting\AgentTurnBudget;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\CapabilityContext;
@@ -21,7 +22,7 @@ use RuntimeException;
 final class AiToolAdapterV1 implements AiToolAdapter
 {
     /** @var list<string> */
-    private const SPOOF_KEYS = ['actor', 'user_id', 'caller', 'client_id', 'auth_profile'];
+    private const SPOOF_KEYS = ['actor', 'user_id', 'caller', 'client_id', 'auth_profile', 'tenant_id'];
 
     private int $turnToolCalls = 0;
 
@@ -99,6 +100,11 @@ final class AiToolAdapterV1 implements AiToolAdapter
             $this->registered = false;
             $this->registeredTools = [];
             throw $e;
+        } catch (ProfileRequiredException $e) {
+            // Missing profile is a D-008 refusal like TooManyToolsException — never keep stale tools.
+            $this->registered = false;
+            $this->registeredTools = [];
+            throw $e;
         }
 
         $this->registered = true;
@@ -138,6 +144,10 @@ final class AiToolAdapterV1 implements AiToolAdapter
             );
         }
 
+        // Every attempt spends turn budget (D-013), including rejected spoofs — otherwise a
+        // model could loop on spoofed calls without ever tripping rate_limited.
+        $this->turnToolCalls++;
+
         $spoof = $this->detectSpoof($input);
         $clean = $this->stripSpoofKeys($input);
 
@@ -151,7 +161,6 @@ final class AiToolAdapterV1 implements AiToolAdapter
 
         // Caller is always server-derived agent — never from model JSON (D-022).
         unset($options['caller']);
-        $this->turnToolCalls++;
 
         $invokeOptions = array_merge($options, [
             'caller' => 'agent',

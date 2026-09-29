@@ -198,12 +198,22 @@ final class CapabilityRegistry implements CapabilityBus
         $this->clock = $clock ?? new SystemClock;
         $this->definitionCatalog = new DefinitionCatalog;
         $this->observation = new InvokeObservation;
+        $auditStage = new InvokeAuditStage(
+            observation: $this->observation,
+            auditWriter: $auditWriter,
+            auditMode: $auditModeResolved,
+            auditEnabled: $auditEnabled,
+            auditRequired: $auditRequired,
+            auditDriver: $auditDriver,
+            auditOutbox: $auditOutbox,
+        );
         $this->toolSurfaceResolver = new ToolSurfaceResolver(
             definitions: $this->definitionCatalog,
             profileSelector: $this->profileSelector,
             observation: $this->observation,
             globallyEnabledSurfaces: $this->globallyEnabledSurfaces,
             toolSurfaceConfig: $this->toolSurfaceConfig,
+            auditStage: $auditStage,
         );
         $this->assertions = new RegistryAssertions($this, $this->observation);
         $this->pipeline = new InvokePipeline(
@@ -217,15 +227,7 @@ final class CapabilityRegistry implements CapabilityBus
             approvalManager: $approvalManager,
             outputValidator: $this->outputValidator,
             observation: $this->observation,
-            auditStage: new InvokeAuditStage(
-                observation: $this->observation,
-                auditWriter: $auditWriter,
-                auditMode: $auditModeResolved,
-                auditEnabled: $auditEnabled,
-                auditRequired: $auditRequired,
-                auditDriver: $auditDriver,
-                auditOutbox: $auditOutbox,
-            ),
+            auditStage: $auditStage,
             wrapRun: $wrapRun,
             eventsEnabled: $eventsEnabled,
             validateOutputEnabled: (bool) ($this->validationConfig['validate_output'] ?? true),
@@ -559,6 +561,22 @@ final class CapabilityRegistry implements CapabilityBus
     }
 
     /**
+     * Would this actor be allowed to invoke the capability with this stored input?
+     * Same authorize decision as a live invoke; unknown capability or input that
+     * no longer hydrates is denied (approval accept re-checks the original actor).
+     *
+     * @param  array<string, mixed>  $rawInput
+     */
+    public function authorizes(string $nameOrAlias, array $rawInput, CapabilityContext $context): bool
+    {
+        if (! $this->has($nameOrAlias)) {
+            return false;
+        }
+
+        return $this->pipeline->authorizes($this->get($nameOrAlias), $rawInput, $context);
+    }
+
+    /**
      * Default approval executor (D-006): re-run the stored invoke through this pipeline
      * as the original requester — re-validate, re-scope, authorize, run once, check output.
      *
@@ -720,6 +738,8 @@ final class CapabilityRegistry implements CapabilityBus
         }
 
         $options['caller'] = $options['caller'] ?? $surface;
+        // The enforced profile, not a caller claim, is what audit records (D-008 / D-010).
+        $options['tool_profile'] = $profile;
 
         return $this->invoke($name, $input, $options);
     }
@@ -874,6 +894,14 @@ final class CapabilityRegistry implements CapabilityBus
             ), null);
         }
 
+        // Chat turns keep caller=agent; the global messaging flag still has to allow them.
+        if ($this->isMessagingOriginated($options) && ($this->globallyEnabledSurfaces['messaging'] ?? false) !== true) {
+            return $this->pipeline->finishEarly(CapabilityResult::failure(
+                code: 'forbidden',
+                message: sprintf('Capability "%s" is not invokable via surface "messaging".', $definition->name),
+            ), null);
+        }
+
         $state = new InvokeState(
             definition: $definition,
             rawInput: $input,
@@ -912,6 +940,19 @@ final class CapabilityRegistry implements CapabilityBus
     public function logs(): array
     {
         return $this->observation->logs;
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     */
+    private function isMessagingOriginated(array $options): bool
+    {
+        $context = $options['context'] ?? null;
+        if ($context instanceof CapabilityContext && $context->messaging() !== null) {
+            return true;
+        }
+
+        return ($options['messaging'] ?? null) !== null;
     }
 
     private function toolsForSurface(string $surface, string|array|null $profile, mixed $actor = null): array

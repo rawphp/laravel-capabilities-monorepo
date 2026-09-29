@@ -30,6 +30,8 @@ final class IntegrationHealthChecker
      * @param  callable(class-string): bool  $bound
      * @param  (callable(): int)|null  $mcpToolCount  null to skip live tool count
      * @param  (callable(): string|null)|null  $idempotencyReadinessClass  resolved class or null
+     * @param  (callable(): bool|null)|null  $progressStoreReady  live ping; null when readiness unbound
+     * @param  (callable(): bool)|null  $auditWriterWired  true when the live registry has an AuditWriter; null to skip
      */
     public function check(
         array $capabilitiesConfig,
@@ -37,15 +39,19 @@ final class IntegrationHealthChecker
         callable $bound,
         ?callable $mcpToolCount = null,
         ?callable $idempotencyReadinessClass = null,
+        ?callable $progressStoreReady = null,
+        ?callable $auditWriterWired = null,
     ): IntegrationHealthReport {
         $checks = [];
         $aiChat = $this->isAiChat($aiConfig);
         $mode = $aiChat ? 'ai-chat' : 'bus-only';
 
         $checks[] = $this->checkAuthorizer($capabilitiesConfig, $bound);
+        $checks[] = $this->checkAuditWriter($capabilitiesConfig, $auditWriterWired);
 
         if ($aiChat) {
             array_push($checks, ...$this->checkAiChat($aiConfig ?? [], $bound, $idempotencyReadinessClass));
+            $checks[] = $this->checkProgressReady($progressStoreReady);
         }
 
         $checks[] = $this->checkMcp($capabilitiesConfig, $mcpToolCount);
@@ -76,20 +82,7 @@ final class IntegrationHealthChecker
      */
     private function checkAuthorizer(array $capabilitiesConfig, callable $bound): array
     {
-        $surfaces = is_array($capabilitiesConfig['surfaces'] ?? null)
-            ? $capabilitiesConfig['surfaces']
-            : [];
-
-        $anyInvoke = false;
-        foreach (self::INVOKE_SURFACES as $name) {
-            $cfg = is_array($surfaces[$name] ?? null) ? $surfaces[$name] : [];
-            if ((bool) ($cfg['enabled'] ?? true)) {
-                $anyInvoke = true;
-                break;
-            }
-        }
-
-        if (! $anyInvoke) {
+        if (! $this->anyInvokeSurface($capabilitiesConfig)) {
             return [
                 'level' => 'skip',
                 'code' => 'authorizer_bound',
@@ -110,6 +103,67 @@ final class IntegrationHealthChecker
             'code' => 'authorizer_bound',
             'message' => 'Authorizer is not bound; authorized invoke surfaces are enabled.',
         ];
+    }
+
+    /**
+     * Warn (not fail) when audit is on but the registry has no AuditWriter: every
+     * audit record is then a silent no-op (D-010), including in strict mode.
+     *
+     * Probes the live registry writer, not a container binding — the service
+     * provider never injects a bound AuditWriter, so a binding alone proves nothing.
+     *
+     * @param  array<string, mixed>  $capabilitiesConfig
+     * @param  (callable(): bool)|null  $auditWriterWired
+     * @return array{level: 'fail'|'warn'|'ok'|'skip', code: string, message: string}
+     */
+    private function checkAuditWriter(array $capabilitiesConfig, ?callable $auditWriterWired): array
+    {
+        $audit = is_array($capabilitiesConfig['audit'] ?? null) ? $capabilitiesConfig['audit'] : [];
+
+        if (! (bool) ($audit['enabled'] ?? true) || ! $this->anyInvokeSurface($capabilitiesConfig)) {
+            return [
+                'level' => 'skip',
+                'code' => 'audit_writer',
+                'message' => 'Audit disabled or no invoke surfaces enabled; audit writer not required.',
+            ];
+        }
+
+        if ($auditWriterWired === null) {
+            return [
+                'level' => 'skip',
+                'code' => 'audit_writer',
+                'message' => 'Audit writer probe not provided.',
+            ];
+        }
+
+        try {
+            $wired = $auditWriterWired();
+        } catch (Throwable) {
+            $wired = false;
+        }
+
+        return $wired
+            ? ['level' => 'ok', 'code' => 'audit_writer', 'message' => 'AuditWriter is wired into the registry.']
+            : ['level' => 'warn', 'code' => 'audit_writer', 'message' => 'No AuditWriter wired into the registry; audit records are silently dropped (call CapabilityRegistry::withAuditWriter).'];
+    }
+
+    /**
+     * @param  array<string, mixed>  $capabilitiesConfig
+     */
+    private function anyInvokeSurface(array $capabilitiesConfig): bool
+    {
+        $surfaces = is_array($capabilitiesConfig['surfaces'] ?? null)
+            ? $capabilitiesConfig['surfaces']
+            : [];
+
+        foreach (self::INVOKE_SURFACES as $name) {
+            $cfg = is_array($surfaces[$name] ?? null) ? $surfaces[$name] : [];
+            if ((bool) ($cfg['enabled'] ?? true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -205,6 +259,25 @@ final class IntegrationHealthChecker
         }
 
         return $out;
+    }
+
+    /**
+     * @param  (callable(): bool|null)|null  $progressStoreReady
+     * @return array{level: 'fail'|'warn'|'ok'|'skip', code: string, message: string}
+     */
+    private function checkProgressReady(?callable $progressStoreReady): array
+    {
+        try {
+            $ready = $progressStoreReady === null ? null : $progressStoreReady();
+        } catch (Throwable) {
+            $ready = false;
+        }
+
+        return match ($ready) {
+            true => ['level' => 'ok', 'code' => 'ai_progress_ready', 'message' => 'Progress store answered the readiness ping.'],
+            false => ['level' => 'fail', 'code' => 'ai_progress_ready', 'message' => 'Progress store is not reachable (readiness ping failed); turn progress cannot be streamed.'],
+            default => ['level' => 'skip', 'code' => 'ai_progress_ready', 'message' => 'ProgressStoreReadiness is not bound; live progress ping skipped.'],
+        };
     }
 
     private function isAlwaysReadyClass(string $class): bool

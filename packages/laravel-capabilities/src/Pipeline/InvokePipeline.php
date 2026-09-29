@@ -2,12 +2,18 @@
 
 namespace Rawphp\Capabilities\Pipeline;
 
+use Error;
+use Illuminate\Container\Container;
+use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use InvalidArgumentException;
+use PDOException;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Contracts\Authorizer;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\SchemaProvider;
 use Rawphp\Capabilities\Events\CapabilityApprovalRequested;
+use Rawphp\Capabilities\Idempotency\IdempotencyKey;
 use Rawphp\Capabilities\Idempotency\RequestHash;
 use Rawphp\Capabilities\RateLimiting\AgentTurnBudget;
 use Rawphp\Capabilities\RateLimiting\RateLimitKey;
@@ -269,21 +275,8 @@ final class InvokePipeline
             );
         }
 
-        $inputClass = $state->definition->input;
-        if ($inputClass === null) {
-            $state->input = $state->rawInput;
-
-            return null;
-        }
-
         try {
-            if (is_a($inputClass, CapabilityData::class, true)) {
-                /** @var class-string<CapabilityData> $inputClass */
-                $state->input = $inputClass::fromArray($state->rawInput);
-            } else {
-                /** @var class-string<SchemaProvider> $inputClass */
-                $state->input = $inputClass::validate($state->rawInput);
-            }
+            $state->input = $this->hydrate($state->definition, $state->rawInput);
         } catch (Throwable $e) {
             return CapabilityResult::failure(
                 code: 'validation_failed',
@@ -465,6 +458,9 @@ final class InvokePipeline
         if ($key === '') {
             $key = null;
         }
+        if ($key === null) {
+            $key = IdempotencyKey::derive($state->definition->idempotencyKeyFields, $state->rawInput);
+        }
         $state->idempotencyKey = $key;
         $state->requestHash = RequestHash::of($state->rawInput);
 
@@ -508,6 +504,53 @@ final class InvokePipeline
     }
 
     /**
+     * Authorize stored raw input for an actor outside a live invoke — approval
+     * accept re-checks the original requester (spec: re-validation on accept, step 4).
+     * Same decision as the authorize stage; input that no longer hydrates is denied.
+     *
+     * @param  array<string, mixed>  $rawInput
+     */
+    public function authorizes(CapabilityDefinition $definition, array $rawInput, CapabilityContext $context): bool
+    {
+        try {
+            $input = $this->hydrate($definition, $rawInput);
+        } catch (Throwable) {
+            return false;
+        }
+
+        return $this->allows($definition, $input, $context);
+    }
+
+    /**
+     * @param  array<string, mixed>  $rawInput
+     */
+    private function hydrate(CapabilityDefinition $definition, array $rawInput): mixed
+    {
+        $inputClass = $definition->input;
+        if ($inputClass === null) {
+            return $rawInput;
+        }
+
+        if (is_a($inputClass, CapabilityData::class, true)) {
+            /** @var class-string<CapabilityData> $inputClass */
+            return $inputClass::fromArray($rawInput);
+        }
+
+        /** @var class-string<SchemaProvider> $inputClass */
+        return $inputClass::validate($rawInput);
+    }
+
+    private function allows(CapabilityDefinition $definition, mixed $input, mixed $context): bool
+    {
+        $definitionAuth = $definition->authorize;
+        if (is_callable($definitionAuth)) {
+            return (bool) $definitionAuth($input, $context);
+        }
+
+        return $this->authorizer->authorize($definition->name, $input, $context);
+    }
+
+    /**
      * @param  list<string>  $forced
      */
     private function stageAuthorize(InvokeState $state, array $forced): ?CapabilityResult
@@ -521,19 +564,7 @@ final class InvokePipeline
             );
         }
 
-        $allowed = true;
-        $definitionAuth = $state->definition->authorize;
-        if (is_callable($definitionAuth)) {
-            $allowed = (bool) $definitionAuth($state->input, $state->context);
-        } else {
-            $allowed = $this->authorizer->authorize(
-                $state->definition->name,
-                $state->input,
-                $state->context,
-            );
-        }
-
-        if (! $allowed) {
+        if (! $this->allows($state->definition, $state->input, $state->context)) {
             return CapabilityResult::failure(
                 code: 'forbidden',
                 message: sprintf('Not authorized to invoke "%s".', $state->definition->name),
@@ -739,13 +770,33 @@ final class InvokePipeline
             $this->observation->invokeStartedAt ??= microtime(true);
             $state->output = $this->executeRun($state->definition, $state->input, $state->context);
         } catch (Throwable $e) {
-            return CapabilityResult::failure(
-                code: 'domain_error',
-                message: $e->getMessage(),
-            );
+            return $this->runFailure($e);
         }
 
         return null;
+    }
+
+    /**
+     * Bug-class errors are reported and hidden; missing models are not_found;
+     * anything else is a deliberate domain throw and keeps its message (L-004).
+     */
+    private function runFailure(Throwable $e): CapabilityResult
+    {
+        if ($e instanceof ModelNotFoundException) {
+            return CapabilityResult::failure(code: 'not_found', message: 'Not found.');
+        }
+
+        // QueryException is a PDOException.
+        if ($e instanceof Error || $e instanceof PDOException) {
+            $container = Container::getInstance();
+            if ($container->bound(ExceptionHandler::class)) {
+                $container->make(ExceptionHandler::class)->report($e);
+            }
+
+            return CapabilityResult::failure(code: 'internal', message: 'Internal error.');
+        }
+
+        return CapabilityResult::failure(code: 'domain_error', message: $e->getMessage());
     }
 
     /**
@@ -766,7 +817,7 @@ final class InvokePipeline
             return null;
         }
 
-        $check = $this->outputValidator->validate($state->definition, $state->output);
+        $check = $this->outputValidator->validate($state->definition, $state->output, $state->context);
         if ($check !== null) {
             return $check;
         }
