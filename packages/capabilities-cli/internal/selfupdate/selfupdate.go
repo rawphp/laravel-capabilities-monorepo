@@ -3,7 +3,10 @@
 //
 // Conventions mirror scripts/install.sh: asset naming, latest-only resolve
 // (redirect preferred, API fallback), darwin/linux only. Checksums are required
-// and fail closed on missing/mismatch. Unit tests inject HTTP via httptest.
+// and fail closed on missing/mismatch. When a release public key is pinned
+// (ReleasePublicKey at link time, or Options.PublicKey), checksums.txt must also
+// carry a valid ed25519 signature (checksums.txt.sig) or the update fails closed.
+// Unit tests inject HTTP via httptest.
 package selfupdate
 
 import (
@@ -11,7 +14,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -34,10 +39,17 @@ const (
 	BinaryName = "capabilities"
 	// ChecksumsName is the release checksums asset (GoReleaser).
 	ChecksumsName = "checksums.txt"
+	// SignatureName is the detached raw ed25519 signature over checksums.txt.
+	SignatureName = ChecksumsName + ".sig"
 
 	defaultGitHubBase = "https://github.com"
 	defaultAPIBase    = "https://api.github.com"
 )
+
+// ReleasePublicKey is the base64 ed25519 public key that release builds pin via
+// -ldflags "-X github.com/rawphp/capabilities-cli/internal/selfupdate.ReleasePublicKey=…".
+// Empty (dev builds, releases without a signing key) → checksum-only verification.
+var ReleasePublicKey string
 
 // Outcome is the success result of Update (no error).
 type Outcome int
@@ -73,6 +85,9 @@ type Options struct {
 	GitHubBaseURL string
 	// APIBaseURL defaults to https://api.github.com (override for httptest).
 	APIBaseURL string
+	// PublicKey is a base64 ed25519 key that must have signed checksums.txt.
+	// Empty → ReleasePublicKey.
+	PublicKey string
 	// GOOS/GOARCH override runtime (for tests). Empty → runtime.GOOS/GOARCH.
 	GOOS   string
 	GOARCH string
@@ -85,6 +100,8 @@ var (
 	ErrUnwritable       = errors.New("selfupdate: target path is not writable")
 	ErrChecksumMissing  = errors.New("selfupdate: checksums.txt missing or has no entry for release asset")
 	ErrChecksumMismatch = errors.New("selfupdate: downloaded asset checksum does not match checksums.txt")
+	ErrSignatureMissing = errors.New("selfupdate: checksums.txt.sig missing for a release that must be signed")
+	ErrSignatureInvalid = errors.New("selfupdate: checksums.txt signature does not verify against the pinned release key")
 	ErrHTTP             = errors.New("selfupdate: HTTP request failed")
 	ErrNetwork          = errors.New("selfupdate: network error")
 	ErrResolve          = errors.New("selfupdate: could not resolve latest release")
@@ -116,6 +133,10 @@ func Update(ctx context.Context, opt Options) (*Result, error) {
 		goarch = runtime.GOARCH
 	}
 	if err := supportPlatform(goos, goarch); err != nil {
+		return nil, err
+	}
+	pubKey, err := decodePublicKey(opt.PublicKey)
+	if err != nil {
 		return nil, err
 	}
 
@@ -164,6 +185,7 @@ func Update(ctx context.Context, opt Options) (*Result, error) {
 
 	archiveURL := fmt.Sprintf("%s/%s/releases/download/v%s/%s", ghBase, repo, latest, asset)
 	checksumsURL := fmt.Sprintf("%s/%s/releases/download/v%s/%s", ghBase, repo, latest, ChecksumsName)
+	signatureURL := fmt.Sprintf("%s/%s/releases/download/v%s/%s", ghBase, repo, latest, SignatureName)
 
 	archiveBody, err := download(ctx, client, archiveURL)
 	if err != nil {
@@ -176,6 +198,11 @@ func Update(ctx context.Context, opt Options) (*Result, error) {
 			return nil, fmt.Errorf("%w: %v", ErrChecksumMissing, err)
 		}
 		return nil, err
+	}
+	if pubKey != nil {
+		if err := verifySignature(ctx, client, signatureURL, checksumsBody, pubKey); err != nil {
+			return nil, err
+		}
 	}
 	wantSum, err := findChecksum(string(checksumsBody), asset)
 	if err != nil {
@@ -196,6 +223,36 @@ func Update(ctx context.Context, opt Options) (*Result, error) {
 
 	res.Outcome = OutcomeUpdated
 	return res, nil
+}
+
+// decodePublicKey returns nil when no key is pinned; a malformed key fails closed.
+func decodePublicKey(key string) (ed25519.PublicKey, error) {
+	if key == "" {
+		key = ReleasePublicKey
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil, nil
+	}
+	raw, err := base64.StdEncoding.DecodeString(key)
+	if err != nil || len(raw) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("%w: pinned release public key is malformed", ErrSignatureInvalid)
+	}
+	return ed25519.PublicKey(raw), nil
+}
+
+func verifySignature(ctx context.Context, client *http.Client, sigURL string, checksums []byte, pub ed25519.PublicKey) error {
+	sig, err := download(ctx, client, sigURL)
+	if err != nil {
+		if errors.Is(err, ErrHTTP) {
+			return fmt.Errorf("%w: %v", ErrSignatureMissing, err)
+		}
+		return err
+	}
+	if !ed25519.Verify(pub, checksums, sig) {
+		return fmt.Errorf("%w: %s", ErrSignatureInvalid, SignatureName)
+	}
+	return nil
 }
 
 func supportPlatform(goos, goarch string) error {

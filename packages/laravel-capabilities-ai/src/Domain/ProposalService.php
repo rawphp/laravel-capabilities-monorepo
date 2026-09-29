@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Domain;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Support\CapabilityResult;
@@ -14,6 +15,7 @@ use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\DatabaseConnection;
 use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
+use Rawphp\CapabilitiesAi\Support\ToolSchemaHash;
 use Rawphp\CapabilitiesAi\Support\UnresolvedConversationActorException;
 use RuntimeException;
 
@@ -29,6 +31,8 @@ use RuntimeException;
  * - Target re-checked against the host ToolCatalog for the proposal's turn on every
  *   execute (D-008); outside the profile or no catalog bound → failed + refuse
  *   capability_not_in_profile, no bus invoke
+ * - Stamped schema_hash ≠ live tool input schema → failed + refuse conflict
+ *   (reason schema_changed), no bus invoke; null hash (legacy row) skips the check
  * - Live IdempotencyReadiness probe (fail closed) — not a constructor stamp
  * - Rejected / expired / unknown status → AcceptOutcome::refuse (no throw-as-API)
  *
@@ -45,6 +49,18 @@ final class ProposalService
         private readonly ResolveConversationActor $actors = new ResolveConversationActor,
         private readonly ?ToolCatalog $tools = null,
     ) {}
+
+    /**
+     * True only when the proposal's conversation is owned by `$ownerId` (D-022). Missing or
+     * ownerless → false, so HTTP adapters can answer 404 before accept/reject runs.
+     */
+    public function ownedBy(string $proposalUlid, string $ownerId): bool
+    {
+        return Proposal::query()
+            ->where('ulid', $proposalUlid)
+            ->whereHas('conversation', static fn (Builder $q) => $q->where('user_id', $ownerId))
+            ->exists();
+    }
 
     public function accept(string $proposalUlid): AcceptOutcome
     {
@@ -174,7 +190,8 @@ final class ProposalService
         }
 
         // The model authored target_capability; it stays inside the turn's tool profile (D-008).
-        if (! $this->targetInProfile($target, $proposal)) {
+        $tool = $this->profileTool($target, $proposal);
+        if ($tool === null) {
             $message = sprintf('Capability "%s" is not in the selected profile.', $target);
             $this->markFailed($proposal, 'capability_not_in_profile', $message);
 
@@ -184,6 +201,24 @@ final class ProposalService
                 httpStatus: 403,
                 error: [
                     'code' => 'capability_not_in_profile',
+                    'message' => $message,
+                    'retryable' => false,
+                ],
+            );
+        }
+
+        $stamped = $proposal->getAttribute('schema_hash');
+        if (is_string($stamped) && $stamped !== ToolSchemaHash::of($tool)) {
+            $message = sprintf('Capability "%s" input schema changed since the proposal was created.', $target);
+            $this->markFailed($proposal, 'conflict', $message);
+
+            return AcceptOutcome::refuse(
+                $proposal->refresh(),
+                message: $message,
+                httpStatus: 409,
+                error: [
+                    'code' => 'conflict',
+                    'reason' => 'schema_changed',
                     'message' => $message,
                     'retryable' => false,
                 ],
@@ -220,21 +255,28 @@ final class ProposalService
         return $this->mapBusResult($proposal, $result);
     }
 
-    private function targetInProfile(string $target, Proposal $proposal): bool
+    /**
+     * @return array<string, mixed>|null Live tool definition for $target, or null when outside the profile
+     */
+    private function profileTool(string $target, Proposal $proposal): ?array
     {
         if ($this->tools === null) {
-            return false;
+            return null;
         }
 
         $conversationUlid = Conversation::query()->whereKey($proposal->getAttribute('conversation_id'))->value('ulid');
         $turnUlid = Turn::query()->whereKey($proposal->getAttribute('turn_id'))->value('ulid');
         if (! is_string($conversationUlid) || ! is_string($turnUlid)) {
-            return false;
+            return null;
         }
 
-        $tools = $this->tools->toolsForTurn($conversationUlid, $turnUlid);
+        foreach ($this->tools->toolsForTurn($conversationUlid, $turnUlid) as $tool) {
+            if (($tool['name'] ?? null) === $target) {
+                return $tool;
+            }
+        }
 
-        return in_array($target, array_column($tools, 'name'), true);
+        return null;
     }
 
     private function mapBusResult(Proposal $proposal, CapabilityResult $result): AcceptOutcome

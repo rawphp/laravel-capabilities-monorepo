@@ -47,7 +47,7 @@ Capability::define('create-invoice')
     ->register($registry);
 ```
 
-Builder highlights (non-exhaustive): `description`, `surfaces`, `input`, `output`, `aliases`, deprecation fields, `groups`, `tags`, `idempotent`, `authorize`, `run`, approval-related setters, `register`.
+Builder highlights (non-exhaustive): `description`, `surfaces`, `input`, `output`, `aliases`, deprecation fields, `groups`, `tags`, `idempotent`, `idempotencyKeyFields` (derive a key from named input fields when the caller sends none), `authorize`, `run`, approval-related setters, `register`.
 
 ### CLI routing metadata (`domain` / `verb`)
 
@@ -92,7 +92,7 @@ Full teaching sample (monorepo): [First capability tutorial](https://github.com/
 
 ### Input / output DTOs
 
-Extend `Rawphp\Capabilities\Support\CapabilityData`. Use `#[Field(...)]` attributes for JSON Schema-facing constraints. Schema on the wire comes from types (portable for CLI/catalog), not from Laravel rule strings alone.
+Extend `Rawphp\Capabilities\Support\CapabilityData`. Use `#[Field(...)]` attributes for JSON Schema-facing constraints. Schema on the wire comes from types (portable for CLI/catalog), not from Laravel rule strings alone. Mark personal or secret fields with `#[Field(sensitive: true)]` (emitted as `writeOnly: true`); the audit log stores `[REDACTED]` for them, including inside nested DTOs and array items, in addition to keys that contain `password`, `secret`, `token`, `apikey` or `authorization`.
 
 ## Invoke
 
@@ -136,7 +136,7 @@ Global switches live in published `config/capabilities.php` under `surfaces.*`:
 | CLI | `surfaces.cli` | Marks capabilities available to product CLI **HTTP** callers (not an MCP bridge) |
 | Job | `surfaces.job` | Queue/job invokes need an explicit actor (not “null user = allow”) |
 | Artisan | `surfaces.artisan` | Optional **in-server** ops — not the downloadable product CLI |
-| Messaging | `surfaces.messaging` | Conversation channel flag; implementation is the **sibling** package |
+| Messaging | `surfaces.messaging` | Conversation channel flag; implementation is the **sibling** package. Invokes carrying messaging metadata stay `caller: agent` but are refused while this is off |
 
 A capability’s `->surfaces([...])` list only **narrows** what global config already allows.
 
@@ -148,6 +148,65 @@ A capability’s `->surfaces([...])` list only **narrows** what global config al
 | How tools appear | Boot **plans** servers from `surfaces.mcp.profiles` / `servers` (`auto_register`) and may call `McpToolAdapter::register`; host still wires peer MCP routes (e.g. `Mcp::web` / peer docs) or uses manual `Capability::mcpTools(profile: …)` | HTTP `catalog` / `run` / domain verbs only |
 | Hosts | Cursor, Claude Desktop, other MCP clients → **app** MCP endpoints the **host** mounts (plan rows include a planned `path` under `path_prefix`, default `/mcp/{profile}` — not a live auto-mount by this package) | Shell agents / humans over the capability HTTP API |
 | Not | The CLI binary | An MCP stdio server — `capabilities mcp` was **removed** |
+
+### Worked example: MCP-only capability and principals
+
+A capability that MCP hosts may call, and nothing else:
+
+```php
+use Rawphp\Capabilities\Capability;
+use Rawphp\Capabilities\Support\CapabilityContext;
+use Rawphp\Capabilities\Support\SystemActor;
+
+Capability::define('send-invoice-reminder')
+    ->description('Email a payment reminder for an open invoice.')
+    ->surfaces(['mcp'])                      // narrows: no agent/http/cli/job
+    ->input(SendInvoiceReminderInput::class)
+    ->groups(['billing'])
+    ->allowSystemCallers(['billing-bot'])    // only needed for `integration` principals
+    ->authorize(function (SendInvoiceReminderInput $input, CapabilityContext $ctx): bool {
+        $actor = $ctx->actor();              // User or SystemActor, never null
+
+        return $actor instanceof SystemActor
+            ? true                           // allow-list above already gated the name
+            : $actor->can('remind', Invoice::class);
+    })
+    ->run(fn (SendInvoiceReminderInput $input, CapabilityContext $ctx) => /* one domain write */)
+    ->register($registry);
+```
+
+```php
+// config/capabilities.php
+'mcp' => [
+    'enabled' => true,
+    'profiles' => ['billing' => ['send-invoice-reminder', 'list-invoices']],
+    'auth' => [
+        'default_profile' => 'user_pat',
+        'allow_integration_credentials' => true,     // default false
+        'integration_actors' => ['mcp-billing-service' => 'billing-bot'],
+    ],
+],
+
+// Host wiring (the package plans servers; the host mounts them)
+use Laravel\Mcp\Facades\Mcp;
+use Rawphp\Capabilities\Facades\Capability;
+
+Mcp::web('billing', fn ($server) => $server->tools(Capability::mcpTools(profile: 'billing')));
+```
+
+Three gates apply in order: the capability must be in the MCP **profile** the host mounted (else `capability_not_in_profile`); the host's credential must resolve to a **principal** (D-023); then `authorize()` runs as usual. The credential decides the actor, never tool input — keys like `actor`, `user_id`, `client_id`, `auth_profile`, `tenant_id` in arguments are refused as `forbidden`.
+
+Once `mcp` is enabled, who can invoke `send-invoice-reminder`:
+
+| Principal | Credential | Actor in `run()` | Can invoke when | Refused as |
+|---|---|---|---|---|
+| `user_pat` | `McpCredential::userPat($user)` | That `User` | Always resolves; `authorize()` decides. `allowSystemCallers` is ignored | `unauthenticated` if no user is bound |
+| `integration` | `McpCredential::integration('mcp-billing-service')` | `SystemActor` `billing-bot` | `allow_integration_credentials` is true, `client_id` is in `integration_actors`, **and** the mapped name is in `allowSystemCallers` | `forbidden` when integration is off or the name is not allowed; `unauthenticated` for a missing or unknown `client_id` |
+| `user_delegated` | `McpCredential::userDelegated($user, 'cursor-mcp')` | The delegating `User` | `client_id` is present; `authorize()` decides. `allowSystemCallers` is ignored | `unauthenticated` if no user or no `client_id` |
+
+Every successful call records `caller: mcp` and `mcp.auth_profile`; `integration` and `user_delegated` also record `mcp.client_id` (`user_pat` only when a client id is supplied and `audit_client_id` is on). An `integration` principal's tenant comes from the trusted credential session (`session.tenant_id`), never from tool input.
+
+For `integration` principals `$ctx->user()` is `null` — an `authorize()` that only checks `$ctx->user() !== null` (like the `create-invoice` example above) will deny every integration call. Branch on `$ctx->actor()` instead. The table is pinned by `tests/Unit/Mcp/AuthProfileCapabilityMatrixTest.php`.
 
 ### HTTP API (single tree)
 
@@ -240,7 +299,7 @@ With `surfaces.mcp.enabled` and a compatible `laravel/mcp` peer:
 4. **`on_register_error`** (`surfaces.mcp.on_register_error` / `CAPABILITIES_MCP_ON_REGISTER_ERROR`, default **`throw`**): when a **non-empty** plan hits an unexpected mid-mount adapter `Throwable`, rethrow (default) or soft-empty tools when set to **`disable`**. **Empty plan** remains soft-fail without peer evaluation (ORI-801) — distinct from mid-mount failures.
 5. Production `bootMcpServers()` does **not** push those definitions into `laravel/mcp` (there is no peer sink analogous to `HttpRouteRegistrar::registerInto`). Integrators still **host-wire** peer MCP servers themselves (e.g. `Mcp::web` / peer docs) using the planned tools/profiles (or manual `Capability::mcpTools`).
 6. Planned paths use `path_prefix` (default `/mcp`) only as plan metadata (`/mcp/{profile}`). Clients reach whatever routes the **host** actually mounts — not a package live auto-mount at `path_prefix`.
-7. **Multi-profile residual:** sequential `adapter->register` overwrites the adapter’s active profile/tools (**last profile wins**). For multiple live MCP servers, wire each peer server with its own tool set rather than relying on a single shared adapter state after multi-profile boot.
+7. **Multi-profile residual:** sequential `adapter->register` overwrites the adapter’s active profile/tools (**last profile wins**). Once more than one distinct profile is registered, `handle()` without `options['profile']` fails closed (`not_runnable`, `normalized_code: profile_required`). For multiple live MCP servers, wire each peer server with its own tool set and pass its profile on every call.
 8. Set `auto_register` false when you want no plan/register loop at boot and will select tools only via your own host wiring.
 
 Maintainer filters: see [package README — Peer support](../README.md#peer-support--d-011-release-gate).
@@ -271,6 +330,48 @@ Greenfield AI-chat hosts use this after queue/progress/proposals config — see 
 **Telegram approval notifiers (upgrade):** For in-memory recording doubles (tests/fakes — **no** Bot API in core), use `RecordingTelegramApprovalNotifier` (`Rawphp\Capabilities\Approval\Notifiers\RecordingTelegramApprovalNotifier`). Core still ships a **deprecated soft-landing** empty subclass `TelegramApprovalNotifier` of that recording double (still loadable; recording-only). Production Telegram Bot API delivery is the **messaging** package FQCN `Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier` — a different class, unchanged by this rename. Full consumer impact: package [CHANGELOG](../CHANGELOG.md) Unreleased **Breaking** and [README](../README.md) Telegram notifier / sibling notes. Pre-stable monorepo design surface — not a Packagist-stable API claim; soft-landing remains until a later removal.
 
 Deep state machine detail (monorepo): [spec.md](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/spec.md).
+
+## Error codes
+
+Every failure is a `CapabilityResult` with `ok: false` and an `error.code`. The source of truth is `src/Support/ErrorCodeMap.php` (D-018); `tests/Unit/Errors/ErrorCodesUserGuideTest.php` fails if this table drifts from it.
+
+How one code presents on each surface:
+
+- **HTTP:** the response status is `error.http_status` and the body is the result envelope (`ok`, `error`, `meta`).
+- **Product CLI:** `--json` prints the same envelope as HTTP; the process exits with `error.cli_exit` (success is `0`).
+- **Agent / MCP:** tool handles return a structured error (`code`, `message`, `structured: true`, `retryable`, `details`). A few codes are renamed for tool callers (see the last column); `details` still carries the original registry error, including its `code`.
+- **Job / direct `invoke`:** the `CapabilityResult` itself. Branch on `isRetryable()` and `isHardRefuse()`, not on message text.
+- **Artisan `capability:run`** (in-server ops, not the product CLI): prints `error.message` and exits `1` for every code. `cli_exit` applies to the product CLI only.
+
+| Code | HTTP | CLI exit | Retryable | Agent / MCP code |
+|---|---|---|---|---|
+| `validation_failed` | 422 | 2 | no | `schema_invalid` |
+| `unauthenticated` | 401 | 3 | no | `unauthenticated` |
+| `forbidden` | 403 | 3 | no | `unauthorized` |
+| `self_delete` | 403 | 3 | no | `self_delete` |
+| `capability_not_in_profile` | 403 | 3 | no | `not_in_profile` |
+| `approval_required` | 202 | 4 | no | `approval_required` |
+| `domain_error` | 422 | 5 | no | `domain_error` |
+| `confirmation_failed` | 422 | 5 | no | `confirmation_failed` |
+| `conflict` | 409 | 5 | no | `conflict` |
+| `last_super_admin` | 409 | 5 | no | `last_super_admin` |
+| `not_found` | 404 | 5 | no | `not_found` |
+| `gone` | 410 | 5 | no | `gone` |
+| `expired` | 410 | 5 | no | `expired` |
+| `not_configured` | 501 | 5 | no | `not_configured` |
+| `not_supported` | 501 | 5 | no | `not_supported` |
+| `output_invalid` | 500 | 5 | no | `output_invalid` |
+| `rate_limited` | 429 | 6 | yes | `rate_limited` |
+| `internal` | 500 | 1 | yes | `internal` |
+| `audit_failed` | 500 | 1 | no | `audit_failed` |
+| `not_runnable` | 500 | 1 | no | `not_runnable` |
+
+Notes:
+
+- `approval_required` is not a failure to retry. It carries `error.approval_id`; resolve it through the approval accept/reject routes.
+- Hard refuses (`forbidden`, `capability_not_in_profile`, `not_runnable`, `unauthenticated`) are terminal. Retrying the same call with the same credentials will not succeed.
+- Retryable is a default. A result may override `retryable`, `http_status`, or `cli_exit` explicitly, so clients should read the fields on the error rather than hard-code this table.
+- Unknown codes fall back to HTTP `500`, CLI exit `1`, not retryable.
 
 ## Testing helpers (D-020)
 

@@ -26,6 +26,9 @@ final class McpToolAdapterV1 implements McpToolAdapter
 
     private ?string $activeProfile = null;
 
+    /** @var list<string|array<int|string, mixed>> distinct profiles registered on this (shared) adapter */
+    private array $registeredProfiles = [];
+
     public function __construct(
         private readonly CapabilityRegistry $registry,
         private readonly PeerVersionProbe $probe,
@@ -54,6 +57,7 @@ final class McpToolAdapterV1 implements McpToolAdapter
             $this->registered = false;
             $this->registeredTools = [];
             $this->activeProfile = null;
+            $this->registeredProfiles = [];
 
             return [];
         }
@@ -78,6 +82,9 @@ final class McpToolAdapterV1 implements McpToolAdapter
         $this->registered = true;
         $this->registeredTools = $mapped;
         $this->activeProfile = is_string($profile) ? $profile : null;
+        if (! in_array($profile, $this->registeredProfiles, true)) {
+            $this->registeredProfiles[] = $profile;
+        }
 
         return $mapped;
     }
@@ -155,13 +162,45 @@ final class McpToolAdapterV1 implements McpToolAdapter
             );
         }
 
+        // Multi-profile boot shares one adapter: never guess which profile a call belongs to (D-008).
+        if (! isset($options['profile']) && count($this->registeredProfiles) > 1) {
+            return CapabilityResult::failure(
+                code: 'not_runnable',
+                message: 'Multiple MCP profiles are registered; pass options[\'profile\'] to select one (D-008).',
+                extra: [
+                    'normalized_code' => 'profile_required',
+                    'registered_profiles' => $this->registeredProfiles,
+                ],
+            );
+        }
+
+        $profile = $options['profile'] ?? $this->activeProfile;
+
+        // Integration clients run only inside their configured named profiles (D-023 / D-008).
+        $namedProfile = is_string($profile) ? $profile : null;
+        if ($resolved['mcp']['auth_profile'] === 'integration'
+            && ! $this->authResolver->integrationAllowsProfile((string) $credential->clientId, $namedProfile)) {
+            return CapabilityResult::failure(
+                code: 'forbidden',
+                message: sprintf('MCP integration client is not allowed to use profile "%s" (D-023).', $namedProfile ?? ''),
+                extra: ['normalized_code' => 'integration_profile_forbidden'],
+            );
+        }
+
         // Caller always mcp; actor and mcp meta from credential resolver only (D-023).
         unset($options['caller'], $options['actor']);
+
+        $profile = $options['profile'] ?? $this->activeProfile;
+        $mcp = $resolved['mcp'];
+        // Audit which D-008 tool profile gated the call, beside the D-023 auth profile.
+        if (is_string($profile)) {
+            $mcp['tool_profile'] = $profile;
+        }
 
         $invokeOptions = array_merge($options, [
             'caller' => 'mcp',
             'actor' => $resolved['actor'],
-            'mcp' => $resolved['mcp'],
+            'mcp' => $mcp,
         ]);
 
         if (isset($resolved['tenant_id'])) {
@@ -175,7 +214,6 @@ final class McpToolAdapterV1 implements McpToolAdapter
             unset($clean['idempotency_key']);
         }
 
-        $profile = $options['profile'] ?? $this->activeProfile;
         if ($profile !== null) {
             return $this->registry->runCapabilityInProfile(
                 'mcp',

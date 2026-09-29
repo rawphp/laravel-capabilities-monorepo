@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -138,7 +139,35 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte, extra
 			Body:       raw,
 		}
 	}
+	if out.Err != nil && res.StatusCode == http.StatusTooManyRequests {
+		// Header wins over any envelope retry_after: it is the transport's own signal.
+		if secs := ParseRetryAfter(res.Header.Get("Retry-After"), time.Now()); secs > 0 {
+			out.Err.RetryAfter = secs
+		}
+	}
 	return out, nil
+}
+
+// ParseRetryAfter reads an RFC 9110 Retry-After value (delta-seconds or
+// HTTP-date) as whole seconds from now, rounded up. Returns 0 when absent,
+// malformed, or already past.
+func ParseRetryAfter(value string, now time.Time) int {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if n, err := strconv.Atoi(value); err == nil {
+		return max(n, 0)
+	}
+	at, err := http.ParseTime(value)
+	if err != nil {
+		return 0
+	}
+	wait := at.Sub(now)
+	if wait <= 0 {
+		return 0
+	}
+	return int((wait + time.Second - 1) / time.Second)
 }
 
 // humanizeHTTPErrorBody turns non-JSON error payloads (HTML login pages, etc.)
@@ -219,9 +248,25 @@ func (c *Client) InvokeCapability(ctx context.Context, name string, input json.R
 	if body == nil {
 		body = json.RawMessage(`{}`)
 	}
-	return c.do(ctx, http.MethodPost, PathCapabilities+"/"+name, body, map[string]string{
+	res, err := c.do(ctx, http.MethodPost, PathCapabilities+"/"+name, body, map[string]string{
 		"Idempotency-Key": idempotencyKey,
 	})
+	if err != nil {
+		return nil, err
+	}
+	// Fail closed: an invoke the server did not reject must carry a D-018
+	// success envelope. Anything else (HTML, empty, ok:false without error)
+	// is not proof the capability ran.
+	if res.Err == nil && !res.Envelope.OK {
+		res.Err = &StructuredError{
+			Code:       CodeInternal,
+			Message:    fmt.Sprintf("HTTP %d: malformed response from capability API (expected {\"ok\":true,…} envelope)", res.StatusCode),
+			HTTPStatus: res.StatusCode,
+			ExitCode:   ExitCode(CodeInternal),
+			Body:       res.Body,
+		}
+	}
+	return res, nil
 }
 
 // AcceptApproval POST /capabilities/approvals/{id}/accept

@@ -7,6 +7,7 @@ use Rawphp\Capabilities\Schema\OutputValidator;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
 use Rawphp\Capabilities\Tests\Fixtures\DiscoveryHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
 $callers = ['agent', 'mcp', 'http', 'cli', 'job'];
 
@@ -23,7 +24,7 @@ foreach ($callers as $caller) {
             'customer_id' => 1,
             'amount_cents' => 1,
             'currency' => 'USD',
-        ], ['caller' => $caller]);
+        ], ['caller' => $caller, 'actor' => PipelineHelpers::userActor()]);
 
         expect($result->isOk())->toBeFalse()
             ->and($result->errorCode())->toBe('output_invalid');
@@ -49,7 +50,7 @@ foreach ($callers as $caller) {
             'customer_id' => 1,
             'amount_cents' => 1,
             'currency' => 'USD',
-        ], ['caller' => $caller]);
+        ], ['caller' => $caller, 'actor' => PipelineHelpers::userActor()]);
 
         expect($result->isOk())->toBeTrue();
     });

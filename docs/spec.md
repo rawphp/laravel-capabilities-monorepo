@@ -435,7 +435,8 @@ return [
          * profile keys (or servers map) and may call McpToolAdapter::register per profile.
          * Production boot does not mount live laravel/mcp HTTP routes under path_prefix —
          * hosts still wire peer MCP servers (e.g. Mcp::web / peer docs). Multi-profile
-         * sequential register overwrites adapter tools (last profile wins).
+         * sequential register overwrites adapter tools (last profile wins); handle() without
+         * options['profile'] then refuses (profile_required) instead of guessing.
          * The product CLI does not speak MCP; agents connect to host-mounted MCP endpoints.
          */
         'mcp' => [
@@ -457,6 +458,9 @@ return [
                 'allow_integration_credentials' => false, // opt-in: app-level tokens → SystemActor/bot
                 'integration_actors' => [
                     // 'mcp-billing-bot' => SystemActor name or bot user id mapping
+                ],
+                'integration_profiles' => [
+                    // 'mcp-billing-bot' => ['billing'], // profiles this client may use; unlisted → forbidden
                 ],
                 'audit_client_id' => true, // always record mcp.client_id when present
             ],
@@ -1056,7 +1060,7 @@ The adapter implements the AI SDK tool contract; `handle` validates and invokes 
 
 ### 2. MCP (`laravel/mcp`) — product MCP is server-side
 
-**Product MCP** is the app’s `laravel/mcp` surface, not the downloadable CLI. When `surfaces.mcp.enabled` is true and the peer is compatible, **`McpServerRegistrar`** (config `auto_register`, default true) builds a **server plan** from named profiles under `surfaces.mcp.profiles` (or an explicit `servers` map) and may call `McpToolAdapter::register` for each planned profile (loads profile tools on the adapter; returns planned name / profile / path / tools). Production `bootMcpServers()` does **not** push those definitions into `laravel/mcp` — there is no production peer sink analogous to HTTP `HttpRouteRegistrar::registerInto`. Hosts still **wire** peer MCP servers themselves (e.g. `Mcp::web` / peer docs) using the planned tools/profiles or manual `Capability::mcpTools`. Planned `path_prefix` (default `/mcp`) is **plan metadata only** (`/mcp/{profile}`), not a live package auto-mount. **Multi-profile residual:** sequential `adapter->register` overwrites the adapter’s active profile/tools (**last profile wins**); for multiple live MCP servers, wire each peer server with its own tool set rather than relying on a single shared adapter state after multi-profile boot.
+**Product MCP** is the app’s `laravel/mcp` surface, not the downloadable CLI. When `surfaces.mcp.enabled` is true and the peer is compatible, **`McpServerRegistrar`** (config `auto_register`, default true) builds a **server plan** from named profiles under `surfaces.mcp.profiles` (or an explicit `servers` map) and may call `McpToolAdapter::register` for each planned profile (loads profile tools on the adapter; returns planned name / profile / path / tools). Production `bootMcpServers()` does **not** push those definitions into `laravel/mcp` — there is no production peer sink analogous to HTTP `HttpRouteRegistrar::registerInto`. Hosts still **wire** peer MCP servers themselves (e.g. `Mcp::web` / peer docs) using the planned tools/profiles or manual `Capability::mcpTools`. Planned `path_prefix` (default `/mcp`) is **plan metadata only** (`/mcp/{profile}`), not a live package auto-mount. **Multi-profile residual:** sequential `adapter->register` overwrites the adapter’s active profile/tools (**last profile wins**). Once more than one distinct profile is registered, `handle()` without `options['profile']` fails closed (`not_runnable`, `normalized_code: profile_required`) instead of silently running under the last profile. For multiple live MCP servers, wire each peer server with its own tool set and pass its profile on every call.
 
 Same rule as agents: **do not mount the universe** on one MCP server by default. **Always** pass a named profile — MCP servers are **not** “all capabilities the authenticated user could do in the UI.”
 
@@ -1294,12 +1298,12 @@ Every `run` receives a `CapabilityContext`:
 | `tenantId` / `teamId` / `organizationId` | Convenience accessors when the app uses those dimensions |
 | `requestId` / `traceId` | Correlation ids |
 | `agent` | Optional agent name / thread id when `caller=agent` |
-| `mcp` | When `caller=mcp`: `{ client_id?, auth_profile: user_pat\|integration\|user_delegated, host?, session? }` (D-023) |
+| `mcp` | When `caller=mcp`: `{ client_id?, auth_profile: user_pat\|integration\|user_delegated, host?, session?, tool_profile? }` (D-023; `tool_profile` = D-008 profile that gated the call, set by the adapter) |
 | `messaging` | Optional `{ channel: telegram, chat_id, … }` when the agent turn originated from chat |
 | `job` | Optional `{ queue, job_id, acting_as_type, acting_as_id }` when `caller=job` |
 | `credential` | Optional audit metadata: `{ type: oauth\|pat\|in_process, client_id?, ability? }` used to derive caller |
 
-Use this for policy differences (e.g. agents cannot void invoices without approval; staff UI can). Messaging-originated tool calls still use `caller: agent` at the registry; `messaging` metadata explains *which* front door started the turn.
+Use this for policy differences (e.g. agents cannot void invoices without approval; staff UI can). Messaging-originated tool calls still use `caller: agent` at the registry; `messaging` metadata explains *which* front door started the turn. The registry also refuses an invoke that carries `messaging` metadata while `surfaces.messaging.enabled` is off, so the global flag gates chat turns even though the caller is `agent`.
 
 **Caller is not a client-chosen header.** Approvals and rate limits that branch on `$ctx->caller()` are only meaningful if the bus sets caller from **credential class** or **in-process adapter code**. See [D-022](#d-022--server-derived-caller-not-client-spoofable-header).
 
@@ -1909,6 +1913,8 @@ No intermediate status: under row lock, re-validate + `run` + write `result_json
 
 Optional sub-status on `executed`: `result_status` = `ok` | `failed` (domain/validation after re-validate).
 
+Executor identity on `executed`: `executor_actor_type` (`user` | `system`) + `executor_actor_id` record the principal that ran the domain — the deciding user on accept, the `SystemActor` on resume (D-002). Written in the same conditional update as `result_status`; null until execution.
+
 #### Transitions (enforced in DB + app)
 
 | From | To | Rule |
@@ -2313,6 +2319,8 @@ Default **TTL**: 24 hours (config: `capabilities.idempotency.ttl_hours`). Expire
 | `readOnly: true` | N/A — no mutation store |
 
 Catalog metadata may expose `"idempotent": "optional" | "required" | "none"` so CLI/agents know policy.
+
+**Natural-key opt-in:** a capability may declare `idempotencyKeyFields: ['external_ref', …]` (attribute or `->idempotencyKeyFields([...])`). When the caller sends no key and every named field is present, the server derives `derived:<sha256 of those fields>` and follows the normal keyed path (replay / 409 on a different payload); this also satisfies `'required'`. An explicit key always wins; a missing field falls back to the no-key path. This is per-capability and author-declared, not the refused global input-only dedupe. Not allowed with `readOnly` or `'none'`.
 
 **Default documentation stance:** mutating capabilities are **non-idempotent unless a key is supplied**. Prefer CLI always supplying a key; prefer agents generating one key per user-visible intent.
 
@@ -3141,7 +3149,7 @@ CLI `--json` prints the same envelope; exit code maps from `error.code`.
 
 | Signal | What |
 |---|---|
-| **Metrics** | `capabilities_invoke_total{capability,caller,status}`, latency histogram, `approval_required_total`, `approvals_stuck_approved_total` (D-006 / P2-004), `approvals_resume_total{result}`, `authz_deny_total`, `rate_limited_total`, `idempotent_replay_total` |
+| **Metrics** | `capabilities_invoke_total{capability,caller,status}`, latency histogram, `approval_required_total`, `approvals_stuck_approved_total` (D-006 / P2-004), `approvals_resume_total{result}`, `authz_deny_total`, `http_unauthenticated_total{route,auth}` (HTTP 401 before the bus; no caller label because none is derived), `rate_limited_total`, `idempotent_replay_total` |
 | **OpenTelemetry** | Span `capabilities.invoke` attributes: `capability`, `caller`, `surface`, `tenant_id`, `actor_type`, `approval_id`, `idempotency_key` (hashed if needed) |
 | **Failed jobs** | `RunCapability` + messaging `ProcessTelegramUpdate` use Laravel failed-job hooks; tag with capability/channel |
 | **Driver** | Laravel Pulse / OTel exporter optional; package emits via contracts `Metrics` / `Tracer` with log fallback |
@@ -3585,6 +3593,8 @@ capability has agent|mcp surface
 
 Guidance is for **one agent turn’s tool list**, not total capabilities in the app.
 
+Boundary events are logged and, when an `AuditWriter` is bound and audit is enabled, also written to the audit trail (best effort — an audit failure never blocks the tool list): `tool_surface.unfiltered_refused` → surface; `tool_surface.warn_threshold_exceeded` → surface, count, warn, profile.
+
 Keep descriptions short and non-overlapping (same as agent-native “keep the action surface small”).
 
 ### Progressive disclosure (advanced, large products) — P2-007
@@ -4003,7 +4013,7 @@ MCP host  ──credentials──► laravel/mcp adapter
 | **Named tool profiles** | `Capability::mcpTools(profile: …)` **required** when `surfaces.mcp.require_profile` is true (default). Unfiltered mount is error or loud deprecation — same spirit as D-008 for agents. |
 | **Not full UI powers** | Document and enforce: an MCP server is **not** “every capability the user could invoke in the staff UI.” Profile ⊆ user permissions ∩ product intent for that host. |
 | **Separate servers** | Prefer `Mcp::web('billing', …)` / `Mcp::web('support', …)` over one god server. |
-| **Integration tokens** | Fail closed unless `allow_integration_credentials` is true; map `client_id` → registered `SystemActor` or bot user; capabilities must allow that system name. |
+| **Integration tokens** | Fail closed unless `allow_integration_credentials` is true; map `client_id` → registered `SystemActor` or bot user; capabilities must allow that system name. The client may only run inside profiles listed under `integration_profiles[client_id]` — any other (or no) profile is `forbidden` / `integration_profile_forbidden`. |
 | **Delegated OAuth** | Store and audit `client_id`; do not collapse “Cursor’s client” and “the human” into one id. |
 | **Host multi-user** | Product user = **token subject** (PAT or delegated resource owner), not “whoever is signed into the host OS account.” Family/shared host seats are out of band; our audit row is the product principal. |
 
@@ -4057,6 +4067,9 @@ See `surfaces.mcp.auth` and `surfaces.mcp.profiles` under [Configuration](#confi
     'allow_integration_credentials' => env('CAPABILITIES_MCP_INTEGRATION', false),
     'integration_actors' => [
         'mcp-billing-service' => 'billing-bot', // → SystemActor::named('billing-bot')
+    ],
+    'integration_profiles' => [
+        'mcp-billing-service' => ['billing'], // only the billing profile; others → forbidden
     ],
     'audit_client_id' => true,
 ],
