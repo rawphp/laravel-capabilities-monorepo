@@ -174,6 +174,10 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   looked retryable. When the envelope carries `cli_exit` 1–6 the CLI exits with
   it; the local table is the fallback. A non-envelope HTTP 410 maps to `gone`
   (exit **5**).
+- **`--base-url` applies to domain/verb resolution** — `capabilities
+  --base-url=B <domain> <verb>` built its domain/verb index from the profile's
+  stored host and then invoked the resolved name on `B` (sending the token to
+  both). The catalog lookup now uses `B` as well.
 
 ## [0.x] — pre-stable
 

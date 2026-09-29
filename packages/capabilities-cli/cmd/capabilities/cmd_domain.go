@@ -16,7 +16,7 @@ import (
 func cmdDomainOrUnknown(env Env, domain string, args []string) int {
 	// Resolve profile before catalog load so multi-profile laptops hit the right store.
 	profile, base, args := profileAndBase(args)
-	idx, summaries, code := loadSynthIndex(env, profile)
+	idx, summaries, code := loadSynthIndex(env, profile, base)
 	if code != 0 {
 		return code
 	}
@@ -68,7 +68,8 @@ func cmdDomainOrUnknown(env Env, domain string, args []string) int {
 // loadSynthIndex returns the synthesis index and optional summaries.
 // Prefers env.Index (tests); otherwise loads catalog when authenticated for profile.
 // When unauthenticated, fails closed with exit 3 — never pretends domains are unknown.
-func loadSynthIndex(env Env, profile string) (*synth.Index, []catalog.CapabilitySummary, int) {
+// base is the --base-url override, so resolution and invoke hit the same deployment.
+func loadSynthIndex(env Env, profile, base string) (*synth.Index, []catalog.CapabilitySummary, int) {
 	if env.Index != nil {
 		return env.Index, env.Summaries, 0
 	}
@@ -80,7 +81,7 @@ func loadSynthIndex(env Env, profile string) (*synth.Index, []catalog.Capability
 		fmt.Fprintln(env.Stderr, err.Error())
 		return nil, nil, api.ExitAuth
 	}
-	c, err := clientFor(env, st, profile, "")
+	c, err := clientFor(env, st, profile, base)
 	if err != nil {
 		fmt.Fprintln(env.Stderr, err.Error())
 		return nil, nil, api.ExitAuth
