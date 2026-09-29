@@ -133,6 +133,13 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
+- **The Telegram approval message shows what is being approved** — it used to read
+  `Approval required: <capability>` and nothing else (no code sets `summary`), so an approver
+  had only the agent's chat reply, which is LLM text, to go on. The message now lists the row's
+  stored input with sensitive keys redacted (core `Redactor`), one `key: <JSON value>` line
+  each, after the optional `summary`, cut to 4096 characters. The buttons are posted into the
+  forum topic the request came from instead of General.
+
 - **A Telegram approval tap reports what core actually did** — `CallbackHandler` returned
   `ok` whatever `ApprovalGateway::accept()` / `reject()` answered, so a linked member the approval
   policy refuses, a lost double-tap race, an expired row, or a failed run all showed `Approved.`.

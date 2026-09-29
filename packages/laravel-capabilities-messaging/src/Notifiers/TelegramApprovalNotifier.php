@@ -4,16 +4,19 @@ namespace Rawphp\CapabilitiesMessaging\Notifiers;
 
 use Rawphp\Capabilities\Contracts\ApprovalNotifier;
 use Rawphp\Capabilities\Contracts\AuditWriter;
+use Rawphp\Capabilities\Support\Redactor;
 use Rawphp\CapabilitiesMessaging\MessagingConfig;
 use Rawphp\CapabilitiesMessaging\Support\TelegramBotApiException;
 use Rawphp\CapabilitiesMessaging\Support\TelegramBotClient;
+use Rawphp\CapabilitiesMessaging\Support\TelegramText;
 use Rawphp\CapabilitiesMessaging\Telegram\TelegramCallbackSigner;
 use Throwable;
 
 /**
  * Telegram channel approval notifier — implements core ApprovalNotifier (D-006 / D-007).
  *
- * Sends signed accept/reject buttons. Never executes capabilities or domain services.
+ * Sends signed accept/reject buttons with a redacted view of the row's input, into the
+ * originating forum topic. Never executes capabilities or domain services.
  * Bot API delivery failures are audited as `approval.notify_failed`, then rethrown (D-010).
  * telegram.enabled=false is a kill switch: nothing is sent, even with secrets set.
  */
@@ -61,20 +64,54 @@ final class TelegramApprovalNotifier implements ApprovalNotifier
         $signer->assertSafePayload($accept);
         $signer->assertSafePayload($reject);
 
-        $text = sprintf(
-            "Approval required: %s\n%s",
-            (string) ($approval['capability_name'] ?? 'capability'),
-            (string) ($approval['summary'] ?? ''),
-        );
-
-        $this->deliver($approval, 'sendMessage', fn (): array => $this->bot->sendMessage($chatId, $text, [
+        $params = [
             'reply_markup' => [
                 'inline_keyboard' => [[
                     ['text' => 'Accept', 'callback_data' => $signer->encode($accept)],
                     ['text' => 'Reject', 'callback_data' => $signer->encode($reject)],
                 ]],
             ],
-        ]));
+        ];
+        // Into the forum topic the request came from, not General (M-203).
+        $topicId = $approval['messaging']['topic_id'] ?? null;
+        if (is_numeric($topicId)) {
+            $params['message_thread_id'] = (int) $topicId;
+        }
+
+        $text = $this->messageText($approval);
+
+        $this->deliver($approval, 'sendMessage', fn (): array => $this->bot->sendMessage($chatId, $text, $params));
+    }
+
+    /**
+     * What is being approved, from the row alone (M-203): the capability, an optional summary,
+     * then the stored input with sensitive keys redacted, one `key: <json>` line each. The input
+     * is the ground truth; the agent's chat reply describing it is LLM text. JSON-encoding every
+     * value keeps a crafted string from faking extra lines.
+     *
+     * @param  array<string, mixed>  $approval
+     */
+    private function messageText(array $approval): string
+    {
+        $lines = ['Approval required: '.(string) ($approval['capability_name'] ?? 'capability')];
+
+        $summary = trim((string) ($approval['summary'] ?? ''));
+        if ($summary !== '') {
+            $lines[] = $summary;
+        }
+
+        $input = $approval['input_json'] ?? null;
+        if (is_string($input)) {
+            $input = json_decode($input, true);
+        }
+        if (is_array($input)) {
+            foreach (Redactor::redact($input) as $key => $value) {
+                $label = (string) preg_replace('/[\x00-\x1F\x7F]/', ' ', (string) $key);
+                $lines[] = $label.': '.json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+            }
+        }
+
+        return TelegramText::truncate(implode("\n", $lines));
     }
 
     /**
