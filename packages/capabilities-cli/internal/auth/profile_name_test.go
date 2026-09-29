@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -113,5 +114,39 @@ func TestProfileNameNormalization(t *testing.T) {
 		if err != nil || got != want {
 			t.Fatalf("profileName(%q) = %q, %v; want %q", in, got, err, want)
 		}
+	}
+}
+
+// Every login path rejects an unsafe profile before any network call, so an
+// interactive device approval is never wasted and no token is left orphaned.
+func TestInvalidProfileFailsLoginBeforeAnyRequest(t *testing.T) {
+	calls := 0
+	c := api.NewClient("https://x.example", "")
+	c.HTTP = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls++
+		return nil, errors.New("unexpected request")
+	})}
+	ctx := context.Background()
+	st := tempStore(t)
+	logins := map[string]func() error{
+		"device": func() error {
+			_, err := LoginDeviceCode(ctx, st, c, "my prod", "https://x.example", DeviceFlow{})
+			return err
+		},
+		"browser": func() error {
+			_, err := LoginBrowserOAuth(ctx, st, c, "my prod", "https://x.example", "code")
+			return err
+		},
+	}
+	for name, login := range logins {
+		t.Run(name, func(t *testing.T) {
+			calls = 0
+			if err := login(); !errors.Is(err, ErrInvalidProfile) {
+				t.Fatalf("want ErrInvalidProfile, got %v", err)
+			}
+			if calls != 0 {
+				t.Fatalf("made %d requests before rejecting the profile", calls)
+			}
+		})
 	}
 }

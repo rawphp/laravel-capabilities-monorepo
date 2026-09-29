@@ -518,3 +518,21 @@ func TestDefaultHTTPClientTalksToProfileBaseURL(t *testing.T) {
 		t.Fatalf("exit %d out %q err %q", code, out, errb)
 	}
 }
+
+// Token login verifies with one GET /capabilities and stops there: the schema
+// cache is keyed by base URL + token, so there is nothing to prefetch or clear.
+func TestExecuteAuthLoginTokenMakesOneRequest(t *testing.T) {
+	var requests []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		w.Write([]byte(`{"ok":true,"data":{"capabilities":[]}}`))
+	}))
+	t.Cleanup(srv.Close)
+	code, out, errb := CaptureExecute([]string{"auth", "login", "--base-url=" + srv.URL, "--token=pat-1"}, t.TempDir(), newClientFactory(srv))
+	if code != 0 {
+		t.Fatalf("login %d %s %s", code, out, errb)
+	}
+	if len(requests) != 1 || requests[0] != "GET /capabilities" {
+		t.Fatalf("requests: %v", requests)
+	}
+}

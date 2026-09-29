@@ -199,8 +199,7 @@ capabilities auth profiles [--json]
 | OAuth code | `--code=...` |
 | Device code | omit token and code (API-driven device flow) |
 
-`login` always requires `--base-url`. Successful login best-effort prefetches
-catalog schemas into that profile’s cache.
+`login` always requires `--base-url`.
 
 Full detail: **[authentication.md](authentication.md)**.
 
@@ -477,6 +476,7 @@ These codes are part of the CLI contract (stable for automation).
 | Exit 3 | Wrong/missing token or profile; re-login |
 | Exit 2 before network | Local schema validation against the live schema — fix the JSON (a stale cached schema is re-checked automatically) |
 | Exit 4 | Approval required — `approvals accept/reject` |
+| Capability missing from `catalog`, or `run` says `not_found` | Token lacks the `capabilities:cli` ability, so the server treats you as an `http` caller — see [authentication.md](authentication.md#tokens-must-carry-the-cli-ability) |
 | Wrong product’s data | You used the wrong `--profile` |
 | `command not found: capabilities` | Install path not on `PATH` (`~/.local/bin`) |
 | `self-update` not writable | Reinstall via `scripts/install.sh` into a dir you own (`CAPABILITIES_INSTALL_DIR`, default `~/.local/bin`) |

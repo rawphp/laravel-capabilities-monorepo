@@ -31,10 +31,7 @@ func LoginWithToken(ctx context.Context, store *Store, client *api.Client, profi
 	if token == "" {
 		return nil, fmt.Errorf("empty token")
 	}
-	if _, err := profileName(profile); err != nil {
-		return nil, err
-	}
-	normalized, err := NormalizeBaseURL(baseURL)
+	normalized, err := loginTarget(profile, baseURL)
 	if err != nil {
 		return nil, err
 	}
@@ -59,6 +56,16 @@ func LoginWithToken(ctx context.Context, store *Store, client *api.Client, profi
 		return nil, err
 	}
 	return &LoginResult{Profile: profile, BaseURL: normalized, TokenPresent: true, Flow: "token"}, nil
+}
+
+// loginTarget validates the profile name and normalizes the base URL before
+// any network call, so no login path spends a server round-trip (or a human
+// device approval) on a profile the store will refuse.
+func loginTarget(profile, baseURL string) (string, error) {
+	if _, err := profileName(profile); err != nil {
+		return "", err
+	}
+	return NormalizeBaseURL(baseURL)
 }
 
 // DeviceCodeGrantType is the RFC 8628 grant polled on the token endpoint.
@@ -95,7 +102,7 @@ type DeviceFlow struct {
 // Profile base URL is written only after a token is obtained so a failed
 // attempt cannot clobber a working profile's --base-url.
 func LoginDeviceCode(ctx context.Context, store *Store, client *api.Client, profile, baseURL string, flow DeviceFlow) (*LoginResult, error) {
-	normalized, err := NormalizeBaseURL(baseURL)
+	normalized, err := loginTarget(profile, baseURL)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +214,7 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 // LoginBrowserOAuth is a placeholder for browser OAuth; uses token endpoint with code.
 // Profile base URL is written only after a token is obtained.
 func LoginBrowserOAuth(ctx context.Context, store *Store, client *api.Client, profile, baseURL, code string) (*LoginResult, error) {
-	normalized, err := NormalizeBaseURL(baseURL)
+	normalized, err := loginTarget(profile, baseURL)
 	if err != nil {
 		return nil, err
 	}

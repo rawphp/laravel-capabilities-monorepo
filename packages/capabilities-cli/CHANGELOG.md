@@ -48,6 +48,22 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
+- **HTTP redirects are never followed** — against a `--base-url` that 301s
+  (e.g. `http://` to an HTTPS-only host), Go replayed the `run` POST as a GET,
+  which hit the describe route and returned an ok envelope: the CLI exited
+  **0** without running the capability, and `auth login --token` stored the
+  redirecting URL. Any 3xx from the capability API is now an `internal` error
+  (exit **1**) naming the redirect target; login stores nothing.
+- **Device-code and OAuth login reject an unsafe `--profile` up front** — only
+  `--token` login checked the name before calling the server, so device login
+  with `--profile='my prod'` ran the whole browser approval, then failed and
+  left the issued token live on the server. All login modes now fail before
+  any request.
+- **`auth login` no longer claims to prefetch schemas** — the post-login
+  "prefetch" re-listed the catalog (a second `GET /capabilities` after token
+  login) and cached nothing, since the list carries no schemas. It is removed
+  along with the doc claim; a new credential already starts with an empty
+  schema cache (keyed by base URL + token).
 - **Capability help advertises the flags invoke accepts** — help derived flag
   names and pass modes with its own rules, so it showed `--amount-cents` for a
   camelCase `amountCents` property (invoke only accepts `--amountCents`) and
@@ -113,6 +129,10 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 - `docs/authentication.md` states the base-URL rule: the CLI appends
   `/capabilities/…`, so the server's `surfaces.http.prefix` must end in
   `capabilities` and `--base-url` is everything before it.
+- `docs/authentication.md` states that CLI tokens must carry the ability mapped
+  to `cli` (default `capabilities:cli`, with the Sanctum one-liner); without
+  it the server treats the CLI as an `http` caller and `cli`-only capabilities
+  silently vanish from `catalog`. The user guide troubleshooting table links it.
 
 ## [0.5.0] - 2026-08-07
 

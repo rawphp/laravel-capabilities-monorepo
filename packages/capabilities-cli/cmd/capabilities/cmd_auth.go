@@ -7,7 +7,6 @@ import (
 
 	"github.com/rawphp/capabilities-cli/internal/api"
 	"github.com/rawphp/capabilities-cli/internal/auth"
-	"github.com/rawphp/capabilities-cli/internal/catalog"
 )
 
 func cmdAuth(env Env, args []string) int {
@@ -60,15 +59,6 @@ func cmdAuth(env Env, args []string) int {
 			}
 			fmt.Fprintln(env.Stderr, se.Error())
 			return se.ExitCode
-		}
-		// Prefetch schemas into cache (best-effort).
-		if tok, e := st.GetToken(profile); e == nil {
-			c := api.NewClient(base, tok)
-			if env.NewClient != nil {
-				c = env.NewClient(base, tok)
-			}
-			svc := &catalog.Service{Client: c, Cache: catalog.PrincipalCache(st.SchemaCacheDir(profile), c)}
-			_, _ = svc.Refresh(context.Background())
 		}
 		// Never print token.
 		if jsonOut {

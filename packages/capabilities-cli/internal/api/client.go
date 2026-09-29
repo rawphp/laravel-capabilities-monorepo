@@ -46,22 +46,38 @@ func NewClient(baseURL, token string) *Client {
 	return &Client{
 		BaseURL:   strings.TrimRight(baseURL, "/"),
 		Token:     token,
-		HTTP:      &http.Client{Timeout: 30 * time.Second},
+		HTTP:      &http.Client{Timeout: 30 * time.Second, CheckRedirect: noRedirect},
 		Accept:    AcceptJSON,
 		Timeout:   30 * time.Second,
 		UserAgent: "capabilities-cli/0.2",
 	}
 }
 
+// httpClient returns the transport client with redirects disabled. The
+// capability API has no legitimate redirects, and following one would replay
+// a POST invoke as a GET (the describe route): a false success. The policy is
+// applied to injected clients too, so no caller can opt out by accident.
 func (c *Client) httpClient() *http.Client {
 	if c.HTTP != nil {
-		return c.HTTP
+		hc := *c.HTTP
+		hc.CheckRedirect = noRedirect
+		return &hc
 	}
 	timeout := c.Timeout
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
-	return &http.Client{Timeout: timeout}
+	return &http.Client{Timeout: timeout, CheckRedirect: noRedirect}
+}
+
+func noRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+
+// redirectMessage names the redirect target so the user can fix --base-url.
+func redirectMessage(res *http.Response) string {
+	if loc, err := res.Location(); err == nil {
+		return fmt.Sprintf("HTTP %d: capability API redirected to %s; redirects are not followed. Re-run auth login with --base-url set to that scheme and host", res.StatusCode, loc)
+	}
+	return fmt.Sprintf("HTTP %d: unexpected redirect from capability API; check --base-url", res.StatusCode)
 }
 
 func (c *Client) accept() string {
@@ -125,7 +141,15 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte, extra
 	}
 	out := &Response{StatusCode: res.StatusCode, Header: res.Header, Body: raw}
 	_ = json.Unmarshal(raw, &out.Envelope)
-	if !out.Envelope.OK && out.Envelope.Error != nil {
+	if res.StatusCode >= 300 && res.StatusCode < 400 {
+		out.Err = &StructuredError{
+			Code:       CodeInternal,
+			Message:    redirectMessage(res),
+			HTTPStatus: res.StatusCode,
+			ExitCode:   ExitCode(CodeInternal),
+			Body:       raw,
+		}
+	} else if !out.Envelope.OK && out.Envelope.Error != nil {
 		out.Err = ParseErrorEnvelope(out.Envelope, res.StatusCode, raw)
 	} else if res.StatusCode >= 400 && out.Envelope.Error == nil {
 		// Non-envelope HTTP error → internal-ish mapping by status.
