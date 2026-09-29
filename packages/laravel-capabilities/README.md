@@ -57,7 +57,7 @@ Sibling packages and thin adapters should depend only on this **allowlist** — 
 | | `Support\CapabilityContext` | Actor, caller, tenant, options for invoke |
 | | `Support\CapabilityData` | Typed capability input/output base (when used) |
 | **Stateless helpers** | `Support\ErrorCodeMap` | D-018 error-code vocabulary (HTTP status / CLI exit / retryable); allowed for messaging |
-| | `Support\Redactor` | D-010 key redaction shared with the audit log; allowed for AI |
+| | `Support\Redactor` | D-010 key redaction shared with the audit log; allowed for messaging (approval message input) and AI |
 
 **Approval callbacks (messaging):** type-hint `ApprovalGateway` (find / accept / reject). The service provider aliases the same singleton as `ApprovalManager` — hosts may still inject `ApprovalManager` for resume/ops APIs that stay inside core.
 

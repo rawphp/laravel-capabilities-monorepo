@@ -3233,7 +3233,7 @@ Document: app CI should run schema snapshots for every capability before release
 | Check | When |
 |---|---|
 | Messaging package installed + surface enabled | Boot may register routes; **do not** require secrets yet |
-| First webhook / `messaging:telegram-setup` / first outbound notify | **Validate secrets**; fail that request/command loudly |
+| First webhook / `messaging:telegram-setup` / first outbound notify | **Validate secrets**; fail the webhook / setup command loudly. An outbound notify throws, and core reports it (`ExceptionHandler` + `approval_notify_failed_total{notifier}`) without failing the invoke: the request still returns `approval_required` and the approval stays pending |
 | Core peer adapters (`laravel/ai`) when surface enabled | Keep boot fail/disable (D-011) — needed to register tools safely |
 | `CAPABILITIES_SKIP_BOOT_CHECKS=true` | Skips **only** deferred-style checks in CI; **forbidden in production** (detect `APP_ENV=production` → ignore skip or abort) |
 
