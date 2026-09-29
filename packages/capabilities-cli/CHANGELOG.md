@@ -21,6 +21,11 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Added
 
+- **`auth login --token` warns on a non-`cli` caller** — the verification
+  `GET /capabilities` already returns the server-derived `meta.caller`. When it
+  is not `cli` (the PAT lacks the `capabilities:cli` ability), login still
+  stores the token but prints one stderr warning naming the caller, and
+  `--json` adds `data.caller`. Servers that omit `meta.caller` are unaffected.
 - **API version preflight on `run`** — before the invoke POST, `run` reads
   `data.api_version` from `GET /capabilities/health` and refuses (exit 1, no
   POST) when the server speaks a different capability API version, with an

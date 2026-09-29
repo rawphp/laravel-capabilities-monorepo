@@ -60,6 +60,11 @@ ability mapped to `cli` in the server's `clients.token_abilities` config
 Capabilities exposed on `cli` but not `http` then drop out of `catalog` and
 return `not_found` on `run`, with no auth error to explain why.
 
+`auth login --token` catches this at login: when the verification response
+names a caller other than `cli`, the token is still stored but stderr warns
+(`warning: server treats this token as caller "http", not cli; …`). Device-code
+and OAuth logins make no verification request, so they do not warn.
+
 Device-code and OAuth tokens come from the host's issuer, which must attach
 that ability. For `--token`, mint the PAT with it. With Sanctum:
 
@@ -89,7 +94,8 @@ device login never changes a working profile.
 
 A failed login exits with the D-018 code's CLI exit (server `unauthenticated` →
 **3**; local/transport failures → **1**). With `--json`, stdout carries the
-envelope: `{"ok":true,"data":{"profile","base_url","logged_in"}}` on success,
+envelope: `{"ok":true,"data":{"profile","base_url","logged_in"}}` on success
+(plus `caller` after `--token` login when the server reports one),
 `{"ok":false,"error":{"code","message",…}}` on failure. Tokens are never printed.
 
 ### Status & logout

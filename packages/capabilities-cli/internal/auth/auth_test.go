@@ -147,3 +147,30 @@ func TestAuthloginfetchesschemasintocache(t *testing.T) {
 		t.Fatal(dir)
 	}
 }
+
+// The server derives caller from the token's abilities (D-022). Login reports
+// what it derived so a PAT minted without the cli ability is named at login,
+// not discovered later as a filtered catalog; the token is still stored.
+func TestLoginWithTokenReportsServerDerivedCaller(t *testing.T) {
+	st := tempStore(t)
+	c := tokenServer(t, 200, `{"ok":true,"data":{"capabilities":[]},"meta":{"caller":"http","derived_caller":"http"}}`, nil)
+	res, err := LoginWithToken(context.Background(), st, c, "default", c.BaseURL, "tok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Caller != "http" {
+		t.Fatalf("caller=%q want http", res.Caller)
+	}
+	if !st.HasToken("default") {
+		t.Fatal("token must still be stored when caller is not cli")
+	}
+}
+
+func TestLoginWithTokenWithoutMetaReportsNoCaller(t *testing.T) {
+	st := tempStore(t)
+	c := tokenServer(t, 200, `{"ok":true,"data":{"capabilities":[]}}`, nil)
+	res, err := LoginWithToken(context.Background(), st, c, "default", c.BaseURL, "tok")
+	if err != nil || res.Caller != "" {
+		t.Fatalf("err=%v caller=%q", err, res.Caller)
+	}
+}

@@ -113,6 +113,8 @@ type Meta struct {
 	RequestID        string `json:"request_id,omitempty"`
 	Capability       string `json:"capability,omitempty"`
 	IdempotentReplay bool   `json:"idempotent_replay,omitempty"`
+	// Caller is the server-derived caller (D-022), e.g. "cli" or "http".
+	Caller string `json:"caller,omitempty"`
 }
 
 // StructuredError is a client-side mapped error from an HTTP envelope.
