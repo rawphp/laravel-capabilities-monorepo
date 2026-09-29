@@ -5,8 +5,11 @@ namespace Rawphp\CapabilitiesMessaging\Threads;
 use RuntimeException;
 
 /**
- * Conversation thread persistence (in-memory for unit tests; swap driver in production).
+ * Maps chat + topic to a conversation thread id.
  *
+ * The update pipeline calls only {@see threadIdFor()} and stores nothing, so a long-lived queue
+ * worker does not grow with traffic. The in-memory thread/history methods are a process-local
+ * helper that the pipeline does not write; conversation memory belongs to the host AgentTurn.
  * Topics are isolated: chat A topic 1 cannot read topic 2 history.
  * Not final so hosts (and tests) can swap the storage behind the same API.
  */

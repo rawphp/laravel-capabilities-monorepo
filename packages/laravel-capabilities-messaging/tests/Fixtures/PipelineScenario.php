@@ -76,7 +76,7 @@ final class PipelineScenario
             case 'thread_store_failure':
                 $threads = new class extends ThreadStore
                 {
-                    public function getOrCreate(string $chatId, string|int|null $topicId = null): array
+                    public function threadIdFor(string $chatId, string|int|null $topicId = null): string
                     {
                         throw new RuntimeException('thread_store_failure');
                     }

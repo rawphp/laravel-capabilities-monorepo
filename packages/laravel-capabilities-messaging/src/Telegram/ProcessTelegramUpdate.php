@@ -165,13 +165,9 @@ final class ProcessTelegramUpdate
             throw new RuntimeException('identity_unresolved');
         }
 
-        // map_thread
-        $thread = $this->threads->getOrCreate((string) $chatId, $topicId);
-        $this->threads->appendHistory($thread['id'], [
-            'role' => 'user',
-            'text' => $text,
-            'telegram_user_id' => $telegramUserId,
-        ]);
+        // map_thread — id only: nothing reads history back, so a long-lived worker keeps no
+        // per-chat state (conversation memory belongs to the host AgentTurn).
+        $threadId = $this->threads->threadIdFor((string) $chatId, $topicId);
         $this->mark('map_thread');
 
         // agent profile required (D-008)
@@ -195,7 +191,7 @@ final class ProcessTelegramUpdate
             'chat_id' => (string) $chatId,
             'text' => $text,
             'user' => $user,
-            'thread_id' => $thread['id'],
+            'thread_id' => $threadId,
             'profile' => $profile,
             'messaging' => $messagingMeta,
             'tools' => $profileTools,
@@ -221,7 +217,7 @@ final class ProcessTelegramUpdate
                 caller: 'agent',
                 actor: $user,
                 messaging: $messagingMeta,
-                agent: ['profile' => $profile, 'thread_id' => $thread['id']],
+                agent: ['profile' => $profile, 'thread_id' => $threadId],
             );
             $options = [
                 'context' => $ctx,
@@ -263,7 +259,7 @@ final class ProcessTelegramUpdate
             $this->adapter->reply([
                 'chat_id' => (string) $chatId,
                 'text' => $replyText,
-                'thread_id' => $thread['id'],
+                'thread_id' => $threadId,
             ]);
         } catch (Throwable $e) {
             $message = 'reply_send_fail: '.$e->getMessage();
@@ -274,14 +270,9 @@ final class ProcessTelegramUpdate
         }
         $this->mark('conversation_reply');
 
-        $this->threads->appendHistory($thread['id'], [
-            'role' => 'assistant',
-            'text' => $replyText,
-        ]);
-
         return [
             'ok' => true,
-            'thread_id' => $thread['id'],
+            'thread_id' => $threadId,
             'profile' => $profile,
             'tools' => $profileTools,
             'tool_results' => $toolResults,

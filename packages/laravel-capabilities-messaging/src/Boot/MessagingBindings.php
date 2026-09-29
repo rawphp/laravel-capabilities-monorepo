@@ -34,12 +34,13 @@ use RuntimeException;
  *
  * Link codes and identity links: the container binds {@see CacheLinkStore} (host cache, shared by
  * web and queue workers); build() has no container and uses {@see InMemoryLinkStore}.
- * L-006 residual: ThreadStore history stays process-local in-memory — not silent.
+ * L-006 residual: messaging keeps no thread history (thread ids only) — not silent.
  */
 final class MessagingBindings
 {
     public const L006_RESIDUAL =
-        'L-006 residual: ThreadStore history is process-local in-memory (not durable). '
+        'L-006 residual: messaging keeps no thread history, durable or otherwise; the pipeline '
+        .'passes a chat+topic thread_id and the host AgentTurn owns any conversation memory. '
         .'Link codes and identity links use the cache-backed LinkStore.';
 
     /**
@@ -151,7 +152,7 @@ final class MessagingBindings
         $bot = self::makeBot($cfg, $drivers['bot'], $httpTransport);
         $queue = self::makeQueue($drivers['queue'], $queueDispatcher);
 
-        // No container here: in-memory link store (the provider binds CacheLinkStore). L-006: threads.
+        // No container here: in-memory link store (the provider binds CacheLinkStore).
         $threads = new ThreadStore;
         $identity = new IdentityLinker($cfg);
         $adapter = new TelegramAdapter($bot);

@@ -11,7 +11,7 @@ Implements core `ConversationIngress` / `ApprovalNotifier` contracts. **Never** 
 | | |
 |---|---|
 | **Is** | Chat **ingress** (Telegram first): webhooks, identity link/allowlist, threads, approval notifiers; routes messages into the host-bound agent turn (`Contracts\AgentTurn`) with a configured tool profile |
-| **Is not** | Domain `run()` or any second write path; the capability registry / governance stack; product CLI; AI turn/proposal engine; durable thread-history store (process-local residual — L-006); general-purpose notification platform |
+| **Is not** | Domain `run()` or any second write path; the capability registry / governance stack; product CLI; AI turn/proposal engine; thread-history store (no history kept — L-006); general-purpose notification platform |
 
 Requires [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities). Developed in the monorepo; consumers install **this package repo**.
 
@@ -98,5 +98,5 @@ Fake\* classes bind only when the matching driver is `fake`, or `auto` with `APP
 
 Link codes and code-bound identity links live in a `Identity\LinkStore`. The container binds `CacheLinkStore` on your default Laravel cache store (`Illuminate\Contracts\Cache\Repository`), so a code issued in a web request binds on the queue worker and links survive restarts. Codes expire with `identity.code_ttl_seconds` and are single-use across workers. Links have no expiry: use a persistent cache store (redis, database) that deploys do not flush. A lost link fails closed and the user links again. To use another store, bind `LinkStore` yourself, e.g. `new CacheLinkStore(Cache::store('redis'))`. Allowlist entries stay in config. Stored links resolve only in `code_link` mode: in `allowlist` mode only config entries resolve, so switching modes revokes code-bound users.
 
-**Not silent:** `ThreadStore` history is still **process-local in-memory** and **not durable** across processes or deploys (L-006 residual). Thread ids are derived from chat + topic, and the pipeline does not read history back into the agent turn today.
+**Not silent (L-006):** messaging keeps **no thread history**, durable or otherwise. Each message gets a `thread_id` derived from chat + topic (`tg:<chat>:<topic>`) and passed to your `AgentTurn`; if the agent needs earlier turns, store them in your `AgentTurn` keyed by that id. The update pipeline writes nothing to `ThreadStore`, so a long-lived queue worker does not grow with chat traffic.
 
