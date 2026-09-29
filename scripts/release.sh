@@ -42,7 +42,8 @@
 #   1. composer format:test   (Pint)
 #   2. composer analyse       (PHPStan, phpstan.neon)
 #   3. composer test          (Pest core + messaging + AI)
-#   4. composer test:cli      (go test ./... under packages/capabilities-cli)
+#   4. gofmt -l               (Go format, under packages/capabilities-cli)
+#   5. composer test:cli      (go test ./... under packages/capabilities-cli)
 #
 # Matches CI: .github/workflows/tests.yml (split is blocked until these are green).
 
@@ -394,7 +395,7 @@ else
   printf '    - php: SKIPPED (--skip-php, dry-run only)\n'
 fi
 if [[ "$SKIP_CLI" -eq 0 ]]; then
-  printf '    - cli: composer test:cli (go test ./...)\n'
+  printf '    - cli: gofmt -l + composer test:cli (go test ./...)\n'
 else
   printf '    - cli: SKIPPED (--skip-cli, dry-run only)\n'
 fi
@@ -530,12 +531,18 @@ run_php_gates() {
 }
 
 run_cli_gates() {
-  log "CLI: composer test:cli (go test ./...)"
+  log "CLI: gofmt -l + composer test:cli (go test ./...)"
   if ! command -v go >/dev/null; then
     fail "go not found on PATH (required for capabilities-cli gates)"
   fi
   if [[ ! -d "$ROOT/packages/capabilities-cli" ]]; then
     fail "packages/capabilities-cli missing"
+  fi
+  local unformatted
+  unformatted="$(cd "$ROOT/packages/capabilities-cli" && gofmt -l .)"
+  if [[ -n "$unformatted" ]]; then
+    printf '%s\n' "$unformatted" | sed 's/^/  /' >&2
+    fail "gofmt: files above need formatting (run gofmt -w in packages/capabilities-cli)"
   fi
   (
     cd "$ROOT"
@@ -603,7 +610,7 @@ MESSAGE="Release $NEW_TAG
 
 Quality gates:
   - php: composer format:test + analyse + test (Pint, PHPStan, Pest core + messaging + AI)
-  - cli: composer test:cli (go test ./...)
+  - cli: gofmt -l + composer test:cli (go test ./...)
 Commit: $HEAD_SHA
 
 Triggers: monorepo tag v* → split-packages.yml → package remotes

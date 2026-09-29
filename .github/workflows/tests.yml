@@ -99,5 +99,8 @@ jobs:
           go-version-file: packages/capabilities-cli/go.mod
           cache-dependency-path: packages/capabilities-cli/go.sum
 
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+
       - name: go test
         run: go test ./...

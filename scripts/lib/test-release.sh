@@ -188,6 +188,12 @@ else
   fail_case "gates reference composer format:test + analyse (Pint + PHPStan, same as CI)" "missing static gate commands"
 fi
 
+if grep -A12 '^run_cli_gates()' "$RELEASE_SH" | grep -q 'gofmt -l'; then
+  pass "CLI gates run gofmt -l (same as CI go job)"
+else
+  fail_case "CLI gates run gofmt -l (same as CI go job)" "run_cli_gates has no gofmt check"
+fi
+
 printf '\n-- empty-range / origin-missing contracts --\n'
 
 if grep -q 'allow-empty-range' "$RELEASE_SH" \
