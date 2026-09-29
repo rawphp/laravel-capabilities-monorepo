@@ -63,6 +63,11 @@ return [
             'max_tokens' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS', 64000),
             /** 429 retries per request (honours Retry-After, capped at 60s); 0 disables. */
             'max_retries' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_RETRIES', 2),
+            /**
+             * Per-request HTTP timeout in seconds (Laravel's client default is 30s, too short for
+             * long replies). Keep it below claim_ttl: one turn job may make several requests.
+             */
+            'timeout' => (int) $env('CAPABILITIES_AI_ANTHROPIC_TIMEOUT', 110),
         ],
     ],
 

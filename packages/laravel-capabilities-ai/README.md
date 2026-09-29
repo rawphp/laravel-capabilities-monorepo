@@ -60,6 +60,7 @@ Key defaults (`config/capabilities-ai.php`):
 | `llm.anthropic.max_tokens` | `64000` (`CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS`) |
 | `llm.anthropic.max_retries` | `2` (`CAPABILITIES_AI_ANTHROPIC_MAX_RETRIES`) — Anthropic 429 retries per request; waits `Retry-After` seconds (capped at 60) or 1s, 2s, 4s…; `0` disables |
 | `user_model` | null → falls back to `auth.providers.users.model` (`CAPABILITIES_AI_USER_MODEL`) |
+| `llm.anthropic.timeout` | `110` (`CAPABILITIES_AI_ANTHROPIC_TIMEOUT`) — seconds per Anthropic request (Laravel's HTTP default is 30s). Keep it below `claim_ttl`; a turn with several tool rounds makes several requests inside one job timeout, so raise `claim_ttl` for long multi-round turns |
 | `claim_ttl` | **`120`** (seconds; worker heartbeat / job timeout window) |
 | `queue.connection` | null (`CAPABILITIES_AI_QUEUE_CONNECTION`) — applied to default `RunTurnJob` dispatch when set |
 | `queue.name` | null (`CAPABILITIES_AI_QUEUE_NAME`) — applied to default dispatch; also marks **AI-chat** for core `capabilities:integration-health` when non-empty |

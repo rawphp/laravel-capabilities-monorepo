@@ -129,6 +129,7 @@ final class ContainerBindings
                 metrics: $metrics,
                 tracer: $tracer,
                 maxRetries: (int) ($config['llm']['anthropic']['max_retries'] ?? 2),
+                timeoutSeconds: (int) ($config['llm']['anthropic']['timeout'] ?? AnthropicLlmClient::DEFAULT_TIMEOUT_SECONDS),
             ),
         };
     }
