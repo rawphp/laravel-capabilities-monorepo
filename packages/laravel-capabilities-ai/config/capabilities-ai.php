@@ -69,18 +69,18 @@ return [
              */
             'max_tokens' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS', 64000),
             /**
-             * 429 retries per request (honours Retry-After, capped at 60s); 0 disables. A retry is
-             * skipped when the wait plus one more `timeout` would not end before the turn's
-             * claim_ttl (counted from the job start, not the request); the 429 then fails the turn
-             * as retryable instead of the worker being killed mid-request.
+             * 429 retries per request (honours Retry-After, capped at 60s); 0 disables. A retry
+             * runs with its timeout capped to what is left of the turn's claim_ttl (counted from
+             * the job start), and is skipped when the wait would leave under 10s; the 429 then
+             * fails the turn as retryable instead of the worker being killed mid-request.
              */
             'max_retries' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_RETRIES', 2),
             /**
              * Per-request HTTP timeout in seconds (Laravel's client default is 30s, too short for
              * long replies). Must be below claim_ttl (the turn job timeout) or the anthropic
-             * LlmClient refuses to build. One turn job makes a request per tool round: a round
-             * starts only while one more `timeout` fits in what is left of claim_ttl, else the
-             * turn fails as retryable. Raise claim_ttl for long multi-round turns.
+             * LlmClient refuses to build. One turn job makes a request per tool round, each capped
+             * to what is left of claim_ttl (minus 2s); a round is refused, failing the turn as
+             * retryable, only when under 10s are left. Raise claim_ttl for long multi-round turns.
              */
             'timeout' => (int) $env('CAPABILITIES_AI_ANTHROPIC_TIMEOUT', 110),
         ],

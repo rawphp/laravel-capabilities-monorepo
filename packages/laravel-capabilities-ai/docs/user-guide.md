@@ -316,7 +316,7 @@ php artisan migrate
 9. Schedule **`php artisan capabilities-ai:reap-stale-turns`** (package does not auto-schedule).
 10. **`php artisan capabilities:integration-health`** → **fail** set clean. That Artisan command is **not** HTTP `GET …/capabilities/health` (surface catalog health).
 
-`claim_ttl` default is **120** seconds (`CAPABILITIES_AI_CLAIM_TTL`). It is the `RunTurnJob` timeout and so the budget for the **whole turn**, every LLM round included. With `AnthropicLlmClient` (or any `DeadlineAwareLlmClient`), `TurnRunner` starts a round only while one more `llm.anthropic.timeout` still fits in what is left of `claim_ttl`, and 429 retries are held to the same deadline. A turn that runs out fails as retryable (`error` with `retryable: true`, then `terminal` `failed`) instead of the worker being killed and the turn waiting for the reaper. Raise `claim_ttl` for long multi-round turns.
+`claim_ttl` default is **120** seconds (`CAPABILITIES_AI_CLAIM_TTL`). It is the `RunTurnJob` timeout and so the budget for the **whole turn**, every LLM round included. With `AnthropicLlmClient` (or any `DeadlineAwareLlmClient`), each request (429 retries included) gets `llm.anthropic.timeout` capped to what is left of `claim_ttl` minus 2s, and `TurnRunner` refuses a round only when under 10s are left. A turn that runs out fails as retryable (`error` with `retryable: true`, then `terminal` `failed`) instead of the worker being killed and the turn waiting for the reaper. Raise `claim_ttl` for long multi-round turns.
 
 ### ProgressStore extend order
 
