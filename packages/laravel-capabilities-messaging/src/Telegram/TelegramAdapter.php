@@ -46,6 +46,9 @@ final class TelegramAdapter implements ConversationIngress, ConversationReply
     }
 
     /**
+     * Send `text` to `chat_id`, into forum topic `topic_id` when set. Only Bot API fields are
+     * built from the message: internal keys (thread ids, metadata) never leave the process.
+     *
      * @param  array<string, mixed>|object  $message
      */
     public function reply(array|object $message): void
@@ -55,9 +58,16 @@ final class TelegramAdapter implements ConversationIngress, ConversationReply
         $chatId = (string) ($data['chat_id'] ?? '');
         $text = (string) ($data['text'] ?? '');
 
-        if ($this->bot !== null && $chatId !== '') {
-            $this->bot->sendMessage($chatId, $text, $data);
+        if ($this->bot === null || $chatId === '') {
+            return;
         }
+
+        $params = [];
+        if (isset($data['topic_id']) && is_numeric($data['topic_id'])) {
+            $params['message_thread_id'] = (int) $data['topic_id'];
+        }
+
+        $this->bot->sendMessage($chatId, $text, $params);
     }
 
     /**

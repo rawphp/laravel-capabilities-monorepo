@@ -150,7 +150,7 @@ final class ProcessTelegramUpdate
 
         $linkCode = $this->linkCode($text, $telegramUserId);
         if ($linkCode !== null) {
-            return $this->bindLink((string) $chatId, (string) $telegramUserId, $linkCode);
+            return $this->bindLink((string) $chatId, $topicId, (string) $telegramUserId, $linkCode);
         }
 
         // resolve_identity
@@ -258,8 +258,8 @@ final class ProcessTelegramUpdate
         try {
             $this->adapter->reply([
                 'chat_id' => (string) $chatId,
+                'topic_id' => $topicId,
                 'text' => $replyText,
-                'thread_id' => $threadId,
             ]);
         } catch (Throwable $e) {
             $message = 'reply_send_fail: '.$e->getMessage();
@@ -300,13 +300,14 @@ final class ProcessTelegramUpdate
      *
      * @return array<string, mixed>
      */
-    private function bindLink(string $chatId, string $telegramUserId, string $code): array
+    private function bindLink(string $chatId, string|int|null $topicId, string $telegramUserId, string $code): array
     {
         $linked = $this->identity->bindWithCode($telegramUserId, $code) !== null;
         $this->mark('link_identity');
 
         $this->adapter->reply([
             'chat_id' => $chatId,
+            'topic_id' => $topicId,
             'text' => $linked ? self::LINKED_REPLY : self::LINK_FAILED_REPLY,
         ]);
         $this->mark('conversation_reply');

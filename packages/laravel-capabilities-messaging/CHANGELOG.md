@@ -58,6 +58,16 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   that put a Telegram user id (or anything other than the product user id) in
   `approver_hint` must switch to the product user id or send an empty hint.
 
+- **Bot API requests carry Bot API fields only** — `TelegramApprovalNotifier` sent the full
+  signed accept/reject payloads (including `approver_hint`, the product user id) as extra
+  `sendMessage` parameters, and replies forwarded the internal `thread_id`.
+  `HttpTelegramBotClient` now sends `chat_id`, `text` (and `message_id` on edits) plus only
+  `message_thread_id`, `reply_markup` and `parse_mode` from the payload; the notifier sends only
+  `reply_markup`. `TelegramAdapter::reply()` reads `chat_id`, `text` and `topic_id` and ignores
+  every other key. **Consumer impact:** tests that read `accept_payload` / `signed_buttons` from
+  a bot recorder should decode `reply_markup` button `callback_data` with
+  `TelegramCallbackSigner::decode()` instead.
+
 ### Changed
 
 - **Core constraint is lockstep:** `require.rawphp/laravel-capabilities` is now `self.version` instead of `*`. This package at tag `v0.Y.Z` installs only with core `v0.Y.Z` (and `dev-main` with core `dev-main`). **Hosts:** require the same version of core and this package.
@@ -74,6 +84,10 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   runtime) now fail setup with or without a lookup.
 
 ### Fixed
+
+- **Replies land in the forum topic the user wrote in** — replies (and link confirmations) to a
+  message in a forum supergroup topic now set `message_thread_id`, so they no longer land in the
+  General topic.
 
 - **Queue workers no longer grow with chat traffic** — `ProcessTelegramUpdate` kept every user
   message and reply in the container-singleton `ThreadStore`, in process memory with no bound,

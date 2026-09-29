@@ -53,8 +53,9 @@ it('happy: provider notifier signs buttons with callback_secret [D-006]', functi
 
     $app->make(TelegramApprovalNotifier::class)->notifyPending(['id' => 'a1', 'chat_id' => '5']);
 
-    $accept = $bot->calls()[0]['args']['accept_payload'];
-    expect((new TelegramCallbackSigner('cb'))->verify($accept))->toBeTrue();
+    $signer = new TelegramCallbackSigner('cb');
+    $accept = $signer->decode($bot->calls()[0]['args']['reply_markup']['inline_keyboard'][0][0]['callback_data']);
+    expect($signer->verify($accept ?? []))->toBeTrue();
 });
 
 it('edge: build() needs no secrets and never signs with a literal fallback key [D-021]', function () {

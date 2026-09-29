@@ -145,7 +145,7 @@ $this->app->singleton(AgentTurn::class, SupportChatAgentTurn::class);
 ```
 
 - `toolNames(string $profile): list<string>` — capability names the profile exposes (e.g. the names from `Capability::aiTools($profile)`). Tool calls outside this list are refused.
-- `respond(array $message): array{text, tool_calls?}` — run one turn. `$message` carries `text`, the linked `user`, `thread_id`, `profile`, `tools` and `messaging` metadata. `thread_id` is stable per chat + topic; messaging keeps no history, so store earlier turns yourself (keyed by `thread_id`) if the agent needs them. Return tool calls as `['name' => …, 'input' => […]]`; messaging invokes each one through the capability bus as `caller: agent`, with per-update idempotency keys, then sends `text` as the reply.
+- `respond(array $message): array{text, tool_calls?}` — run one turn. `$message` carries `text`, the linked `user`, `thread_id`, `profile`, `tools` and `messaging` metadata. `thread_id` is stable per chat + topic; messaging keeps no history, so store earlier turns yourself (keyed by `thread_id`) if the agent needs them. Return tool calls as `['name' => …, 'input' => […]]`; messaging invokes each one through the capability bus as `caller: agent`, with per-update idempotency keys, then sends `text` as the reply (into the same forum topic when the message came from one).
 
 With no `AgentTurn` bound, a linked user's message gets **no reply** and an `agent_turn_unbound` error is logged; the profile exposes no tools.
 
