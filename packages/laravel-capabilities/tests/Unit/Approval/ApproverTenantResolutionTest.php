@@ -8,13 +8,17 @@ declare(strict_types=1);
 
 use Rawphp\Capabilities\Approval\ApprovalPolicy;
 use Rawphp\Capabilities\Approval\ApprovalStateMachine;
+use Rawphp\Capabilities\Contracts\ScopeResolver;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\CapabilityContext;
+use Rawphp\Capabilities\Support\CapabilityScope;
 use Rawphp\Capabilities\Support\DefaultScopeResolver;
+use Rawphp\Capabilities\Support\FailureReporter;
 use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\ApprovalHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
 use Rawphp\Capabilities\Tests\Fixtures\IdempotencyHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\RecordingExceptionHandler;
 
 /**
  * @param  array<string, mixed>  $attrs
@@ -221,4 +225,58 @@ it('an approved row without a tenant keeps resolving scope at execution time', f
     expect($row['tenant_id'] ?? null)->toBeNull()
         ->and($accepted->isOk())->toBeTrue()
         ->and($seen)->toBe([null]);
+});
+
+// L-402: any error a host ScopeResolver raises while placing an approver means "not placed":
+// accept and reject answer forbidden (like the invoke pipeline's resolve_scope stage) on the
+// HTTP and chat decision paths, run() never executes, and the failure is reported.
+it('a host resolver that throws while placing the approver fails accept and reject closed as forbidden and reports it', function (array $options) {
+    $handler = RecordingExceptionHandler::bind();
+    $throwing = new class implements ScopeResolver
+    {
+        public function resolve(CapabilityContext $partial): CapabilityScope
+        {
+            throw new DomainException('No tenant selected');
+        }
+    };
+    $h = ApprovalHelpers::withPending(['policy' => ApprovalPolicy::REQUESTER]);
+    $manager = $h['manager']->withScopeResolver($throwing);
+    $approver = (object) ['id' => '7'];
+
+    $accepted = $manager->accept((string) $h['row']['id'], $approver, $options);
+    $rejected = $manager->reject((string) $h['row']['id'], $approver, 'no', $options);
+
+    expect($accepted->errorCode())->toBe('forbidden')
+        ->and($rejected->errorCode())->toBe('forbidden')
+        ->and($h['runCount']->value)->toBe(0)
+        ->and($manager->find((string) $h['row']['id'])['status'])->toBe(ApprovalStateMachine::STATUS_PENDING)
+        ->and($handler->reported)->toHaveCount(2)
+        ->and($handler->reported[0])->toBeInstanceOf(DomainException::class)
+        ->and($handler->reported[0]->getMessage())->toBe('No tenant selected')
+        ->and($handler->metrics->get(FailureReporter::APPROVER_SCOPE_FAILED, ['caller' => $options === [] ? 'http' : 'agent']))->toBe(2);
+    RecordingExceptionHandler::unbind();
+})->with([
+    'HTTP decision' => [[]],
+    'chat decision' => [['decided_via' => ['channel' => 'telegram', 'channel_user_id' => '55']]],
+]);
+
+it('a host resolver that throws while placing the resuming user fails resume closed as forbidden', function () {
+    $handler = RecordingExceptionHandler::bind();
+    $h = ApprovalHelpers::harness();
+    $manager = $h['manager']->withScopeResolver(new class implements ScopeResolver
+    {
+        public function resolve(CapabilityContext $partial): CapabilityScope
+        {
+            throw new ErrorException('Undefined property: stdClass::$current_tenant_id');
+        }
+    });
+    $row = ApprovalHelpers::seedStatus($manager, ApprovalStateMachine::STATUS_APPROVED);
+
+    $resumed = $manager->resume((string) $row['id'], m301Actor(), force: true);
+
+    expect($resumed[0]->errorCode())->toBe('forbidden')
+        ->and($h['runCount']->value)->toBe(0)
+        ->and($handler->reported)->toHaveCount(1)
+        ->and($handler->reported[0])->toBeInstanceOf(ErrorException::class);
+    RecordingExceptionHandler::unbind();
 });

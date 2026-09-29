@@ -321,6 +321,16 @@ These shipped in 0.5.3 and had no callers inside the package:
   `CapabilityScope` for the row's `tenant_id`, so scope, authorization, `run()`, audit and
   the key row all use the tenant the decision was made in. Rows without a tenant
   (global system work) resolve scope at execution time as before.
+- **Approver placement fails closed on any ScopeResolver error (D-003 / D-006, L-402).**
+  `ResolveTenantFromCaller::tenantOfPrincipal()` only treated the package's own scope
+  exceptions as "not placed"; a host resolver that threw anything else (a `DomainException`
+  for a user with no tenant selected, an `ErrorException` from an undefined property on a chat
+  `LinkedUser`) escaped `accept()` / `reject()` / `resume()` as a `RuntimeException` — a 500
+  on the HTTP approve routes and an unanswered Telegram callback — while the same resolver
+  error on an invoke was `forbidden`. Every throwable now yields "not placed": the decision is
+  `forbidden`, `run()` never executes, and the host exception is handed to the
+  `ExceptionHandler` and counted as `approver_scope_failed_total{caller}`
+  (`FailureReporter::APPROVER_SCOPE_FAILED`).
 - **In-tenant approvers can accept, reject and resume (D-003 / D-006, M-301).** The approval
   row's `tenant_id` comes from the `ScopeResolver` (`current_tenant_id`, or `default-tenant`
   for a user without one), but `ApprovalManager` and `ApprovalResumer` read the approver's
