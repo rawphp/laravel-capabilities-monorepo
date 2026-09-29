@@ -32,6 +32,7 @@ use Rawphp\Capabilities\Tests\Fixtures\AdapterHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\BootHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
+use Rawphp\Capabilities\Tests\Fixtures\FakeCapabilityBus;
 use Rawphp\Capabilities\Tests\Fixtures\HttpHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
@@ -134,6 +135,8 @@ function req048FakeApp(array $capabilitiesConfig = []): object
 
         public function instance(string $abstract, mixed $instance): void
         {
+            // Like Laravel: binding an instance replaces an alias of the same name.
+            unset($this->aliases[$abstract]);
             $this->singletons[$abstract] = $instance;
             $this->resolved[$abstract] = $instance;
         }
@@ -635,15 +638,16 @@ it('happy: the container CapabilityController reads the key from idempotency.hea
         ->authorize(fn () => true)
         ->run(fn () => new CreateInvoiceResult(invoice_id: 1))
         ->register($registry);
+    $bus = new FakeCapabilityBus(backing: $registry);
+    $app->instance(CapabilityBus::class, $bus);
 
-    $controller = $app->make(CapabilityController::class);
-    $controller->invoke(HttpHelpers::authedRequest([
+    $app->make(CapabilityController::class)->invoke(HttpHelpers::authedRequest([
         'method' => 'POST',
         'jsonBody' => PipelineHelpers::validInput(),
         'headers' => ['x-idem' => str_repeat('k', 16)],
     ]), 'idem-header');
 
-    expect($controller->lastInvokeOptions()['idempotency_key'] ?? null)->toBe(str_repeat('k', 16));
+    expect($bus->invocations[0]['options']['idempotency_key'] ?? null)->toBe(str_repeat('k', 16));
 });
 
 // --- L-017: tool adapters take require_profile from config ---
