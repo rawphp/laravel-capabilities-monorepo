@@ -163,9 +163,11 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   response, so it failed against any issuer that returns the RFC 8628 start
   shape. It now prints `user_code` + `verification_uri` to stderr and polls
   `POST /capabilities/auth/token` (`grant_type=urn:ietf:params:oauth:grant-type:device_code`)
-  every `interval` seconds until a token arrives. Pending polls return
-  `data.status` (or `data.error`) `authorization_pending` / `slow_down`
-  (+5s); `access_denied`, `expired_token`, or passing `expires_in` exit **3**.
+  every `interval` seconds (at least 10, to stay under the default auth-route
+  throttle) until a token arrives. Pending polls return `data.status` (or
+  `data.error`) `authorization_pending` / `slow_down` (+5s); an HTTP 429 backs
+  off by 5s or `Retry-After`, whichever is longer; `access_denied`,
+  `expired_token`, or passing `expires_in` exit **3**.
   Nothing is written to the profile until a token is issued.
 - **Exit codes follow the server's `error.cli_exit`** — the CLI knew only the
   original ten D-018 codes and exited **1** (internal) for the rest, so a sunset

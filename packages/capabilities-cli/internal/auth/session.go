@@ -46,7 +46,9 @@ func LoginWithToken(store *Store, profile, baseURL, token string) (*LoginResult,
 const DeviceCodeGrantType = "urn:ietf:params:oauth:grant-type:device_code"
 
 const (
-	defaultDeviceInterval = 5 * time.Second
+	// minDeviceInterval floors the poll interval: the core throttles auth
+	// routes (6 requests/minute by default), so faster polling would 429.
+	minDeviceInterval = 10 * time.Second
 	// defaultDeviceExpiry bounds the poll loop when the server omits expires_in.
 	defaultDeviceExpiry = 10 * time.Minute
 	slowDownStep        = 5 * time.Second
@@ -63,7 +65,8 @@ type DeviceFlow struct {
 // LoginDeviceCode runs the RFC 8628 device-code flow: POST the device route
 // for a device_code, show user_code + verification_uri, then poll the token
 // route with the device-code grant every interval until the host issues a
-// token, denies, or expires_in passes.
+// token, denies, or expires_in passes. The interval is at least 10 seconds;
+// slow_down or an HTTP 429 lengthens it (a 429 Retry-After wins when longer).
 //
 // The host issuer signals a pending poll inside the ok envelope as
 // data.status (or RFC data.error): authorization_pending | slow_down |
@@ -105,18 +108,16 @@ func LoginDeviceCode(ctx context.Context, store *Store, client *api.Client, prof
 	if sleep == nil {
 		sleep = sleepContext
 	}
-	interval := time.Duration(start.Data.Interval) * time.Second
-	if interval <= 0 {
-		interval = defaultDeviceInterval
-	}
+	interval := max(time.Duration(start.Data.Interval)*time.Second, minDeviceInterval)
 	expiry := time.Duration(start.Data.ExpiresIn) * time.Second
 	if expiry <= 0 {
 		expiry = defaultDeviceExpiry
 	}
-	for waited := time.Duration(0); waited+interval <= expiry; waited += interval {
+	for waited := time.Duration(0); waited+interval <= expiry; {
 		if err := sleep(ctx, interval); err != nil {
 			return nil, err
 		}
+		waited += interval
 		res, err := client.LoginToken(ctx, map[string]any{
 			"grant_type":  DeviceCodeGrantType,
 			"device_code": start.Data.DeviceCode,
@@ -124,6 +125,10 @@ func LoginDeviceCode(ctx context.Context, store *Store, client *api.Client, prof
 		})
 		if err != nil {
 			return nil, err
+		}
+		if res.Err != nil && res.Err.Code == api.CodeRateLimited {
+			interval = max(interval+slowDownStep, time.Duration(res.Err.RetryAfter)*time.Second)
+			continue
 		}
 		if res.Err != nil {
 			return nil, res.Err

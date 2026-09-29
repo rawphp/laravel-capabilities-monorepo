@@ -111,7 +111,7 @@ func TestExecuteAuthLoginDevice(t *testing.T) {
 	if !strings.Contains(errb.String(), "HOST-USER") || strings.Contains(out.String(), "HOST-USER") {
 		t.Fatalf("user code prompt belongs on stderr: out=%q err=%q", out.String(), errb.String())
 	}
-	if len(waits) != 1 || waits[0] != 5*time.Second {
+	if len(waits) != 1 || waits[0] != 10*time.Second {
 		t.Fatalf("waits %v", waits)
 	}
 	st := auth.NewStore(root)

@@ -85,7 +85,8 @@ func TestDeviceLoginPollsTokenEndpointUntilAuthorized(t *testing.T) {
 	if strings.Contains(prompt.String(), "host-issued-token") || strings.Contains(prompt.String(), "host-device-code") {
 		t.Fatal("secret leaked into prompt")
 	}
-	if len(waits) != 2 || waits[0] != 5*time.Second || waits[1] != 5*time.Second {
+	// Server interval 5s is floored to 10s: auth routes are throttled (6/min by default).
+	if len(waits) != 2 || waits[0] != 10*time.Second || waits[1] != 10*time.Second {
 		t.Fatalf("waits %v", waits)
 	}
 	if len(d.pollBodies) != 2 {
@@ -108,8 +109,62 @@ func TestDeviceLoginSlowDownBacksOff(t *testing.T) {
 	if _, err := LoginDeviceCode(context.Background(), st, c, "default", c.BaseURL, DeviceFlow{Sleep: recordSleeps(&waits)}); err != nil {
 		t.Fatal(err)
 	}
-	if len(waits) != 2 || waits[1] != 10*time.Second {
+	if len(waits) != 2 || waits[1] != 15*time.Second {
 		t.Fatalf("waits %v", waits)
+	}
+}
+
+func TestDeviceLoginHonoursServerIntervalAboveFloor(t *testing.T) {
+	st := tempStore(t)
+	start := `{"ok":true,"data":{"device_code":"dc","user_code":"U","verification_uri":"https://v","expires_in":600,"interval":20}}`
+	d := &deviceServer{start: start, polls: []string{`{"ok":true,"data":{"access_token":"t"}}`}}
+	c := d.serve(t)
+	var waits []time.Duration
+	if _, err := LoginDeviceCode(context.Background(), st, c, "default", c.BaseURL, DeviceFlow{Sleep: recordSleeps(&waits)}); err != nil {
+		t.Fatal(err)
+	}
+	if len(waits) != 1 || waits[0] != 20*time.Second {
+		t.Fatalf("waits %v", waits)
+	}
+}
+
+func TestDeviceLoginBacksOffOnRateLimit(t *testing.T) {
+	st := tempStore(t)
+	polls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == api.PathAuthDevice {
+			w.Write([]byte(deviceStart))
+			return
+		}
+		polls++
+		switch polls {
+		case 1:
+			w.Header().Set("Retry-After", "30")
+			w.WriteHeader(http.StatusTooManyRequests)
+			w.Write([]byte(`{"ok":false,"error":{"code":"rate_limited","message":"slow"}}`))
+		case 2:
+			// throttle page without Retry-After → interval grows by 5s
+			w.WriteHeader(http.StatusTooManyRequests)
+			w.Write([]byte(`Too Many Attempts.`))
+		default:
+			w.Write([]byte(`{"ok":true,"data":{"access_token":"t"}}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	c := api.NewClient(srv.URL, "")
+	c.HTTP = srv.Client()
+	var waits []time.Duration
+	if _, err := LoginDeviceCode(context.Background(), st, c, "default", srv.URL, DeviceFlow{Sleep: recordSleeps(&waits)}); err != nil {
+		t.Fatal(err)
+	}
+	want := []time.Duration{10 * time.Second, 30 * time.Second, 35 * time.Second}
+	if len(waits) != len(want) {
+		t.Fatalf("waits %v", waits)
+	}
+	for i := range want {
+		if waits[i] != want[i] {
+			t.Fatalf("waits %v want %v", waits, want)
+		}
 	}
 }
 
@@ -152,7 +207,7 @@ func TestDeviceLoginDeniedAndExpiredExitAuthWithoutWriting(t *testing.T) {
 
 func TestDeviceLoginStopsAtExpiresIn(t *testing.T) {
 	st := tempStore(t)
-	start := `{"ok":true,"data":{"device_code":"dc","user_code":"U","verification_uri":"https://v","expires_in":12,"interval":5}}`
+	start := `{"ok":true,"data":{"device_code":"dc","user_code":"U","verification_uri":"https://v","expires_in":25,"interval":10}}`
 	d := &deviceServer{start: start, polls: []string{`{"ok":true,"data":{"status":"authorization_pending"}}`}}
 	c := d.serve(t)
 	var waits []time.Duration
@@ -162,7 +217,7 @@ func TestDeviceLoginStopsAtExpiresIn(t *testing.T) {
 		t.Fatalf("err %v", err)
 	}
 	if len(d.pollBodies) != 2 {
-		t.Fatalf("expected 2 polls inside a 12s window, got %d", len(d.pollBodies))
+		t.Fatalf("expected 2 polls inside a 25s window, got %d", len(d.pollBodies))
 	}
 }
 
@@ -176,10 +231,10 @@ func TestDeviceLoginDefaultsIntervalAndExpiry(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected expiry")
 	}
-	if waits[0] != 5*time.Second {
+	if waits[0] != minDeviceInterval {
 		t.Fatalf("default interval %v", waits[0])
 	}
-	if want := int(defaultDeviceExpiry / defaultDeviceInterval); len(d.pollBodies) != want {
+	if want := int(defaultDeviceExpiry / minDeviceInterval); len(d.pollBodies) != want {
 		t.Fatalf("polls %d want %d", len(d.pollBodies), want)
 	}
 }
