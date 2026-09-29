@@ -13,8 +13,13 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
 
+  # Both workflow roots: monorepo CI and the CLI's own release pipeline
+  # (packages/capabilities-cli/.github/workflows holds the signing secrets and
+  # reaches rawphp/capabilities-cli through the split).
   - package-ecosystem: github-actions
-    directory: "/"
+    directories:
+      - "/"
+      - "/packages/capabilities-cli"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5

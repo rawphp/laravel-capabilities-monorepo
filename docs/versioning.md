@@ -21,26 +21,37 @@ Source of truth for day-to-day development is this monorepo. Publication of pack
 
 | Trigger | What happens |
 |---|---|
-| Push to monorepo `main` | [`.github/workflows/split-packages.yml`](../.github/workflows/split-packages.yml) rsyncs each `packages/<name>/` tree into the matching public repo’s `main` (package root becomes repo root) |
+| Push to monorepo `main` | [`.github/workflows/split-packages.yml`](../.github/workflows/split-packages.yml) rsyncs each `packages/<name>/` tree into the matching public repo’s `main` (package root becomes repo root). PHP package-root `tests/` and `phpunit.xml` are excluded: the unit suite only runs in the monorepo |
 | Push monorepo tag `v*` | Same workflow force-updates that tag on **each** package remote (for Packagist / releases) |
 | Manual | `workflow_dispatch` on the same workflow |
 
 ### Test gate (split blocked until green)
 
-Split / package-remote publish is **gated on green monorepo unit tests**. The split workflow’s `split` job `needs:` a reusable call to [`.github/workflows/tests.yml`](../.github/workflows/tests.yml) (PHP 8.2 Pest via root `composer test` = core + messaging + AI, and `go test ./...` for the CLI). If any unit suite fails, package trees and tags are **not** mirrored.
+Split / package-remote publish is **gated on green monorepo unit tests**. The split workflow’s `split` job `needs:` a reusable call to [`.github/workflows/tests.yml`](../.github/workflows/tests.yml) (PHP 8.2 Pest via root `composer test` = core + messaging + AI on the committed lock, and `go test ./...` for the CLI). If any unit suite fails, package trees and tags are **not** mirrored.
 
 | Surface | CI |
 |---|---|
 | PR + push to `main` | `tests.yml` runs unit suites standalone |
 | Split (`main`, `v*` tags, `workflow_dispatch`) | Same suites via `workflow_call` before any rsync / tag force-push |
+| Declared PHP / Laravel range | `php-compat` cells re-resolve without the lock: PHP 8.2 + illuminate `^11.0` (`prefer-lowest`) and PHP 8.5 + illuminate `^13.0` (`prefer-stable`). The lock job covers PHP 8.2 + Laravel 12 |
 | Coverage floor / Packagist API | **Not** enforced here (unit exit codes only; Packagist remains human checklist) |
 
-Tag concurrency uses `cancel-in-progress: false` for tags so a release mirror is not aborted mid-matrix (partial package remotes). Branch runs may still cancel superseded work.
+The PHP job also runs two static gates before the suites, and `scripts/release.sh` runs the same commands:
+
+| Gate | Command | Config |
+|---|---|---|
+| Pint | `composer format:test` | `pint.json` |
+| PHPStan | `composer analyse` | `phpstan.neon`: package `src/` of core, messaging, AI at **level 1**, no baseline |
+
+Level 1 is the highest level that passes today without a baseline. Level 2 mostly reports Eloquent magic attributes on package models. The intent is to raise the level one step at a time as those are typed, toward the `max` target in `AGENTS.md`. Each raise must pass cleanly; do not add a baseline to climb.
+
+All split runs (`main`, `v*` tags, `workflow_dispatch`) share one concurrency group, `split-packages`, with `cancel-in-progress: false`. Runs queue one after another and are never cancelled mid-matrix, so a main push and a tag push cannot race on the same package remote or leave it partially mirrored.
 
 **Implications:**
 
 - Consumer VCS installs and Packagist submissions use the **package repos**, not `laravel-capabilities-monorepo`.
 - Package `README.md`, `docs/user-guide.md`, and `CHANGELOG.md` must work standalone after split (no relative links into monorepo-only `docs/`).
+- PHP package remotes ship no test suite: the split drops `tests/` and `phpunit.xml`, package `composer.json` files carry no `require-dev` / `autoload-dev` / `test` script, and each package `.gitattributes` export-ignores the same paths from dist archives. The monorepo is the only test authority.
 - Monorepo design docs (`docs/spec.md`, tutorials, inventory) stay monorepo-only; link them with absolute monorepo URLs if a package doc needs them.
 
 Setup (repo secrets / empty package remotes) is documented in the workflow file header.
@@ -54,7 +65,7 @@ Setup (repo secrets / empty package remotes) is documented in the workflow file 
 | Preflight | `main`/`master` only, clean tree, fetch tags, `HEAD` vs `origin` rules |
 | Version | `patch` / `minor` / `major` / explicit `vX.Y.Z` (first release: patch/minor → `v0.1.0`) |
 | Optional `--squash` | Soft-reset BASE..HEAD into one clean commit (`-m` message), `git push --force-with-lease` branch. BASE = prior `v*` tag, or `origin/<branch>` when no tag yet |
-| Gates | `composer test` (core + messaging Pest) + `composer test:cli` (`go test ./...`) — same suites as CI |
+| Gates | `composer format:test` (Pint) + `composer analyse` (PHPStan) + `composer test` (core + messaging + AI Pest) + `composer test:cli` (`go test ./...`) — same gates as CI |
 | Tag + push | Annotated monorepo `v*` tag → `git push origin refs/tags/…` → split workflow + CLI GoReleaser |
 
 ```bash
@@ -152,7 +163,7 @@ Install from module path / built binary — not Composer. See the CLI package RE
 | Git tags | Human-gated on the monorepo; mirrored to package remotes by the split workflow. |
 | Packagist | **Not claimed** until human submit + first tag. Root README install snippets are the intended end-state. |
 
-Messaging’s `require` on core uses `"rawphp/laravel-capabilities": "*"` so path/symlink monorepo resolution works; consumers should pin once they leave path install.
+Messaging and AI require core as `"rawphp/laravel-capabilities": "self.version"`. Coordinated `v*` tags hit every package, so sibling tag `v0.Y.Z` installs only with core `v0.Y.Z` (the set CI tested), and `dev-main` pairs with core `dev-main`. Composer refuses mixed pairs such as messaging `v0.3.0` with core `v0.5.3`. Path / symlink monorepo installs resolve because all packages share the checkout's version. The release script needs no constraint bump.
 
 ### Branch-alias consistency (0.x-dev policy)
 
@@ -207,9 +218,14 @@ Per package `CHANGELOG.md`:
    ```
 
    (section title uses **no** leading `v`; the git tag keeps the `v` prefix.)
-3. Leave `## [Unreleased]` empty (or with only “Notes”) for the next cycle.
+   Every package gets the section, even with nothing to report: write `No changes.` under it. Tags are lockstep, so each package remote shows every tag.
+3. Leave `## [Unreleased]` empty (or with only “Notes”) for the next cycle. Keep exactly one `## [Unreleased]` per file.
 4. Keep the **`## [0.x] — pre-stable`** policy banner until `1.0.0` is intentional.
 5. Update footer compare/release links only after the tag exists on the **package** remote.
+
+`scripts/release.sh` checks the structure before tagging: a real release refuses when any `packages/*/CHANGELOG.md` does not have exactly one `## [Unreleased]` or has no `## [0.Y.Z]` section for the tag it is about to cut (`--dry-run` only warns). Commit and push the promotion first.
+
+**History:** tags `v0.1.0`–`v0.5.0` were cut before this rule, so their entries sit in one cumulative `[0.5.0]` section per package (`[0.5.1]` for AI). Tags with no section recorded no entries for that package.
 
 ## Packagist + git tag publish checklist (human steps)
 

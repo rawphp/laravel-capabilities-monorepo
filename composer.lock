@@ -2743,7 +2743,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/laravel-capabilities",
-                "reference": "7ff6c7120b224078b65f2111d0d4f7c6cf20b069"
+                "reference": "300371f05a4b4f06f74e779d90adbf1930fe3a50"
             },
             "require": {
                 "illuminate/bus": "^11.0|^12.0|^13.0",
@@ -2755,10 +2755,6 @@
                 "illuminate/support": "^11.0|^12.0|^13.0",
                 "illuminate/validation": "^11.0|^12.0|^13.0",
                 "php": "^8.2"
-            },
-            "require-dev": {
-                "pestphp/pest": "^3.0",
-                "phpstan/phpstan": "^2.0"
             },
             "suggest": {
                 "laravel/ai": "Required when surfaces.agent is enabled",
@@ -2783,16 +2779,6 @@
                 "psr-4": {
                     "Rawphp\\Capabilities\\": "src/"
                 }
-            },
-            "autoload-dev": {
-                "psr-4": {
-                    "Rawphp\\Capabilities\\Tests\\": "tests/"
-                }
-            },
-            "scripts": {
-                "test": [
-                    "pest --configuration=phpunit.xml --colors=always"
-                ]
             },
             "license": [
                 "MIT"
@@ -2821,7 +2807,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/laravel-capabilities-ai",
-                "reference": "cf65da4f18620b3932d39670fb30cd6ff24952c7"
+                "reference": "41265cdb275ac3b960bcd8770c9574480d8dbabc"
             },
             "require": {
                 "illuminate/contracts": "^11.0|^12.0|^13.0",
@@ -2829,10 +2815,7 @@
                 "illuminate/http": "^11.0|^12.0|^13.0",
                 "illuminate/support": "^11.0|^12.0|^13.0",
                 "php": "^8.2",
-                "rawphp/laravel-capabilities": "*"
-            },
-            "require-dev": {
-                "pestphp/pest": "^3.0"
+                "rawphp/laravel-capabilities": "self.version"
             },
             "type": "library",
             "extra": {
@@ -2849,16 +2832,6 @@
                 "psr-4": {
                     "Rawphp\\CapabilitiesAi\\": "src/"
                 }
-            },
-            "autoload-dev": {
-                "psr-4": {
-                    "Rawphp\\CapabilitiesAi\\Tests\\": "tests/"
-                }
-            },
-            "scripts": {
-                "test": [
-                    "pest --configuration=phpunit.xml --colors=always"
-                ]
             },
             "license": [
                 "MIT"
@@ -2887,7 +2860,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/laravel-capabilities-messaging",
-                "reference": "6f59d0293b53e59e44e1267124827b3864d6d933"
+                "reference": "ccba1f9ead9d0024517b8bcc8ab803f3a0fe59a5"
             },
             "require": {
                 "illuminate/database": "^11.0|^12.0|^13.0",
@@ -2897,10 +2870,7 @@
                 "illuminate/support": "^11.0|^12.0|^13.0",
                 "php": "^8.2",
                 "psr/log": "^1.0|^2.0|^3.0",
-                "rawphp/laravel-capabilities": "*"
-            },
-            "require-dev": {
-                "pestphp/pest": "^3.0"
+                "rawphp/laravel-capabilities": "self.version"
             },
             "suggest": {
                 "laravel/ai": "Required for agent turns behind conversation ingress"
@@ -2920,16 +2890,6 @@
                 "psr-4": {
                     "Rawphp\\CapabilitiesMessaging\\": "src/"
                 }
-            },
-            "autoload-dev": {
-                "psr-4": {
-                    "Rawphp\\CapabilitiesMessaging\\Tests\\": "tests/"
-                }
-            },
-            "scripts": {
-                "test": [
-                    "pest --configuration=phpunit.xml --colors=always"
-                ]
             },
             "license": [
                 "MIT"

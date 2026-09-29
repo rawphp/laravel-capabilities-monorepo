@@ -67,6 +67,8 @@ Turn on the core messaging surface too (`CAPABILITIES_SURFACE_MESSAGING=true`). 
 
 Install policy: monorepo [`docs/versioning.md`](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versioning.md). How-to: [docs/user-guide.md](docs/user-guide.md).
 
+**Tests and contributions:** the unit suite, `phpunit.xml`, and dev tooling live only in the [monorepo](https://github.com/rawphp/laravel-capabilities-monorepo); this package remote is a read-only split and ships no tests. Open issues and PRs against the monorepo and run `composer test:messaging` there.
+
 ## Production bindings (L-004)
 
 `MessagingServiceProvider::register` **always** binds drivers and services (not gated on `telegram.enabled`). Only **webhook routes** load when `telegram.enabled` is true.

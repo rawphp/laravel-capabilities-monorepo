@@ -1,0 +1,14 @@
+# PHPStan for package source (core, messaging, AI). Run: composer analyse
+#
+# Level 1 is the highest level that passes today with no baseline. Level 2 mostly
+# reports Eloquent magic attributes (undefined property on package models). Raise
+# the level one step at a time as those are typed; target is max (AGENTS.md).
+parameters:
+    level: 1
+    paths:
+        - packages/laravel-capabilities/src
+        - packages/laravel-capabilities-messaging/src
+        - packages/laravel-capabilities-ai/src
+    scanFiles:
+        - tools/phpstan/foundation-helpers.php
+    tmpDir: .phpstan

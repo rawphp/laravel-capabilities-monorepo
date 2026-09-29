@@ -10,7 +10,7 @@
 #      on rawphp/laravel-capabilities, rawphp/laravel-capabilities-messaging,
 #      rawphp/laravel-capabilities-ai, and rawphp/capabilities-cli.
 #   2. Add it as repo secret: SPLIT_GITHUB_TOKEN
-#   3. Ensure the three package repos exist (empty is fine) and default branch is main.
+#   3. Ensure the four package repos exist (empty is fine) and default branch is main.
 #
 # Packagist: submit each *package* repo URL (not this monorepo). Tags drive versions.
 
@@ -91,19 +91,16 @@ jobs:
 
           # Replace tracked tree with monorepo package contents (keep .git).
           find "$work" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
-          # Keep committed dist docs (dist/README.md, dist/.gitkeep) — capabilities-cli
-          # unit tests require them. Only drop GoReleaser/local build artifacts under dist/.
-          # Filter order: first match wins; include docs before excluding dist/* leftovers.
+          # dist/ is GoReleaser / local build output (untracked); never mirror it.
           rsync -a --delete \
             --exclude '.git' \
             --exclude 'vendor/' \
             --exclude 'node_modules/' \
-            --include 'dist/' \
-            --include 'dist/README.md' \
-            --include 'dist/.gitkeep' \
-            --exclude 'dist/*' \
+            --exclude 'dist/' \
             --exclude 'coverage/' \
             --exclude '.phpunit.result.cache' \
+            --exclude '/tests/' \
+            --exclude '/phpunit.xml' \
             "${PACKAGE_PATH}/" "$work/"
 
           git -C "$work" config user.name "github-actions[bot]"

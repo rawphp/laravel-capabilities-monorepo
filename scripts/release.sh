@@ -3,7 +3,7 @@
 #
 # Source of truth for day-to-day work is this monorepo. Publication path:
 #   monorepo tag v*  →  .github/workflows/split-packages.yml
-#     → mirrors packages/* to public remotes (core, messaging, CLI)
+#     → mirrors packages/* to public remotes (core, messaging, AI, CLI)
 #     → capabilities-cli package-owned GoReleaser builds GitHub Release binaries
 #
 # Without --squash this script never force-pushes a branch. Real releases require
@@ -20,7 +20,8 @@
 #
 # Flow:
 #   preflight (main/master + clean + fetch tags/branch + HEAD/origin rules) →
-#   version resolve → plan (commits-since / empty-range refuse) →
+#   version resolve → CHANGELOG readiness (every package has ## [X.Y.Z]) →
+#   plan (commits-since / empty-range refuse) →
 #   (confirm if interactive) → optional --squash (soft-reset + force-with-lease) →
 #   gates → porcelain re-check → tag → push tag (and branch if not already equal)
 # Dry-run stops after gates (no squash rewrite, no tag/push). Confirm is never
@@ -36,8 +37,10 @@
 # unpushed-stack squash). Never force-pushes tags.
 #
 # Quality gates (when not skipped; skip flags are dry-run only):
-#   1. composer test          (Pest core + messaging)
-#   2. composer test:cli      (go test ./... under packages/capabilities-cli)
+#   1. composer format:test   (Pint)
+#   2. composer analyse       (PHPStan, phpstan.neon)
+#   3. composer test          (Pest core + messaging + AI)
+#   4. composer test:cli      (go test ./... under packages/capabilities-cli)
 #
 # Matches CI: .github/workflows/tests.yml (split is blocked until these are green).
 
@@ -65,7 +68,7 @@ Options:
   --dry-run            Run preflight + gates; print the tag that would be created
                        (no squash rewrite, no tag, no push, no confirm prompt)
   --yes                Skip the interactive confirmation prompt (agent / CI path)
-  --skip-php           Skip composer test (core + messaging) — ONLY with --dry-run
+  --skip-php           Skip PHP gates (Pint, PHPStan, Pest) — ONLY with --dry-run
   --skip-cli           Skip composer test:cli — ONLY with --dry-run
   --allow-empty-range  Allow release when a prior tag exists and HEAD has zero
                        commits since that tag (default: hard refuse empty range)
@@ -281,6 +284,24 @@ version_strictly_greater() {
   [[ "$higher" == "$candidate" ]]
 }
 
+# Print one line per package CHANGELOG that is not ready for tag $2 (X.Y.Z, no "v"):
+# exactly one "## [Unreleased]" and a "## [X.Y.Z]" section (use "No changes." when
+# a package has none). Empty output means ready. Root is $1.
+changelog_problems() {
+  local root="$1" version="$2" file rel count
+  for file in "$root"/packages/*/CHANGELOG.md; do
+    [[ -f "$file" ]] || continue
+    rel="${file#"$root"/}"
+    count="$(grep -c '^## \[Unreleased\]' "$file" || true)"
+    if [[ "$count" -ne 1 ]]; then
+      printf '%s: %s [Unreleased] sections (expected 1)\n' "$rel" "$count"
+    fi
+    if ! awk -v h="## [${version}]" 'index($0, h) == 1 { found = 1 } END { exit !found }' "$file"; then
+      printf '%s: no ## [%s] section\n' "$rel" "$version"
+    fi
+  done
+}
+
 CURRENT_TAG="$(latest_tag)"
 if [[ -z "$CURRENT_TAG" ]]; then
   log "No existing v* tags — first release"
@@ -302,6 +323,17 @@ if git rev-parse -q --verify "refs/tags/$NEW_TAG" >/dev/null; then
 fi
 if git ls-remote --tags --refs origin "refs/tags/$NEW_TAG" 2>/dev/null | grep -q .; then
   fail "tag already exists on origin: $NEW_TAG"
+fi
+
+# Every package CHANGELOG must carry a dated section for this tag (docs/versioning.md
+# "CHANGELOG ↔ tag handoff"). Promote [Unreleased] and push before releasing.
+CHANGELOG_PROBLEMS="$(changelog_problems "$ROOT" "${NEW_TAG#v}")"
+if [[ -n "$CHANGELOG_PROBLEMS" ]]; then
+  printf '%s\n' "$CHANGELOG_PROBLEMS" | sed 's/^/  /' >&2
+  if [[ "$DRY_RUN" -eq 0 ]]; then
+    fail "package CHANGELOGs not ready for $NEW_TAG — add a ## [${NEW_TAG#v}] - YYYY-MM-DD section to each (promote [Unreleased], or \"No changes.\")"
+  fi
+  log "warning: package CHANGELOGs not ready for $NEW_TAG (a real release would refuse)"
 fi
 
 # --- plan (before confirm / gates) --------------------------------------------
@@ -340,7 +372,7 @@ if [[ "$SQUASH" -eq 1 ]]; then
 fi
 printf '  gates:\n'
 if [[ "$SKIP_PHP" -eq 0 ]]; then
-  printf '    - php: composer test (core + messaging Pest)\n'
+  printf '    - php: composer format:test + analyse + test (Pint, PHPStan, Pest core + messaging + AI)\n'
 else
   printf '    - php: SKIPPED (--skip-php, dry-run only)\n'
 fi
@@ -465,7 +497,7 @@ fi
 # --- quality gates ------------------------------------------------------------
 
 run_php_gates() {
-  log "PHP: composer test (core + messaging)"
+  log "PHP: composer format:test + analyse + test (Pint, PHPStan, Pest core + messaging + AI)"
   if ! command -v composer >/dev/null; then
     fail "composer not found on PATH"
   fi
@@ -474,6 +506,8 @@ run_php_gates() {
   fi
   (
     cd "$ROOT"
+    composer format:test
+    composer analyse
     composer test
   )
 }
@@ -551,7 +585,7 @@ fi
 MESSAGE="Release $NEW_TAG
 
 Quality gates:
-  - php: composer test (core + messaging Pest)
+  - php: composer format:test + analyse + test (Pint, PHPStan, Pest core + messaging + AI)
   - cli: composer test:cli (go test ./...)
 Commit: $HEAD_SHA
 
@@ -580,7 +614,7 @@ Released $NEW_TAG → origin
 
 Next:
   - GitHub Actions: Tests (via split) → Split packages
-  - Package remotes: rawphp/laravel-capabilities, -messaging, capabilities-cli
+  - Package remotes: rawphp/laravel-capabilities, -messaging, -ai, capabilities-cli
   - CLI binaries: rawphp/capabilities-cli Releases (GoReleaser after tag mirror)
   - Packagist: still human checklist (docs/versioning.md) — not automated here
 EOF

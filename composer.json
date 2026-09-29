@@ -55,6 +55,7 @@
     "scripts": {
         "format": "pint --config=pint.json packages/laravel-capabilities packages/laravel-capabilities-messaging packages/laravel-capabilities-ai",
         "format:test": "pint --test --config=pint.json packages/laravel-capabilities packages/laravel-capabilities-messaging packages/laravel-capabilities-ai",
+        "analyse": "phpstan analyse --memory-limit=1G --no-progress",
         "test": [
             "@test:core",
             "@test:messaging",

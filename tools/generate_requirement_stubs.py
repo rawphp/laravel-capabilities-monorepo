@@ -1578,7 +1578,6 @@ def build_catalog() -> list[FileSpec]:
         "RunWithoutAuthFails",
         "CatalogWithoutAuthFails",
         "DescribeWithoutAuthFails",
-        "TestMcpwithoutauthNotCommandGuard",
         "LogoutIdempotentWhenAlreadyLoggedOut",
         "StatusShowsLoggedOut",
         "StatusShowsLoggedIn",
@@ -2952,7 +2951,6 @@ def build_catalog() -> list[FileSpec]:
     for cmd in ["Run", "Catalog", "Describe", "Approvals"]:
         clia.add("go", f"{cmd}RequiresAuth", "CLI-AUTH")
         clia.add("go", f"{cmd}FailsWithExit3WhenNoToken", "CLI-AUTH")
-    clia.add("go", "TestMcpDoesNotRequireAuthAsCommand", "CLI-AUTH")
     files.append(clia)
 
     # CLI schema cache scenarios
@@ -3746,6 +3744,9 @@ def inventory_content(files: list[FileSpec]) -> str:
         "When implemented, the tests are the source of truth for what the product is and is not.",
         "",
         "Policy: **unit tests only**, no DB, mocks/fakes, **≥95% coverage** when implemented (`AGENTS.md`).",
+        "",
+        "Scope: core, messaging, and CLI. The AI package (`packages/laravel-capabilities-ai`) has no",
+        "inventory rows; its own unit suite and README define its behaviour.",
         "",
         # Status counts are filled by tools/sync_requirements_inventory.py against the suite.
         # Generator always emits unchecked boxes; run sync after regenerate.

@@ -122,6 +122,8 @@ php artisan vendor:publish --tag=capabilities-config
 
 Full monorepo install policy, branch-alias, and Packagist checklist: monorepo [`docs/versioning.md`](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versioning.md). First-capability walkthrough: monorepo [`docs/tutorials/first-capability.md`](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/tutorials/first-capability.md).
 
+**Tests and contributions:** the unit suite, `phpunit.xml`, and dev tooling live only in the [monorepo](https://github.com/rawphp/laravel-capabilities-monorepo); this package remote is a read-only split and ships no tests. Open issues and PRs against the monorepo and run `composer test:core` there.
+
 ## Peer support / D-011 release gate
 
 This package composes `laravel/ai` and `laravel/mcp` as optional peers. **Product MCP** is the server surface: with `surfaces.mcp` enabled and `auto_register` true (default), **`McpServerRegistrar`** builds a **server plan** from profiles/servers and may call `McpToolAdapter::register` for planned profiles. Production boot does **not** mount live `laravel/mcp` HTTP servers under `path_prefix` — hosts still wire peer MCP routes (e.g. `Mcp::web` / peer docs). Multi-profile sequential register **overwrites** adapter active tools (last profile wins); after that, `handle()` without `options['profile']` refuses with `profile_required` instead of guessing. The downloadable CLI is a separate HTTP client only — not an MCP stdio host. Release honesty is **matrix + unit contract fixtures**, not live SDKs in default package CI.

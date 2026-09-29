@@ -16,7 +16,7 @@ This project is pre-stable (**0.x**). Security fixes are applied on a best-effor
 Please report privately using one of:
 
 1. **GitHub Security Advisories** on the affected repository under the [rawphp](https://github.com/rawphp) organization (preferred when available): use **Report a vulnerability** on the repo’s Security tab.
-2. **Private contact:** open a draft security advisory against the monorepo or the package remote that owns the code (`laravel-capabilities`, `laravel-capabilities-messaging`, or `capabilities-cli`).
+2. **Private contact:** open a draft security advisory against the monorepo or the package remote that owns the code (`laravel-capabilities`, `laravel-capabilities-messaging`, `laravel-capabilities-ai`, or `capabilities-cli`).
 
 Include:
 
@@ -33,6 +33,6 @@ Include:
 
 ### Scope notes
 
-These packages handle authorization, approvals, tokens, and (in messaging) chat secrets. Reports involving authz bypass, token leakage, privilege escalation, or injection into the capability pipeline are especially welcome.
+These packages handle authorization, approvals, tokens, chat secrets (messaging), and LLM provider credentials (AI). Reports involving authz bypass, token leakage, privilege escalation, or injection into the capability pipeline are especially welcome.
 
 Thank you for helping keep consumers safe.
