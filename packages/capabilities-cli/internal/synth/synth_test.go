@@ -170,7 +170,7 @@ func TestBuildCollisionDisablesBoth(t *testing.T) {
 }
 
 func TestBuildReservedDomainsNeverSynthesized(t *testing.T) {
-	reserved := []string{"auth", "catalog", "describe", "run", "mcp", "approvals", "version", "help"}
+	reserved := []string{"auth", "catalog", "describe", "run", "mcp", "approvals", "version", "help", "self-update"}
 	for _, domain := range reserved {
 		t.Run("metadata_"+domain, func(t *testing.T) {
 			idx := Build([]Entry{

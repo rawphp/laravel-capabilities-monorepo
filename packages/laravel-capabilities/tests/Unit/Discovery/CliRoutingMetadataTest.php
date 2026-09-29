@@ -86,7 +86,7 @@ it('fail: invalid cli verb token rejected [CLI-001]', function () {
 });
 
 it('fail: reserved meta domain rejected for cli domain [CLI-001]', function () {
-    $reserved = ['auth', 'catalog', 'describe', 'run', 'mcp', 'approvals', 'version', 'help'];
+    $reserved = ['auth', 'catalog', 'describe', 'run', 'mcp', 'approvals', 'version', 'help', 'self-update'];
 
     foreach ($reserved as $domain) {
         expect(fn () => Capability::define("cap-{$domain}")

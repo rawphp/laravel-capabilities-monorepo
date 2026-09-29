@@ -200,6 +200,10 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   and `request_id`. They now print the server's D-018 envelope on stdout like
   `run` and `describe`. A non-envelope error body (e.g. an HTML proxy page) is
   replaced by a built envelope instead of being dumped on stdout.
+- **`self-update` is a reserved domain** — a capability with
+  `cli.domain = "self-update"` was mapped for synthesis but could never run
+  (the meta-command wins). It is now reported as `reserved_domain`, matching
+  the server, which rejects that domain at definition time.
 
 ## [0.x] — pre-stable
 

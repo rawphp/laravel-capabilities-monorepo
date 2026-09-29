@@ -20,6 +20,8 @@ final class CapabilityDefinition
 
     /**
      * Reserved meta-command domains — must never be used as CLI synthesis domains.
+     * Mirrors the product CLI's reserved list (rawphp/capabilities-cli synth);
+     * change both together.
      *
      * @var list<string>
      */
@@ -32,6 +34,7 @@ final class CapabilityDefinition
         'approvals',
         'version',
         'help',
+        'self-update',
     ];
 
     private const CLI_TOKEN_PATTERN = '/^[a-z][a-z0-9-]*$/';
