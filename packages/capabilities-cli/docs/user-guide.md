@@ -396,8 +396,11 @@ drops the cached schema so the next run fetches it fresh.
 ### Input merge rules
 
 1. Base body = `--input` / `--input-file` (or `{}`).
-2. Each scalar flag overwrites that key (**flag wins**).
-3. Object/array fields are **JSON-only** (no flag form).
+2. Each scalar flag overwrites that key (**flag wins**). The flag name is the
+   property name with `_` replaced by `-` (`customer_id` → `--customer-id`,
+   `amountCents` → `--amountCents`); `--help` lists the exact flags.
+3. Properties whose flag names collide (`line_no` and `line-no`), `oneOf` /
+   `anyOf` / `allOf` properties, and object/array fields are **JSON-only** (no flag form).
 4. Unknown flags or json-only fields as flags → exit **2**.
 5. All-optional schema may POST `{}`.
 6. Missing required fields → exit **2** (use `--help` for schema).
@@ -419,7 +422,7 @@ Local validation failures exit **2** with no network call.
 ```bash
 capabilities run <name> --input='{"customer_id":1}' --profile=mesoprep
 
-capabilities <domain> <verb> --customer_id=1 --human --profile=mesoprep
+capabilities <domain> <verb> --customer-id=1 --human --profile=mesoprep
 
 capabilities run <name> --retry-last   # after a network failure: same key, same body
 ```

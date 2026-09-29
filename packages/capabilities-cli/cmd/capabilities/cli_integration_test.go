@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -401,5 +402,119 @@ func TestExecuteAuthLogoutRejectsCollidingProfileName(t *testing.T) {
 	}
 	if !auth.NewStore(root).HasToken("prod_eu") {
 		t.Fatal("prod_eu token deleted via colliding name")
+	}
+}
+
+func TestCatalogNoCacheAndProfileFlags(t *testing.T) {
+	srv, url := testAPI(t)
+	root := t.TempDir()
+	st := auth.NewStore(root)
+	seedLogin(t, st, "default", url, "tok")
+	code, _, errb := CaptureExecute([]string{"catalog", "--no-cache", "--profile=default", "--base-url=" + url}, root, newClientFactory(srv))
+	if code != 0 {
+		t.Fatal(code, errb)
+	}
+}
+
+// --tenant was removed: the server never read the hint, and DTO schemas
+// (additionalProperties:false) rejected the injected body key. It is now an
+// unknown flag like any other — exit 2 before any POST (D-003: scope is server-derived).
+
+func TestDescribeNoJSON(t *testing.T) {
+	srv, url := testAPI(t)
+	root := t.TempDir()
+	st := auth.NewStore(root)
+	seedLogin(t, st, "default", url, "tok")
+	code, out, errb := CaptureExecute([]string{"describe", "create-invoice"}, root, newClientFactory(srv))
+	if code != 0 {
+		t.Fatal(code, errb)
+	}
+	if !strings.HasPrefix(out, "create-invoice schema_version=1\n") || !strings.Contains(out, `"customer_id"`) {
+		t.Fatal(out)
+	}
+}
+
+func TestStoreDefaultsToUserConfigDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if got := store(Env{}).Root; got != home+"/.config/capabilities" {
+		t.Fatalf("root %q", got)
+	}
+}
+
+func TestCommandsWithTokenButNoBaseURLExitAuth(t *testing.T) {
+	root := t.TempDir()
+	if err := auth.NewStore(root).SetToken("default", "tok"); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"catalog"},
+		{"describe", "create-invoice"},
+		{"run", "create-invoice"},
+		{"approvals", "accept", "ap-1"},
+		{"invoices", "create"},
+		{"invoices", "create", "--help"},
+	} {
+		code, _, errb := CaptureExecute(args, root, nil)
+		if code != api.ExitAuth || !strings.Contains(errb, "missing base URL") {
+			t.Fatalf("%v: exit %d stderr %q", args, code, errb)
+		}
+	}
+}
+
+func TestTransportFailuresExitInternal(t *testing.T) {
+	root := t.TempDir()
+	seedLogin(t, auth.NewStore(root), "default", "https://api.example", "tok")
+	down := func(base, token string) *api.Client {
+		c := api.NewClient(base, token)
+		c.HTTP = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("dial: connection refused")
+		})}
+		return c
+	}
+	for _, args := range [][]string{
+		{"catalog"},
+		{"describe", "create-invoice"},
+		{"approvals", "reject", "ap-1"},
+		{"invoices", "create"},
+	} {
+		code, _, errb := CaptureExecute(args, root, down)
+		if code != api.ExitInternal || !strings.Contains(errb, "connection refused") {
+			t.Fatalf("%v: exit %d stderr %q", args, code, errb)
+		}
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestCatalogFlatAndIncludeSchemasOutputs(t *testing.T) {
+	var query string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query = r.URL.RawQuery
+		w.Write([]byte(`{"ok":true,"data":{"capabilities":[{"name":"invoices.create","input_schema":{"type":"object"}}]}}`))
+	}))
+	t.Cleanup(srv.Close)
+	root := t.TempDir()
+	seedLogin(t, auth.NewStore(root), "default", srv.URL, "tok")
+
+	code, out, errb := CaptureExecute([]string{"catalog", "--flat"}, root, newClientFactory(srv))
+	if code != 0 || out != "invoices.create → invoices create\n" {
+		t.Fatalf("flat: exit %d out %q err %q", code, out, errb)
+	}
+	code, out, errb = CaptureExecute([]string{"catalog", "--json", "--include-schemas"}, root, newClientFactory(srv))
+	if code != 0 || query != "include_schemas=1" || !strings.Contains(out, `"input_schema"`) {
+		t.Fatalf("include-schemas: exit %d query %q out %q err %q", code, query, out, errb)
+	}
+}
+
+func TestDefaultHTTPClientTalksToProfileBaseURL(t *testing.T) {
+	_, url := testAPI(t)
+	root := t.TempDir()
+	seedLogin(t, auth.NewStore(root), "default", url, "tok")
+	code, out, errb := CaptureExecute([]string{"catalog", "--flat"}, root, nil)
+	if code != 0 || !strings.Contains(out, "create-invoice") {
+		t.Fatalf("exit %d out %q err %q", code, out, errb)
 	}
 }

@@ -48,6 +48,12 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
+- **Capability help advertises the flags invoke accepts** — help derived flag
+  names and pass modes with its own rules, so it showed `--amount-cents` for a
+  camelCase `amountCents` property (invoke only accepts `--amountCents`) and
+  offered flags for `oneOf` properties and colliding names that invoke rejects
+  as json-only. Help now reads both from the same flag model as invoke. Docs
+  examples also used `--customer_id`; the flag is `--customer-id`.
 - **`run --retry-last` with no input replays the last body** — when no
   `--input`, `--input-file`, or schema flag is given, the CLI resends the
   persisted input with the persisted `Idempotency-Key`, so the server replays

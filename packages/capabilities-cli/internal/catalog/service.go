@@ -140,25 +140,6 @@ func parseDescribe(res *api.Response) (*CacheEntry, error) {
 	if err := json.Unmarshal(raw, &e); err != nil {
 		return nil, err
 	}
-	// Map alternate field layouts.
-	var m map[string]any
-	_ = json.Unmarshal(raw, &m)
-	if e.Name == "" {
-		if n, ok := m["name"].(string); ok {
-			e.Name = n
-		}
-	}
-	if e.SchemaVersion == "" {
-		if v, ok := m["schema_version"].(string); ok {
-			e.SchemaVersion = v
-		}
-	}
-	if len(e.InputSchema) == 0 {
-		if is, ok := m["input_schema"]; ok {
-			b, _ := json.Marshal(is)
-			e.InputSchema = b
-		}
-	}
 	if et := res.Header.Get("ETag"); et != "" {
 		e.ETag = strings.Trim(et, `"`)
 	}

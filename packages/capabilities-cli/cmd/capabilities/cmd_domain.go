@@ -73,9 +73,6 @@ func loadSynthIndex(env Env, profile, base string) (*synth.Index, []catalog.Capa
 	if env.Index != nil {
 		return env.Index, env.Summaries, 0
 	}
-	if profile == "" {
-		profile = "default"
-	}
 	st := store(env)
 	if err := auth.GuardAuth(st, profile, "catalog"); err != nil {
 		fmt.Fprintln(env.Stderr, err.Error())
@@ -218,9 +215,6 @@ func writeCapabilityHelp(env Env, domain, verb, canonical string, jsonOut bool, 
 	} else {
 		// Load schema via describe (auth required).
 		st := store(env)
-		if profile == "" {
-			profile = "default"
-		}
 		if err := auth.GuardAuth(st, profile, "describe"); err != nil {
 			fmt.Fprintln(env.Stderr, err.Error())
 			return api.ExitAuth
@@ -239,10 +233,7 @@ func writeCapabilityHelp(env Env, domain, verb, canonical string, jsonOut bool, 
 			fmt.Fprintln(env.Stderr, err.Error())
 			return api.ExitInternal
 		}
-		info.Description = "" // describe wire may not always include description
-		if entry.CLI != nil {
-			// prefer index domain/verb already set
-		}
+		// Describe carries no description; domain/verb come from the index.
 		info.SchemaVersion = entry.SchemaVersion
 		info.Name = entry.Name
 		if entry.Canonical != "" {

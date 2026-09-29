@@ -92,3 +92,48 @@ func TestDescribeNonEnvelopeFailureDoesNotDumpBody(t *testing.T) {
 	}
 	stdoutError(t, out)
 }
+
+func TestCatalogServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(403)
+		w.Write([]byte(`{"ok":false,"error":{"code":"forbidden","message":"no"}}`))
+	}))
+	t.Cleanup(srv.Close)
+	root := t.TempDir()
+	st := auth.NewStore(root)
+	seedLogin(t, st, "default", srv.URL, "tok")
+	code, _, _ := CaptureExecute([]string{"catalog"}, root, newClientFactory(srv))
+	if code != api.ExitAuth {
+		t.Fatal(code)
+	}
+}
+
+func TestDescribeServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(404)
+		w.Write([]byte(`{"ok":false,"error":{"code":"not_found","message":"no"}}`))
+	}))
+	t.Cleanup(srv.Close)
+	root := t.TempDir()
+	st := auth.NewStore(root)
+	seedLogin(t, st, "default", srv.URL, "tok")
+	code, _, _ := CaptureExecute([]string{"describe", "missing"}, root, newClientFactory(srv))
+	if code != api.ExitDomain {
+		t.Fatal(code)
+	}
+}
+
+func TestApprovalsServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		w.Write([]byte(`{"ok":false,"error":{"code":"internal","message":"boom"}}`))
+	}))
+	t.Cleanup(srv.Close)
+	root := t.TempDir()
+	st := auth.NewStore(root)
+	seedLogin(t, st, "default", srv.URL, "tok")
+	code, _, _ := CaptureExecute([]string{"approvals", "accept", "x"}, root, newClientFactory(srv))
+	if code != api.ExitInternal {
+		t.Fatal(code)
+	}
+}

@@ -108,3 +108,18 @@ func TestEmptycapabilitynamefails(t *testing.T) {
 		t.Fatal(res.ExitCode)
 	}
 }
+
+func TestLoadInputFileInvalid(t *testing.T) {
+	opts, _ := harness(t, nil)
+	opts.InputJSON = nil
+	opts.InputFile = writeInputFile(t, "not-json")
+	res := Run(context.Background(), opts)
+	if res.ExitCode != ExitValidation {
+		t.Fatal(res)
+	}
+	opts.InputFile = "/no/such/file.json"
+	res = Run(context.Background(), opts)
+	if res.ExitCode != ExitValidation {
+		t.Fatal(res)
+	}
+}

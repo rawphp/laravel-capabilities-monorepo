@@ -101,10 +101,7 @@ func (s *Store) GetToken(profile string) (string, error) {
 	defer s.mu.Unlock()
 	b, err := os.ReadFile(filepath.Join(dir, "token"))
 	if err != nil {
-		if os.IsNotExist(err) {
-			return "", ErrNoToken
-		}
-		// Corrupt / unreadable → treat as missing for fail-closed auth.
+		// Missing, unreadable or corrupt → not authenticated (fail closed).
 		return "", ErrNoToken
 	}
 	tok := strings.TrimSpace(string(b))
@@ -208,11 +205,7 @@ func (s *Store) ListProfiles() []Profile {
 		if !e.IsDir() {
 			continue
 		}
-		name := e.Name()
-		if name == "" || name == "." || name == ".." {
-			continue
-		}
-		out = append(out, s.Status(name))
+		out = append(out, s.Status(e.Name()))
 	}
 	// Stable order for humans and tests.
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })

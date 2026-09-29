@@ -85,3 +85,9 @@ func TestEnvelopeJSONIncludesEnrichmentFields(t *testing.T) {
 		t.Fatalf("caps=%d", len(caps))
 	}
 }
+
+func TestEnrichSummariesKeepsEmptyListAsIs(t *testing.T) {
+	if got := EnrichSummaries(nil); got != nil {
+		t.Fatalf("nil list: %v", got)
+	}
+}

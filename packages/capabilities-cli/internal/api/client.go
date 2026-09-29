@@ -177,16 +177,12 @@ func humanizeHTTPErrorBody(raw []byte, status int) string {
 	if trim == "" {
 		return fmt.Sprintf("HTTP %d from capability API", status)
 	}
-	// Prefer a compact JSON message field when present.
+	// Prefer a compact JSON message field when present. (A body with an
+	// "error" object never gets here: do parses it as an envelope error.)
 	var probe map[string]any
 	if json.Unmarshal(raw, &probe) == nil {
 		if m, ok := probe["message"].(string); ok && strings.TrimSpace(m) != "" {
 			return strings.TrimSpace(m)
-		}
-		if errObj, ok := probe["error"].(map[string]any); ok {
-			if m, ok := errObj["message"].(string); ok && strings.TrimSpace(m) != "" {
-				return strings.TrimSpace(m)
-			}
 		}
 	}
 	lower := strings.ToLower(trim)

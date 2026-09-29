@@ -359,3 +359,51 @@ func TestRunContradictoryOkEnvelopeOnHTTPErrorMapsToInternal(t *testing.T) {
 		t.Fatalf("stdout must stay empty, got %q", res.Stdout)
 	}
 }
+
+func TestRunWithoutClient(t *testing.T) {
+	opts, _ := harness(t, nil)
+	opts.Client = nil
+	// need schema skip network for describe - catalog may still work
+	opts.Catalog = nil
+	res := Run(context.Background(), opts)
+	if res.ExitCode != ExitInternal {
+		t.Fatal(res.ExitCode, res.Stderr)
+	}
+}
+
+func TestLocalFailEnvelopeJSON(t *testing.T) {
+	b := localFailEnvelope(api.CodeValidationFailed, "m", []api.Violation{{Field: "f", Message: "x"}})
+	var env api.ErrorEnvelope
+	if err := json.Unmarshal(b, &env); err != nil || env.OK {
+		t.Fatal(err, env)
+	}
+}
+
+func TestRunHTTPStatusWithoutEnvelope(t *testing.T) {
+	opts, _ := harness(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.Write([]byte(`{"ok":true,"data":{"name":"create-invoice","schema_version":"1","input_schema":{"type":"object"}}}`))
+			return
+		}
+		w.WriteHeader(500)
+		w.Write([]byte("plain error"))
+	})
+	res := Run(context.Background(), opts)
+	if res.ExitCode == 0 {
+		t.Fatal(res)
+	}
+}
+
+func TestRunMalformedSuccessBodyFailsClosed(t *testing.T) {
+	opts, _ := harness(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.Write([]byte(`{"ok":true,"data":{"name":"create-invoice","schema_version":"1","input_schema":{"type":"object"}}}`))
+			return
+		}
+		w.Write([]byte(`<html>maintenance</html>`))
+	})
+	res := Run(context.Background(), opts)
+	if res.ExitCode != ExitInternal {
+		t.Fatal(res.ExitCode, res.Stderr)
+	}
+}

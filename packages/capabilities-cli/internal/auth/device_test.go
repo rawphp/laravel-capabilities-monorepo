@@ -241,10 +241,11 @@ func TestDeviceLoginDefaultsIntervalAndExpiry(t *testing.T) {
 
 func TestDeviceLoginFailsClosedOnBadResponses(t *testing.T) {
 	cases := map[string]deviceServer{
-		"missing device_code": {start: `{"ok":true,"data":{"user_code":"U"}}`, polls: []string{`{"ok":true,"data":{"access_token":"t"}}`}},
-		"unknown poll status": {start: deviceStart, polls: []string{`{"ok":true,"data":{"status":"weird"}}`}},
-		"empty poll data":     {start: deviceStart, polls: []string{`{"ok":true,"data":{}}`}},
-		"poll error envelope": {start: deviceStart, polls: []string{`{"ok":false,"error":{"code":"unauthenticated","message":"no"}}`}},
+		"start error envelope": {start: `{"ok":false,"error":{"code":"unauthenticated","message":"no"}}`, polls: []string{`{"ok":true,"data":{"access_token":"t"}}`}},
+		"missing device_code":  {start: `{"ok":true,"data":{"user_code":"U"}}`, polls: []string{`{"ok":true,"data":{"access_token":"t"}}`}},
+		"unknown poll status":  {start: deviceStart, polls: []string{`{"ok":true,"data":{"status":"weird"}}`}},
+		"empty poll data":      {start: deviceStart, polls: []string{`{"ok":true,"data":{}}`}},
+		"poll error envelope":  {start: deviceStart, polls: []string{`{"ok":false,"error":{"code":"unauthenticated","message":"no"}}`}},
 	}
 	for name, d := range cases {
 		t.Run(name, func(t *testing.T) {

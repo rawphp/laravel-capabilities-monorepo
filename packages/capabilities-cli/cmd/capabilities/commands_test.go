@@ -3,6 +3,9 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/rawphp/capabilities-cli/internal/api"
+	"github.com/rawphp/capabilities-cli/internal/auth"
 )
 
 func TestCommandexistsAuthlogin(t *testing.T) {
@@ -105,5 +108,59 @@ func TestCommandexistsHelp(t *testing.T) {
 func TestCommandhelpHelp(t *testing.T) {
 	if !strings.Contains(CommandHelp("help"), "capabilities") {
 		t.Fatal()
+	}
+}
+
+func TestAuthUnknownSubcommand(t *testing.T) {
+	code, _, errb := CaptureExecute([]string{"auth", "wat"}, t.TempDir(), nil)
+	if code == 0 || !strings.Contains(errb, "unknown") {
+		t.Fatal(code, errb)
+	}
+}
+
+func TestAuthLoginInvalidBase(t *testing.T) {
+	code, _, errb := CaptureExecute([]string{"auth", "login", "--base-url=ftp://bad"}, t.TempDir(), nil)
+	if code == 0 || !strings.Contains(errb, "invalid base URL") {
+		t.Fatal(code, errb)
+	}
+}
+
+func TestApprovalsUnknownAction(t *testing.T) {
+	srv, url := testAPI(t)
+	root := t.TempDir()
+	st := auth.NewStore(root)
+	seedLogin(t, st, "default", url, "tok")
+	code, _, _ := CaptureExecute([]string{"approvals", "shrug", "1"}, root, newClientFactory(srv))
+	if code != api.ExitValidation {
+		t.Fatal(code)
+	}
+}
+
+func TestApprovalsMissingArgs(t *testing.T) {
+	srv, url := testAPI(t)
+	root := t.TempDir()
+	st := auth.NewStore(root)
+	seedLogin(t, st, "default", url, "tok")
+	code, out, _ := CaptureExecute([]string{"approvals"}, root, newClientFactory(srv))
+	// Bare approvals prints usage and exits 0 (help), not validation_failed.
+	if code != api.ExitOK {
+		t.Fatal(code)
+	}
+	if !strings.Contains(out, "USAGE:") {
+		t.Fatal(out)
+	}
+}
+
+func TestBareAuthPrintsAuthHelp(t *testing.T) {
+	code, out, _ := CaptureExecute([]string{"auth"}, t.TempDir(), nil)
+	if code != api.ExitOK || out != CommandHelp("auth") {
+		t.Fatalf("exit %d out %q", code, out)
+	}
+}
+
+func TestAuthListWithoutProfilesPointsAtLogin(t *testing.T) {
+	code, out, _ := CaptureExecute([]string{"auth", "list"}, t.TempDir(), nil)
+	if code != api.ExitOK || !strings.Contains(out, "No auth profiles yet") || !strings.Contains(out, "auth login") {
+		t.Fatalf("exit %d out %q", code, out)
 	}
 }

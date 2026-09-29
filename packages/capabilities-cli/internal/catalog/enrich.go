@@ -15,10 +15,7 @@ func EnrichSummaries(list []CapabilitySummary) []CapabilitySummary {
 	out := make([]CapabilitySummary, len(list))
 	for i, s := range list {
 		out[i] = s
-		row, ok := idx.Rows[s.Name]
-		if !ok {
-			continue
-		}
+		row := idx.Rows[s.Name] // Build records a row for every entry
 		if row.MappedCommand != "" {
 			out[i].MappedCommand = row.MappedCommand
 		}

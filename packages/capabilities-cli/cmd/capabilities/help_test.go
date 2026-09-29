@@ -101,3 +101,12 @@ func TestDomainHelpWiring(t *testing.T) {
 		t.Fatal(env)
 	}
 }
+
+func TestCommandHelpFallsBackToRootAndUnknownCommandsDoNotExist(t *testing.T) {
+	if CommandHelp("unknown-cmd") != RootHelp() {
+		t.Fatal("unknown command help must fall back to root help")
+	}
+	if CommandExists("not-a-real-command") {
+		t.Fatal("unknown command must not exist")
+	}
+}
