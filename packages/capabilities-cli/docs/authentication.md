@@ -44,7 +44,7 @@ capabilities auth status [--profile=NAME]
 
 | Flags | Flow |
 |-------|------|
-| `--base-url` + `--token` | Store a PAT / API token directly |
+| `--base-url` + `--token` | Verify a PAT / API token with one `GET /capabilities`, then store it |
 | `--base-url` + `--code` | OAuth authorization-code exchange against the API |
 | `--base-url` only | Device-code login against the API (see below) |
 
@@ -211,4 +211,4 @@ Until those exist, pass `--profile=` or use aliases.
 | `auth login requires --base-url` | 2 | Pass `--base-url` |
 | `not authenticated: run capabilities auth login` | 3 | Login for that profile |
 | `missing base URL` | 3 | Re-login with base URL or pass `--base-url` |
-| Server rejects token | 3 | New token / correct profile / correct host |
+| Server rejects token | 3 | New token / correct profile / correct host (`--token` login checks this up front and leaves the profile unchanged) |

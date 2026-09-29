@@ -1,9 +1,12 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/rawphp/capabilities-cli/internal/api"
 )
 
 // Profile names map 1:1 to directories. A name that would need rewriting to
@@ -68,7 +71,7 @@ func TestInvalidProfileCannotTouchCollidingBaseURL(t *testing.T) {
 
 func TestInvalidProfileLoginWritesNothing(t *testing.T) {
 	st := tempStore(t)
-	if _, err := LoginWithToken(st, "prod.eu", "https://x", "tok"); !errors.Is(err, ErrInvalidProfile) {
+	if _, err := LoginWithToken(context.Background(), st, api.NewClient("http://127.0.0.1:1", ""), "prod.eu", "http://127.0.0.1:1", "tok"); !errors.Is(err, ErrInvalidProfile) {
 		t.Fatalf("want ErrInvalidProfile, got %v", err)
 	}
 	if got := st.ListProfiles(); len(got) != 0 {

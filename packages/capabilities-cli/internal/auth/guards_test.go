@@ -75,7 +75,7 @@ func TestLoginfailsonnetworkerror(t *testing.T) {
 
 func TestLoginfailsoninvalidbaseurl(t *testing.T) {
 	st := tempStore(t)
-	_, err := LoginWithToken(st, "default", "not-a-url", "t")
+	_, err := LoginWithToken(context.Background(), st, api.NewClient("", ""), "default", "not-a-url", "t")
 	if err != ErrInvalidBaseURL {
 		t.Fatal(err)
 	}

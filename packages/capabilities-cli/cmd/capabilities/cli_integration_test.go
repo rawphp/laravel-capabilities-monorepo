@@ -136,7 +136,7 @@ func TestExecuteCatalogDescribeRun(t *testing.T) {
 	factory := newClientFactory(srv)
 	// seed auth
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", url, "tok")
+	seedLogin(t, st, "default", url, "tok")
 
 	code, out, errb := CaptureExecute([]string{"catalog", "--json"}, root, factory)
 	if code != 0 {
@@ -233,7 +233,7 @@ func TestExecuteApprovals(t *testing.T) {
 	srv, url := testAPI(t)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", url, "tok")
+	seedLogin(t, st, "default", url, "tok")
 	code, out, errb := CaptureExecute([]string{"approvals", "accept", "ap1"}, root, newClientFactory(srv))
 	if code != 0 {
 		t.Fatal(code, out, errb)
@@ -290,7 +290,7 @@ func TestExecuteUnknownCommandAuthenticated(t *testing.T) {
 	srv, url := testAPI(t)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", url, "tok")
+	seedLogin(t, st, "default", url, "tok")
 	// Authenticated with empty catalog → unknown domain is exit 5 not_found.
 	code, out, errb := CaptureExecute([]string{"nope"}, root, newClientFactory(srv))
 	if code != api.ExitDomain {
@@ -315,7 +315,7 @@ func TestExecuteRunMissingName(t *testing.T) {
 	srv, url := testAPI(t)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", url, "tok")
+	seedLogin(t, st, "default", url, "tok")
 	code, _, _ := CaptureExecute([]string{"run"}, root, newClientFactory(srv))
 	if code != api.ExitValidation {
 		t.Fatal(code)
@@ -326,7 +326,7 @@ func TestExecuteDescribeMissingName(t *testing.T) {
 	srv, url := testAPI(t)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", url, "tok")
+	seedLogin(t, st, "default", url, "tok")
 	code, _, _ := CaptureExecute([]string{"describe"}, root, newClientFactory(srv))
 	if code != api.ExitValidation {
 		t.Fatal(code)
@@ -353,7 +353,7 @@ func TestExecuteRunServerErrorMapping(t *testing.T) {
 	t.Cleanup(srv.Close)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", srv.URL, "tok")
+	seedLogin(t, st, "default", srv.URL, "tok")
 	code, _, _ := CaptureExecute([]string{"run", "x", "--input", `{}`}, root, newClientFactory(srv))
 	if code != api.ExitRateLimit {
 		t.Fatal(code)

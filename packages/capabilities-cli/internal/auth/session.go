@@ -23,23 +23,42 @@ type LoginResult struct {
 	Flow         string // "device" | "token" | "pat"
 }
 
-// LoginWithToken stores a pre-issued token (PAT / token endpoint result).
-// Base URL is written only after the token is accepted so a bad login cannot
-// re-point an already-working profile.
-func LoginWithToken(store *Store, profile, baseURL, token string) (*LoginResult, error) {
+// LoginWithToken verifies a pre-issued token (PAT / API token) with one
+// authenticated GET /capabilities, then stores it. Nothing is written unless
+// the server accepts the token with a capability envelope, so a mistyped
+// token or wrong --base-url cannot clobber an already-working profile.
+func LoginWithToken(ctx context.Context, store *Store, client *api.Client, profile, baseURL, token string) (*LoginResult, error) {
 	if token == "" {
 		return nil, fmt.Errorf("empty token")
 	}
-	if _, err := NormalizeBaseURL(baseURL); err != nil {
+	if _, err := profileName(profile); err != nil {
 		return nil, err
 	}
-	if err := store.SetBaseURL(profile, baseURL); err != nil {
+	normalized, err := NormalizeBaseURL(baseURL)
+	if err != nil {
+		return nil, err
+	}
+	client.BaseURL = normalized
+	client.Token = token
+	res, err := client.ListCapabilities(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if res.Err != nil {
+		return nil, res.Err
+	}
+	if !res.Envelope.OK {
+		se := api.MapErrorCode(api.CodeInternal)
+		se.Message = fmt.Sprintf("HTTP %d from %s is not a capability API response; check --base-url", res.StatusCode, normalized)
+		return nil, se
+	}
+	if err := store.SetBaseURL(profile, normalized); err != nil {
 		return nil, err
 	}
 	if err := store.SetToken(profile, token); err != nil {
 		return nil, err
 	}
-	return &LoginResult{Profile: profile, BaseURL: baseURL, TokenPresent: true, Flow: "token"}, nil
+	return &LoginResult{Profile: profile, BaseURL: normalized, TokenPresent: true, Flow: "token"}, nil
 }
 
 // DeviceCodeGrantType is the RFC 8628 grant polled on the token endpoint.

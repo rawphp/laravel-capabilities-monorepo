@@ -12,7 +12,7 @@ import (
 func TestAuthStatusJSON(t *testing.T) {
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", "https://app.example.com", "tok")
+	seedLogin(t, st, "default", "https://app.example.com", "tok")
 	code, out, errb := CaptureExecute([]string{"auth", "status", "--json"}, root, nil)
 	if code != api.ExitOK {
 		t.Fatal(code, out, errb)

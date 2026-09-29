@@ -187,6 +187,13 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   refetches the live schema once and re-checks; a server `validation_failed`
   after a local pass drops the cached entry. `run` also describes once instead
   of twice per invoke.
+- **`auth login --token` verifies the token first** — it used to store any
+  token without contacting the server, so a mistyped or revoked PAT (or a
+  wrong `--base-url`) printed `logged in`, exited 0, and overwrote a working
+  profile. It now makes one authenticated `GET /capabilities`; a rejection
+  exits with the server's code (`unauthenticated` → **3**), and a non-envelope
+  response (e.g. a marketing page) exits **1**. The profile is only written
+  after the server accepts the token.
 
 ## [0.x] — pre-stable
 

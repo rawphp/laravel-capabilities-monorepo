@@ -13,7 +13,8 @@ import (
 
 func TestAuthloginstorestokeninkeychainnotprompt(t *testing.T) {
 	st := tempStore(t)
-	res, err := LoginWithToken(st, "default", "https://app.example.com", "tok-abc")
+	c := tokenServer(t, 200, `{"ok":true,"data":{"capabilities":[]}}`, nil)
+	res, err := LoginWithToken(context.Background(), st, c, "default", c.BaseURL, "tok-abc")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +137,8 @@ func TestAuthmissingtokenreturnsexitcode3(t *testing.T) {
 func TestAuthloginfetchesschemasintocache(t *testing.T) {
 	// LoginWithToken + schema cache dir exists for profile
 	st := tempStore(t)
-	_, err := LoginWithToken(st, "default", "https://app.example.com", "t")
+	c := tokenServer(t, 200, `{"ok":true,"data":{"capabilities":[]}}`, nil)
+	_, err := LoginWithToken(context.Background(), st, c, "default", c.BaseURL, "t")
 	if err != nil {
 		t.Fatal(err)
 	}

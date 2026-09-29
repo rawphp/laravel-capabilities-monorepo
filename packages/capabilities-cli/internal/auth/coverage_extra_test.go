@@ -31,7 +31,7 @@ func TestSanitizeProfileAndLastRunPath(t *testing.T) {
 
 func TestLoginFailures(t *testing.T) {
 	st := tempStore(t)
-	if _, err := LoginWithToken(st, "default", "https://x", ""); err == nil {
+	if _, err := LoginWithToken(context.Background(), st, api.NewClient("https://x", ""), "default", "https://x", ""); err == nil {
 		t.Fatal("empty token")
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

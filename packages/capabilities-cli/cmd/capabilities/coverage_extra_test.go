@@ -19,7 +19,7 @@ func TestCmdMcpGoneNotHappyPath(t *testing.T) {
 	t.Cleanup(srv.Close)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", srv.URL, "tok")
+	seedLogin(t, st, "default", srv.URL, "tok")
 	var out, errb bytes.Buffer
 	in := bytes.NewBufferString(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}` + "\n")
 	code := Execute(Env{
@@ -65,7 +65,7 @@ func TestApprovalsUnknownAction(t *testing.T) {
 	srv, url := testAPI(t)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", url, "tok")
+	seedLogin(t, st, "default", url, "tok")
 	code, _, _ := CaptureExecute([]string{"approvals", "shrug", "1"}, root, newClientFactory(srv))
 	if code != api.ExitValidation {
 		t.Fatal(code)
@@ -76,7 +76,7 @@ func TestApprovalsMissingArgs(t *testing.T) {
 	srv, url := testAPI(t)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", url, "tok")
+	seedLogin(t, st, "default", url, "tok")
 	code, out, _ := CaptureExecute([]string{"approvals"}, root, newClientFactory(srv))
 	// Bare approvals prints usage and exits 0 (help), not validation_failed.
 	if code != api.ExitOK {
@@ -91,7 +91,7 @@ func TestCatalogNoCacheAndProfileFlags(t *testing.T) {
 	srv, url := testAPI(t)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", url, "tok")
+	seedLogin(t, st, "default", url, "tok")
 	code, _, errb := CaptureExecute([]string{"catalog", "--no-cache", "--profile=default", "--base-url=" + url}, root, newClientFactory(srv))
 	if code != 0 {
 		t.Fatal(code, errb)
@@ -116,7 +116,7 @@ func TestFlagtenantremoved(t *testing.T) {
 	t.Cleanup(srv.Close)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", srv.URL, "tok")
+	seedLogin(t, st, "default", srv.URL, "tok")
 	code, _, errb := CaptureExecute([]string{
 		"run", "create-invoice",
 		"--input={\"customer_id\":1}",
@@ -141,7 +141,7 @@ func TestDescribeNoJSON(t *testing.T) {
 	srv, url := testAPI(t)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", url, "tok")
+	seedLogin(t, st, "default", url, "tok")
 	code, out, errb := CaptureExecute([]string{"describe", "create-invoice"}, root, newClientFactory(srv))
 	if code != 0 {
 		t.Fatal(code, errb)
@@ -197,7 +197,7 @@ func TestCatalogServerError(t *testing.T) {
 	t.Cleanup(srv.Close)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", srv.URL, "tok")
+	seedLogin(t, st, "default", srv.URL, "tok")
 	code, _, _ := CaptureExecute([]string{"catalog"}, root, newClientFactory(srv))
 	if code != api.ExitAuth {
 		t.Fatal(code)
@@ -212,7 +212,7 @@ func TestDescribeServerError(t *testing.T) {
 	t.Cleanup(srv.Close)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", srv.URL, "tok")
+	seedLogin(t, st, "default", srv.URL, "tok")
 	code, _, _ := CaptureExecute([]string{"describe", "missing"}, root, newClientFactory(srv))
 	if code != api.ExitDomain {
 		t.Fatal(code)
@@ -227,7 +227,7 @@ func TestApprovalsServerError(t *testing.T) {
 	t.Cleanup(srv.Close)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", srv.URL, "tok")
+	seedLogin(t, st, "default", srv.URL, "tok")
 	code, _, _ := CaptureExecute([]string{"approvals", "accept", "x"}, root, newClientFactory(srv))
 	if code != api.ExitInternal {
 		t.Fatal(code)

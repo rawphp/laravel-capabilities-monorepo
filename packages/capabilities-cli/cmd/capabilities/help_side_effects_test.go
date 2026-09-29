@@ -23,7 +23,7 @@ func TestAuthLoginHelpDoesNotRequireBaseURL(t *testing.T) {
 func TestAuthLogoutHelpDoesNotLogout(t *testing.T) {
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", "https://app.example.com", "secret-tok")
+	seedLogin(t, st, "default", "https://app.example.com", "secret-tok")
 	code, out, errb := CaptureExecute([]string{"auth", "logout", "--help"}, root, nil)
 	if code != api.ExitOK {
 		t.Fatal(code, errb)
@@ -50,7 +50,7 @@ func TestRunNameHelpShowsCapabilitySchema(t *testing.T) {
 	t.Cleanup(srv.Close)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", srv.URL, "tok")
+	seedLogin(t, st, "default", srv.URL, "tok")
 	code, out, errb := CaptureExecute([]string{"run", "create-invoice", "--help"}, root, newClientFactory(srv))
 	if code != api.ExitOK {
 		t.Fatal(code, errb, out)
@@ -68,7 +68,7 @@ func TestApprovalsAcceptRequiresID(t *testing.T) {
 	srv, url := testAPI(t)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", url, "tok")
+	seedLogin(t, st, "default", url, "tok")
 	code, _, errb := CaptureExecute([]string{"approvals", "accept"}, root, newClientFactory(srv))
 	if code != api.ExitValidation {
 		t.Fatal(code, errb)

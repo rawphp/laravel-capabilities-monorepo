@@ -14,7 +14,7 @@ func TestLeadingJSONBeforeCommand(t *testing.T) {
 	srv, url := testAPI(t)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", url, "tok")
+	seedLogin(t, st, "default", url, "tok")
 	// git-style: capabilities --json catalog
 	code, out, errb := CaptureExecute([]string{"--json", "catalog"}, root, newClientFactory(srv))
 	if code != 0 {
@@ -43,8 +43,8 @@ func TestPeelLeadingJSONAndHuman(t *testing.T) {
 func TestAuthListProfiles(t *testing.T) {
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", "https://a.example.com", "t1")
-	_, _ = auth.LoginWithToken(st, "other", "https://b.example.com", "t2")
+	seedLogin(t, st, "default", "https://a.example.com", "t1")
+	seedLogin(t, st, "other", "https://b.example.com", "t2")
 	code, out, errb := CaptureExecute([]string{"auth", "list"}, root, nil)
 	if code != api.ExitOK {
 		t.Fatal(code, errb)
