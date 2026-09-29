@@ -6,6 +6,7 @@ use Rawphp\Capabilities\Contracts\ConversationIngress;
 use Rawphp\Capabilities\Contracts\ConversationReply;
 use Rawphp\CapabilitiesMessaging\Contracts\AgentTurn;
 use Rawphp\CapabilitiesMessaging\Support\TelegramBotClient;
+use Rawphp\CapabilitiesMessaging\Support\TelegramText;
 use RuntimeException;
 
 /**
@@ -53,6 +54,7 @@ final class TelegramAdapter implements ConversationIngress, ConversationReply
     /**
      * Send `text` to `chat_id`, into forum topic `topic_id` when set. Only Bot API fields are
      * built from the message: internal keys (thread ids, metadata) never leave the process.
+     * Text over Telegram's 4096 limit goes out as consecutive messages; blank text sends nothing.
      *
      * @param  array<string, mixed>|object  $message
      */
@@ -72,7 +74,9 @@ final class TelegramAdapter implements ConversationIngress, ConversationReply
             $params['message_thread_id'] = (int) $data['topic_id'];
         }
 
-        $this->bot->sendMessage($chatId, $text, $params);
+        foreach (TelegramText::split($text) as $part) {
+            $this->bot->sendMessage($chatId, $part, $params);
+        }
     }
 
     /**

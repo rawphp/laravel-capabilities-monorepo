@@ -17,6 +17,13 @@ final class ProcessTelegramUpdateJob implements ShouldQueue
     /** Finite attempts; a retry only re-sends a reply that failed transiently (D-005). */
     public int $tries = 3;
 
+    /**
+     * Seconds before the worker kills an attempt: room for two agent calls, the tool invokes and
+     * the reply. The queue connection's retry_after must be longer. A killed attempt's retry
+     * ends without a second agent turn (M-205).
+     */
+    public int $timeout = 120;
+
     /** @var list<int> seconds between attempts */
     public array $backoff = [10, 60];
 

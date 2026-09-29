@@ -11,6 +11,7 @@ use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Foundation\CachesConfiguration;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Contracts\ApprovalGateway;
+use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
@@ -163,14 +164,15 @@ final class MessagingHelpers
 
     /**
      * Concrete manager for tests that seed rows via request/store.
-     * Production messaging depends only on {@see ApprovalGateway}.
+     * Production messaging depends only on {@see ApprovalGateway}. An accepted row runs a stub
+     * executor that succeeds, so an accept tap reports ok unless a test says otherwise.
      */
     public static function approvals(): ApprovalManager
     {
         $clock = new FixedClock(new \DateTimeImmutable('2026-01-15T12:00:00Z'));
         $store = new InMemoryApprovalStore($clock);
 
-        return new ApprovalManager($store, $clock);
+        return new ApprovalManager($store, $clock, executor: static fn (): CapabilityResult => CapabilityResult::ok());
     }
 
     public static function callbackHandler(

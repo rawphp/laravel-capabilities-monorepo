@@ -133,6 +133,43 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
+- **A redelivered Telegram update never starts a second agent turn** — only a transient reply
+  failure was guarded, so a worker timeout, crash or deploy mid-turn (two LLM calls easily pass
+  the worker's default 60s) or a repeated webhook ran a fresh turn whose tool calls replayed only
+  if the new answer matched the old one. `ProcessTelegramUpdate` now claims a per-update marker
+  (`capabilities-messaging:turn:telegram:<chat>:<update_id>`, atomic cache `add`, one hour)
+  before the turn; a redelivery that finds it ends as `turn_already_started` (warning, no reply)
+  without calling the agent. `ProcessTelegramUpdateJob` declares `$timeout = 120`; the queue
+  connection's `retry_after` must be longer.
+
+- **Long and empty agent replies reach the chat** — Telegram rejects text over 4096 characters
+  or empty text with a 400, which ended the update with no reply after the agent turn and its
+  tool calls had already run. `TelegramAdapter::reply()` now sends long text as consecutive
+  messages (split at paragraph, line, then word breaks; new `Support\TelegramText`), and sends
+  nothing for blank text. `ProcessTelegramUpdate` replaces an empty answer with `Done.` (or
+  `That did not go through (<code>).` after a failed tool call), and a pending reply records how
+  many parts were delivered so a retry never repeats earlier parts. The approval message is cut
+  with the same UTF-16-aware limit.
+
+- **The Telegram approval message shows what is being approved** — it used to read
+  `Approval required: <capability>` and nothing else (no code sets `summary`), so an approver
+  had only the agent's chat reply, which is LLM text, to go on. The message now lists the row's
+  stored input with sensitive keys redacted (core `Redactor`), one `key: <JSON value>` line
+  each, after the optional `summary`, cut to 4096 characters. The buttons are posted into the
+  forum topic the request came from instead of General.
+
+- **A Telegram approval tap reports what core actually did** — `CallbackHandler` returned
+  `ok` whatever `ApprovalGateway::accept()` / `reject()` answered, so a linked member the approval
+  policy refuses, a lost double-tap race, an expired row, or a failed run all showed `Approved.`.
+  Non-ok results now map to `forbidden` (the approval stays pending), `already_handled`
+  (`conflict` / `expired`), `not_found`, or the new `failed` status (toast `Approved, but the
+  action did not complete.`), and the update ends `ok=false` with the core error code.
+
+- **Telegram misconfiguration no longer breaks HTTP / CLI approvals** — `TelegramApprovalNotifier`
+  checked the bot token and webhook secret before looking for a chat target, so with
+  `telegram.enabled=true` and a secret missing every approval threw, including ones requested
+  over HTTP or the CLI. Approvals with no chat target now return before the secret check.
+
 - **A failed reply retries only the send** — a transient Bot API failure (429/5xx) sending the
   reply used to fail the job and re-run the whole update on retry: the chat turn limit again,
   another LLM call through `AgentTurn`, and tool calls that only replayed if the new answer

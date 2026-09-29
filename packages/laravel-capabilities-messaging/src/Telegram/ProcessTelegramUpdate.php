@@ -13,6 +13,7 @@ use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
 use Rawphp\CapabilitiesMessaging\MessagingConfig;
 use Rawphp\CapabilitiesMessaging\Support\TelegramBotApiException;
 use Rawphp\CapabilitiesMessaging\Support\TelegramBotClient;
+use Rawphp\CapabilitiesMessaging\Support\TelegramText;
 use Rawphp\CapabilitiesMessaging\Threads\ThreadStore;
 use RuntimeException;
 use Throwable;
@@ -34,9 +35,12 @@ use Throwable;
  * D-013: an optional core RateLimiter caps agent turns per chat_id per minute
  * (telegram.turns_per_minute), checked before identity so a flooding chat costs nothing.
  *
- * D-005: the agent turn and its tool invokes run at most once per update. A reply that fails to
- * send transiently is kept in the host cache ($pendingReplies) and the job fails; the retry only
- * re-sends it. Without that store the failure is terminal rather than a second turn.
+ * D-005: the agent turn and its tool invokes run at most once per update. Each update claims a
+ * marker in the host cache ($pendingReplies) before its turn, so a redelivery after a worker
+ * timeout or crash ends without calling the agent (M-205). A reply that fails to send
+ * transiently is kept in the same cache and the job fails; the retry only re-sends it. Without
+ * that store a transient reply failure is terminal, and a redelivered update runs a new turn
+ * whose tool calls replay by idempotency key.
  */
 final class ProcessTelegramUpdate
 {
@@ -58,6 +62,12 @@ final class ProcessTelegramUpdate
 
     /** Seconds a reply waiting for a queue retry is kept (job backoff is 10s + 60s). */
     public const PENDING_REPLY_TTL = 3600;
+
+    /** Sent when the agent's answer has no text (M-204). */
+    public const EMPTY_REPLY = 'Done.';
+
+    /** Sent when the agent's answer has no text and its last tool call failed (M-204). */
+    public const EMPTY_FAILED_REPLY = 'That did not go through (%s).';
 
     public const UNLINKED_REPLY = 'This Telegram account is not linked yet. Get a link code in the app and send /link <code> here.';
 
@@ -109,7 +119,7 @@ final class ProcessTelegramUpdate
             return $this->process($update);
         } catch (Throwable $e) {
             // Expected per-user outcomes are warnings; anything else is an error (D-019).
-            $expected = in_array($e->getMessage(), ['identity_unresolved', 'rate_limited'], true);
+            $expected = in_array($e->getMessage(), ['identity_unresolved', 'rate_limited', 'turn_already_started'], true);
             $this->log($expected ? 'warning' : 'error', 'Telegram update failed: '.$e->getMessage(), [
                 'failure' => $e->getMessage(),
                 'tags' => $this->lastTags,
@@ -180,6 +190,8 @@ final class ProcessTelegramUpdate
             return $this->resendPendingReply($pendingKey, (string) $chatId, $topicId, $pending);
         }
 
+        $this->claimTurn($update);
+
         $this->enforceChatTurnLimit((string) $chatId);
 
         $telegramUserId = TelegramUpdateParser::telegramUserId($update);
@@ -249,14 +261,15 @@ final class ProcessTelegramUpdate
             $answer = $this->adapter->handle($ingressMessage + ['tool_results' => $toolResults]);
         }
 
-        // conversation_reply
-        $replyText = is_array($answer)
-            ? (string) ($answer['text'] ?? 'ok')
-            : 'ok';
-
         // The reply is sent either way; ok reports whether the request itself went through.
         $last = $toolResults === [] ? null : $toolResults[array_key_last($toolResults)]['result'];
         $toolError = $last === null || $last->isOk() ? null : ($last->errorCode() ?? 'internal');
+
+        // conversation_reply — Telegram rejects empty text, so a blank answer gets a fallback (M-204).
+        $replyText = is_array($answer) ? trim((string) ($answer['text'] ?? '')) : '';
+        if ($replyText === '') {
+            $replyText = $toolError === null ? self::EMPTY_REPLY : sprintf(self::EMPTY_FAILED_REPLY, $toolError);
+        }
 
         $this->sendReply((string) $chatId, $topicId, $replyText, $pendingKey, $toolError);
 
@@ -362,6 +375,7 @@ final class ProcessTelegramUpdate
             'already_handled' => 'This approval was already decided.',
             'not_found' => 'Unknown approval.',
             'forbidden' => 'You are not allowed to decide this approval.',
+            'failed' => 'Approved, but the action did not complete.',
             default => 'This button is no longer valid.',
         };
     }
@@ -381,21 +395,26 @@ final class ProcessTelegramUpdate
     }
 
     /**
-     * Send the agent's reply. A transient Bot API failure keeps the reply for the queue retry
-     * (when there is a store and an update key) and fails the job; anything else is terminal.
+     * Send the agent's reply, one message per 4096-unit part (M-204), skipping the first `$sent`
+     * parts already delivered by an earlier attempt. A transient Bot API failure keeps the reply
+     * and the delivered count for the queue retry (when there is a store and an update key) and
+     * fails the job; anything else is terminal.
      */
-    private function sendReply(string $chatId, string|int|null $topicId, string $text, ?string $pendingKey, ?string $toolError): void
+    private function sendReply(string $chatId, string|int|null $topicId, string $text, ?string $pendingKey, ?string $toolError, int $sent = 0): void
     {
-        try {
-            $this->adapter->reply(['chat_id' => $chatId, 'topic_id' => $topicId, 'text' => $text]);
-        } catch (Throwable $e) {
-            $message = 'reply_send_fail: '.$e->getMessage();
-            if ($e instanceof TelegramBotApiException && $e->retryable && $pendingKey !== null && $this->pendingReplies !== null) {
-                $this->pendingReplies->put($pendingKey, ['text' => $text, 'error' => $toolError], self::PENDING_REPLY_TTL);
+        $parts = TelegramText::split($text);
+        for ($i = $sent; $i < count($parts); $i++) {
+            try {
+                $this->adapter->reply(['chat_id' => $chatId, 'topic_id' => $topicId, 'text' => $parts[$i]]);
+            } catch (Throwable $e) {
+                $message = 'reply_send_fail: '.$e->getMessage();
+                if ($e instanceof TelegramBotApiException && $e->retryable && $pendingKey !== null && $this->pendingReplies !== null) {
+                    $this->pendingReplies->put($pendingKey, ['text' => $text, 'sent' => $i, 'error' => $toolError], self::PENDING_REPLY_TTL);
 
-                throw new RetryableUpdateFailure($message, 0, $e);
+                    throw new RetryableUpdateFailure($message, 0, $e);
+                }
+                throw new RuntimeException($message, 0, $e);
             }
-            throw new RuntimeException($message, 0, $e);
         }
         $this->mark('conversation_reply');
     }
@@ -410,7 +429,7 @@ final class ProcessTelegramUpdate
     private function resendPendingReply(string $pendingKey, string $chatId, string|int|null $topicId, array $pending): array
     {
         try {
-            $this->sendReply($chatId, $topicId, (string) $pending['text'], $pendingKey, $pending['error'] ?? null);
+            $this->sendReply($chatId, $topicId, (string) $pending['text'], $pendingKey, $pending['error'] ?? null, (int) ($pending['sent'] ?? 0));
         } catch (Throwable $e) {
             if (! $e instanceof RetryableUpdateFailure) {
                 $this->pendingReplies?->forget($pendingKey);
@@ -429,6 +448,27 @@ final class ProcessTelegramUpdate
             'steps' => $this->completedSteps,
             'tags' => $this->lastTags,
         ];
+    }
+
+    /**
+     * D-005 / M-205: claim this update's turn before any of it runs. A redelivery (worker timeout
+     * or crash mid-turn, Telegram resending the webhook) finds the marker and ends here, so the
+     * agent turn and its tool calls start at most once per update. The claim is an atomic cache
+     * add; with no store or no update key there is no marker, and tool calls fall back to replay
+     * by idempotency key.
+     *
+     * @param  array<string, mixed>  $update
+     */
+    private function claimTurn(array $update): void
+    {
+        $key = TelegramUpdateParser::updateKey($update);
+        if ($key === null || $this->pendingReplies === null) {
+            return;
+        }
+
+        if (! $this->pendingReplies->add('capabilities-messaging:turn:'.$key, true, self::PENDING_REPLY_TTL)) {
+            throw new RuntimeException('turn_already_started');
+        }
     }
 
     /**

@@ -8,6 +8,10 @@ declare(strict_types=1);
 
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Approval\ApprovalStateMachine;
+use Rawphp\Capabilities\Contracts\ApprovalGateway;
+use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\FixedClock;
+use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\CapabilitiesMessaging\Support\FakeTelegramBotClient;
 use Rawphp\CapabilitiesMessaging\Telegram\CallbackHandler;
 use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdate;
@@ -18,12 +22,13 @@ use Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers as H;
 /**
  * @return array{processor: ProcessTelegramUpdate, bot: FakeTelegramBotClient, registry: FakeCapabilityBus, agentCalls: ArrayObject, approvals: ApprovalManager}
  */
-function callbackRoutingHarness(bool $withHandler = true): array
+function callbackRoutingHarness(bool $withHandler = true, ?callable $executor = null): array
 {
     $bot = H::bot();
     $identity = H::identity();
     $identity->link('42', 'u1');
-    $approvals = H::approvals();
+    $identity->link('43', 'u2');
+    $approvals = $executor === null ? H::approvals() : H::approvals()->withExecutor($executor);
     $approvals->request([
         'id' => 'cb-1',
         'capability_name' => 'billing.void',
@@ -63,8 +68,8 @@ it('routes an accept tap to the approval gateway and answers the callback, never
     expect($r['ok'])->toBeTrue()
         ->and($r['callback'])->toBe('ok')
         ->and($r['steps'])->toContain('approval_callback')
-        // Accept on a manager with no executor fails closed inside core; the decision itself was routed.
         ->and($row['status'])->toBe(ApprovalStateMachine::STATUS_EXECUTED)
+        ->and($row['result_status'])->toBe('ok')
         ->and(count($h['agentCalls']))->toBe(0)
         ->and($h['registry']->invokeCount())->toBe(0)
         ->and($answers)->toHaveCount(1)
@@ -129,4 +134,87 @@ it('a plain chat message still reaches the agent (callback routing is only for c
 
     expect($r['ok'])->toBeTrue()
         ->and(count($h['agentCalls']))->toBe(1);
+});
+
+it('a linked member the approval policy does not allow is told so, not "Approved.", and the approval stays pending [M-202]', function () {
+    $h = callbackRoutingHarness();
+
+    // u2 is linked but is neither the requester (u1) nor a role holder (requester_or_role default).
+    $r = $h['processor']->handle(H::callbackUpdate('cb-1', userId: 43));
+
+    expect($r['ok'])->toBeFalse()
+        ->and($r['callback'])->toBe('forbidden')
+        ->and($r['error'])->toBe('forbidden')
+        ->and($h['approvals']->find('cb-1')['status'])->toBe(ApprovalStateMachine::STATUS_PENDING)
+        ->and($h['bot']->calls()[0]['args']['text'])->toBe('You are not allowed to decide this approval.');
+});
+
+it('an accepted approval whose run fails is reported as failed, not "Approved." [M-202]', function () {
+    $h = callbackRoutingHarness(executor: static fn (): CapabilityResult => CapabilityResult::failure('internal', 'boom'));
+
+    $r = $h['processor']->handle(H::callbackUpdate('cb-1'));
+
+    expect($r['ok'])->toBeFalse()
+        ->and($r['callback'])->toBe('failed')
+        ->and($r['error'])->toBe('internal')
+        ->and($h['bot']->calls()[0]['args']['text'])->toBe('Approved, but the action did not complete.');
+});
+
+it('an original actor who lost permission at execution reads as failed, not as the tapper being forbidden [M-202]', function () {
+    $clock = new FixedClock(new DateTimeImmutable('2026-01-15T12:00:00Z'));
+    $approvals = new ApprovalManager(
+        store: new InMemoryApprovalStore($clock),
+        clock: $clock,
+        executor: static fn (): CapabilityResult => CapabilityResult::ok(),
+        originalAuthorizer: static fn (): bool => false,
+    );
+    $approvals->request(['id' => 'cb-1', 'capability_name' => 'billing.void', 'requester_actor_type' => 'user', 'requester_actor_id' => 'u1', 'input_json' => []]);
+    $identity = H::identity();
+    $identity->link('42', 'u1');
+
+    $outcome = H::callbackHandler($identity, $approvals)->handleCallbackData(H::signer()->encode(H::signer()->sign('cb-1', 'accept')), ['id' => 42]);
+
+    expect($outcome['status'])->toBe('failed')
+        ->and($outcome['message'])->toBe('forbidden');
+});
+
+it('a lost race or an expired approval reads as already decided; a vanished row as not found [M-202]', function () {
+    $outcomes = ['accept' => [], 'reject' => []];
+    $gateway = new class($outcomes) implements ApprovalGateway
+    {
+        /** @param array<string, list<CapabilityResult>> $outcomes */
+        public function __construct(public array $outcomes) {}
+
+        public function find(string $id): ?array
+        {
+            return ['id' => $id, 'status' => 'pending', 'tenant_id' => null];
+        }
+
+        public function accept(string $id, object $approver, array $options = []): CapabilityResult
+        {
+            return array_shift($this->outcomes['accept']);
+        }
+
+        public function reject(string $id, object $approver, ?string $reason = null, array $options = []): CapabilityResult
+        {
+            return array_shift($this->outcomes['reject']);
+        }
+    };
+    $gateway->outcomes = [
+        'accept' => [CapabilityResult::failure('conflict', 'Approval is not pending.'), CapabilityResult::failure('not_found', 'Approval not found.')],
+        'reject' => [CapabilityResult::failure('expired', 'Approval has expired.')],
+    ];
+    $identity = H::identity();
+    $identity->link('42', 'u1');
+    $handler = H::callbackHandler($identity, $gateway);
+    $tap = fn (string $action) => $handler->handleCallbackData(H::signer()->encode(H::signer()->sign('cb-1', $action)), ['id' => 42]);
+
+    $conflict = $tap('accept');
+    $expired = $tap('reject');
+    $gone = $tap('accept');
+
+    expect($conflict['status'])->toBe('already_handled')
+        ->and($conflict['message'])->toBe('conflict')
+        ->and($expired['status'])->toBe('already_handled')
+        ->and($gone['status'])->toBe('not_found');
 });

@@ -55,7 +55,9 @@ it('happy: ProcessTelegramUpdateJob is queued by the Laravel bus, with finite re
 
     expect($job)->toBeInstanceOf(ShouldQueue::class)
         ->and($job->tries)->toBe(3)
-        ->and($job->backoff)->toBe([10, 60]);
+        ->and($job->backoff)->toBe([10, 60])
+        // Room for two agent calls, tool invokes and the reply (M-205); retry_after must exceed it.
+        ->and($job->timeout)->toBe(120);
 });
 
 it('fail: a retryable Bot API reply failure fails the job so the queue retries [D-019]', function () {

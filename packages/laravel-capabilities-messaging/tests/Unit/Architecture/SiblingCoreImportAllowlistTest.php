@@ -41,6 +41,8 @@ function messagingCoreImportAllowed(string $fqcn): bool
         'Rawphp\\Capabilities\\Support\\CapabilityData',
         // D-018 error-code vocabulary (static, no state) — shared by inbound API and outbound Bot API.
         'Rawphp\\Capabilities\\Support\\ErrorCodeMap',
+        // D-010 sensitive-key redaction (static, no state) — approval messages echo stored input.
+        'Rawphp\\Capabilities\\Support\\Redactor',
     ];
 
     return in_array($fqcn, $publicDtos, true);
