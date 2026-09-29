@@ -129,22 +129,6 @@ final class ApprovalExecutor
         return $clone;
     }
 
-    public function withStore(ApprovalStore $store): self
-    {
-        $clone = clone $this;
-        $clone->store = $store;
-
-        return $clone;
-    }
-
-    public function withMetrics(ApprovalMetrics $metrics): self
-    {
-        $clone = clone $this;
-        $clone->metrics = $metrics;
-
-        return $clone;
-    }
-
     /**
      * Run domain for a lease-claimed approval row and persist terminal state.
      *
@@ -166,7 +150,7 @@ final class ApprovalExecutor
         // Re-validation
         $stale = $this->runRevalidation($row);
         if ($stale !== null) {
-            $failed = $this->store->compareAndUpdate($id, $fromStatus, [
+            $this->store->compareAndUpdate($id, $fromStatus, [
                 'status' => ApprovalStateMachine::STATUS_EXECUTED,
                 'result_status' => 'failed',
                 'result_json' => $stale->toArray(),
@@ -174,23 +158,11 @@ final class ApprovalExecutor
                 ...$executor,
             ]);
 
-            // Atomic path may still be pending.
-            if ($failed === null && $fromStatus === ApprovalStateMachine::STATUS_PENDING) {
-                $failed = $this->store->compareAndUpdate($id, ApprovalStateMachine::STATUS_PENDING, [
-                    'status' => ApprovalStateMachine::STATUS_EXECUTED,
-                    'result_status' => 'failed',
-                    'result_json' => $stale->toArray(),
-                    'execution_lease_until' => null,
-                    ...$executor,
-                ]);
-            }
-
             $this->metrics->increment(
                 $via === 'resume' ? 'approvals_resume_total' : 'approvals_accept_total',
                 1,
-                ['result' => $via === 'resume' ? 'stale' : 'stale'],
+                ['result' => 'stale'],
             );
-            $this->metrics->increment('approvals_resume_total', 1, ['result' => 'stale']);
 
             $this->auditWrite('approval.executed', [
                 'approval_id' => $id,
