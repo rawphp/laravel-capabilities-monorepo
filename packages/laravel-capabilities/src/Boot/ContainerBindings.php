@@ -267,6 +267,7 @@ final class ContainerBindings
         ?RateLimitCache $rateLimitCache = null,
         ?RateLimiter $rateLimiter = null,
         ?AuditWriter $auditWriter = null,
+        ?ApprovalManager $approvalManager = null,
     ): CapabilityRegistry {
         $full = $config === [] ? CapabilitiesConfig::defaults() : $config;
         // Validate drivers/modes early (fail closed) using the shared resolve path.
@@ -276,10 +277,14 @@ final class ContainerBindings
 
         $registry->withGloballyEnabledSurfaces(CapabilitiesConfig::globallyEnabledSurfaces($full));
 
-        if ($approvalStore === null) {
-            $approvalStore = self::makeApprovalManager($full, $gateway, $connection)->store();
+        // One configured manager for every approval_required (L-101): the host's instance
+        // (notifiers, ttl_hours, policy) wins; a bare store still gets the published approval.* config.
+        if ($approvalManager === null) {
+            $approvalManager = $approvalStore !== null
+                ? new ApprovalManager($approvalStore, new SystemClock, (array) ($full['approval'] ?? []))
+                : self::makeApprovalManager($full, $gateway, $connection);
         }
-        $registry->withApprovalStore($approvalStore);
+        $registry->withApprovalManager($approvalManager);
 
         if ($idempotencyStore === null) {
             $idempotencyStore = self::makeIdempotencyStore($full, $gateway, $connection);

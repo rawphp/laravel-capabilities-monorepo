@@ -270,6 +270,16 @@ profile — or no profile — returns `forbidden` with `normalized_code`
 
 ### Fixed
 
+- **One configured ApprovalManager for every approval (D-006, L-101).** The registry pipeline
+  used to build its own `new ApprovalManager($store)` from the provider's store, so
+  `approval_required` rows ignored `approval.ttl_hours` (always 24 h) and no
+  `ApprovalNotifier` ever fired. `CapabilityRegistry::withApprovalManager()` adopts the
+  provider's configured singleton (`ContainerBindings::makeRegistry(..., approvalManager:)`),
+  re-attaching only the registry run path, audit sink and event dispatcher. The provider now
+  attaches every `ApprovalNotifier` the container knows: the contract binding plus anything
+  tagged `CapabilitiesServiceProvider::APPROVAL_NOTIFIER_TAG` (`capabilities.approval_notifiers`),
+  each instance once. Hosts and sibling packages register notifiers through those two container
+  seams; `withApprovalStore()` remains for bare-store wiring with default config.
 - **`capability:run` works (D-016 / REQ-024).** `RunCapabilityCommand` called a non-existent
   `ArtisanCapabilityInvoker::invoke()`, so every run printed an "undefined method" error and
   exited 1. It now normalises the flags through `ArtisanCapabilityInvoker::parseFlags()`

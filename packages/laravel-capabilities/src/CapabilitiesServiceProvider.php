@@ -35,6 +35,7 @@ use Rawphp\Capabilities\Boot\ContainerBindings;
 use Rawphp\Capabilities\Boot\RegistrationPlan;
 use Rawphp\Capabilities\Boot\SurfaceNames;
 use Rawphp\Capabilities\Contracts\ApprovalGateway;
+use Rawphp\Capabilities\Contracts\ApprovalNotifier;
 use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Contracts\AuthTokenIssuer;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
@@ -68,6 +69,12 @@ use Rawphp\Capabilities\Support\IlluminateRateLimitCache;
  */
 class CapabilitiesServiceProvider extends ServiceProvider
 {
+    /**
+     * Container tag sibling packages / hosts use to register extra {@see ApprovalNotifier}s
+     * on the single ApprovalManager (L-101). The contract binding itself is also attached.
+     */
+    public const APPROVAL_NOTIFIER_TAG = 'capabilities.approval_notifiers';
+
     /** Memoised so the registry and the ApprovalManager share one writer (D-010). */
     private ?AuditWriter $auditWriter = null;
 
@@ -137,7 +144,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
             // Accept / resume run the stored invoke through the registry (D-006), after
             // re-authorizing the original requester (re-validation step 4). Both resolved
             // lazily: the registry itself is built from this manager's store.
-            return ContainerBindings::makeApprovalManager(
+            $manager = ContainerBindings::makeApprovalManager(
                 $config,
                 self::boundTableGatewayOrNull($app),
                 self::boundConnectionOrNull($app, $config, 'approval'),
@@ -149,6 +156,15 @@ class CapabilitiesServiceProvider extends ServiceProvider
             })->withOriginalAuthorizer(static fn (array $row): bool => self::originalActorAllows($app, $row))
                 ->withAudit($this->auditWriterOrNull($app, $config))
                 ->withEventDispatcher(self::eventDispatcherOrNull($app, $config));
+
+            // Approvers are told about pending rows through every notifier the host or a
+            // sibling package registered (L-101 / D-006): the ApprovalNotifier contract binding
+            // and anything tagged APPROVAL_NOTIFIER_TAG. The registry adopts this instance.
+            foreach (self::boundApprovalNotifiers($app) as $notifier) {
+                $manager->addNotifier($notifier);
+            }
+
+            return $manager;
         });
         $this->app->alias(ApprovalManager::class, 'ApprovalManager');
         // Hosts with custom actor lookup rebind this; default resolves users through
@@ -185,12 +201,13 @@ class CapabilitiesServiceProvider extends ServiceProvider
             return ContainerBindings::makeRegistry(
                 $config,
                 self::boundTableGatewayOrNull($app),
-                $approval->store(),
+                null,
                 $idempotency,
                 self::boundConnectionOrNull($app, $config, null),
                 self::boundRateLimitCacheOrNull($app),
                 $rateLimiter,
                 $this->auditWriterOrNull($app, $config),
+                approvalManager: $approval,
             )->withRequesterResolver(
                 // Approved rows execute as the real requester — same lookup as the accept re-check (D-006).
                 static fn (string $type, string $id): ?object => self::authUserOrNull($app, $id),
@@ -292,6 +309,34 @@ class CapabilitiesServiceProvider extends ServiceProvider
             );
         });
         $this->app->alias(AiToolAdapter::class, 'AiToolAdapter');
+    }
+
+    /**
+     * Every ApprovalNotifier the container knows about, each instance once:
+     * the contract binding plus everything tagged {@see APPROVAL_NOTIFIER_TAG}.
+     *
+     * @return list<ApprovalNotifier>
+     */
+    private static function boundApprovalNotifiers(object $app): array
+    {
+        $candidates = [];
+        if (method_exists($app, 'bound') && $app->bound(ApprovalNotifier::class)) {
+            $candidates[] = $app->make(ApprovalNotifier::class);
+        }
+        if (method_exists($app, 'tagged')) {
+            foreach ($app->tagged(self::APPROVAL_NOTIFIER_TAG) as $tagged) {
+                $candidates[] = $tagged;
+            }
+        }
+
+        $notifiers = [];
+        foreach ($candidates as $candidate) {
+            if ($candidate instanceof ApprovalNotifier) {
+                $notifiers[spl_object_id($candidate)] = $candidate;
+            }
+        }
+
+        return array_values($notifiers);
     }
 
     /**
