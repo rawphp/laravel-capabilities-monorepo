@@ -158,7 +158,9 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 return $registry->executeApproval($row);
             })->withOriginalAuthorizer(static fn (array $row): bool => self::originalActorAllows($app, $row))
                 ->withAudit($this->auditWriterOrNull($app, $config))
-                ->withEventDispatcher(self::eventDispatcherOrNull($app, $config));
+                ->withEventDispatcher(self::eventDispatcherOrNull($app, $config))
+                // Approvers are placed by the host's ScopeResolver — the one the registry stamps rows with (M-301).
+                ->withScopeResolver($app->make(ScopeResolver::class));
 
             // Approvers are told about pending rows through every notifier the host or a
             // sibling package registered (L-101 / D-006): the ApprovalNotifier contract binding
@@ -214,7 +216,9 @@ class CapabilitiesServiceProvider extends ServiceProvider
             )->withRequesterResolver(
                 // Approved rows execute as the real requester — same lookup as the accept re-check (D-006).
                 static fn (string $type, string $id): ?object => self::authUserOrNull($app, $id),
-            )->withEventDispatcher(self::eventDispatcherOrNull($app, $config));
+            )->withEventDispatcher(self::eventDispatcherOrNull($app, $config))
+                // The host's ScopeResolver binding governs every invoke and every approval decision (D-003).
+                ->withScopeResolver($app->make(ScopeResolver::class));
         });
         $this->app->alias(CapabilityRegistry::class, 'CapabilityRegistry');
         // CapabilityController type-hints CapabilityBus — same singleton, no second registry (REQ-057).

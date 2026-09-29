@@ -133,6 +133,13 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
+- **A linked user can approve or reject from Telegram with the default core wiring (M-301).**
+  Core placed the tapping `LinkedUser` by a `tenant_id` attribute it does not have, so every
+  approval button answered "You are not allowed to decide this approval." unless the host set
+  both `tenant_id` and `current_tenant_id` on its principals. Core now resolves the approver
+  with the same `ScopeResolver` that stamped the row and reads `LinkedUser::$tenantId` as
+  membership; no messaging change, but this package needs a `rawphp/laravel-capabilities`
+  with that fix. A user linked in another tenant still resolves to no one.
 - **A redelivered Telegram update never starts a second agent turn** — only a transient reply
   failure was guarded, so a worker timeout, crash or deploy mid-turn (two LLM calls easily pass
   the worker's default 60s) or a repeated webhook ran a fresh turn whose tool calls replayed only

@@ -8,6 +8,8 @@ use Rawphp\Capabilities\Contracts\ScopeResolver;
  * Package default ScopeResolver implementing D-003 / P2-005 rules.
  *
  * - User actors: scope from membership / options, not untrusted input alone.
+ *   Membership is read from the host's `user_tenants` map, then the principal's own
+ *   server-side attributes: `current_tenant_id`, `tenant_id`, `tenantId` (first set wins).
  * - SystemActor: tenant ONLY from first-class job/context fields.
  * - Never reads capability wire input magic keys for SystemActor.
  */
@@ -119,6 +121,10 @@ final class DefaultScopeResolver implements ScopeResolver
             $fromMembership = (string) $userTenants[(string) $userId];
         } elseif (is_object($user) && isset($user->current_tenant_id)) {
             $fromMembership = (string) $user->current_tenant_id;
+        } elseif (is_object($user) && isset($user->tenant_id)) {
+            $fromMembership = (string) $user->tenant_id;
+        } elseif (is_object($user) && isset($user->tenantId)) {
+            $fromMembership = (string) $user->tenantId;
         }
 
         // Hint only (X-Tenant-Id / CLI --tenant) after membership check.

@@ -27,7 +27,12 @@ interface ApprovalGateway
     /**
      * Accept a pending approval and drive exactly-once execution when applicable.
      *
-     * @param  array<string, mixed>  $options  tenant_id?, reason?, decided_via?
+     * The approver's tenant is resolved by the host ScopeResolver — the same rule that
+     * stamped the row (D-003) — so callers pass no tenant for a linked / authenticated user.
+     *
+     * @param  array<string, mixed>  $options  tenant_id? (trusted server-side tenant, used only
+     *                                         when the approver has no membership tenant),
+     *                                         reason?, decided_via?
      *                                         (`{channel, channel_user_id?}` — audited on
      *                                         approval.decided; server-derived only)
      */

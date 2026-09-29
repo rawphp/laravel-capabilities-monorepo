@@ -218,3 +218,28 @@ it('a lost race or an expired approval reads as already decided; a vanished row 
         ->and($expired['status'])->toBe('already_handled')
         ->and($gone['status'])->toBe('not_found');
 });
+
+it('a linked user in the row\'s tenant can accept with a real ApprovalManager and no tenant option [M-301]', function () {
+    $approvals = H::approvals();
+    $approvals->request([
+        'id' => 'cb-t',
+        'capability_name' => 'billing.void',
+        'tenant_id' => 'tenant-a',
+        'requester_actor_type' => 'user',
+        'requester_actor_id' => 'u1',
+        'input_json' => [],
+    ]);
+    $identity = H::identity();
+    $identity->link('42', 'u1', 'tenant-a');
+    $identity->link('43', 'u1', 'tenant-b');
+    $handler = H::callbackHandler($identity, $approvals);
+    $tap = fn (int $telegramUserId) => $handler->handleCallbackData(H::signer()->encode(H::signer()->sign('cb-t', 'accept')), ['id' => $telegramUserId]);
+
+    $otherTenant = $tap(43);
+    $sameTenant = $tap(42);
+
+    expect($otherTenant['status'])->toBe('forbidden')
+        ->and($otherTenant['message'])->toBe('unlinked_approver')
+        ->and($sameTenant['status'])->toBe('ok')
+        ->and($approvals->find('cb-t')['status'])->toBe(ApprovalStateMachine::STATUS_EXECUTED);
+});

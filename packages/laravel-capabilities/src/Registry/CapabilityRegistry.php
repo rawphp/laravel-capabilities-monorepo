@@ -185,7 +185,7 @@ final class CapabilityRegistry implements CapabilityBus
         $this->approvalStore = $approvalStore;
         $approvalManager = ($approvalStore !== null
             ? new ApprovalManager($approvalStore)
-            : ApprovalManager::inMemory())->withExecutor($this->executeApproval(...));
+            : ApprovalManager::inMemory())->withExecutor($this->executeApproval(...))->withScopeResolver($scopeResolver);
         $mode = $validationConfig['audit_mode'] ?? $auditConfig['mode'] ?? $auditMode;
         $auditModeResolved = AuditLogger::assertValidMode((string) $mode);
         $auditEnabled = (bool) ($auditConfig['enabled'] ?? true);
@@ -556,7 +556,8 @@ final class CapabilityRegistry implements CapabilityBus
     /**
      * Use one configured ApprovalManager for pipeline-requested approvals (L-101 / D-006):
      * its store, `approval.*` config and notifiers are kept; the registry re-attaches its
-     * own run path, audit sink and event dispatcher so accept/resume execute here.
+     * own run path, audit sink, event dispatcher and ScopeResolver so accept/resume execute
+     * here and place approvers with the resolver that stamped the row (D-003 / M-301).
      */
     public function withApprovalManager(ApprovalManager $manager): self
     {
@@ -564,7 +565,8 @@ final class CapabilityRegistry implements CapabilityBus
         $this->pipeline->approvalManager = $manager
             ->withExecutor($this->executeApproval(...))
             ->withAudit($this->audit())
-            ->withEventDispatcher($this->pipeline->events);
+            ->withEventDispatcher($this->pipeline->events)
+            ->withScopeResolver($this->scopeResolver);
 
         return $this;
     }
@@ -638,6 +640,8 @@ final class CapabilityRegistry implements CapabilityBus
     {
         $this->scopeResolver = $resolver;
         $this->pipeline->resolveTenant = new ResolveTenantFromCaller($resolver);
+        // Approvers are placed by the same resolver that stamps the row's tenant (M-301).
+        $this->pipeline->approvalManager = $this->pipeline->approvalManager->withScopeResolver($resolver);
 
         return $this;
     }
