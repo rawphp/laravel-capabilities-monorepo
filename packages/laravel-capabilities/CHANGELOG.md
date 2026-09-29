@@ -23,6 +23,15 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   `2026_09_29_000001_add_approval_policy_to_capabilities_approvals_table`) and its
   `approvalTtlHours` is applied to `expires_at`. Custom `ApprovalStore` / `TableGateway`
   implementations must persist the new key.
+- **The approval crash-recovery sweep is scheduled (D-006 / P2-004, L-014).** New ops command
+  `capabilities:approvals-resume {--id=} {--force}` (`Adapters\Artisan\ResumeApprovalsCommand`,
+  listed in `ArtisanCommandTable`) runs `ResumeApprovedApprovals`. With the default
+  `approval.execution = deferred` and `approval.resume.enabled = true` the service provider
+  schedules it on the console `Schedule` every `resume.every_seconds` (minute granularity,
+  `withoutOverlapping`; pure plan in `Approval\ResumeSchedulePlan`). Before, nothing ran the
+  sweep, so a process crash between `approved` and `executed` left the row in limbo and the
+  `resume.*` keys were inert. Atomic execution schedules nothing. Requires the host's
+  `schedule:run` cron as for any Laravel schedule.
 - **Approval executor identity columns** — `capabilities_approvals` gains nullable
   `executor_actor_type` / `executor_actor_id` (new migration
   `2026_09_24_000001_add_executor_actor_to_capabilities_approvals_table`).

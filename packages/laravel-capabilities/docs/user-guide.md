@@ -264,7 +264,7 @@ Publish: `php artisan vendor:publish --tag=capabilities-config`
 | Peer mismatch | `on_incompatible` → `fail` \| `disable` | Boot fail vs soft-disable |
 | MCP register errors | `surfaces.mcp.on_register_error` → `throw` (default) \| `disable` | Mid-mount adapter failure policy for non-empty plans |
 | HTTP | `prefix`, `middleware`, `auth_middleware` | Route mount and auth. The unauthenticated `auth/*` routes drop `auth:*` and get `throttle:6,1,capabilities-auth` unless `auth_middleware` replaces that stack |
-| Approval | `store`, `ttl_hours`, `execution`, `resume.*` | Human-in-the-loop |
+| Approval | `store`, `ttl_hours`, `execution`, `resume.*` | Human-in-the-loop. With `execution=deferred` (default) and `resume.enabled`, the package schedules `capabilities:approvals-resume` every `resume.every_seconds` to finish approvals whose process died after `approved` — keep `schedule:run` in cron |
 | Idempotency | `enabled` (false makes the guard inert: no lookup, no store), `driver` (default `database`; use `memory` only for single-process tests), `ttl_hours` (stored outcome lifetime, default 24), `header` (`Idempotency-Key`; the one HTTP header setting), `warn_missing_key` | Safe retries; AI proposal accept readiness pings this store |
 | Events | `enabled` | Bus events (`CapabilityInvoked`, `CapabilityFailed`, `CapabilityApproval*`) are dispatched to the app's event dispatcher after `run()`; listen with normal Laravel listeners and use `afterCommit()` when you touch the database |
 | Audit | `enabled`, `mode` (`best_effort`), `driver` (`database`), `required` | Observability of invokes and approvals. `driver=database` writes one row per entry to `capabilities_audit_outbox` (`DatabaseAuditWriter`; bind your own `Contracts\AuditWriter` to replace it). `mode=strict` or `required=true` without any writer fails boot (D-010). A single capability can force strict with `->audit(['mode' => 'strict'])` (or `audit: ['mode' => 'strict']` on the attribute); it can only tighten the global mode, never loosen it |
@@ -323,6 +323,7 @@ Two different readiness signals — do not merge:
 
 | Surface | What | Purpose |
 |---------|------|---------|
+| **Artisan** `php artisan capabilities:approvals-resume [--id=…] [--force]` | `ResumeApprovalsCommand` / `ResumeApprovedApprovals` | Crash-recovery sweep for approved-but-not-executed approvals (D-006). Scheduled automatically when `approval.execution=deferred` and `approval.resume.enabled`; `--force --id=…` is the operator repair path that ignores grace and lease |
 | **Artisan** `php artisan capabilities:integration-health` | `IntegrationHealthChecker` / `IntegrationHealthCommand` | Host **product** readiness: bindings, audit writer wired into the registry (warn when audit is on but records would be dropped), AI-chat mode, MCP tool counts, proposals + AlwaysReady safety, live AI progress-store ping (`ai_progress_ready`), progress/queue ops checks when AI package config is present |
 | **HTTP** `GET /{prefix}/health` (default `/capabilities/health`) | `CatalogHealth` / controller | **Surface/catalog** peer health for HTTP clients (D-011 / D-021), plus `api_version` (`RouteTable::API_VERSION`) that the product CLI checks before `run` |
 

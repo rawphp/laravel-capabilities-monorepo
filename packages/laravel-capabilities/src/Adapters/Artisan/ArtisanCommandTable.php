@@ -52,6 +52,14 @@ final class ArtisanCommandTable
                 'class' => RunCapabilityCommand::class,
             ],
             [
+                'key' => 'approvals-resume',
+                'signature' => 'capabilities:approvals-resume {--id=} {--force}',
+                'description' => 'Execute stuck approved approvals (crash recovery sweep); scheduled automatically when approval.resume.enabled.',
+                'caller' => self::CALLER,
+                'role' => self::ROLE,
+                'class' => ResumeApprovalsCommand::class,
+            ],
+            [
                 'key' => 'integration-health',
                 'signature' => 'capabilities:integration-health',
                 'description' => 'Diagnose host product readiness (bindings, AI-chat, MCP tools).',

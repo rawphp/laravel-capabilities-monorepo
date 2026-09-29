@@ -2,16 +2,17 @@
 
 namespace Rawphp\Capabilities\Approval;
 
+use Rawphp\Capabilities\Adapters\Artisan\ResumeApprovalsCommand;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\SystemActor;
 
 /**
  * Sweep stuck approved → executed (D-006 / P2-004).
  *
- * Invoked by a host scheduler every N seconds, or manually via {@see self::artisan()} /
- * {@see ApprovalManager::artisanResume()} (same force path as ops repair).
- * Core does **not** register a `capabilities:approvals-resume` Artisan command —
- * hosts may wrap this class if they want one.
+ * Run by `capabilities:approvals-resume` ({@see ResumeApprovalsCommand}),
+ * which the service provider schedules every `approval.resume.every_seconds` when
+ * `execution = deferred` and `resume.enabled` ({@see ResumeSchedulePlan}). Manual repair:
+ * `--force --id=…`, {@see self::artisan()} or {@see ApprovalManager::artisanResume()}.
  * Delegates to {@see ApprovalManager::resume()} so accept and resume share paths.
  */
 final class ResumeApprovedApprovals

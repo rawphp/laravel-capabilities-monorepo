@@ -3,6 +3,7 @@
 namespace Rawphp\Capabilities;
 
 use ArrayAccess;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Events\Dispatcher as EventDispatcher;
 use Illuminate\Database\ConnectionInterface;
@@ -26,6 +27,7 @@ use Rawphp\Capabilities\Adapters\PeerIncompatibleException;
 use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Approval\OriginalActorAuthorizer;
+use Rawphp\Capabilities\Approval\ResumeSchedulePlan;
 use Rawphp\Capabilities\Audit\AuditLogger;
 use Rawphp\Capabilities\Boot\BootGuard;
 use Rawphp\Capabilities\Boot\CapabilitiesConfig;
@@ -514,6 +516,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
         $this->bootHttpRoutes();
         $this->bootCapabilityDiscovery();
         $this->bootArtisanCommands();
+        $this->bootResumeSchedule();
         $this->bootMcpServers();
 
         if ($this->app->runningInConsole()) {
@@ -627,6 +630,35 @@ class CapabilitiesServiceProvider extends ServiceProvider
             // Fail-closed only when plan would register servers (empty plan never reaches peer eval).
             throw $e;
         }
+    }
+
+    /**
+     * Schedule the approval crash-recovery sweep (D-006 / P2-004 / L-014).
+     *
+     * `approval.execution = deferred` + `approval.resume.enabled` → `capabilities:approvals-resume`
+     * on the console Schedule every `resume.every_seconds` (minute granularity), without
+     * overlapping. Atomic execution or `resume.enabled = false` schedules nothing.
+     *
+     * @param  array<string, mixed>|null  $approvalConfig
+     * @return array{command: string, cron: string}|null the applied plan
+     */
+    public function bootResumeSchedule(?array $approvalConfig = null): ?array
+    {
+        $config = $approvalConfig ?? (self::configFromApp($this->app)['approval'] ?? []);
+        $plan = ResumeSchedulePlan::fromConfig(is_array($config) ? $config : []);
+        if ($plan === null || ! method_exists($this->app, 'afterResolving')) {
+            return $plan;
+        }
+
+        $apply = static function (object $schedule) use ($plan): void {
+            ResumeSchedulePlan::apply($schedule, $plan);
+        };
+        $this->app->afterResolving(Schedule::class, $apply);
+        if (method_exists($this->app, 'resolved') && $this->app->resolved(Schedule::class)) {
+            $apply($this->app->make(Schedule::class));
+        }
+
+        return $plan;
     }
 
     /**
