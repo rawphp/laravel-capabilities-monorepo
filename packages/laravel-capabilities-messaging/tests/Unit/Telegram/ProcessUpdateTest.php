@@ -130,3 +130,23 @@ it('happy: pipeline verify secret then queue then identity then thread then ingr
         ->and($r['steps'])->toContain('map_thread')
         ->and($r['steps'])->toContain('conversation_ingress');
 });
+
+it('happy: tool call invokes registry with the gated agent profile as tool_profile [D-008][D-010]', function () {
+    $identity = H::identity();
+    $identity->link('42', 'u1');
+    $registry = new FakeCapabilityBus;
+    $adapter = new TelegramAdapter(H::bot(), static fn () => [
+        'text' => 'x',
+        'tool_calls' => [['name' => 'support.ping', 'input' => []]],
+    ]);
+    $p = H::processor([
+        'config' => H::config(['agent_profile' => 'support']),
+        'identity' => $identity,
+        'registry' => $registry,
+        'adapter' => $adapter,
+        'profile_tools' => ['support.ping'],
+    ]);
+    $r = $p->runPipeline(H::telegramUpdate(userId: 42));
+    expect($r['ok'])->toBeTrue()
+        ->and($registry->invocations()[0]['options']['tool_profile'] ?? null)->toBe('support');
+});

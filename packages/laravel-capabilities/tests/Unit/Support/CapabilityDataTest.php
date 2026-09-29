@@ -108,3 +108,19 @@ it('fail: incomplete fromArray missing required field fails closed [D-015]', fun
         'currency' => 'USD',
     ]))->toThrow(InvalidArgumentException::class);
 });
+
+final class SensitiveFieldInputStub extends CapabilityData
+{
+    public function __construct(
+        #[Field(description: 'Tax file number', sensitive: true)]
+        public string $tfn,
+        public string $name,
+    ) {}
+}
+
+it('happy: a sensitive field is marked writeOnly in the portable schema [D-010]', function () {
+    $schema = SensitiveFieldInputStub::jsonSchema();
+
+    expect($schema['properties']['tfn'])->toBe(['type' => 'string', 'description' => 'Tax file number', 'writeOnly' => true])
+        ->and($schema['properties']['name'])->toBe(['type' => 'string']);
+});

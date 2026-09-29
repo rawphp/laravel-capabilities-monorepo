@@ -10,7 +10,10 @@ use Illuminate\Container\Container;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
+use Rawphp\Capabilities\Observability\InMemoryMetrics;
+use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
@@ -171,6 +174,37 @@ it('makeLlmClient anthropic default max_tokens is 64000 from package config', fu
     });
 });
 
+it('makeLlmClient wires anthropic max_retries from config (default 2, 0 disables)', function (?int $maxRetries, int $expectedSends) {
+    $app = new Container;
+    Facade::setFacadeApplication($app);
+    $app->singleton('http', fn () => new Factory);
+    Http::swap(new Factory);
+    Sleep::fake();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response(['error' => ['message' => 'rate limited']], 429),
+    ]);
+
+    $anthropic = ['api_key' => 'test-key'];
+    if ($maxRetries !== null) {
+        $anthropic['max_retries'] = $maxRetries;
+    }
+    $client = ContainerBindings::makeLlmClient(aiConfig([
+        'llm' => ['driver' => 'anthropic', 'anthropic' => $anthropic],
+    ]));
+
+    try {
+        $client->complete([['role' => 'user', 'content' => 'hi']]);
+    } catch (RuntimeException) {
+    }
+
+    Http::assertSentCount($expectedSends);
+    Sleep::fake(false);
+})->with([
+    'package default' => [null, 3],
+    'disabled' => [0, 1],
+]);
+
 it('makeProgressStore returns ArrayProgressStore for array driver', function () {
     $store = ContainerBindings::makeProgressStore(aiConfig(['progress' => ['driver' => 'array']]));
 
@@ -256,4 +290,40 @@ it('claimTtlFromConfig uses Package default and clamps non-positive', function (
     expect(ContainerBindings::claimTtlFromConfig([]))->toBe(Package::DEFAULT_CLAIM_TTL)
         ->and(ContainerBindings::claimTtlFromConfig(['claim_ttl' => 30]))->toBe(30)
         ->and(ContainerBindings::claimTtlFromConfig(['claim_ttl' => 0]))->toBe(Package::DEFAULT_CLAIM_TTL);
+});
+
+it('makeLlmClient passes core Metrics and Tracer into the anthropic client', function () {
+    $app = new Container;
+    Facade::setFacadeApplication($app);
+    $app->singleton('http', fn () => new Factory);
+    Http::swap(new Factory);
+
+    Http::fake([
+        'example.test/*' => Http::response([
+            'content' => [['type' => 'text', 'text' => 'ok']],
+            'usage' => ['input_tokens' => 7, 'output_tokens' => 3],
+        ], 200),
+    ]);
+
+    $metrics = new InMemoryMetrics;
+    $tracer = new InMemoryTracer;
+    $client = ContainerBindings::makeLlmClient(aiConfig([
+        'llm' => [
+            'driver' => 'anthropic',
+            'anthropic' => [
+                'api_key' => 'test-key',
+                'model' => 'claude-test',
+                'base_url' => 'https://example.test',
+            ],
+        ],
+    ]), $metrics, $tracer);
+
+    $client->complete([['role' => 'user', 'content' => 'hi']]);
+
+    expect($metrics->get(AnthropicLlmClient::METRIC_TOKENS, [
+        'provider' => 'anthropic',
+        'model' => 'claude-test',
+        'type' => 'input',
+    ]))->toBe(7)
+        ->and($tracer->spans())->toHaveCount(1);
 });

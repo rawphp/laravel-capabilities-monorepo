@@ -35,6 +35,7 @@ func cmdAuth(env Env, args []string) int {
 		}
 		token, rest := flagValue(rest, "--token")
 		code, rest := flagValue(rest, "--code")
+		jsonOut, rest := flagBool(rest, "--json")
 		_ = rest
 		var err error
 		if token != "" {
@@ -53,8 +54,16 @@ func cmdAuth(env Env, args []string) int {
 			_, err = auth.LoginDeviceCode(context.Background(), st, c, profile, base)
 		}
 		if err != nil {
-			fmt.Fprintln(env.Stderr, err.Error())
-			return api.ExitInternal
+			se, ok := err.(*api.StructuredError)
+			if !ok {
+				se = api.MapErrorCode(api.CodeInternal)
+				se.Message = err.Error()
+			}
+			if jsonOut {
+				writeStructuredErrorStdout(env, se)
+			}
+			fmt.Fprintln(env.Stderr, se.Error())
+			return se.ExitCode
 		}
 		// Prefetch schemas into cache (best-effort).
 		if tok, e := st.GetToken(profile); e == nil {
@@ -62,13 +71,26 @@ func cmdAuth(env Env, args []string) int {
 			if env.NewClient != nil {
 				c = env.NewClient(base, tok)
 			}
-			svc := &catalog.Service{Client: c, Cache: catalog.NewCache(st.SchemaCacheDir(profile))}
+			svc := &catalog.Service{Client: c, Cache: catalog.PrincipalCache(st.SchemaCacheDir(profile), c)}
 			_, _ = svc.Refresh(context.Background())
+		}
+		// Never print token.
+		if jsonOut {
+			payload := map[string]any{
+				"ok":   true,
+				"data": map[string]any{"profile": profile, "base_url": base, "logged_in": true},
+			}
+			b, _ := json.MarshalIndent(payload, "", "  ")
+			fmt.Fprintln(env.Stdout, string(b))
+			return api.ExitOK
 		}
 		fmt.Fprintf(env.Stdout, "logged in profile=%s base_url=%s\n", profile, base)
 		return api.ExitOK
 	case "logout":
-		_ = auth.Logout(st, profile)
+		if err := auth.Logout(st, profile); err != nil {
+			fmt.Fprintln(env.Stderr, err.Error())
+			return api.ExitValidation
+		}
 		fmt.Fprintf(env.Stdout, "logged out profile=%s\n", profile)
 		return api.ExitOK
 	case "status":

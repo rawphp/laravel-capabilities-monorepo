@@ -22,6 +22,7 @@ use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\AlwaysReadyIdempotency;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
+use Rawphp\CapabilitiesAi\Support\ToolSchemaHash;
 
 /**
  * Minimal user model for ProposalService principal resolution unit tests.
@@ -99,7 +100,7 @@ function makeProposalService(
     );
 }
 
-function seedPendingProposal(?string $target = 'demo.cap', array $payload = ['a' => 1], bool $withUser = true): Proposal
+function seedPendingProposal(?string $target = 'demo.cap', array $payload = ['a' => 1], bool $withUser = true, ?string $schemaHash = null): Proposal
 {
     $userId = null;
     if ($withUser) {
@@ -118,6 +119,7 @@ function seedPendingProposal(?string $target = 'demo.cap', array $payload = ['a'
         'type' => 'action',
         'payload' => $payload,
         'target_capability' => $target,
+        'schema_hash' => $schemaHash,
         'status' => Proposal::STATUS_PENDING,
     ]);
 }
@@ -208,6 +210,33 @@ it('accept refuses a target narrowed out of the tool profile after propose-time 
         ->and($out->proposal->last_error)->toStartWith('capability_not_in_profile:')
         ->and($bus->invokes)->toBe(0)
         ->and($tools->calls)->toBe([[$conversation->ulid, $turn->ulid]]);
+});
+
+it('accept refuses a proposal whose target input schema changed since creation without invoking the bus', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal(schemaHash: ToolSchemaHash::of(['parameters' => ['type' => 'object']]));
+    $bus = proposalBus();
+    $out = makeProposalService($bus)->accept($proposal->ulid);
+
+    expect($out->kind)->toBe(AcceptOutcome::KIND_REFUSE)
+        ->and($out->httpStatus)->toBe(409)
+        ->and($out->error['code'] ?? null)->toBe('conflict')
+        ->and($out->error['reason'] ?? null)->toBe('schema_changed')
+        ->and($out->error['retryable'] ?? null)->toBeFalse()
+        ->and($out->message)->toContain('input schema changed')
+        ->and($out->proposal->status)->toBe(Proposal::STATUS_FAILED)
+        ->and($out->proposal->last_error)->toStartWith('conflict:')
+        ->and($bus->invokes)->toBe(0);
+});
+
+it('accept invokes when the stamped schema hash still matches the live tool schema', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal(schemaHash: ToolSchemaHash::of(['name' => 'demo.cap']));
+    $bus = proposalBus();
+    $out = makeProposalService($bus)->accept($proposal->ulid);
+
+    expect($out->kind)->toBe(AcceptOutcome::KIND_ACCEPTED)
+        ->and($bus->invokes)->toBe(1);
 });
 
 it('accept fails closed with not_in_profile when no ToolCatalog is bound', function () {
@@ -520,4 +549,22 @@ it('accept expired returns refuse outcome without throw', function () {
     expect($out->kind)->toBe(AcceptOutcome::KIND_REFUSE)
         ->and($out->httpStatus)->toBe(410)
         ->and($bus->invokes)->toBe(0);
+});
+
+it('ownedBy is true only for the owner of the proposal conversation', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $ownerId = (string) Conversation::query()->whereKey($proposal->conversation_id)->value('user_id');
+    $service = makeProposalService(proposalBus());
+
+    expect($service->ownedBy($proposal->ulid, $ownerId))->toBeTrue()
+        ->and($service->ownedBy($proposal->ulid, $ownerId.'9'))->toBeFalse()
+        ->and($service->ownedBy('PROPDOESNOTEXIST0001', $ownerId))->toBeFalse();
+});
+
+it('ownedBy is false for a proposal whose conversation has no owner', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal(withUser: false);
+
+    expect(makeProposalService(proposalBus())->ownedBy($proposal->ulid, ''))->toBeFalse();
 });
