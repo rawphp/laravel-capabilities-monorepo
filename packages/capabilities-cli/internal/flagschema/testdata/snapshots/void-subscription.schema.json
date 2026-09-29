@@ -1,0 +1,36 @@
+{
+    "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "subscription_id": {
+                "type": "string"
+            },
+            "reason": {
+                "type": "string",
+                "enum": [
+                    "customer_request",
+                    "fraud",
+                    "non_payment"
+                ]
+            },
+            "priority": {
+                "type": "integer",
+                "enum": [
+                    1,
+                    2,
+                    3
+                ]
+            },
+            "immediate": {
+                "type": "boolean"
+            }
+        },
+        "required": [
+            "subscription_id",
+            "reason"
+        ]
+    },
+    "output_schema": null
+}
