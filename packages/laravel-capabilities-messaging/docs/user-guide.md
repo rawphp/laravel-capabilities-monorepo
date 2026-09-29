@@ -103,13 +103,15 @@ The command is only recognised in `code_link` mode.
 
 Codes and links are stored in your default Laravel cache store through `Identity\CacheLinkStore`, so a code issued in a web request binds when the queue worker handles the `/start` update, and links survive worker restarts. Codes expire per `identity.code_ttl_seconds` and bind at most once, even when two workers see the same code. Links are stored without expiry, so use a persistent cache store (redis, database) that your deploy does not flush; a lost link fails closed and the user links again. To pick another store, bind `Identity\LinkStore` in your app, e.g. `new CacheLinkStore(Cache::store('redis'))`.
 
+A product user has at most one linked Telegram account per tenant: binding a code from another account revokes the earlier link. To revoke a link yourself (a "disconnect Telegram" button, offboarding, a lost or hijacked Telegram account), call `IdentityLinker::unlinkUser($userId, $tenantId)`, or `IdentityLinker::unlink($telegramUserId)` when you know the Telegram id. Both work in any identity mode and leave other users' links alone.
+
 Client-forged `laravel_user_id` values are never trusted.
 
 ### `allowlist`
 
 Only static entries may bind. `bindWithCode` returns `null` in this mode (and under any unrecognized mode), so a code issued elsewhere cannot bypass the allowlist.
 
-Only static entries resolve, too. Links bound earlier in `code_link` mode stay in the cache but are ignored, so switching to `allowlist` revokes every code-bound user at once (switching back to `code_link` restores them; clear the cache to drop them for good). `IdentityLinker::link()` throws in this mode.
+Only static entries resolve, too. Links bound earlier in `code_link` mode stay in the cache but are ignored, so switching to `allowlist` revokes every code-bound user at once (switching back to `code_link` restores them; `unlink()` / `unlinkUser()` drop one for good). `IdentityLinker::link()` throws in this mode.
 
 Static entries:
 

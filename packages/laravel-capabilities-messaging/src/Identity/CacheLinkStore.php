@@ -44,7 +44,9 @@ final class CacheLinkStore implements LinkStore
 
     public function putLink(string $telegramUserId, array $link): void
     {
+        $this->forgetLink($telegramUserId);
         $this->cache->forever(self::PREFIX.'link:'.$telegramUserId, $link);
+        $this->cache->forever(self::userKey($link['user_id'], $link['tenant_id']), $telegramUserId);
     }
 
     public function findLink(string $telegramUserId): ?array
@@ -52,5 +54,27 @@ final class CacheLinkStore implements LinkStore
         $link = $this->cache->get(self::PREFIX.'link:'.$telegramUserId);
 
         return is_array($link) ? $link : null;
+    }
+
+    public function forgetLink(string $telegramUserId): void
+    {
+        $link = $this->findLink($telegramUserId);
+        $this->cache->forget(self::PREFIX.'link:'.$telegramUserId);
+
+        if ($link !== null && $this->findTelegramUserId($link['user_id'], $link['tenant_id']) === $telegramUserId) {
+            $this->cache->forget(self::userKey($link['user_id'], $link['tenant_id']));
+        }
+    }
+
+    public function findTelegramUserId(string $userId, ?string $tenantId): ?string
+    {
+        $telegramUserId = $this->cache->get(self::userKey($userId, $tenantId));
+
+        return is_string($telegramUserId) ? $telegramUserId : null;
+    }
+
+    private static function userKey(string $userId, ?string $tenantId): string
+    {
+        return self::PREFIX.'user:'.rawurlencode($tenantId ?? '').':'.rawurlencode($userId);
     }
 }

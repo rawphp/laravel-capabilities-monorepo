@@ -15,6 +15,8 @@ use RuntimeException;
  * Codes and code-bound links live in a {@see LinkStore} (cache-backed in the container, so a
  * code issued in the web process binds on the queue worker); allowlist entries stay in config.
  * Stored links resolve only in code_link mode: switching to allowlist leaves only config entries.
+ * A product user has at most one stored link per tenant: binding from another Telegram account
+ * revokes the earlier one. unlink() / unlinkUser() revoke a single link in any mode.
  * Denials (forged bind, cross-tenant resolve) are counted on the optional core Metrics contract (D-019).
  */
 final class IdentityLinker implements ConversationIdentity
@@ -99,11 +101,7 @@ final class IdentityLinker implements ConversationIdentity
             return null;
         }
 
-        $this->store->putLink($telegramUserId, [
-            'user_id' => $entry['user_id'],
-            'tenant_id' => $entry['tenant_id'],
-            'telegram_user_id' => $telegramUserId,
-        ]);
+        $this->storeLink($telegramUserId, $entry['user_id'], $entry['tenant_id']);
 
         return ($this->userFactory)($entry['user_id'], $entry['tenant_id']);
     }
@@ -118,13 +116,46 @@ final class IdentityLinker implements ConversationIdentity
             throw new RuntimeException('Explicit identity links need identity.mode code_link (MSG-002).');
         }
 
+        $this->storeLink($telegramUserId, $laravelUserId, $tenantId);
+
+        return ($this->userFactory)($laravelUserId, $tenantId);
+    }
+
+    /**
+     * Revoke a Telegram account's stored link (lost phone, hijacked account). Works in any mode;
+     * allowlist entries live in config and are removed there.
+     */
+    public function unlink(string $telegramUserId): void
+    {
+        $this->store->forgetLink($telegramUserId);
+    }
+
+    /**
+     * Revoke the stored link of a product user (host "disconnect Telegram", offboarding).
+     */
+    public function unlinkUser(string $laravelUserId, ?string $tenantId = null): void
+    {
+        $telegramUserId = $this->store->findTelegramUserId($laravelUserId, $tenantId);
+        if ($telegramUserId !== null) {
+            $this->store->forgetLink($telegramUserId);
+        }
+    }
+
+    /**
+     * One stored link per product user and tenant: a new Telegram account replaces the old one.
+     */
+    private function storeLink(string $telegramUserId, string $laravelUserId, ?string $tenantId): void
+    {
+        $previous = $this->store->findTelegramUserId($laravelUserId, $tenantId);
+        if ($previous !== null && $previous !== $telegramUserId) {
+            $this->store->forgetLink($previous);
+        }
+
         $this->store->putLink($telegramUserId, [
             'user_id' => $laravelUserId,
             'tenant_id' => $tenantId,
             'telegram_user_id' => $telegramUserId,
         ]);
-
-        return ($this->userFactory)($laravelUserId, $tenantId);
     }
 
     /**

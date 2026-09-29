@@ -68,6 +68,16 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   a bot recorder should decode `reply_markup` button `callback_data` with
   `TelegramCallbackSigner::decode()` instead.
 
+- **Per-user link revocation** — `IdentityLinker::unlink($telegramUserId)` and
+  `unlinkUser($userId, $tenantId)` revoke one code-bound link, in any identity mode, without
+  touching other users. Before this the only revocations were switching the whole install to
+  `allowlist` or flushing the cache. A product user now has at most one stored link per tenant:
+  binding a code (or `link()`) from another Telegram account revokes the earlier link instead of
+  leaving both active. **Consumer impact:** `Identity\LinkStore` gains `forgetLink()` and
+  `findTelegramUserId()`, and `putLink()` must keep the reverse index; custom stores implement
+  them. Links stored before this change have no reverse index: `unlinkUser()` finds them only
+  after the user links again (`unlink()` works on them now).
+
 ### Changed
 
 - **Core constraint is lockstep:** `require.rawphp/laravel-capabilities` is now `self.version` instead of `*`. This package at tag `v0.Y.Z` installs only with core `v0.Y.Z` (and `dev-main` with core `dev-main`). **Hosts:** require the same version of core and this package.
