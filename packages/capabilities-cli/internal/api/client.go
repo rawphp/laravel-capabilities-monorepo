@@ -31,12 +31,12 @@ const (
 // Client is a pure HTTP client for the capability API.
 // It never embeds domain run() logic.
 type Client struct {
-	BaseURL    string
-	Token      string
-	HTTP       *http.Client
-	Accept     string
-	Timeout    time.Duration
-	UserAgent  string
+	BaseURL   string
+	Token     string
+	HTTP      *http.Client
+	Accept    string
+	Timeout   time.Duration
+	UserAgent string
 	// ExtraHeaders are optional; must never be used to claim caller authority.
 	ExtraHeaders map[string]string
 }
@@ -44,11 +44,11 @@ type Client struct {
 // NewClient builds a client with sensible defaults.
 func NewClient(baseURL, token string) *Client {
 	return &Client{
-		BaseURL: strings.TrimRight(baseURL, "/"),
-		Token:   token,
-		HTTP:    &http.Client{Timeout: 30 * time.Second},
-		Accept:  AcceptJSON,
-		Timeout: 30 * time.Second,
+		BaseURL:   strings.TrimRight(baseURL, "/"),
+		Token:     token,
+		HTTP:      &http.Client{Timeout: 30 * time.Second},
+		Accept:    AcceptJSON,
+		Timeout:   30 * time.Second,
 		UserAgent: "capabilities-cli/0.2",
 	}
 }

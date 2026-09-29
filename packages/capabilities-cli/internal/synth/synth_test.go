@@ -7,16 +7,16 @@ import (
 
 func TestBuildMappingPriority(t *testing.T) {
 	tests := []struct {
-		name           string
-		entries        []Entry
-		wantDomain     string
-		wantVerb       string
-		wantCanonical  string
-		wantMapped     bool
-		lookupDomain   string
-		lookupVerb     string
-		wantRowError   string
-		wantMappedCmd  string
+		name          string
+		entries       []Entry
+		wantDomain    string
+		wantVerb      string
+		wantCanonical string
+		wantMapped    bool
+		lookupDomain  string
+		lookupVerb    string
+		wantRowError  string
+		wantMappedCmd string
 	}{
 		{
 			name: "metadata cli.domain+cli.verb wins",

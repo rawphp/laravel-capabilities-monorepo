@@ -174,10 +174,10 @@ func TestDeriveFields_freeFormMapIsJSONOnly(t *testing.T) {
 
 func TestFlagName_kebabCase(t *testing.T) {
 	cases := map[string]string{
-		"customer_id":  "--customer-id",
-		"amountCents":  "--amount-cents",
-		"currency":     "--currency",
-		"line_items":   "--line-items",
+		"customer_id":   "--customer-id",
+		"amountCents":   "--amount-cents",
+		"currency":      "--currency",
+		"line_items":    "--line-items",
 		"Already-Kebab": "--already-kebab",
 	}
 	for in, want := range cases {

@@ -61,12 +61,12 @@ func harness(t *testing.T, handler http.HandlerFunc) (Options, *invokeRec) {
 	cache := catalog.NewCache(st.SchemaCacheDir("default"))
 	svc := &catalog.Service{Client: c, Cache: cache}
 	opts := Options{
-		Profile:    "default",
-		Capability: "create-invoice",
-		InputJSON:  []byte(`{"customer_id":42,"amount_cents":100,"currency":"USD"}`),
-		Store:      st,
-		Client:     c,
-		Catalog:    svc,
+		Profile:     "default",
+		Capability:  "create-invoice",
+		InputJSON:   []byte(`{"customer_id":42,"amount_cents":100,"currency":"USD"}`),
+		Store:       st,
+		Client:      c,
+		Catalog:     svc,
 		LastRunPath: filepath.Join(root, "last_run.json"),
 	}
 	return opts, rec
