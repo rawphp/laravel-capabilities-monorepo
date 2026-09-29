@@ -46,6 +46,28 @@ it('fail: matrix constraint match rejects out-of-range injected versions [D-011]
         ->and(PeerSupportMatrix::versionSatisfies('0.0.1-bad', PeerSupportMatrix::for(PeerSupportMatrix::PEER_AI)))->toBeFalse();
 });
 
+it('edge: caret on 0.0.x pins the patch; tilde pins the minor [D-011]', function () {
+    expect(PeerSupportMatrix::versionSatisfies('0.0.3', ['^0.0.3']))->toBeTrue()
+        ->and(PeerSupportMatrix::versionSatisfies('0.0.4', ['^0.0.3']))->toBeFalse()
+        ->and(PeerSupportMatrix::versionSatisfies('1.2.9', ['~1.2']))->toBeTrue()
+        ->and(PeerSupportMatrix::versionSatisfies('1.3.0', ['~1.2']))->toBeFalse()
+        ->and(PeerSupportMatrix::versionSatisfies('1.1.9', ['~1.2']))->toBeFalse();
+});
+
+it('edge: host constraints may be exact versions or a wildcard; v-prefixes and pre-release tags normalise [D-011]', function () {
+    expect(PeerSupportMatrix::versionSatisfies('v1.4.0', ['1.4']))->toBeTrue()
+        ->and(PeerSupportMatrix::versionSatisfies('1.4.1', ['1.4.0']))->toBeFalse()
+        ->and(PeerSupportMatrix::versionSatisfies('2.0.0-beta.1', ['^2.0']))->toBeTrue()
+        ->and(PeerSupportMatrix::versionSatisfies('anything', ['*']))->toBeTrue()
+        ->and(PeerSupportMatrix::versionSatisfies('anything', ['']))->toBeTrue()
+        ->and(PeerSupportMatrix::versionSatisfies('dev-main', ['^1.0']))->toBeFalse()
+        ->and(PeerSupportMatrix::versionSatisfies('1.0.0', []))->toBeFalse();
+});
+
+it('fail: an unknown peer has no declared constraints [D-011]', function () {
+    expect(PeerSupportMatrix::for('acme/peer'))->toBe([]);
+});
+
 it('happy: PeerVersionProbe defaults supported versions from PeerSupportMatrix [D-011]', function () {
     $probe = new PeerVersionProbe(
         installedOverrides: [
