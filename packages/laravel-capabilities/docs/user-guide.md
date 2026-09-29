@@ -347,7 +347,7 @@ Every failure is a `CapabilityResult` with `ok: false` and an `error.code`. The 
 
 How one code presents on each surface:
 
-- **HTTP:** the response status is `error.http_status` and the body is the result envelope (`ok`, `error`, `meta`).
+- **HTTP:** the response status is `error.http_status` and the body is the result envelope (`ok`, `error`, `meta`). A pipeline `rate_limited` carries `error.retry_after` (seconds until the tripped window frees) and the 429 response repeats it as `Retry-After`; the product CLI prints it as its backoff hint.
 - **Product CLI:** `--json` prints the same envelope as HTTP; the process exits with `error.cli_exit` (success is `0`).
 - **Agent / MCP:** tool handles return a structured error (`code`, `message`, `structured: true`, `retryable`, `details`). A few codes are renamed for tool callers (see the last column); `details` still carries the original registry error, including its `code`.
 - **Job / direct `invoke`:** the `CapabilityResult` itself. Branch on `isRetryable()` and `isHardRefuse()`, not on message text.

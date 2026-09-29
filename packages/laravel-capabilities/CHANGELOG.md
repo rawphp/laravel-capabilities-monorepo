@@ -96,6 +96,13 @@ profile — or no profile — returns `forbidden` with `normalized_code`
 
 ### Changed
 
+- **Pipeline `rate_limited` sends a backoff hint (D-013, C-007).** The envelope now carries
+  `error.retry_after` (seconds until the tripped per-minute / per-capability window frees)
+  and `HttpResponse::fromResult` adds `Retry-After` on 429 when it is present (an explicit
+  header passed by the caller wins). The zero-limit edge and the agent turn budget send none.
+  **Contract change:** `Contracts\RateLimiter` gains `availableIn(string $key): int`;
+  `InMemoryRateLimiter` and `LaravelCacheRateLimiter` implement it — host implementations
+  must add it (return `0` when unknown).
 - **`transactions.wrap_run = true` now really wraps `run()` (D-010, L-010).** The flag only
   set a test-visible marker; `run()` was called exactly as with the flag off, so an app that
   opted in for atomicity got none. The pipeline now executes `run()` inside

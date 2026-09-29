@@ -832,11 +832,11 @@ final class InvokePipeline
         }
 
         if ($this->rateLimiter->tooManyAttempts($actorKey, $perMinute)) {
-            return $this->rateLimitedResult('Rate limit exceeded (per_minute).');
+            return $this->rateLimitedResult('Rate limit exceeded (per_minute).', $this->rateLimiter->availableIn($actorKey));
         }
 
         if ($this->rateLimiter->tooManyAttempts($capKey, $perCap)) {
-            return $this->rateLimitedResult('Rate limit exceeded (per_capability_per_minute).');
+            return $this->rateLimitedResult('Rate limit exceeded (per_capability_per_minute).', $this->rateLimiter->availableIn($capKey));
         }
 
         $decay = (int) ($override['decay'] ?? 60);
@@ -846,15 +846,17 @@ final class InvokePipeline
         return null;
     }
 
-    private function rateLimitedResult(string $message): CapabilityResult
+    /**
+     * @param  int  $retryAfter  seconds until the tripped window frees (C-007); omitted when unknown
+     */
+    private function rateLimitedResult(string $message, int $retryAfter = 0): CapabilityResult
     {
-        return CapabilityResult::failure(
-            code: 'rate_limited',
-            message: $message,
-            extra: array_merge(ErrorCodeMap::wireFields('rate_limited'), [
-                'retryable' => true,
-            ]),
-        );
+        $extra = array_merge(ErrorCodeMap::wireFields('rate_limited'), ['retryable' => true]);
+        if ($retryAfter > 0) {
+            $extra['retry_after'] = $retryAfter;
+        }
+
+        return CapabilityResult::failure(code: 'rate_limited', message: $message, extra: $extra);
     }
 
     /**

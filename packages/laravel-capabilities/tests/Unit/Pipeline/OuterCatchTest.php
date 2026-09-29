@@ -111,6 +111,11 @@ it('fail: a rate limiter that throws is sanitised the same way and run() is not 
             return $maxAttempts;
         }
 
+        public function availableIn(string $key): int
+        {
+            return 0;
+        }
+
         public function clear(string $key): void {}
     };
     $h = PipelineHelpers::harness(['rate_limiter' => $limiter]);
