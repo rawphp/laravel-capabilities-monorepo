@@ -11,7 +11,6 @@ use Rawphp\Capabilities\Idempotency\IdempotencyConfig;
 use Rawphp\Capabilities\Idempotency\IdempotencyStore as DomainIdempotencyStore;
 use Rawphp\Capabilities\Idempotency\RequestHash;
 use Rawphp\Capabilities\Pipeline\IdempotencyGuard;
-use Rawphp\Capabilities\Pipeline\ResolveActor;
 use Rawphp\Capabilities\Registry\CapabilityDefinition;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\CapabilityContext;
@@ -98,9 +97,9 @@ final class IdempotencyHelpers
         ?string $tenantId = 'tenant-1',
     ): CapabilityContext {
         if (is_int($actor) || is_string($actor)) {
-            $actor = ResolveActor::defaultUser($actor);
+            $actor = PipelineHelpers::userActor($actor);
         } elseif ($actor === null) {
-            $actor = ResolveActor::defaultUser(1);
+            $actor = PipelineHelpers::userActor(1);
         }
 
         $scope = $tenantId !== null
@@ -121,10 +120,10 @@ final class IdempotencyHelpers
             return SystemActor::named(substr($label, strlen('system:')));
         }
         if (str_starts_with($label, 'user:')) {
-            return ResolveActor::defaultUser(substr($label, strlen('user:')));
+            return PipelineHelpers::userActor(substr($label, strlen('user:')));
         }
 
-        return ResolveActor::defaultUser($label);
+        return PipelineHelpers::userActor($label);
     }
 
     /**
@@ -263,7 +262,7 @@ final class IdempotencyHelpers
         $actor = $extra['actor'] ?? (
             $caller === 'job'
                 ? SystemActor::named('billing-worker')
-                : ResolveActor::defaultUser(7)
+                : PipelineHelpers::userActor(7)
         );
 
         $base = [

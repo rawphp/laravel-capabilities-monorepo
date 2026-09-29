@@ -8,6 +8,7 @@ use Rawphp\Capabilities\Schema\OutputValidator;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
 use Rawphp\Capabilities\Tests\Fixtures\DiscoveryHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
 foreach (['agent', 'mcp'] as $caller) {
     it("fail: output_invalid via {$caller} is not presented as successful tool result [D-014]", function () use ($caller) {
@@ -22,7 +23,7 @@ foreach (['agent', 'mcp'] as $caller) {
             'customer_id' => 1,
             'amount_cents' => 1,
             'currency' => 'USD',
-        ], ['caller' => $caller]);
+        ], ['caller' => $caller, 'actor' => PipelineHelpers::userActor()]);
 
         $tool = (new OutputValidator)->toToolResult($result);
         expect($tool['ok'])->toBeFalse()
@@ -42,7 +43,7 @@ foreach (['agent', 'mcp'] as $caller) {
             'customer_id' => 1,
             'amount_cents' => 1,
             'currency' => 'USD',
-        ], ['caller' => $caller]);
+        ], ['caller' => $caller, 'actor' => PipelineHelpers::userActor()]);
 
         expect($registry->failedEvents())->not->toBeEmpty()
             ->and($registry->failedEvents()[0])->toBeInstanceOf(CapabilityFailed::class)
@@ -61,7 +62,7 @@ foreach (['agent', 'mcp'] as $caller) {
             'customer_id' => 1,
             'amount_cents' => 1,
             'currency' => 'USD',
-        ], ['caller' => $caller]);
+        ], ['caller' => $caller, 'actor' => PipelineHelpers::userActor()]);
 
         expect($registry->logs())->not->toBeEmpty()
             ->and($registry->logs()[0]['level'])->toBe('error')

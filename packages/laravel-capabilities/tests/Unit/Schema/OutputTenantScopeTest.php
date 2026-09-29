@@ -10,6 +10,7 @@ use Rawphp\Capabilities\Support\CapabilityScope;
 use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\DiscoveryHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\TenantScopedListResult;
 use Rawphp\Capabilities\Tests\Fixtures\TenantScopedResult;
 
@@ -94,8 +95,8 @@ it('fail: invoke returning another tenant\'s resource maps to output_invalid via
         ->register($registry);
 
     $input = ['customer_id' => 1, 'amount_cents' => 100, 'currency' => 'USD'];
-    $leak = $registry->invoke('scoped-leak', $input, ['scope' => new CapabilityScope(tenantId: 'tenant-a')]);
-    $own = $registry->invoke('scoped-leak', $input, ['scope' => new CapabilityScope(tenantId: 'tenant-b')]);
+    $leak = $registry->invoke('scoped-leak', $input, ['scope' => new CapabilityScope(tenantId: 'tenant-a'), 'actor' => PipelineHelpers::userActor()]);
+    $own = $registry->invoke('scoped-leak', $input, ['scope' => new CapabilityScope(tenantId: 'tenant-b'), 'actor' => PipelineHelpers::userActor()]);
 
     expect($leak->errorCode())->toBe('output_invalid')
         ->and($own->isOk())->toBeTrue();

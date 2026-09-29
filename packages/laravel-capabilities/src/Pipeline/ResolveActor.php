@@ -5,7 +5,6 @@ namespace Rawphp\Capabilities\Pipeline;
 use Rawphp\Capabilities\Support\CapabilityContext;
 use Rawphp\Capabilities\Support\SystemActor;
 use RuntimeException;
-use stdClass;
 
 /**
  * Pipeline step: resolve User or SystemActor — never null principal (D-002 / PIPE-010).
@@ -29,24 +28,13 @@ final class ResolveActor
             return $options['actor'];
         }
 
-        // Explicit null is always refused (D-002). Jobs never fall back to the
-        // default user: they must carry a SystemActor or real user. Other callers
-        // omitting actor get a default user so schema/in-process paths stay usable.
+        // No implicit principal on any surface (D-002): a missing actor is refused, never
+        // replaced by a fabricated user. Jobs get the more specific message.
         if ($caller === 'job') {
             throw new RuntimeException('Job invokes require an explicit SystemActor (or User) principal (D-002).');
         }
 
-        // Default user principal for in-process / schema unit paths when omitted.
-        return self::defaultUser();
-    }
-
-    public static function defaultUser(int|string $id = 1): object
-    {
-        $user = new stdClass;
-        $user->id = $id;
-        $user->name = 'default-user';
-
-        return $user;
+        throw new RuntimeException('Actor principal is required; pass options[\'actor\'] (User or SystemActor) or a CapabilityContext (D-002).');
     }
 
     public static function isSystemActor(object $actor): bool

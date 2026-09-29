@@ -119,6 +119,8 @@ $result = $registry->invoke('create-invoice', [
 ], [
     // caller is normally set by the adapter
     'caller' => 'http',
+    // who is acting — required on every surface (D-002); never inferred
+    'actor' => $request->user(),
 ]);
 
 if ($result->ok) {

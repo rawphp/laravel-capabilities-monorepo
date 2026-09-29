@@ -36,6 +36,17 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Changed (BREAKING)
 
+#### Invokes without an actor are refused on every surface (D-002, L-004)
+
+`ResolveActor` used to hand any non-job invoke that omitted `options['actor']` a
+fabricated user (`stdClass`, `id = 1`, `name = default-user`). That principal drove
+`authorize()`, rate-limit keys, idempotency identity and audit — usually as the id of the
+first (admin) user. The fallback is gone: a missing actor now fails closed with
+`unauthenticated` before `run()`, exactly as jobs and explicit `null` already did. Pass
+`'actor' => $request->user()` (or a `SystemActor` / `CapabilityContext`) on every in-process
+`invoke()`; adapters already do. `ResolveActor::defaultUser()` is removed — build your own
+test principal.
+
 #### Accepted approvals now run the capability
 
 Before this change, an `ApprovalManager` with no executor bound — which included the

@@ -6,7 +6,6 @@ namespace Rawphp\Capabilities\Tests\Fixtures;
 
 use Rawphp\Capabilities\Capability;
 use Rawphp\Capabilities\Pipeline\PipelineStages;
-use Rawphp\Capabilities\Pipeline\ResolveActor;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Schema\FailingServerRuleChecker;
 use Rawphp\Capabilities\Schema\ServerRuleChecker;
@@ -138,9 +137,16 @@ final class PipelineHelpers
         ];
     }
 
+    /**
+     * Plain unit principal (the production pipeline never fabricates one — D-002 / L-004).
+     */
     public static function userActor(int|string $id = 7): object
     {
-        return ResolveActor::defaultUser($id);
+        $user = new stdClass;
+        $user->id = $id;
+        $user->name = 'test-user';
+
+        return $user;
     }
 
     public static function systemActor(string $name = 'billing-worker'): SystemActor
