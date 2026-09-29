@@ -228,14 +228,6 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
             };
         }
 
-        if (function_exists('dispatch')) {
-            return static function (object $job) use ($applyQueue): mixed {
-                $applyQueue($job);
-
-                return dispatch($job);
-            };
-        }
-
         return static function (object $job): void {
             throw new RuntimeException(
                 'No bus dispatcher available; bind Illuminate\\Contracts\\Bus\\Dispatcher or rebind ConversationService'
