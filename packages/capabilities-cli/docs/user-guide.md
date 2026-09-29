@@ -109,6 +109,7 @@ capabilities self-update
 Behaviour:
 
 - Downloads the latest release of `rawphp/capabilities-cli` and verifies **`checksums.txt`** before replace (fail closed if missing or mismatched).
+- When your binary was built with a pinned release key, **`checksums.txt.sig`** must also verify against it (fail closed if missing or invalid).
 - **Already up-to-date** → exit **0** with a short message (not an error).
 - Atomic replace when the install path is **writable**.
 - If the path is **not writable** (e.g. under `/usr/local` without permission), fails closed and points you at `scripts/install.sh` / `CAPABILITIES_INSTALL_DIR` into a directory you own (default `~/.local/bin`).
@@ -337,7 +338,7 @@ Missing `<id>` on accept/reject → exit **2** with a short usage line (not full
 
 ```bash
 capabilities version
-capabilities self-update                            # latest release; darwin/linux only
+capabilities self-update [--json]                   # latest release; darwin/linux only
 capabilities help
 capabilities help run
 capabilities <domain> --help
@@ -349,7 +350,10 @@ Bare `capabilities` and `--help` paths exit **0** (success).
 
 `self-update` fetches the latest GitHub Release, requires `checksums.txt`, exits **0**
 when already current, and fails closed on unwritable install paths or unsupported OS
-(see [Self-update](#self-update-macos--linux)).
+(see [Self-update](#self-update-macos--linux)). With `--json`, stdout carries one
+envelope: `{"ok":true,"data":{"outcome":"updated|already_latest","current_version","latest_version"}}`
+or a D-018 error (`code: "internal"`, `retryable: true` for network/resolve failures);
+the human diagnostic stays on stderr.
 
 Reserved meta-commands always win over domain tokens of the same name:
 `auth` · `catalog` · `describe` · `run` · `approvals` · `version` · `self-update` · `help`.
@@ -380,7 +384,7 @@ via `run` / `describe` only.
 capabilities run <name> \
   [--input=JSON | --input-file=PATH | scalar flags] \
   [--idempotency-key=KEY] [--retry-last] \
-  [--no-cache] [--human] [--tenant=ID] \
+  [--no-cache] [--human] \
   [--profile=NAME] [--base-url=URL]
 ```
 
@@ -412,10 +416,14 @@ capabilities run <name> --input='{"customer_id":1}' --profile=mesoprep
 
 capabilities <domain> <verb> --customer_id=1 --human --profile=mesoprep
 
-capabilities run <name> --input-file=./payload.json --retry-last
+capabilities run <name> --retry-last   # after a network failure: same key, same body
 ```
 
-`--tenant=ID` is a **hint only** — not authoritative scope (server decides).
+`--retry-last` reuses the last `Idempotency-Key`. With no `--input`, `--input-file`, or field
+flags it also resends the last input when that run was the same capability, so the server
+replays instead of returning a conflict.
+
+There is no tenant flag: the server derives tenant scope from your token (D-003).
 
 `--human` writes a **short one-line** summary to **stderr** (e.g. `ok get_today_meals date=…`);
 stdout remains the machine envelope. Do not parse `--human` stderr for full payload data.

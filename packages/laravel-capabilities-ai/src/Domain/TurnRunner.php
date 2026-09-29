@@ -7,6 +7,7 @@ namespace Rawphp\CapabilitiesAi\Domain;
 use Illuminate\Support\Carbon;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\Redactor;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
@@ -17,6 +18,8 @@ use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\ProposalFenceExtractor;
 use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
+use Rawphp\CapabilitiesAi\Support\RetryableLlmException;
+use Rawphp\CapabilitiesAi\Support\ToolSchemaHash;
 use RuntimeException;
 
 /**
@@ -58,13 +61,18 @@ final class TurnRunner
             $toolDefs = $this->llm->supportsToolRounds()
                 ? $this->tools->toolsForTurn($conversation->ulid, $turnUlid)
                 : [];
+            // Snapshot of what the model was shown; tool_calls outside it never reach the bus.
+            $offeredNames = array_column($toolDefs, 'name');
 
             $rounds = 0;
+            $usage = [];
             // 1-based tool-call count across all rounds of this turn → core D-013 agent turn budget.
             $toolCallCount = 0;
             while ($rounds < $this->maxToolRounds) {
                 $rounds++;
+                $startedAt = hrtime(true);
                 $response = $this->llm->complete($messages, $toolDefs);
+                $usage[] = $this->roundUsage($response, $startedAt);
                 $toolCalls = $response['tool_calls'] ?? [];
 
                 if ($toolCalls === []) {
@@ -76,7 +84,7 @@ final class TurnRunner
                         'content' => $content,
                         'meta' => null,
                     ]);
-                    $this->maybeCreateProposalsFromFence($conversation->id, $turn->id, $content);
+                    $this->maybeCreateProposalsFromFence($conversation, $turn, $content);
                     break;
                 }
 
@@ -121,7 +129,7 @@ final class TurnRunner
                         'content' => $content,
                         'meta' => null,
                     ]);
-                    $this->maybeCreateProposalsFromFence($conversation->id, $turn->id, $content);
+                    $this->maybeCreateProposalsFromFence($conversation, $turn, $content);
                     break;
                 }
 
@@ -139,15 +147,30 @@ final class TurnRunner
                         $payload = [];
                     }
                     $toolCallId = (string) $call['id'];
-                    $result = $this->bus->invoke($name, $payload, array_merge($invokeOptions, [
-                        'agent_turn_tool_calls' => ++$toolCallCount,
-                    ]));
+                    // D-005: optional tool arg idempotency_key is transport, not capability input.
+                    $idempotencyKey = $payload['idempotency_key'] ?? null;
+                    unset($payload['idempotency_key']);
+                    if (in_array($name, $offeredNames, true)) {
+                        $callOptions = array_merge($invokeOptions, [
+                            'agent_turn_tool_calls' => ++$toolCallCount,
+                        ]);
+                        if (is_scalar($idempotencyKey) && (string) $idempotencyKey !== '') {
+                            $callOptions['idempotency_key'] = (string) $idempotencyKey;
+                        }
+                        $result = $this->bus->invoke($name, $payload, $callOptions);
+                    } else {
+                        $result = CapabilityResult::failure(
+                            'capability_not_in_profile',
+                            "Tool {$name} was not offered for this turn",
+                        );
+                    }
                     $toolContent = $this->encodeToolResult($name, $result);
                     $this->progress->append($turnUlid, [
                         'kind' => 'tool',
                         'data' => [
                             'name' => $name,
-                            'payload' => $payload,
+                            // Served live over turn-events HTTP — never echo secrets (D-010).
+                            'payload' => Redactor::redact($payload),
                             'ok' => $result->ok,
                             'error_code' => $result->errorCode(),
                             'tool_call_id' => $toolCallId,
@@ -165,10 +188,14 @@ final class TurnRunner
             // Cooperative cancel: do not overwrite cancelled mid-run
             $fresh = Turn::query()->where('ulid', $turnUlid)->first();
             if ($fresh !== null && $fresh->status === Turn::STATUS_CANCELLED) {
+                $fresh->usage = $usage;
+                $fresh->save();
+
                 return $fresh;
             }
 
             $turn->status = Turn::STATUS_COMPLETED;
+            $turn->usage = $usage;
             $turn->finished_at = Carbon::now();
             $turn->save();
 
@@ -188,18 +215,41 @@ final class TurnRunner
 
             $turn->status = Turn::STATUS_FAILED;
             $turn->error = $e->getMessage();
+            $turn->usage = $usage ?? null;
             $turn->finished_at = Carbon::now();
             $turn->save();
-            $this->progress->append($turnUlid, [
-                'kind' => 'error',
-                'data' => ['message' => $e->getMessage()],
-            ]);
+            // retryable=true: transient LLM failure; the turn stays failed, but a caller may try again later.
+            $error = ['message' => $e->getMessage(), 'retryable' => $e instanceof RetryableLlmException];
+            if ($e instanceof RetryableLlmException && $e->retryAfterSeconds !== null) {
+                $error['retry_after_seconds'] = $e->retryAfterSeconds;
+            }
+            $this->progress->append($turnUlid, ['kind' => 'error', 'data' => $error]);
             $this->progress->append($turnUlid, [
                 'kind' => 'terminal',
                 'data' => ['status' => Turn::STATUS_FAILED],
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * One round's accounting: runner-measured latency plus any non-negative int
+     * token counts the client reported (junk values are dropped, not coerced).
+     *
+     * @param  array<string, mixed>  $response
+     * @return array{latency_ms: int, input_tokens?: int, output_tokens?: int}
+     */
+    private function roundUsage(array $response, int $startedAt): array
+    {
+        $round = ['latency_ms' => intdiv(hrtime(true) - $startedAt, 1_000_000)];
+        $reported = is_array($response['usage'] ?? null) ? $response['usage'] : [];
+        foreach (['input_tokens', 'output_tokens'] as $key) {
+            if (is_int($reported[$key] ?? null) && $reported[$key] >= 0) {
+                $round[$key] = $reported[$key];
+            }
+        }
+
+        return $round;
     }
 
     private function encodeToolResult(string $name, CapabilityResult $result): string
@@ -210,25 +260,50 @@ final class TurnRunner
         return json_encode($wire, JSON_THROW_ON_ERROR);
     }
 
-    private function maybeCreateProposalsFromFence(int $conversationId, int $turnId, string $content): void
+    private function maybeCreateProposalsFromFence(Conversation $conversation, Turn $turn, string $content): void
     {
         if (! $this->proposalsEnabled) {
             return;
         }
 
-        $data = $this->proposalExtractor->extract($content);
+        $fence = $this->proposalExtractor->parse($content);
+        if ($fence->isInvalid()) {
+            // Surface provider/prompt format drift instead of silently dropping the proposal.
+            $this->progress->append($turn->ulid, ['kind' => 'proposal_invalid', 'data' => null]);
+
+            return;
+        }
+
+        $data = $fence->data;
         if ($data === null) {
             return;
         }
 
+        $target = isset($data['target_capability']) ? (string) $data['target_capability'] : null;
+
         Proposal::query()->create([
-            'turn_id' => $turnId,
-            'conversation_id' => $conversationId,
+            'turn_id' => $turn->id,
+            'conversation_id' => $conversation->id,
             'ulid' => strtoupper(bin2hex(random_bytes(13))),
             'type' => (string) ($data['type'] ?? 'action'),
             'payload' => $data['payload'] ?? $data,
-            'target_capability' => isset($data['target_capability']) ? (string) $data['target_capability'] : null,
+            'target_capability' => $target,
+            'schema_hash' => $target === null ? null : $this->targetSchemaHash($target, $conversation->ulid, $turn->ulid),
             'status' => Proposal::STATUS_PENDING,
         ]);
+    }
+
+    /**
+     * Stamp the target's then-current input schema so accept can tell drift from a bad payload.
+     */
+    private function targetSchemaHash(string $target, string $conversationUlid, string $turnUlid): ?string
+    {
+        foreach ($this->tools?->toolsForTurn($conversationUlid, $turnUlid) ?? [] as $tool) {
+            if (($tool['name'] ?? null) === $target) {
+                return ToolSchemaHash::of($tool);
+            }
+        }
+
+        return null;
     }
 }

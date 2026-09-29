@@ -38,7 +38,7 @@ func cmdDescribe(env Env, args []string) int {
 		fmt.Fprintln(env.Stderr, err.Error())
 		return api.ExitAuth
 	}
-	svc := &catalog.Service{Client: c, Cache: catalog.NewCache(st.SchemaCacheDir(profile)), NoCache: noCache}
+	svc := &catalog.Service{Client: c, Cache: catalog.PrincipalCache(st.SchemaCacheDir(profile), c), NoCache: noCache}
 	entry, _, err := svc.Describe(context.Background(), name)
 	if err != nil {
 		if se, ok := err.(*api.StructuredError); ok {
@@ -95,7 +95,6 @@ func cmdRun(env Env, args []string) int {
 		_, rest = flagValue(rest, "--input")
 		_, rest = flagValue(rest, "--input-file")
 		_, rest = flagValue(rest, "--idempotency-key")
-		_, rest = flagValue(rest, "--tenant")
 		_, rest = flagBool(rest, "--human")
 		_, rest = flagBool(rest, "--retry-last")
 		name, rest := takeFirstPositional(rest)
@@ -111,7 +110,6 @@ func cmdRun(env Env, args []string) int {
 	input, args := flagValue(args, "--input")
 	inputFile, args := flagValue(args, "--input-file")
 	idem, args := flagValue(args, "--idempotency-key")
-	tenant, args := flagValue(args, "--tenant")
 	jsonOut, args := flagBool(args, "--json")
 	human, args := flagBool(args, "--human")
 	noCache, args := flagBool(args, "--no-cache")
@@ -122,7 +120,7 @@ func cmdRun(env Env, args []string) int {
 	}
 	name := args[0]
 	flagArgs := args[1:]
-	return invokeCapability(env, st, profile, base, name, input, inputFile, idem, tenant, jsonOut, human, noCache, retryLast, flagArgs)
+	return invokeCapability(env, st, profile, base, name, input, inputFile, idem, jsonOut, human, noCache, retryLast, flagArgs)
 }
 
 // invokeCapability is the single validate→key→POST path for run and domain/verb (ORI-175).
@@ -130,7 +128,7 @@ func invokeCapability(
 	env Env,
 	st *auth.Store,
 	profile, base, name string,
-	input, inputFile, idem, tenant string,
+	input, inputFile, idem string,
 	jsonOut, human, noCache, retryLast bool,
 	flagArgs []string,
 ) int {
@@ -143,7 +141,7 @@ func invokeCapability(
 		fmt.Fprintln(env.Stderr, err.Error())
 		return api.ExitAuth
 	}
-	svc := &catalog.Service{Client: c, Cache: catalog.NewCache(st.SchemaCacheDir(profile)), NoCache: noCache}
+	svc := &catalog.Service{Client: c, Cache: catalog.PrincipalCache(st.SchemaCacheDir(profile), c), NoCache: noCache}
 
 	// Load schema for flag merge (cache / describe).
 	var schemaJSON []byte
@@ -190,6 +188,10 @@ func invokeCapability(
 		}
 		return api.ExitValidation
 	}
+	// No fresh input on --retry-last: let Run replay the stored body.
+	if retryLast && len(baseJSON) == 0 && len(flagMap) == 0 {
+		merged = nil
+	}
 
 	opts := run.Options{
 		Profile:        profile,
@@ -201,7 +203,6 @@ func invokeCapability(
 		NoCache:        noCache,
 		JSON:           true, // always machine envelope
 		Human:          human,
-		TenantHint:     tenant,
 		Store:          st,
 		Client:         c,
 		Catalog:        svc,

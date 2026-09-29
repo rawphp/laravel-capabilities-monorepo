@@ -29,6 +29,15 @@ function approvalRunsRequest(array $h, array $extra = []): string
     return (string) $result->approvalId();
 }
 
+/** Approver in the same tenant as the approval row (D-003 scope on decisions). */
+function approvalRunsApprover(int $id): object
+{
+    $approver = PipelineHelpers::userActor($id);
+    $approver->tenant_id = 't-1';
+
+    return $approver;
+}
+
 it('happy: registry approvals()->accept runs the capability once with stored input [D-006]', function () {
     $seen = [];
     $h = PipelineHelpers::harness(['run' => function ($in) use (&$seen) {
@@ -38,7 +47,7 @@ it('happy: registry approvals()->accept runs the capability once with stored inp
     }]);
     $id = approvalRunsRequest($h);
 
-    $result = $h['registry']->approvals()->accept($id, PipelineHelpers::userActor(7));
+    $result = $h['registry']->approvals()->accept($id, approvalRunsApprover(7));
 
     expect($result->isOk())->toBeTrue()
         ->and($result->data->invoice_id)->toBe(99)
@@ -70,7 +79,7 @@ it('fail: approved run that breaks the output contract is recorded as failed [D-
     $h = PipelineHelpers::harness(['run_output' => ['wrong' => true]]);
     $id = approvalRunsRequest($h);
 
-    $result = $h['registry']->approvals()->accept($id, PipelineHelpers::userActor(7));
+    $result = $h['registry']->approvals()->accept($id, approvalRunsApprover(7));
 
     expect($result->isOk())->toBeFalse()
         ->and($result->errorCode())->toBe('output_invalid')
@@ -85,7 +94,7 @@ it('fail: original actor no longer authorized means run() is not called [D-006]'
     $id = approvalRunsRequest($h);
     $allow = false;
 
-    $result = $h['registry']->approvals()->accept($id, PipelineHelpers::userActor(7));
+    $result = $h['registry']->approvals()->accept($id, approvalRunsApprover(7));
 
     expect($result->errorCode())->toBe('forbidden')
         ->and($h['runCount']->value)->toBe(0)
@@ -100,7 +109,7 @@ it('edge: approved run authorizes as the original requester, not the approver [D
         return true;
     }]);
     $id = approvalRunsRequest($h);
-    $approver = PipelineHelpers::userActor(8);
+    $approver = approvalRunsApprover(8);
 
     $h['registry']->approvals()->withPolicy(
         ApprovalPolicy::fromString('any_staff', staffChecker: fn () => true),
@@ -127,7 +136,7 @@ it('edge: system requester is re-run as the same SystemActor [D-002 / D-006]', f
 
     $out = $h['registry']->approvals()->withPolicy(
         ApprovalPolicy::fromString('any_staff', staffChecker: fn () => true),
-    )->accept((string) $result->approvalId(), PipelineHelpers::userActor(8));
+    )->accept((string) $result->approvalId(), approvalRunsApprover(8));
 
     expect($out->isOk())->toBeTrue()
         ->and($h['runCount']->value)->toBe(1)
@@ -141,7 +150,7 @@ it('fail: withApprovalStore keeps approvals wired to the registry run path [D-00
     $h['registry']->withApprovalStore($store);
     $id = approvalRunsRequest($h);
 
-    $result = $h['registry']->approvals()->accept($id, PipelineHelpers::userActor(7));
+    $result = $h['registry']->approvals()->accept($id, approvalRunsApprover(7));
 
     expect($result->isOk())->toBeTrue()
         ->and($h['runCount']->value)->toBe(1)

@@ -226,3 +226,17 @@ func TestRunHTTPStatusWithoutEnvelope(t *testing.T) {
 		t.Fatal(res)
 	}
 }
+
+func TestRunMalformedSuccessBodyFailsClosed(t *testing.T) {
+	opts, _ := harness(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.Write([]byte(`{"ok":true,"data":{"name":"create-invoice","schema_version":"1","input_schema":{"type":"object"}}}`))
+			return
+		}
+		w.Write([]byte(`<html>maintenance</html>`))
+	})
+	res := Run(context.Background(), opts)
+	if res.ExitCode != ExitInternal {
+		t.Fatal(res.ExitCode, res.Stderr)
+	}
+}

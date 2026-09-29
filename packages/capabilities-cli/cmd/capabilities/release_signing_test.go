@@ -263,3 +263,39 @@ func TestReadmeLinksReleaseSigning(t *testing.T) {
 		t.Error("README.md must link to docs/release-signing.md")
 	}
 }
+
+// TestReleasePinsKeyAndSignsChecksums asserts the release path that self-update
+// relies on: release binaries pin selfupdate.ReleasePublicKey at link time (soft
+// empty when no key is configured) and a signing job publishes checksums.txt.sig.
+func TestReleasePinsKeyAndSignsChecksums(t *testing.T) {
+	root := moduleRoot(t)
+	gb, err := os.ReadFile(filepath.Join(root, ".goreleaser.yml"))
+	if err != nil {
+		t.Fatalf("read .goreleaser.yml: %v", err)
+	}
+	g := string(gb)
+	if !strings.Contains(g, "internal/selfupdate.ReleasePublicKey=") {
+		t.Error(".goreleaser.yml must pin selfupdate.ReleasePublicKey via ldflags")
+	}
+	if !strings.Contains(g, `envOrDefault "CAPABILITIES_RELEASE_PUBLIC_KEY" ""`) {
+		t.Error(".goreleaser.yml must read the release public key with envOrDefault (soft when unset)")
+	}
+
+	wb, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatalf("read release.yml: %v", err)
+	}
+	w := string(wb)
+	for _, needle := range []string{
+		"secrets.CAPABILITIES_RELEASE_SIGNING_KEY",
+		"CAPABILITIES_RELEASE_PUBLIC_KEY: ${{ needs.select-runner.outputs.release_public_key }}",
+		"openssl pkeyutl -sign",
+		"openssl pkeyutl -verify",
+		"gh release upload",
+		"checksums.txt.sig",
+	} {
+		if !strings.Contains(w, needle) {
+			t.Errorf("release.yml missing %q", needle)
+		}
+	}
+}
