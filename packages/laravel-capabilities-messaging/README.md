@@ -10,7 +10,7 @@ Implements core `ConversationIngress` / `ApprovalNotifier` contracts. **Never** 
 
 | | |
 |---|---|
-| **Is** | Chat **ingress** (Telegram first): webhooks, identity link/allowlist, threads, approval notifiers; routes messages into the agent with a configured tool profile |
+| **Is** | Chat **ingress** (Telegram first): webhooks, identity link/allowlist, threads, approval notifiers; routes messages into the host-bound agent turn (`Contracts\AgentTurn`) with a configured tool profile |
 | **Is not** | Domain `run()` or any second write path; the capability registry / governance stack; product CLI; AI turn/proposal engine; durable multi-instance identity product (process-local stores residual — L-006); general-purpose notification platform |
 
 Requires [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities). Developed in the monorepo; consumers install **this package repo**.
@@ -77,6 +77,7 @@ Install policy: monorepo [`docs/versioning.md`](https://github.com/rawphp/larave
 | `UpdateQueue` | `LaravelUpdateQueue` → bus `ProcessTelegramUpdateJob` | `FakeQueue` |
 | `TelegramBotClient` | `HttpTelegramBotClient` | `FakeTelegramBotClient` |
 | `ProcessTelegramUpdate` | handler | same |
+| `Contracts\AgentTurn` | **host binds** (e.g. a `laravel/ai` agent) — unbound: no reply, error log | unit tests inject a handler |
 | `TelegramWebhookController` | injects bound `UpdateQueue` (no FakeQueue default) | inject `FakeQueue` in unit tests |
 | `TelegramApprovalNotifier` | `Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier` (Bot API) | unit tests may inject fakes |
 
@@ -84,6 +85,8 @@ Drivers (`config/capabilities-messaging.php`):
 
 - `queue_driver`: `auto` \| `laravel` \| `fake` — `auto` → fake when `APP_ENV=testing`, otherwise Laravel bus
 - `bot_driver`: `auto` \| `http` \| `fake` — `auto` → fake when testing, otherwise HTTP
+
+`ProcessTelegramUpdateJob` implements `ShouldQueue`: the webhook answers Telegram once the update is queued, and a queue worker runs the agent turn (3 tries, backoff 10s/60s). Transient failures (Bot API 429/5xx, retryable registry results) throw `RetryableUpdateFailure` so the job retries and lands in `failed_jobs`; terminal outcomes (unlinked user, rate limited, forbidden, …) return without retrying.
 
 Fake\* classes bind only when the matching driver is `fake`, or `auto` with `APP_ENV=testing`. Unit tests never call the live Telegram network; inject a transport on `HttpTelegramBotClient` or use `bot_driver=fake`.
 

@@ -32,7 +32,7 @@ it('happy: tool may run via registry when linked=True profile_ok=True tool_in_pr
         'adapter' => $adapter,
         'profile_tools' => $tools,
     ]);
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42));
+    $r = $p->handle(H::telegramUpdate(userId: 42));
     if ($linked && $profileOk && $toolIn) {
         expect($r['ok'])->toBeTrue();
         expect($registry->invokeCount())->toBe(1);
@@ -71,7 +71,7 @@ it('fail: tool blocked when linked=True profile_ok=True tool_in_profile=False [P
         'adapter' => $adapter,
         'profile_tools' => $tools,
     ]);
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42));
+    $r = $p->handle(H::telegramUpdate(userId: 42));
     if ($linked && $profileOk && $toolIn) {
         expect($r['ok'])->toBeTrue();
         expect($registry->invokeCount())->toBe(1);
@@ -110,7 +110,7 @@ it('fail: fail loud when linked=True profile_ok=False tool_in_profile=True [D-00
         'adapter' => $adapter,
         'profile_tools' => $tools,
     ]);
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42));
+    $r = $p->handle(H::telegramUpdate(userId: 42));
     if ($linked && $profileOk && $toolIn) {
         expect($r['ok'])->toBeTrue();
         expect($registry->invokeCount())->toBe(1);
@@ -149,7 +149,7 @@ it('fail: fail loud when linked=True profile_ok=False tool_in_profile=False [D-0
         'adapter' => $adapter,
         'profile_tools' => $tools,
     ]);
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42));
+    $r = $p->handle(H::telegramUpdate(userId: 42));
     if ($linked && $profileOk && $toolIn) {
         expect($r['ok'])->toBeTrue();
         expect($registry->invokeCount())->toBe(1);
@@ -188,7 +188,7 @@ it('fail: no tools when linked=False profile_ok=True tool_in_profile=True [MSG-0
         'adapter' => $adapter,
         'profile_tools' => $tools,
     ]);
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42));
+    $r = $p->handle(H::telegramUpdate(userId: 42));
     if ($linked && $profileOk && $toolIn) {
         expect($r['ok'])->toBeTrue();
         expect($registry->invokeCount())->toBe(1);
@@ -227,7 +227,7 @@ it('fail: no tools when linked=False profile_ok=True tool_in_profile=False [MSG-
         'adapter' => $adapter,
         'profile_tools' => $tools,
     ]);
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42));
+    $r = $p->handle(H::telegramUpdate(userId: 42));
     if ($linked && $profileOk && $toolIn) {
         expect($r['ok'])->toBeTrue();
         expect($registry->invokeCount())->toBe(1);
@@ -266,7 +266,7 @@ it('fail: no tools when linked=False profile_ok=False tool_in_profile=True [MSG-
         'adapter' => $adapter,
         'profile_tools' => $tools,
     ]);
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42));
+    $r = $p->handle(H::telegramUpdate(userId: 42));
     if ($linked && $profileOk && $toolIn) {
         expect($r['ok'])->toBeTrue();
         expect($registry->invokeCount())->toBe(1);
@@ -305,7 +305,7 @@ it('fail: no tools when linked=False profile_ok=False tool_in_profile=False [MSG
         'adapter' => $adapter,
         'profile_tools' => $tools,
     ]);
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42));
+    $r = $p->handle(H::telegramUpdate(userId: 42));
     if ($linked && $profileOk && $toolIn) {
         expect($r['ok'])->toBeTrue();
         expect($registry->invokeCount())->toBe(1);

@@ -67,6 +67,7 @@ Config file: `config/capabilities-messaging.php` (merged from the package).
 | `telegram.callback_ttl_seconds` | Callback freshness | `TELEGRAM_CALLBACK_TTL_SECONDS` (900) |
 | `telegram.turns_per_minute` | D-013 agent turns per chat per minute (core `RateLimiter`; `0` disables). Over the cap → `rate_limited`, no reply | `CAPABILITIES_MESSAGING_TURNS_PER_MINUTE` (20) |
 | `agent_profile` | D-008 profile for bot tool list — **never full catalog** | `CAPABILITIES_MESSAGING_AGENT_PROFILE` (default `support`) |
+| `user_model` | Host user model linked chat users resolve to (the `actor` capabilities see); `null` falls back to `auth.providers.users.model` | `CAPABILITIES_MESSAGING_USER_MODEL` |
 | `identity.mode` | `code_link` or `allowlist`; any other value fails `messaging:telegram-setup` validation | `CAPABILITIES_MESSAGING_IDENTITY_MODE` |
 | `identity.code_ttl_seconds` | Link code lifetime | `CAPABILITIES_MESSAGING_LINK_CODE_TTL` (600) |
 | `identity.allowlist` | Static telegram ↔ Laravel user maps | `[]` |
@@ -90,11 +91,15 @@ Point Telegram’s webhook at your app URL for that path. The controller is a th
 
 Before agent tools may mutate as a user, messaging maps the chat principal to a product user.
 
+A linked Telegram user resolves to an instance of your user model (`user_model`, else `auth.providers.users.model`) loaded with `Model::query()->find($id)`, so capability `authorize()` and policies receive the same type as on HTTP. If no model is configured, or the linked id no longer resolves, the message fails closed (no tools, no reply). This is checked on the first linked-user message, not at boot.
+
 ### `code_link` (default)
 
 1. Your app issues a one-time code for a Laravel user (`IdentityLinker::issueLinkCode`).
-2. The Telegram user presents the code.
-3. `bindWithCode` binds telegram user id → Laravel user (rejects expired, reused, or unknown codes).
+2. The Telegram user sends `/start <code>` or `/link <code>` to the bot. A deep link `https://t.me/<bot>?start=<code>` sends `/start <code>` for them.
+3. The update pipeline calls `bindWithCode` before identity resolution and replies with a fixed confirmation or refusal; no agent turn or tool runs. Expired, reused, or unknown codes are refused (`link_code_invalid`, logged as a warning).
+
+The command is only recognised in `code_link` mode. Codes live in the process-local `IdentityLinker` (L-006 residual): the process that issues a code must be the one that handles the `/start` update, so until a durable store exists this flow does not work across a web process and a separate queue worker.
 
 Codes expire per `identity.code_ttl_seconds`. Client-forged `laravel_user_id` values are never trusted.
 
@@ -125,6 +130,21 @@ TelegramSetup::runOrFail(app(MessagingConfig::class), fn (string $id) => User::f
 
 `runOrFail` throws naming each bad entry (`identity.allowlist[1]: laravel_user_id "999" …`). Entries missing either id fail even without a lookup.
 
+## Agent turn (required for replies)
+
+Messaging does not build the agent. Bind `Rawphp\CapabilitiesMessaging\Contracts\AgentTurn` in your app, usually around a `laravel/ai` agent:
+
+```php
+use Rawphp\CapabilitiesMessaging\Contracts\AgentTurn;
+
+$this->app->singleton(AgentTurn::class, SupportChatAgentTurn::class);
+```
+
+- `toolNames(string $profile): list<string>` — capability names the profile exposes (e.g. the names from `Capability::aiTools($profile)`). Tool calls outside this list are refused.
+- `respond(array $message): array{text, tool_calls?}` — run one turn. `$message` carries `text`, the linked `user`, `thread_id`, `profile`, `tools` and `messaging` metadata. Return tool calls as `['name' => …, 'input' => […]]`; messaging invokes each one through the capability bus as `caller: agent`, with per-update idempotency keys, then sends `text` as the reply.
+
+With no `AgentTurn` bound, a linked user's message gets **no reply** and an `agent_turn_unbound` error is logged; the profile exposes no tools.
+
 ## Agent profile
 
 Set `agent_profile` to a profile name that exists in core agent surface config (or is otherwise resolvable by the profile selector). Default config value is `support`.
@@ -137,7 +157,9 @@ Core owns approval state and HTTP accept/reject. Messaging supplies conversation
 
 **Production notifier FQCN:** `Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier` (Bot API). Core’s `RecordingTelegramApprovalNotifier` is a unit-test recording double; core’s deprecated empty `Rawphp\Capabilities\Approval\Notifiers\TelegramApprovalNotifier` is soft-landing only — do not bind it in hosts.
 
-**Callback handler:** `Telegram\CallbackHandler` is a host-constructed / unit-tested helper (not container-bound and **not** invoked by the default webhook → `ProcessTelegramUpdate` path yet). When hosts wire it for signed approval button callbacks, it routes accept/reject through core’s `ApprovalGateway` (`find` / `accept` / `reject`) — not the concrete `ApprovalManager` type and not raw `store()->find()`. Constructor third arg: `?ApprovalGateway` (null throws `ApprovalGateway is required…`). Lazy pending TTL runs on gateway `find()` (same mechanism as HTTP). After expiry, the handler returns Telegram envelope `status: already_handled`; HTTP accept maps the same expired row to `expired` / HTTP 410 — shared lookup, not identical response shapes. A non-empty signed `approver_hint` must equal the clicking user's linked product user id (`id`, else `getAuthIdentifier()`); otherwise the handler returns `forbidden` / `approver_mismatch` without calling the gateway. Leave the hint empty to let the approval policy decide alone. See package [CHANGELOG](../CHANGELOG.md) Unreleased **Breaking** for the full consumer impact list (type-hint, TTL outcome, exception text).
+**Callback handler:** `Telegram\CallbackHandler` is a host-constructed / unit-tested helper (not container-bound and **not** invoked by the default webhook → `ProcessTelegramUpdate` path yet). When hosts wire it for signed approval button callbacks, it routes accept/reject through core’s `ApprovalGateway` (`find` / `accept` / `reject`) — not the concrete `ApprovalManager` type and not raw `store()->find()`. Constructor third arg: `?ApprovalGateway` (null throws `ApprovalGateway is required…`). Lazy pending TTL runs on gateway `find()` (same mechanism as HTTP). After expiry, the handler returns Telegram envelope `status: already_handled`; HTTP accept maps the same expired row to `expired` / HTTP 410 — shared lookup, not identical response shapes. A non-empty signed `approver_hint` must equal the clicking user's linked product user id (`id`, else `getAuthIdentifier()`); otherwise the handler returns `forbidden` / `approver_mismatch` without calling the gateway. Leave the hint empty to let the approval policy decide alone.
+
+Button `callback_data` is a compact token that fits Telegram's 64-byte limit: `{a|r}.{approval_id}.{exp}.{sig}` (sig is a 96-bit truncated HMAC). The approver hint is signed but not transmitted, so decode the tapped button with `TelegramCallbackSigner::decode($callbackQuery['data'])` and pass the result to `CallbackHandler::handle()`: a token bound to a different user than the one who tapped reads as `invalid` / `invalid_signature_or_expired`. Approval ids longer than about 40 characters do not fit and make `notifyPending()` throw rather than send a button Telegram would reject. See package [CHANGELOG](../CHANGELOG.md) Unreleased **Breaking** for the full consumer impact list (type-hint, TTL outcome, exception text).
 
 ## What this package must not do
 
@@ -151,9 +173,12 @@ Core owns approval state and HTTP accept/reject. Messaging supplies conversation
 - Provider boots; webhook route present when Telegram is enabled.
 - First authorized webhook with valid secrets returns an `ok` JSON response shape from the route (`ok` / `error` / HTTP status from the controller result).
 - Unlinked users cannot exercise mutating tools until identity bind succeeds.
+- A linked user's message gets your `AgentTurn` reply (not an echo of their text).
 - Bot tool list matches the configured agent profile, not the entire registry.
 
 ## If something goes wrong
+
+Webhook rejections (bad secret, queue failure) and update-processing failures are written to your app logger with `tags` `channel`, `chat_id` and `update_id`. Unlinked users and rate-limited chats log as `warning`; anything else as `error`. Updates run on your queue: transient failures (Telegram 429/5xx, retryable capability results) fail the job so it retries and ends in `failed_jobs`.
 
 Troubleshooting (monorepo): [Messaging / Telegram](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/troubleshooting.md#messaging-telegram).
 

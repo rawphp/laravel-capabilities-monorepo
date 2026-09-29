@@ -20,16 +20,6 @@ use Throwable;
  */
 final class TelegramApprovalNotifier implements ApprovalNotifier
 {
-    /** @var list<array<string, mixed>> */
-    private array $notified = [];
-
-    /** @var list<array{approval: array<string, mixed>, text: string}> */
-    private array $edits = [];
-
-    private int $capabilityExecuteCount = 0;
-
-    private int $domainServiceCalls = 0;
-
     public function __construct(
         private readonly MessagingConfig $config,
         private readonly TelegramBotClient $bot,
@@ -55,9 +45,7 @@ final class TelegramApprovalNotifier implements ApprovalNotifier
 
         $approvalId = (string) ($approval['id'] ?? '');
         if ($approvalId === '') {
-            // Invalid id — still must not execute capability.
-            $this->notified[] = $approval;
-
+            // Nothing to sign a button for; never executes the capability.
             return;
         }
 
@@ -77,7 +65,7 @@ final class TelegramApprovalNotifier implements ApprovalNotifier
             (string) ($approval['summary'] ?? ''),
         );
 
-        $result = $this->deliver($approval, 'sendMessage', fn (): array => $this->bot->sendMessage($chatId, $text, [
+        $this->deliver($approval, 'sendMessage', fn (): array => $this->bot->sendMessage($chatId, $text, [
             'reply_markup' => [
                 'inline_keyboard' => [[
                     ['text' => 'Accept', 'callback_data' => $signer->encode($accept)],
@@ -88,11 +76,6 @@ final class TelegramApprovalNotifier implements ApprovalNotifier
             'accept_payload' => $accept,
             'reject_payload' => $reject,
         ]));
-
-        $this->notified[] = array_merge($approval, [
-            'sent_message_id' => $result['result']['message_id'] ?? null,
-            'signed' => true,
-        ]);
     }
 
     /**
@@ -113,39 +96,10 @@ final class TelegramApprovalNotifier implements ApprovalNotifier
             ?? null;
 
         if ($chatId === null || $messageId === null) {
-            $this->edits[] = ['approval' => $approval, 'text' => $text];
-
             return;
         }
 
         $this->deliver($approval, 'editMessageText', fn (): array => $this->bot->editMessageText($chatId, $messageId, $text));
-        $this->edits[] = ['approval' => $approval, 'text' => $text];
-    }
-
-    /**
-     * @return list<array<string, mixed>>
-     */
-    public function notified(): array
-    {
-        return $this->notified;
-    }
-
-    /**
-     * @return list<array{approval: array<string, mixed>, text: string}>
-     */
-    public function edits(): array
-    {
-        return $this->edits;
-    }
-
-    public function capabilityExecuteCount(): int
-    {
-        return $this->capabilityExecuteCount;
-    }
-
-    public function domainServiceCalls(): int
-    {
-        return $this->domainServiceCalls;
     }
 
     /**

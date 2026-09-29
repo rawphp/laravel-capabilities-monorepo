@@ -2,11 +2,13 @@
 
 namespace Rawphp\CapabilitiesMessaging\Telegram;
 
+use Psr\Log\LoggerInterface;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Support\CapabilityContext;
 use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
 use Rawphp\CapabilitiesMessaging\MessagingConfig;
+use Rawphp\CapabilitiesMessaging\Support\TelegramBotApiException;
 use Rawphp\CapabilitiesMessaging\Support\TelegramBotClient;
 use Rawphp\CapabilitiesMessaging\Threads\ThreadStore;
 use RuntimeException;
@@ -20,6 +22,8 @@ use Throwable;
  * → tool_calls_registry → conversation_reply
  *
  * Webhook verify + queue happen earlier (controller). Never domain run outside registry.
+ *
+ * D-019: failures go to the optional PSR-3 logger with channel/chat/update tags.
  *
  * D-013: an optional core RateLimiter caps agent turns per chat_id per minute
  * (telegram.turns_per_minute), checked before identity so a flooding chat costs nothing.
@@ -38,22 +42,21 @@ final class ProcessTelegramUpdate
         'conversation_reply',
     ];
 
+    public const LINKED_REPLY = 'Linked. You can chat with the assistant now.';
+
+    public const LINK_FAILED_REPLY = 'That link code is invalid or expired. Ask for a new one in the app.';
+
+    /** `/start <code>` or `/link <code>` — code_link bind step (MSG-002). */
+    private const LINK_COMMAND = '#^/(?:start|link)(?:@\w+)?\s+([0-9a-f]{16})$#';
+
     /** @var list<string> */
     private array $completedSteps = [];
-
-    /** @var list<array{level: string, message: string, context: array<string, mixed>}> */
-    private array $logs = [];
 
     /** @var array<string, mixed>|null */
     private ?array $lastTags = null;
 
-    /** @var callable|null (profile, tools) => list of tool names available */
+    /** @var callable|null (profile) => list of tool names the profile exposes; none = no tools */
     private $profileResolver;
-
-    /** @var callable|null agent turn: (message, context) => array{text: string, tool_calls?: list} */
-    private $agentRunner;
-
-    private bool $domainBypassAttempted = false;
 
     public function __construct(
         private readonly MessagingConfig $config,
@@ -63,11 +66,10 @@ final class ProcessTelegramUpdate
         private readonly ?CapabilityBus $registry = null,
         private readonly ?TelegramBotClient $bot = null,
         ?callable $profileResolver = null,
-        ?callable $agentRunner = null,
         private readonly ?RateLimiter $turnLimiter = null,
+        private readonly ?LoggerInterface $logger = null,
     ) {
         $this->profileResolver = $profileResolver;
-        $this->agentRunner = $agentRunner;
     }
 
     /**
@@ -82,65 +84,23 @@ final class ProcessTelegramUpdate
         try {
             return $this->process($update);
         } catch (Throwable $e) {
-            $this->log('error', $e->getMessage(), [
+            // Expected per-user outcomes are warnings; anything else is an error (D-019).
+            $expected = in_array($e->getMessage(), ['identity_unresolved', 'rate_limited'], true);
+            $this->log($expected ? 'warning' : 'error', 'Telegram update failed: '.$e->getMessage(), [
                 'failure' => $e->getMessage(),
                 'tags' => $this->lastTags,
             ]);
 
+            // Transient: fail the queued job so the queue retries (D-019 failed-job tags).
+            if ($e instanceof RetryableUpdateFailure) {
+                throw $e;
+            }
+
             return [
                 'ok' => false,
                 'error' => $e->getMessage(),
                 'steps' => $this->completedSteps,
                 'tags' => $this->lastTags,
-                'domain_bypass' => $this->domainBypassAttempted,
-                'observable' => true,
-            ];
-        }
-    }
-
-    /**
-     * Simulate full pipeline including webhook stages (for order tests).
-     *
-     * @param  array<string, mixed>  $update
-     * @param  array{secret_valid?: bool, skip_queue?: bool, fail_at?: string|null}  $options
-     * @return array<string, mixed>
-     */
-    public function runPipeline(array $update, array $options = []): array
-    {
-        $this->completedSteps = [];
-        $this->domainBypassAttempted = false;
-        $failAt = $options['fail_at'] ?? null;
-
-        if (($options['secret_valid'] ?? true) !== true) {
-            $this->log('warning', 'bad_secret', []);
-            if ($failAt === null || $failAt === 'verify_webhook_secret') {
-                return $this->failClosed('bad_secret', 'verify_webhook_secret');
-            }
-        }
-        $this->mark('verify_webhook_secret');
-        if ($failAt === 'verify_webhook_secret') {
-            return $this->failClosed('verify_webhook_secret_failed', 'verify_webhook_secret');
-        }
-
-        $this->mark('queue_process_update');
-        if ($failAt === 'queue_process_update') {
-            return $this->failClosed('queue_failed', 'queue_process_update');
-        }
-
-        try {
-            $result = $this->process($update, $failAt);
-            $result['steps'] = $this->completedSteps;
-
-            return $result;
-        } catch (Throwable $e) {
-            return [
-                'ok' => false,
-                'error' => $e->getMessage(),
-                'steps' => $this->completedSteps,
-                'tools_reached' => in_array('tool_calls_registry', $this->completedSteps, true),
-                'domain_bypass' => $this->domainBypassAttempted,
-                'failed_step' => $this->guessFailedStep($e->getMessage()),
-                'observable' => true,
             ];
         }
     }
@@ -168,30 +128,17 @@ final class ProcessTelegramUpdate
     }
 
     /**
-     * @return list<array{level: string, message: string, context: array<string, mixed>}>
-     */
-    public function logs(): array
-    {
-        return $this->logs;
-    }
-
-    public function domainBypassAttempted(): bool
-    {
-        return $this->domainBypassAttempted;
-    }
-
-    /**
      * @param  array<string, mixed>  $update
      * @return array<string, mixed>
      */
-    private function process(array $update, ?string $failAt = null): array
+    private function process(array $update): array
     {
-        if ($failAt === 'invalid_update_shape' || ! TelegramUpdateParser::isValidShape($update)) {
+        if (! TelegramUpdateParser::isValidShape($update)) {
             throw new RuntimeException('invalid_update_shape');
         }
 
         $chatId = TelegramUpdateParser::chatId($update);
-        if ($failAt === 'unknown_chat' || $chatId === null) {
+        if ($chatId === null) {
             throw new RuntimeException('unknown_chat');
         }
 
@@ -201,10 +148,12 @@ final class ProcessTelegramUpdate
         $topicId = TelegramUpdateParser::topicId($update);
         $text = TelegramUpdateParser::text($update);
 
-        // resolve_identity
-        if ($failAt === 'identity_unresolved') {
-            throw new RuntimeException('identity_unresolved');
+        $linkCode = $this->linkCode($text, $telegramUserId);
+        if ($linkCode !== null) {
+            return $this->bindLink((string) $chatId, (string) $telegramUserId, $linkCode);
         }
+
+        // resolve_identity
         $user = $this->identity->resolve([
             'channel' => 'telegram',
             'telegram_user_id' => $telegramUserId,
@@ -217,9 +166,6 @@ final class ProcessTelegramUpdate
         }
 
         // map_thread
-        if ($failAt === 'thread_store_failure') {
-            $this->threads->failNext(true);
-        }
         $thread = $this->threads->getOrCreate((string) $chatId, $topicId);
         $this->threads->appendHistory($thread['id'], [
             'role' => 'user',
@@ -229,24 +175,12 @@ final class ProcessTelegramUpdate
         $this->mark('map_thread');
 
         // agent profile required (D-008)
-        if ($failAt === 'profile_missing') {
-            throw new RuntimeException('profile_missing');
-        }
         $profile = $this->config->requireAgentProfile();
         $this->mark('agent_tools_profile');
 
         $profileTools = $this->resolveProfileTools($profile);
-        if ($failAt === 'tool_not_in_profile') {
-            $profileTools = [];
-        }
 
         // conversation_ingress
-        if ($failAt === 'ingress_failure') {
-            throw new RuntimeException('ingress_failure');
-        }
-        if ($failAt === 'agent_failure') {
-            throw new RuntimeException('agent_failure');
-        }
 
         $messagingMeta = [
             'channel' => 'telegram',
@@ -273,10 +207,6 @@ final class ProcessTelegramUpdate
         // tool_calls_registry
         $toolCalls = is_array($ingressResult) ? ($ingressResult['tool_calls'] ?? []) : [];
         $toolResults = [];
-
-        if ($failAt === 'tool_registry_failure') {
-            throw new RuntimeException('tool_registry_failure');
-        }
 
         $turnToolCalls = 0;
         foreach ($toolCalls as $call) {
@@ -310,6 +240,9 @@ final class ProcessTelegramUpdate
             $result = $this->registry->invoke($name, $call['input'] ?? [], $options);
             if (! $result->isOk()) {
                 $code = (string) ($result->errorCode() ?? 'registry_validation');
+                if ($result->isRetryable()) {
+                    throw new RetryableUpdateFailure($code);
+                }
                 if ($code === 'forbidden') {
                     throw new RuntimeException('registry_forbidden');
                 }
@@ -323,9 +256,6 @@ final class ProcessTelegramUpdate
         $this->mark('tool_calls_registry');
 
         // conversation_reply
-        if ($failAt === 'reply_failure') {
-            throw new RuntimeException('reply_failure');
-        }
         $replyText = is_array($ingressResult)
             ? (string) ($ingressResult['text'] ?? 'ok')
             : 'ok';
@@ -336,7 +266,11 @@ final class ProcessTelegramUpdate
                 'thread_id' => $thread['id'],
             ]);
         } catch (Throwable $e) {
-            throw new RuntimeException('reply_send_fail: '.$e->getMessage(), 0, $e);
+            $message = 'reply_send_fail: '.$e->getMessage();
+            if ($e instanceof TelegramBotApiException && $e->retryable) {
+                throw new RetryableUpdateFailure($message, 0, $e);
+            }
+            throw new RuntimeException($message, 0, $e);
         }
         $this->mark('conversation_reply');
 
@@ -355,7 +289,46 @@ final class ProcessTelegramUpdate
             'messaging' => $messagingMeta,
             'caller' => 'agent',
             'steps' => $this->completedSteps,
-            'domain_bypass' => false,
+        ];
+    }
+
+    /**
+     * Link code presented in chat, only in code_link mode (allowlist must not be bypassed).
+     */
+    private function linkCode(string $text, ?string $telegramUserId): ?string
+    {
+        if ($telegramUserId === null || $this->config->identityMode() !== 'code_link') {
+            return null;
+        }
+
+        return preg_match(self::LINK_COMMAND, trim($text), $m) === 1 ? $m[1] : null;
+    }
+
+    /**
+     * Bind the chat user with an app-issued code and confirm in chat — no agent turn, no tools.
+     *
+     * @return array<string, mixed>
+     */
+    private function bindLink(string $chatId, string $telegramUserId, string $code): array
+    {
+        $linked = $this->identity->bindWithCode($telegramUserId, $code) !== null;
+        $this->mark('link_identity');
+
+        $this->adapter->reply([
+            'chat_id' => $chatId,
+            'text' => $linked ? self::LINKED_REPLY : self::LINK_FAILED_REPLY,
+        ]);
+        $this->mark('conversation_reply');
+
+        if (! $linked) {
+            $this->log('warning', 'Telegram link code refused', ['failure' => 'link_code_invalid', 'tags' => $this->lastTags]);
+        }
+
+        return [
+            'ok' => $linked,
+            'linked' => $linked,
+            'error' => $linked ? null : 'link_code_invalid',
+            'steps' => $this->completedSteps,
         ];
     }
 
@@ -388,7 +361,7 @@ final class ProcessTelegramUpdate
             return $tools;
         }
 
-        // Default: profile name is non-empty ⇒ empty tool list unless resolver provided.
+        // Fail closed: no resolver (no AgentTurn bound) ⇒ no tools.
         return [];
     }
 
@@ -398,55 +371,10 @@ final class ProcessTelegramUpdate
     }
 
     /**
-     * @return array<string, mixed>
-     */
-    private function failClosed(string $error, string $step): array
-    {
-        $this->log('warning', $error, ['step' => $step]);
-
-        return [
-            'ok' => false,
-            'error' => $error,
-            'failed_step' => $step,
-            'steps' => $this->completedSteps,
-            'tools_reached' => false,
-            'domain_bypass' => false,
-            'observable' => true,
-        ];
-    }
-
-    private function guessFailedStep(string $message): string
-    {
-        foreach ([
-            'invalid_update_shape',
-            'unknown_chat',
-            'rate_limited',
-            'identity_unresolved',
-            'thread_store',
-            'ingress_failure',
-            'agent_failure',
-            'tool_registry_failure',
-            'tool_not_in_profile',
-            'profile_missing',
-            'registry_forbidden',
-            'registry_validation',
-            'reply_failure',
-            'reply_send_fail',
-            'approval_required',
-        ] as $code) {
-            if (str_contains($message, $code)) {
-                return $code;
-            }
-        }
-
-        return 'unknown';
-    }
-
-    /**
      * @param  array<string, mixed>  $context
      */
     private function log(string $level, string $message, array $context = []): void
     {
-        $this->logs[] = ['level' => $level, 'message' => $message, 'context' => $context];
+        $this->logger?->log($level, $message, $context);
     }
 }

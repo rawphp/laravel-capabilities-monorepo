@@ -18,9 +18,4 @@ interface TelegramBotClient
      * @return array<string, mixed>
      */
     public function editMessageText(string $chatId, string|int $messageId, string $text, array $payload = []): array;
-
-    /**
-     * @return list<array{method: string, args: array<string, mixed>}>
-     */
-    public function calls(): array;
 }

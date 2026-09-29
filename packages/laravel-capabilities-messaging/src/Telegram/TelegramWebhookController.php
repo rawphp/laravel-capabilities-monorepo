@@ -2,6 +2,7 @@
 
 namespace Rawphp\CapabilitiesMessaging\Telegram;
 
+use Psr\Log\LoggerInterface;
 use Rawphp\CapabilitiesMessaging\MessagingConfig;
 use Rawphp\CapabilitiesMessaging\Support\UpdateQueue;
 use RuntimeException;
@@ -12,19 +13,16 @@ use RuntimeException;
  * Never invokes CapabilityRegistry or domain run() (D-007).
  * UpdateQueue is required (L-004) — no FakeQueue default outside tests.
  * Production container injects LaravelUpdateQueue; unit tests inject FakeQueue.
+ * Rejections and queue failures go to the optional PSR-3 logger (D-019).
  */
 final class TelegramWebhookController
 {
     public const SECRET_HEADER = 'X-Telegram-Bot-Api-Secret-Token';
 
-    /** @var list<array{level: string, message: string, context: array<string, mixed>}> */
-    private array $logs = [];
-
-    private int $registryInvokeCount = 0;
-
     public function __construct(
         private readonly MessagingConfig $config,
         private readonly UpdateQueue $queue,
+        private readonly ?LoggerInterface $logger = null,
     ) {}
 
     /**
@@ -70,25 +68,9 @@ final class TelegramWebhookController
         return ['ok' => true, 'status' => 200, 'queued' => true];
     }
 
-    /**
-     * Intentionally never call the registry from the webhook (guard for tests).
-     */
-    public function registryInvokeCount(): int
-    {
-        return $this->registryInvokeCount;
-    }
-
     public function queue(): UpdateQueue
     {
         return $this->queue;
-    }
-
-    /**
-     * @return list<array{level: string, message: string, context: array<string, mixed>}>
-     */
-    public function logs(): array
-    {
-        return $this->logs;
     }
 
     /**
@@ -98,9 +80,6 @@ final class TelegramWebhookController
     {
         foreach ($headers as $key => $value) {
             if (strcasecmp((string) $key, self::SECRET_HEADER) === 0) {
-                return (string) $value;
-            }
-            if (strcasecmp((string) $key, 'x-telegram-bot-api-secret-token') === 0) {
                 return (string) $value;
             }
         }
@@ -113,6 +92,6 @@ final class TelegramWebhookController
      */
     private function log(string $level, string $message, array $context = []): void
     {
-        $this->logs[] = ['level' => $level, 'message' => $message, 'context' => $context];
+        $this->logger?->log($level, $message, $context);
     }
 }

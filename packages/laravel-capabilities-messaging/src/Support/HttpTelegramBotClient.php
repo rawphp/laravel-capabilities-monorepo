@@ -17,9 +17,6 @@ final class HttpTelegramBotClient implements TelegramBotClient
     /** @var callable(string, array<string, mixed>, string): array<string, mixed> */
     private $transport;
 
-    /** @var list<array{method: string, args: array<string, mixed>}> */
-    private array $calls = [];
-
     /**
      * @param  (callable(string $method, array<string, mixed> $params, string $token): array<string, mixed>)|null  $transport
      */
@@ -60,14 +57,6 @@ final class HttpTelegramBotClient implements TelegramBotClient
     }
 
     /**
-     * @return list<array{method: string, args: array<string, mixed>}>
-     */
-    public function calls(): array
-    {
-        return $this->calls;
-    }
-
-    /**
      * @param  array<string, mixed>  $params
      * @return array<string, mixed>
      */
@@ -79,8 +68,6 @@ final class HttpTelegramBotClient implements TelegramBotClient
                 'TELEGRAM_BOT_TOKEN is required for HttpTelegramBotClient (D-021).'
             );
         }
-
-        $this->calls[] = ['method' => $method, 'args' => $params];
 
         $result = ($this->transport)($method, $params, $token);
         if (! is_array($result)) {

@@ -2887,7 +2887,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/laravel-capabilities-messaging",
-                "reference": "22cec4f0f985a06589204e0c0ff7bd02cae5c6e4"
+                "reference": "6f59d0293b53e59e44e1267124827b3864d6d933"
             },
             "require": {
                 "illuminate/database": "^11.0|^12.0|^13.0",
@@ -2896,6 +2896,7 @@
                 "illuminate/routing": "^11.0|^12.0|^13.0",
                 "illuminate/support": "^11.0|^12.0|^13.0",
                 "php": "^8.2",
+                "psr/log": "^1.0|^2.0|^3.0",
                 "rawphp/laravel-capabilities": "*"
             },
             "require-dev": {

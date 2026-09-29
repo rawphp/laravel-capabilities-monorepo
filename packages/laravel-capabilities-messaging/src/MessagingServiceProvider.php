@@ -5,6 +5,7 @@ namespace Rawphp\CapabilitiesMessaging;
 use Illuminate\Contracts\Bus\Dispatcher as BusDispatcher;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\ServiceProvider;
+use Psr\Log\LoggerInterface;
 use Rawphp\Capabilities\Contracts\ApprovalNotifier;
 use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
@@ -15,7 +16,9 @@ use Rawphp\Capabilities\Contracts\Metrics;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\CapabilitiesMessaging\Boot\MessagingBindings;
 use Rawphp\CapabilitiesMessaging\Boot\MessagingRegistration;
+use Rawphp\CapabilitiesMessaging\Contracts\AgentTurn;
 use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
+use Rawphp\CapabilitiesMessaging\Identity\ModelUserFactory;
 use Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier;
 use Rawphp\CapabilitiesMessaging\Support\FakeQueue;
 use Rawphp\CapabilitiesMessaging\Support\LaravelUpdateQueue;
@@ -102,31 +105,39 @@ class MessagingServiceProvider extends ServiceProvider
         $this->app->singleton(IdentityLinker::class, function ($app) {
             return new IdentityLinker(
                 $app->make(MessagingConfig::class),
+                new ModelUserFactory(self::userModel($app)),
                 metrics: $app->bound(Metrics::class) ? $app->make(Metrics::class) : null,
             );
         });
         $this->app->alias(IdentityLinker::class, ConversationIdentity::class);
 
+        // Resolved lazily: callbackSecret() throws when neither callback nor webhook secret is set (D-021).
         $this->app->singleton(TelegramCallbackSigner::class, function ($app) {
             /** @var MessagingConfig $cfg */
             $cfg = $app->make(MessagingConfig::class);
-            $secret = $cfg->webhookSecret() ?? 'deferred-unset';
 
-            return new TelegramCallbackSigner($secret, $cfg->callbackTtlSeconds());
+            return new TelegramCallbackSigner($cfg->callbackSecret(), $cfg->callbackTtlSeconds());
         });
 
+        // Agent turn is a host binding (D-007): unbound ⇒ adapter fails closed, profile has no tools.
         $this->app->singleton(TelegramAdapter::class, function ($app) {
-            return new TelegramAdapter($app->make(TelegramBotClient::class));
+            $turn = self::agentTurn($app);
+
+            return new TelegramAdapter(
+                $app->make(TelegramBotClient::class),
+                $turn === null ? null : static fn (array $message): array => $turn->respond($message),
+            );
         });
         $this->app->alias(TelegramAdapter::class, ConversationIngress::class);
         $this->app->alias(TelegramAdapter::class, ConversationReply::class);
 
+        // No signer injected: the notifier signs with callbackSecret() on notify, so resolving
+        // the ApprovalNotifier never requires secrets at boot (D-021).
         $this->app->singleton(TelegramApprovalNotifier::class, function ($app) {
             return new TelegramApprovalNotifier(
                 $app->make(MessagingConfig::class),
                 $app->make(TelegramBotClient::class),
-                $app->make(TelegramCallbackSigner::class),
-                $app->bound(AuditWriter::class) ? $app->make(AuditWriter::class) : null,
+                audit: $app->bound(AuditWriter::class) ? $app->make(AuditWriter::class) : null,
             );
         });
         $this->app->alias(TelegramApprovalNotifier::class, ApprovalNotifier::class);
@@ -135,6 +146,7 @@ class MessagingServiceProvider extends ServiceProvider
             return new TelegramWebhookController(
                 $app->make(MessagingConfig::class),
                 $app->make(UpdateQueue::class),
+                self::logger($app),
             );
         });
 
@@ -148,7 +160,9 @@ class MessagingServiceProvider extends ServiceProvider
                 $app->make(TelegramAdapter::class),
                 $registry,
                 $app->make(TelegramBotClient::class),
+                self::toolNamesResolver($app),
                 turnLimiter: $app->bound(RateLimiter::class) ? $app->make(RateLimiter::class) : null,
+                logger: self::logger($app),
             );
         });
     }
@@ -169,6 +183,44 @@ class MessagingServiceProvider extends ServiceProvider
         if ((bool) $this->app['config']->get('capabilities-messaging.telegram.enabled', false)) {
             $this->loadRoutesFrom(__DIR__.'/../routes/messaging.php');
         }
+    }
+
+    /**
+     * capabilities-messaging.user_model, else the auth users provider model (same rule as the AI sibling).
+     */
+    private static function userModel(Container $app): ?string
+    {
+        foreach (['capabilities-messaging.user_model', 'auth.providers.users.model'] as $key) {
+            $model = $app['config']->get($key);
+            if (is_string($model) && $model !== '') {
+                return $model;
+            }
+        }
+
+        return null;
+    }
+
+    private static function agentTurn(Container $app): ?AgentTurn
+    {
+        return $app->bound(AgentTurn::class) ? $app->make(AgentTurn::class) : null;
+    }
+
+    /**
+     * @return (callable(string): list<string>)|null
+     */
+    private static function toolNamesResolver(Container $app): ?callable
+    {
+        $turn = self::agentTurn($app);
+
+        return $turn === null ? null : static fn (string $profile): array => $turn->toolNames($profile);
+    }
+
+    /**
+     * Host PSR-3 logger when bound (Laravel aliases LoggerInterface to `log`), else none (D-019).
+     */
+    private static function logger(Container $app): ?LoggerInterface
+    {
+        return $app->bound(LoggerInterface::class) ? $app->make(LoggerInterface::class) : null;
     }
 
     /**

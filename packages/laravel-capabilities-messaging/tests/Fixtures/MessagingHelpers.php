@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesMessaging\Tests\Fixtures;
 
+use Illuminate\Container\Container;
+use Illuminate\Contracts\Foundation\CachesConfiguration;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Contracts\ApprovalGateway;
 use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
 use Rawphp\CapabilitiesMessaging\MessagingConfig;
+use Rawphp\CapabilitiesMessaging\MessagingServiceProvider;
 use Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier;
 use Rawphp\CapabilitiesMessaging\Support\FakeQueue;
 use Rawphp\CapabilitiesMessaging\Support\FakeTelegramBotClient;
@@ -95,6 +98,16 @@ final class MessagingHelpers
     }
 
     /**
+     * Test agent turn: replies with the user's text, no tool calls.
+     *
+     * @return callable(array<string, mixed>): array{text: string, tool_calls: list<mixed>}
+     */
+    public static function echoAgent(): callable
+    {
+        return static fn (array $message): array => ['text' => (string) ($message['text'] ?? ''), 'tool_calls' => []];
+    }
+
+    /**
      * @param  array{
      *   config?: MessagingConfig,
      *   identity?: IdentityLinker,
@@ -111,7 +124,7 @@ final class MessagingHelpers
         $identity = $parts['identity'] ?? new IdentityLinker($config);
         $threads = $parts['threads'] ?? new ThreadStore;
         $bot = $parts['bot'] ?? new FakeTelegramBotClient;
-        $adapter = $parts['adapter'] ?? new TelegramAdapter($bot);
+        $adapter = $parts['adapter'] ?? new TelegramAdapter($bot, self::echoAgent());
         $registry = $parts['registry'] ?? new FakeCapabilityBus;
         $tools = $parts['profile_tools'] ?? ['support.ping'];
 
@@ -167,6 +180,65 @@ final class MessagingHelpers
     }
 
     /**
+     * DB-free container with the messaging provider registered against a fixed config array.
+     * Config reports as cached, so register() skips mergeConfigFrom and the env()-driven file.
+     *
+     * @param  array<string, mixed>  $messagingConfig  value of config('capabilities-messaging')
+     * @param  array<string, mixed>  $otherConfig  other dotted keys (e.g. auth.providers.users.model)
+     */
+    public static function container(array $messagingConfig = [], array $otherConfig = []): Container
+    {
+        $app = new class extends Container implements CachesConfiguration
+        {
+            public function configurationIsCached(): bool
+            {
+                return true;
+            }
+
+            public function getCachedConfigPath(): string
+            {
+                return '';
+            }
+
+            public function getCachedServicesPath(): string
+            {
+                return '';
+            }
+
+            public function environment(): string
+            {
+                return 'testing';
+            }
+        };
+        $values = ['capabilities-messaging' => $messagingConfig] + $otherConfig;
+        $app->instance('config', new class($values)
+        {
+            /** @param  array<string, mixed>  $values */
+            public function __construct(private array $values) {}
+
+            public function get(string $key, mixed $default = null): mixed
+            {
+                if (array_key_exists($key, $this->values)) {
+                    return $this->values[$key];
+                }
+                // Dotted lookup into the messaging array (e.g. capabilities-messaging.user_model).
+                $cursor = $this->values;
+                foreach (explode('.', $key) as $segment) {
+                    if (! is_array($cursor) || ! array_key_exists($segment, $cursor)) {
+                        return $default;
+                    }
+                    $cursor = $cursor[$segment];
+                }
+
+                return $cursor;
+            }
+        });
+        (new MessagingServiceProvider($app))->register();
+
+        return $app;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public static function telegramUpdate(
@@ -190,6 +262,19 @@ final class MessagingHelpers
             'update_id' => $updateId,
             'message' => $message,
         ];
+    }
+
+    /**
+     * Constructor dependency types of a class — structural proof of what it can call.
+     *
+     * @param  class-string  $class
+     * @return list<string>
+     */
+    public static function constructorTypes(string $class): array
+    {
+        $params = (new \ReflectionClass($class))->getConstructor()?->getParameters() ?? [];
+
+        return array_map(static fn (\ReflectionParameter $p): string => (string) $p->getType()?->getName(), $params);
     }
 
     /**

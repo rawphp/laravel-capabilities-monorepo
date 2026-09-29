@@ -8,18 +8,12 @@ use RuntimeException;
  * Conversation thread persistence (in-memory for unit tests; swap driver in production).
  *
  * Topics are isolated: chat A topic 1 cannot read topic 2 history.
+ * Not final so hosts (and tests) can swap the storage behind the same API.
  */
-final class ThreadStore
+class ThreadStore
 {
     /** @var array<string, array{id: string, chat_id: string, topic_id: string|null, history: list<array<string, mixed>>}> */
     private array $threads = [];
-
-    private bool $failNext = false;
-
-    public function failNext(bool $fail = true): void
-    {
-        $this->failNext = $fail;
-    }
 
     /**
      * Stable thread id for chat + optional topic.
@@ -36,8 +30,6 @@ final class ThreadStore
      */
     public function getOrCreate(string $chatId, string|int|null $topicId = null): array
     {
-        $this->maybeFail();
-
         $id = $this->threadIdFor($chatId, $topicId);
         if (! isset($this->threads[$id])) {
             $this->threads[$id] = [
@@ -56,7 +48,6 @@ final class ThreadStore
      */
     public function find(string $chatId, string|int|null $topicId = null): ?array
     {
-        $this->maybeFail();
         $id = $this->threadIdFor($chatId, $topicId);
 
         return $this->threads[$id] ?? null;
@@ -67,8 +58,6 @@ final class ThreadStore
      */
     public function appendHistory(string $threadId, array $message): void
     {
-        $this->maybeFail();
-
         if (! isset($this->threads[$threadId])) {
             throw new RuntimeException(sprintf('Unknown thread "%s".', $threadId));
         }
@@ -81,8 +70,6 @@ final class ThreadStore
      */
     public function history(string $threadId): array
     {
-        $this->maybeFail();
-
         return $this->threads[$threadId]['history'] ?? [];
     }
 
@@ -102,13 +89,5 @@ final class ThreadStore
         $thread = $this->find($chatId, $topicId);
 
         return $thread['history'] ?? [];
-    }
-
-    private function maybeFail(): void
-    {
-        if ($this->failNext) {
-            $this->failNext = false;
-            throw new RuntimeException('Thread store failure (fake).');
-        }
     }
 }

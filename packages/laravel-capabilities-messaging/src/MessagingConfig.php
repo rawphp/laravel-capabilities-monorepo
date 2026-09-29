@@ -15,6 +15,7 @@ final class MessagingConfig
         'queue_driver',
         'bot_driver',
         'agent_profile',
+        'user_model',
         'identity',
         'skip_boot_checks',
     ];
@@ -47,6 +48,7 @@ final class MessagingConfig
             'queue_driver' => 'auto',
             'bot_driver' => 'auto',
             'agent_profile' => 'support',
+            'user_model' => null,
             'identity' => [
                 'mode' => 'code_link',
                 'code_ttl_seconds' => 600,

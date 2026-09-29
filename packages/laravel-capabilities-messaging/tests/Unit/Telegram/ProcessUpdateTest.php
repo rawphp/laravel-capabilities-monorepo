@@ -2,9 +2,12 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\CapabilitiesMessaging\Telegram\TelegramAdapter;
+use Rawphp\CapabilitiesMessaging\Telegram\TelegramWebhookController;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\FakeCapabilityBus;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers as H;
+use Rawphp\CapabilitiesMessaging\Tests\Fixtures\PipelineScenario;
 
 it('happy: linked identity maps chat to agent turn via ConversationIngress [MSG-003]', function () {
     $identity = H::identity();
@@ -44,7 +47,7 @@ it('happy: ConversationReply sends response via Bot API mock [MSG-003]', functio
     $bot = H::bot();
     $identity = H::identity();
     $identity->link('42', 'u1');
-    $adapter = new TelegramAdapter($bot);
+    $adapter = new TelegramAdapter($bot, H::echoAgent());
     $p = H::processor(['identity' => $identity, 'adapter' => $adapter, 'bot' => $bot]);
     $p->handle(H::telegramUpdate(userId: 42, chatId: 77));
     expect($bot->calls())->not->toBeEmpty();
@@ -115,14 +118,12 @@ it('edge: queue ProcessTelegramUpdate async not sync domain mutation [MSG-003]',
     $q = H::queue();
     $ctrl = H::webhook([], $q);
     $ctrl->handle(['X-Telegram-Bot-Api-Secret-Token' => 'test-webhook-secret'], H::telegramUpdate());
-    expect($q->count())->toBe(1)->and($ctrl->registryInvokeCount())->toBe(0);
+    expect($q->count())->toBe(1)
+        ->and(H::constructorTypes(TelegramWebhookController::class))->not->toContain(CapabilityBus::class);
 });
 
 it('happy: pipeline verify secret then queue then identity then thread then ingress [MSG-003]', function () {
-    $identity = H::identity();
-    $identity->link('42', 'u1');
-    $p = H::processor(['identity' => $identity]);
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['secret_valid' => true]);
+    $r = PipelineScenario::happy()->run();
     expect($r['ok'])->toBeTrue();
     expect($r['steps'][0])->toBe('verify_webhook_secret');
     expect($r['steps'][1])->toBe('queue_process_update');
@@ -146,7 +147,7 @@ it('happy: tool call invokes registry with the gated agent profile as tool_profi
         'adapter' => $adapter,
         'profile_tools' => ['support.ping'],
     ]);
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42));
+    $r = $p->handle(H::telegramUpdate(userId: 42));
     expect($r['ok'])->toBeTrue()
         ->and($registry->invocations()[0]['options']['tool_profile'] ?? null)->toBe('support');
 });

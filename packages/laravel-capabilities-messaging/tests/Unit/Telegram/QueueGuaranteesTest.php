@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdate;
+use Rawphp\CapabilitiesMessaging\Telegram\TelegramWebhookController;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers as H;
 
 it('happy: valid webhook enqueues ProcessTelegramUpdate [MSG-003]', function () {
@@ -17,7 +19,8 @@ it('happy: valid webhook enqueues ProcessTelegramUpdate [MSG-003]', function () 
 it('fail: valid webhook does not sync-mutate domain [D-007]', function () {
     $ctrl = H::webhook();
     $ctrl->handle(['X-Telegram-Bot-Api-Secret-Token' => 'test-webhook-secret'], H::telegramUpdate());
-    expect($ctrl->registryInvokeCount())->toBe(0);
+    // The webhook has no bus to call: it can only verify and enqueue.
+    expect(H::constructorTypes(TelegramWebhookController::class))->not->toContain(CapabilityBus::class);
 });
 
 it('fail: invalid webhook does not enqueue [MSG-003]', function () {

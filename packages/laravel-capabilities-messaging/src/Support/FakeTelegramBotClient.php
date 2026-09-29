@@ -28,6 +28,8 @@ final class FakeTelegramBotClient implements TelegramBotClient
             throw new RuntimeException('Telegram sendMessage failed (fake).');
         }
 
+        $this->assertCallbackDataFits($payload);
+
         $messageId = $this->messageSeq++;
         $args = array_merge($payload, [
             'chat_id' => $chatId,
@@ -51,6 +53,29 @@ final class FakeTelegramBotClient implements TelegramBotClient
         return ['ok' => true, 'result' => ['message_id' => $messageId, 'text' => $text]];
     }
 
+    /**
+     * Mirror the Bot API: callback_data over 64 bytes is a 400 BUTTON_DATA_INVALID.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function assertCallbackDataFits(array $payload): void
+    {
+        foreach ($payload['reply_markup']['inline_keyboard'] ?? [] as $row) {
+            foreach ((array) $row as $button) {
+                if (strlen((string) ($button['callback_data'] ?? '')) > 64) {
+                    throw TelegramBotApiException::fromResponse('sendMessage', [
+                        'ok' => false,
+                        'error_code' => 400,
+                        'description' => 'Bad Request: BUTTON_DATA_INVALID',
+                    ]);
+                }
+            }
+        }
+    }
+
+    /**
+     * @return list<array{method: string, args: array<string, mixed>}>
+     */
     public function calls(): array
     {
         return $this->calls;
