@@ -8,8 +8,15 @@ declare(strict_types=1);
  */
 
 use Illuminate\Container\Container;
+use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Support\Facades\Facade;
+use Illuminate\Support\Facades\Http;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
+use Rawphp\Capabilities\Contracts\Metrics;
+use Rawphp\Capabilities\Contracts\Tracer;
+use Rawphp\Capabilities\Observability\InMemoryMetrics;
+use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesAi\CapabilitiesAiServiceProvider;
@@ -17,14 +24,17 @@ use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
+use Rawphp\CapabilitiesAi\Contracts\ProgressStoreReadiness;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
+use Rawphp\CapabilitiesAi\Support\AnthropicLlmClient;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 use Rawphp\CapabilitiesAi\Support\StoreBoundIdempotencyReadiness;
+use Rawphp\CapabilitiesAi\Support\StoreBoundProgressStoreReadiness;
 
 function aiFakeBus(): CapabilityBus
 {
@@ -160,6 +170,11 @@ it('defaults IdempotencyReadiness ready when core IdempotencyStore is bound', fu
             return $record;
         }
 
+        public function claim(array $record): bool
+        {
+            return true;
+        }
+
         public function update(?string $tenantId, string $actorType, string $actorId, string $capabilityName, string $key, array $attributes): ?array
         {
             return null;
@@ -275,6 +290,98 @@ it('RunTurnJob handle type-hints TurnRunner (UR-021 wiring allowed)', function (
     $src = file_get_contents($path) ?: '';
 
     // UR-017 only required that DI not own the job body; UR-021 wires handle(TurnRunner).
-    expect($src)->toContain('handle(TurnRunner $runner)')
+    expect($src)->toContain('handle(TurnRunner $runner')
         ->and($src)->toContain('$runner->run($this->turnUlid)');
+});
+
+it('wires container-bound core Metrics and Tracer into the anthropic LlmClient', function () {
+    $app = bootAiProviderContainer(['llm' => ['driver' => 'anthropic', 'anthropic' => ['api_key' => 'test-key']]]);
+    $metrics = new InMemoryMetrics;
+    $tracer = new InMemoryTracer;
+    $app->instance(Metrics::class, $metrics);
+    $app->instance(Tracer::class, $tracer);
+
+    Facade::setFacadeApplication($app);
+    $app->singleton('http', fn () => new HttpFactory);
+    Http::swap(new HttpFactory);
+    Http::fake([
+        'api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 500),
+    ]);
+
+    $llm = $app->make(LlmClient::class);
+
+    expect($llm)->toBeInstanceOf(AnthropicLlmClient::class)
+        ->and(fn () => $llm->complete([['role' => 'user', 'content' => 'hi']]))->toThrow(RuntimeException::class);
+
+    expect(array_column($metrics->emissions(), 'name'))->toContain(AnthropicLlmClient::METRIC_FAILURES)
+        ->and($tracer->spans()[0]['status'])->toBe('error');
+});
+
+it('defaults ProgressStoreReadiness to a live ping of the bound ProgressStore', function () {
+    $app = bootAiProviderContainer();
+
+    $ready = $app->make(ProgressStoreReadiness::class);
+    expect($ready)->toBeInstanceOf(StoreBoundProgressStoreReadiness::class)
+        ->and($ready->isReady())->toBeTrue();
+});
+
+it('ProgressStoreReadiness records not-ready on core Metrics when bound', function () {
+    $app = new class extends Container
+    {
+        public function runningInConsole(): bool
+        {
+            return true;
+        }
+    };
+
+    $down = new class implements ProgressStore
+    {
+        public function append(string $turnUlid, array $event): void {}
+
+        public function since(string $turnUlid, int $cursor = 0): array
+        {
+            throw new RuntimeException('redis down');
+        }
+    };
+    $metrics = new InMemoryMetrics;
+    $app->instance(ProgressStore::class, $down);
+    $app->instance(Metrics::class, $metrics);
+
+    $base = require dirname(__DIR__, 3).'/config/capabilities-ai.php';
+    $app->instance('config', aiConfigRepo(['capabilities-ai' => $base]));
+    $app->instance(CapabilityBus::class, aiFakeBus());
+
+    (new CapabilitiesAiServiceProvider($app))->register();
+
+    expect($app->make(ProgressStoreReadiness::class)->isReady())->toBeFalse()
+        ->and($metrics->get(StoreBoundProgressStoreReadiness::METRIC_NOT_READY, [
+            'store' => $down::class,
+        ]))->toBe(1);
+});
+
+it('does not overwrite host-prebound ProgressStoreReadiness', function () {
+    $app = new class extends Container
+    {
+        public function runningInConsole(): bool
+        {
+            return true;
+        }
+    };
+
+    $host = new class implements ProgressStoreReadiness
+    {
+        public function isReady(): bool
+        {
+            return false;
+        }
+    };
+    $app->instance(ProgressStoreReadiness::class, $host);
+
+    $base = require dirname(__DIR__, 3).'/config/capabilities-ai.php';
+    $app->instance('config', aiConfigRepo(['capabilities-ai' => $base]));
+    $app->instance(CapabilityBus::class, aiFakeBus());
+
+    (new CapabilitiesAiServiceProvider($app))->register();
+
+    expect($app->make(ProgressStoreReadiness::class))->toBe($host);
 });

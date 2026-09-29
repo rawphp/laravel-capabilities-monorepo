@@ -11,6 +11,19 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Added
+
+- **Approval executor identity columns** — `capabilities_approvals` gains nullable
+  `executor_actor_type` / `executor_actor_id` (new migration
+  `2026_09_24_000001_add_executor_actor_to_capabilities_approvals_table`).
+  `ApprovalExecutor::execute()` writes them in the same conditional update as
+  `result_status` on every terminal path (ok, domain failure, stale, original actor
+  forbidden): the deciding user on accept, the `SystemActor` on resume (D-002).
+  Custom `ApprovalStore` / `TableGateway` implementations must persist the two new keys.
+- `GET /{prefix}/health` now reports `api_version` (`RouteTable::API_VERSION`, currently `1`).
+  The product CLI checks it before `run` and refuses a server that speaks another version.
+  Bump it on any breaking change to route shapes or the invoke/error envelopes.
+
 ### Changed (BREAKING)
 
 #### Accepted approvals now run the capability
@@ -32,12 +45,70 @@ contract was never checked.
   your authorizer needs a real user model, bind your own with
   `ApprovalManager::withExecutor(...)`.
 
+#### MCP integration clients are bound to configured profiles (D-023)
+
+An `integration` MCP principal could previously run inside any profile the host
+passed. It now runs only inside profiles listed for its `client_id` under
+`surfaces.mcp.auth.integration_profiles` (`client_id => list<profile>`). Any other
+profile — or no profile — returns `forbidden` with `normalized_code`
+`integration_profile_forbidden`, before the registry is invoked. User principals
+(`user_pat`, `user_delegated`) are unchanged.
+
+**Upgrade:** add an `integration_profiles` entry for every client in
+`integration_actors`, or its tool calls will be refused.
+
+### Added
+
+- **`capabilities:integration-health` pings the AI progress store:** in AI-chat mode a new `ai_progress_ready` row resolves `Rawphp\CapabilitiesAi\Contracts\ProgressStoreReadiness` by class-string and fails when the store is unreachable (or cannot be resolved, e.g. `progress.driver=redis` with no Redis client); skips when the AI package does not bind it. `IntegrationHealthChecker::check()` takes an optional sixth `$progressStoreReady` callable.
+- **`capabilities:integration-health` warns on silent audit loss (D-010).** New
+  `audit_writer` check: when `audit.enabled` and any invoke surface is on but the live
+  registry has no `AuditWriter`, it reports `warn` (every audit record is otherwise a
+  silent no-op). It probes `CapabilityRegistry::audit()`, not a container binding — the
+  service provider does not inject a bound `AuditWriter`; wire one with
+  `CapabilityRegistry::withAuditWriter(...)`. Warn only; exit code unchanged.
+  `IntegrationHealthChecker::check()` takes an optional seventh `$auditWriterWired` probe.
+
 ### Changed
 
 - **Discovery fails closed on half-written capability classes (D-017).** A class carrying
   `#[Capability]` that does not implement `DefinesCapability` now throws `BootException`
   during discovery instead of being silently dropped from the catalog. Add
   `implements DefinesCapability` or remove the attribute.
+- **MCP handle requires a profile after multi-profile register (D-008).** Once
+  `McpToolAdapterV1` has registered more than one distinct profile, `handle()` /
+  `handleStructured()` without `options['profile']` return `not_runnable`
+  (`normalized_code: profile_required`, plus `registered_profiles`) instead of silently
+  running under the last-registered profile. Single-profile hosts are unchanged.
+- **Failed audit outbox rows are retried (D-010).** `WriteAuditJob::handle()` now calls
+  `AuditOutbox::requeueFailed($maxAttempts)` before draining, so a `failed` row goes back
+  to `pending` until it has used `maxAttempts` (new constructor argument, default `3`).
+  Before, one failed write left the row `failed` forever. Rows at the cap stay `failed`.
+
+## [0.5.3] - 2026-09-29
+
+### Changed
+
+#### InvokePipeline run stage — bug-class errors no longer look like domain errors
+
+Before this release every throwable from a capability's run stage became 422
+`domain_error` (cli_exit 5, retryable false) with the exception message passed
+through, so PHP bugs and SQL errors reached callers as "domain" failures and
+leaked SQL text and model class names. The run-stage catch now maps:
+
+- **`\Error` (incl. `TypeError`) and `PDOException` (incl. `QueryException`)** →
+  `internal`, HTTP 500, cli_exit 1, retryable true, message `Internal error.`.
+  The exception is reported through the bound `ExceptionHandler`.
+- **`ModelNotFoundException`** → `not_found`, HTTP 404, cli_exit 5, retryable false,
+  message `Not found.`. Not reported.
+- **Everything else** (other `RuntimeException` / `Exception` throws) → unchanged:
+  422 `domain_error` with its message.
+
+The `capabilities_invoke_total` status label follows the new codes.
+
+Consumers: clients or middleware that matched 422 plus "No query results for model"
+or SQL text must switch to 404/`not_found` and 500/`internal`. A run-stage `internal`
+failure under an Idempotency-Key is stored and replayed for the key's TTL like any other
+failure, so a retry of a transient error needs a new key.
 
 ## [0.5.2] - 2026-08-27
 
@@ -127,6 +198,14 @@ Documentation honesty (monorepo `docs/spec.md` + package user-guide alignment): 
 - **Not Packagist-published / not stable 1.x** — unchanged.
 
 ### Added
+
+#### Audit entry `tool_profile` (D-008 / D-010)
+
+Every audit entry now carries `tool_profile`: the tool profile the surface gated the invoke under.
+`runCapabilityInProfile()` stamps the **enforced** profile (overwriting any caller-supplied
+`tool_profile` option), so agent and MCP adapter invokes record it; sibling surfaces that gate
+tools themselves (messaging) pass it as an invoke option. `null` for invokes outside a profile
+(HTTP, CLI, job).
 
 #### Host integration diagnostics + MCP fail policy (UR-062 / D-024)
 

@@ -116,3 +116,25 @@ it('happy: rate_limited maps to HTTP 429 and CLI exit 6 [D-018]', function () {
         ->and($r->error['http_status'] ?? null)->toBe(429)
         ->and($r->error['cli_exit'] ?? null)->toBe(6);
 });
+
+it('fail: approval-required invokes are rate limited before a pending approval is stored [D-013]', function () {
+    $h = RateLimitHelpers::harness(['per_min' => 100, 'per_cap' => 1, 'name' => 'rl-approval']);
+    $opts = RateLimitHelpers::options('http', ['needs_approval' => true]);
+
+    $first = $h['registry']->invoke($h['name'], RateLimitHelpers::input(), $opts);
+    $second = $h['registry']->invoke($h['name'], RateLimitHelpers::input(), $opts);
+
+    expect($first->isApprovalRequired())->toBeTrue()
+        ->and($second->errorCode())->toBe('rate_limited')
+        ->and($h['fakes']->approvals->findByStatus('pending'))->toHaveCount(1)
+        ->and($h['runCount']->value)->toBe(0);
+});
+
+it('fail: approval requests count toward the per_minute actor budget [D-013]', function () {
+    $h = RateLimitHelpers::harness(['per_min' => 1, 'per_cap' => 100, 'name' => 'rl-approval-pm']);
+
+    $h['registry']->invoke($h['name'], RateLimitHelpers::input(), RateLimitHelpers::options('http', ['needs_approval' => true]));
+    $r = $h['registry']->invoke($h['name'], RateLimitHelpers::input(), RateLimitHelpers::options());
+
+    expect($r->errorCode())->toBe('rate_limited')->and($h['runCount']->value)->toBe(0);
+});

@@ -71,6 +71,8 @@ return [
                 'default_profile' => 'user_pat',
                 'allow_integration_credentials' => false,
                 'integration_actors' => [],
+                // client_id => list of MCP profiles that integration client may use; unlisted → forbidden.
+                'integration_profiles' => [],
                 'audit_client_id' => true,
             ],
         ],

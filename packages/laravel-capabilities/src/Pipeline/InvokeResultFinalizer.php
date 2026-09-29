@@ -4,7 +4,6 @@ namespace Rawphp\Capabilities\Pipeline;
 
 use Rawphp\Capabilities\Events\CapabilityFailed;
 use Rawphp\Capabilities\Events\CapabilityInvoked;
-use Rawphp\Capabilities\Registry\CapabilityDefinition;
 use Rawphp\Capabilities\Support\CapabilityResult;
 
 /**
@@ -52,7 +51,7 @@ final class InvokeResultFinalizer
         }
 
         if ($auditDeny || $afterRun || $outputInvalid) {
-            $this->recordAudit($state, success: false, failure: $result);
+            $this->recordAudit($state, success: false, failure: $result, force: $outputInvalid);
             $this->emitEvents($state, success: false, failure: $result);
         } elseif ($outputInvalid || $afterRun) {
             // already handled
@@ -162,7 +161,7 @@ final class InvokeResultFinalizer
             $this->observation->invokedEvents[] = $event;
         } elseif ($failure !== null) {
             $this->recordFailure(
-                $state->definition,
+                $state->definition->name,
                 $failure->error['message'] ?? 'failed',
                 $state->caller,
                 $failure->errorCode() ?? 'internal',
@@ -171,13 +170,13 @@ final class InvokeResultFinalizer
     }
 
     public function recordFailure(
-        CapabilityDefinition $definition,
+        string $capability,
         string $message,
         string $caller,
         string $code = 'output_invalid',
     ): void {
         $event = new CapabilityFailed(
-            capability: $definition->name,
+            capability: $capability,
             code: $code,
             message: $message,
             caller: $caller,
@@ -187,15 +186,15 @@ final class InvokeResultFinalizer
             'level' => 'error',
             'message' => $message,
             'context' => [
-                'capability' => $definition->name,
+                'capability' => $capability,
                 'code' => $code,
                 'caller' => $caller,
             ],
         ];
     }
 
-    private function recordAudit(InvokeState $state, bool $success, ?CapabilityResult $failure = null): ?CapabilityResult
+    private function recordAudit(InvokeState $state, bool $success, ?CapabilityResult $failure = null, bool $force = false): ?CapabilityResult
     {
-        return $this->auditStage->record($state, $success, $failure);
+        return $this->auditStage->record($state, $success, $failure, $force);
     }
 }

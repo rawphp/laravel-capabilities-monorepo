@@ -18,6 +18,7 @@ use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
+use Rawphp\CapabilitiesAi\Support\ToolSchemaHash;
 
 function bootProposalsGateSqlite(): void
 {
@@ -119,6 +120,50 @@ it('creates proposal from fence when proposalsEnabled=true', function () {
         ->and(Proposal::query()->first()?->status)->toBe(Proposal::STATUS_PENDING);
 });
 
+it('stamps the target tool schema hash on a fenced proposal at creation time', function () {
+    bootProposalsGateSqlite();
+    $seeded = enqueueProposalGateTurn();
+    $tool = ['name' => 'x.y', 'parameters' => ['type' => 'object', 'properties' => ['a' => ['type' => 'integer']]]];
+    $tools = new class($tool) implements ToolCatalog
+    {
+        /** @param  array<string, mixed>  $tool */
+        public function __construct(private array $tool) {}
+
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [$this->tool];
+        }
+    };
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: new FakeLlmClient([['content' => proposalFenceContent()]]),
+        progress: new ArrayProgressStore,
+        context: emptyContextProvider(),
+        tools: $tools,
+        bus: null,
+    );
+    $runner->run($seeded['turn_ulid']);
+
+    expect(Proposal::query()->first()?->schema_hash)->toBe(ToolSchemaHash::of($tool));
+});
+
+it('leaves schema_hash null when the fenced target is not in the turn tool profile', function () {
+    bootProposalsGateSqlite();
+    $seeded = enqueueProposalGateTurn();
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: new FakeLlmClient([['content' => proposalFenceContent()]]),
+        progress: new ArrayProgressStore,
+        context: emptyContextProvider(),
+        tools: emptyToolCatalog(),
+        bus: null,
+    );
+    $runner->run($seeded['turn_ulid']);
+
+    expect(Proposal::query()->count())->toBe(1)
+        ->and(Proposal::query()->first()?->schema_hash)->toBeNull();
+});
+
 it('history returns empty proposals when service constructed with proposals disabled', function () {
     bootProposalsGateSqlite();
     $svc = new ConversationService(
@@ -127,8 +172,8 @@ it('history returns empty proposals when service constructed with proposals disa
         claimTtl: 120,
         proposalsEnabled: false,
     );
-    $ids = $svc->createUserMessage('hi');
-    $h = $svc->history($ids['conversation_ulid']);
+    $ids = $svc->createUserMessage('hi', userId: 'u1');
+    $h = $svc->history($ids['conversation_ulid'], 'u1');
     expect($h)->toHaveKey('proposals')
         ->and($h['proposals'])->toBe([]);
 });
@@ -141,7 +186,7 @@ it('history loads proposals when proposals enabled', function () {
         claimTtl: 120,
         proposalsEnabled: true,
     );
-    $ids = $svc->createUserMessage('hi');
+    $ids = $svc->createUserMessage('hi', userId: 'u1');
     $turn = Turn::query()->where('ulid', $ids['turn_ulid'])->firstOrFail();
     $conversation = Conversation::query()->where('ulid', $ids['conversation_ulid'])->firstOrFail();
     Proposal::query()->create([
@@ -154,7 +199,7 @@ it('history loads proposals when proposals enabled', function () {
         'status' => Proposal::STATUS_PENDING,
     ]);
 
-    $h = $svc->history($ids['conversation_ulid']);
+    $h = $svc->history($ids['conversation_ulid'], 'u1');
     expect($h['proposals'])->toHaveCount(1)
         ->and($h['proposals'][0]['target_capability'])->toBe('demo.cap')
         ->and($h['proposals'][0]['status'])->toBe(Proposal::STATUS_PENDING);
@@ -185,4 +230,54 @@ it('provider bootRoutes gates proposal routes on proposals.enabled', function ()
     expect($src)->toContain('proposalsEnabled')
         ->and($src)->toContain('capabilities-ai-proposals.php')
         ->and($src)->toContain('public static function proposalsEnabled');
+});
+
+function runProposalGateTurn(string $content, bool $proposalsEnabled): ArrayProgressStore
+{
+    bootProposalsGateSqlite();
+    $seeded = enqueueProposalGateTurn();
+    $progress = new ArrayProgressStore;
+    $runner = new TurnRunner(
+        claim: new TurnClaim,
+        llm: new FakeLlmClient([['content' => $content]]),
+        progress: $progress,
+        context: emptyContextProvider(),
+        tools: emptyToolCatalog(),
+        proposalsEnabled: $proposalsEnabled,
+    );
+    expect($runner->run($seeded['turn_ulid'])->status)->toBe(Turn::STATUS_COMPLETED);
+
+    return $progress;
+}
+
+function progressKinds(ArrayProgressStore $progress): array
+{
+    $turnUlid = Turn::query()->value('ulid');
+
+    return array_column($progress->since((string) $turnUlid), 'kind');
+}
+
+it('emits proposal_invalid progress when the proposal fence JSON does not decode', function () {
+    $progress = runProposalGateTurn("ok\n```proposal\n{\"type\":\"action\",}\n```", proposalsEnabled: true);
+
+    $kinds = progressKinds($progress);
+
+    expect(Proposal::query()->count())->toBe(0)
+        ->and($kinds)->toContain('proposal_invalid')
+        ->and(end($kinds))->toBe('terminal');
+});
+
+it('does not emit proposal_invalid when the fence is absent or valid', function (string $content) {
+    $progress = runProposalGateTurn($content, proposalsEnabled: true);
+
+    expect(progressKinds($progress))->not->toContain('proposal_invalid');
+})->with([
+    'absent' => 'plain answer',
+    'valid' => proposalFenceContent(),
+]);
+
+it('does not emit proposal_invalid when proposals are disabled', function () {
+    $progress = runProposalGateTurn("ok\n```proposal\n{bad}\n```", proposalsEnabled: false);
+
+    expect(progressKinds($progress))->not->toContain('proposal_invalid');
 });
