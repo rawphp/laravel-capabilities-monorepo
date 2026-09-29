@@ -118,7 +118,7 @@ func TestLoginTokenRejectedDoesNotClobberProfile(t *testing.T) {
 	}
 }
 
-// failingTransport fails every request, standing in for an unreachable host.
+// unreachableClient fails every request, standing in for an unreachable host.
 func unreachableClient() *api.Client {
 	c := api.NewClient("https://unreachable.invalid", "")
 	c.HTTP = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
