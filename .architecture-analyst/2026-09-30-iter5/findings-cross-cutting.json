@@ -1,0 +1,103 @@
+{
+ "auditor": "cross-cutting-auditor",
+ "version": "1.0",
+ "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-audit5",
+ "stack_summary": {
+  "laravel": {
+   "present": true,
+   "version": "11.x|12.x|13.x (illuminate/* components; three packages, not a full app)",
+   "php_version": "8.2+",
+   "key_packages": [
+    "illuminate/support",
+    "illuminate/http",
+    "illuminate/routing",
+    "illuminate/console",
+    "illuminate/bus",
+    "illuminate/events",
+    "illuminate/database",
+    "illuminate/validation",
+    "pestphp/pest",
+    "phpstan/phpstan"
+   ]
+  },
+  "frontend": {
+   "framework": "none",
+   "framework_version": null,
+   "inertia_version": null,
+   "typescript": false,
+   "state_library": "none",
+   "ui_library": "none",
+   "build_tool": "unknown",
+   "key_packages": []
+  },
+  "testing": {
+   "backend": "pest",
+   "frontend": "none"
+  },
+  "tooling": {
+   "linter_backend": "none",
+   "linter_frontend": "none",
+   "formatter_frontend": "none",
+   "types_php": "phpstan"
+  },
+  "infrastructure_hints": {
+   "queue_driver": "unknown",
+   "cache_driver": "unknown",
+   "ci": "github-actions (tests.yml, split-packages.yml)",
+   "deploy": "unknown"
+  },
+  "notes": "Monorepo: packages/laravel-capabilities (core bus, ~22.8k LOC), packages/laravel-capabilities-messaging (~3k), packages/laravel-capabilities-ai (~4.5k), packages/capabilities-cli (Go, ~5.5k). No root app/routes/package.json. Unit-test-only policy (no feature/DB tests), >=95% coverage. Design oracle: docs/spec.md (D-002..D-023). Standing decisions: /Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.do-work/decisions.md (primary checkout, untracked).",
+  "control_plane": {
+   "present": true,
+   "language": "go",
+   "path": "packages/capabilities-cli",
+   "notes": "Go product CLI, HTTP client only (D-016)"
+  }
+ },
+ "scanned_files_count": 58,
+ "findings": [
+  {
+   "id": "X-401",
+   "title": "Core CHANGELOG hides M-301's invoke tenant change; no BREAKING/upgrade note",
+   "category": "documentation",
+   "severity": "medium",
+   "effort": "trivial",
+   "impact": [
+    "security",
+    "reliability"
+   ],
+   "locations": [
+    {
+     "file": "packages/laravel-capabilities/src/Support/DefaultScopeResolver.php",
+     "line": 124,
+     "snippet": "} elseif (is_object($user) && isset($user->tenant_id)) {\n    $fromMembership = (string) $user->tenant_id;\n} elseif (is_object($user) && isset($user->tenantId)) {"
+    },
+    {
+     "file": "packages/laravel-capabilities/src/Support/DefaultScopeResolver.php",
+     "line": 143,
+     "snippet": "// Keep membership as authority for user actors (D-003); trusted option used when membership empty.\n$tenantId = $fromMembership;"
+    },
+    {
+     "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+     "line": 849,
+     "snippet": "private function approverTenant(object $approver, array $options): ?string   // was: $options['tenant_id'] ?? $this->tenantOf($approver)"
+    },
+    {
+     "file": "packages/laravel-capabilities/CHANGELOG.md",
+     "line": 313,
+     "snippet": "### Fixed\n- **In-tenant approvers can accept, reject and resume (D-003 / D-006, M-301).** ... `DefaultScopeResolver` reads a principal's `current_tenant_id`, then `tenant_id`, then `tenantId` as membership"
+    },
+    {
+     "file": "packages/laravel-capabilities/CHANGELOG.md",
+     "line": 97,
+     "snippet": "### Changed (BREAKING)   (no M-301 / ScopeResolver entry)"
+    }
+   ],
+   "current_state": "M-301 (4e10bb3) made DefaultScopeResolver treat a principal's `tenant_id` / `tenantId` as membership. That applies to every user invoke, not only approval decisions. Run against the tree, a principal with only `tenant_id = acme` used to resolve to `default-tenant` and now resolves to `acme`. With a trusted `tenant_id => other` option, the old resolver returned `other` and the new one returns `acme`. The approval side changed the same way: `accept`/`reject`'s `tenant_id` option used to override the approver's tenant and now only fills in when the approver has none. The core CHANGELOG lists all of this under `Fixed` as an approval-placement fix. `Changed (BREAKING)` has no entry, and nothing says that invoke scope changes for these principals.",
+   "recommended_state": "Core [Unreleased] `Changed (BREAKING)` gets a short M-301 entry with an upgrade note. It names the hosts affected: the default resolver plus principals that carry `tenant_id` / `tenantId` but no `current_tenant_id`. It states the effect: their invokes now resolve to that tenant instead of `default-tenant` or a trusted `tenant_id` option, which changes the `CapabilityScope` passed to `run()` and the tenant stamped on audit, idempotency and approval rows. It also says the `ApprovalGateway::accept()`/`reject()` `tenant_id` option no longer overrides the approver's own tenant, and that a host keeps the old rule by binding its own `ScopeResolver`.",
+   "rationale": "Tenant scope is the package's security boundary (D-003), and `Changed (BREAKING)` is where hosts learn about behaviour that affects an upgrade. That section already carries comparable behaviour changes with upgrade notes, such as the MCP integration-profile binding and the removed default-actor fallback. A host with a `users.tenant_id` column starts running capabilities under a different `$scope->tenantId` on upgrade, and nothing warns it. Rows it stamped `default-tenant` and in-flight idempotency keys stop matching. Any server-side `tenant_id` it passed to invokes or approvals is now overridden, and the changelog does not tell it to check. The code change itself is intended and tested (ApproverTenantResolutionTest), so this is a documentation gap.",
+   "implementation_hint": "packages/laravel-capabilities/CHANGELOG.md, under `### Changed (BREAKING)`: add `#### DefaultScopeResolver reads tenant_id / tenantId as membership (D-003, M-301)`. For a user principal with `tenant_id` or `tenantId` and no `current_tenant_id`, invokes and approval decisions now resolve to that tenant (previously `default-tenant`, or a trusted `tenant_id` option). On invokes, membership now wins over a trusted `tenant_id` option. On `ApprovalGateway::accept()`/`reject()`, the option only fills in when the approver has no membership tenant. **Upgrade:** rows and host data stamped `default-tenant` for these users no longer match the resolved scope. Bind a custom `ScopeResolver` to keep the old rule. Shorten the Fixed entry at line 313 to point here. Docs only."
+  }
+ ],
+ "notes": "Iteration-5 check of the iteration-4 cross-cutting fixes (edd3edd..HEAD). X-301 is fixed. The versioning.md publish-surface table has the rawphp/laravel-capabilities-ai row. The checklist says 'core first, then messaging and AI' and 'Exactly three Composer packages', and the submit, verify and prep steps now cover AI. X-302 is fixed. The spec D-021 notify row says the notify throw is reported (ExceptionHandler + approval_notify_failed_total{notifier}) and does not fail the invoke. The core README Redactor row says messaging and AI, which matches both sibling allowlist tests. Changelog discipline for the fix commits: C-301 (ee0b3c7) has an accurate CLI [Unreleased] entry (versioned cache key, no action needed). For M-302 (972c1aa), the AI Added entry, README config rows, config docblocks and the user-guide claim_ttl paragraph agree with ContainerBindings::makeTurnRunner(turnBudgetSeconds: claim_ttl) and the new optional DeadlineAwareLlmClient contract, which is additive. M-301 (4e10bb3) has core and messaging entries, but the core entry under-reports the tenant change on invokes (X-401). Running the old and new DefaultScopeResolver side by side confirmed it. The new ApprovalManager and ApprovalResumer constructor args are optional and trailing, so they are additive. Gates on the audit tree: Pint --test passes, PHPStan level 1 reports no errors (scratch tmpDir), gofmt -l is empty, report_inventory_gaps --fail-on-gaps finds no gaps, tools/tests pass 33 OK and scripts/lib/test-release.sh passes 55/55. CI, split and release scripts are unchanged since iteration 4 verified them. Dependency direction is unchanged: messaging's M-301 change is test-only and AI's new contract is package-local. Split readiness: the new src file is under the package tree and no build output is tracked. Not raised: package-internal correctness of approver resolution and the turn budget (core and siblings auditor scope), and the deferred-list items."
+}

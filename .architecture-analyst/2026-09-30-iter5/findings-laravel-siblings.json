@@ -1,0 +1,59 @@
+{
+  "auditor": "laravel-auditor-siblings",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-audit5",
+  "stack_summary": {
+    "laravel": "illuminate/* 11-13 component packages (library monorepo, not an app)",
+    "scope": ["packages/laravel-capabilities-messaging", "packages/laravel-capabilities-ai"],
+    "testing": "pest, unit-only policy",
+    "types": "phpstan"
+  },
+  "scanned_files_count": 18,
+  "findings": [
+    {
+      "id": "M-401",
+      "title": "Stop the default 110s/120s budget from refusing normal multi-round AI turns",
+      "category": "queues_events",
+      "severity": "high",
+      "effort": "small",
+      "impact": ["reliability"],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-ai/src/Domain/TurnRunner.php",
+          "line": 97,
+          "snippet": "if ($llm instanceof DeadlineAwareLlmClient && $this->now() + $llm->requestTimeoutSeconds() * 1_000_000_000 >= $deadlineNs) { throw new RetryableLlmException(\"Turn time budget ...\"); }"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php",
+          "line": 85,
+          "snippet": "'timeout' => (int) $env('CAPABILITIES_AI_ANTHROPIC_TIMEOUT', 110),"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php",
+          "line": 98,
+          "snippet": "'claim_ttl' => (int) $env('CAPABILITIES_AI_CLAIM_TTL', Package::DEFAULT_CLAIM_TTL), // 120"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php",
+          "line": 147,
+          "snippet": "'max_tool_rounds' => (int) $env('CAPABILITIES_AI_MAX_TOOL_ROUNDS', 8),"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Support/AnthropicLlmClient.php",
+          "line": 248,
+          "snippet": "])->timeout($this->timeoutSeconds)->retry( // full 110s every round, whatever is left of the turn"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Support/ContainerBindings.php",
+          "line": 145,
+          "snippet": "if ($timeout >= $claimTtl) { throw new InvalidArgumentException(...) } // only check: 110 < 120"
+        }
+      ],
+      "current_state": "The M-302 fix gates each round with `now + full request timeout < turn deadline`, and every request still gets the full `llm.anthropic.timeout`. With the shipped defaults (timeout 110, claim_ttl 120), round 1 always starts, but any later round needs everything before it (LLM rounds plus tool invokes) to have finished within 10 seconds. A typical tool turn (about 4s to pick a tool, a quick invoke, about 4s per later round) fails as `Turn time budget ... cannot fit another LLM round` at round 3, and a slow first round (a long context, more than 10s) fails at round 2. Before the fix, these turns finished well inside the 120s job. `max_tool_rounds` 8 cannot be reached with the defaults. The new test only covers a 50s request timeout, so the default pairing is never exercised.",
+      "recommended_state": "A round is refused only when too little time is left for any useful request, not when a worst-case 110s request no longer fits. Each request's transport timeout is capped at what is left of the turn minus a small margin, so the worker still can never be killed mid-request. With the defaults, a multi-round turn whose actual total time is under claim_ttl completes, as it did before M-302.",
+      "rationale": "The fix swaps a rare failure (a worker killed when rounds really do add up to more than 120s) for a common one: any agent turn with more than one or two tool rounds fails as retryable on the default config. Tool use is the package's main path. Every tool call costs at least one more round, and a failed turn has usually already run its bus invokes, so a user who retries repeats the side effects. Docs tell hosts to 'raise claim_ttl for long multi-round turns', but with these defaults 'long' means anything over 10 seconds, which is surprising and undocumented as such. There is no recorded decision for this tradeoff in docs/spec.md or .do-work/decisions.md, and it is not the deferred 'single long capability call' residual.",
+      "implementation_hint": "Keep DeadlineAwareLlmClient, but make the deadline shrink the request instead of blocking the round. In AnthropicLlmClient::send use `->timeout($this->effectiveTimeoutSeconds())`, where the effective timeout is `min(timeoutSeconds, intdiv(turnDeadlineNs - hrtime(true), 1e9) - margin)` (margin about 2s) when a turn deadline is set. In retryFitsDeadline, compare `wait + effective timeout` rather than the full timeout. In TurnRunner, refuse a round only when the remaining budget is under a small floor, for example `min(requestTimeoutSeconds, 15)` exposed as a `minRoundSeconds()` on the contract or as a constant. A capped request that times out already surfaces as RetryableLlmException via ConnectionException, the same outcome as today's refusal but only when it is actually needed. Unit tests on the fake clock with the real defaults (timeout 110, budget 120): three 4s rounds complete, and a round with 5s left is refused without calling complete(). In AnthropicLlmClientTest, a client with withDeadline(now + 30s) sends a timeout of 28 or less. Correct the config, README and user-guide wording, which currently says a round needs 'one more timeout' of headroom."
+    }
+  ],
+  "notes": "Iteration-5 audit of messaging and AI on arch-audit5 (HEAD cb43279). Diffs since edd3edd that touch these packages: 972c1aa (M-302, AI) and 4e10bb3 (M-301, core, plus a messaging test and CHANGELOG). M-301 from the sibling side: correct and complete. Core now places the approver with the bound ScopeResolver (ResolveTenantFromCaller::tenantOfPrincipal), which is also wired through CapabilityRegistry::withScopeResolver, withApprovalManager and the service provider. DefaultScopeResolver reads current_tenant_id, then tenant_id, then tenantId, so a hand-built IdentityLinker's LinkedUser resolves to its link tenant. The default provider path (ModelUserFactory) hands core the host Eloquent user, so approver and row are placed by the same rule. CallbackHandler needs no change. The new CallbackRoutingTest case uses a real ApprovalManager, and messaging requires core at self.version, so there is no version skew. Leave the core internals of M-301 (ApprovalResumer, the 'agent' caller for decided_via, trusted tenant_id precedence) to the core auditor. M-302: the absolute turn deadline, the withDeadline clone, the retry clamp and the build check are all correct as coded, and the claim_ttl wiring is consistent: makeTurnRunner, makeConversationService and the job timeout all use claimTtlFromConfig. The regression is in the admission rule versus the shipped defaults, so it is raised as M-401. Everything else in both packages is unchanged since iteration 4 and was not re-reported. Deferred items were respected (the sqlite tests, the max_tokens default, a long capability call between rounds). Tests were not run because the tree is a read-only snapshot."
+}

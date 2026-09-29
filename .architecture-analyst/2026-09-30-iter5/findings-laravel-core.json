@@ -1,0 +1,53 @@
+{
+  "auditor": "laravel-auditor",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-audit5/packages/laravel-capabilities",
+  "stack_summary": {
+    "type": "Laravel package (core capability bus), part of a monorepo with messaging + AI siblings and a Go CLI",
+    "php": ">=8.2",
+    "illuminate": "11-13",
+    "tests": "Pest unit",
+    "audited_head": "cb43279"
+  },
+  "scanned_files_count": 27,
+  "findings": [
+    {
+      "id": "L-401",
+      "title": "Run approved executions in the row's tenant, not the requester's current one",
+      "category": "authorization",
+      "severity": "high",
+      "effort": "small",
+      "impact": ["security", "reliability"],
+      "locations": [
+        { "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php", "line": 764, "snippet": "return $this->invoke(..., ['actor' => $actor /* real requester */, 'tenant_id' => $tenantId, 'job' => ['tenant_id' => $tenantId], 'executing_approval_id' => ..., 'idempotency_key' => ...]);" },
+        { "file": "packages/laravel-capabilities/src/Support/DefaultScopeResolver.php", "line": 141, "snippet": "if ($fromTrusted !== null && $fromMembership !== null && $fromTrusted !== $fromMembership) { $tenantId = $fromMembership; }" },
+        { "file": "packages/laravel-capabilities/src/Approval/OriginalActorAuthorizer.php", "line": 51, "snippet": "scope: $tenant === '' ? null : new CapabilityScope(tenantId: $tenant)" },
+        { "file": "packages/laravel-capabilities/src/Pipeline/ResolveTenantFromCaller.php", "line": 33, "snippet": "if (isset($options['scope']) && $options['scope'] instanceof CapabilityScope) { return $options['scope']; }" }
+      ],
+      "current_state": "executeApproval() (used by accept and resume) re-invokes the capability as the real requester and passes the row's tenant only as the trusted `tenant_id` option. Scope is then re-resolved, and for a user actor both DefaultScopeResolver and the spec's AppScopeResolver let the user's membership (`current_tenant_id`, and since M-301 also `tenant_id`/`tenantId`) win over that option. If the requester's resolved tenant has changed since the request, the approved run happens in the new tenant. Reproduced on the audit tree with the IdempotencyHelpers harness: row stamped t1, requester switches `current_tenant_id` to t2, a t1 approver accepts, run() sees tenantId t2. A retry under the original key in t1 then still answers approval_required, because the pending_approval idempotency row in t1 is never settled.",
+      "recommended_state": "Approved executions run under the tenant stamped on the approval row, the same scope OriginalActorAuthorizer already re-checks authorize() under. The approver was checked against that tenant too (D-006: approver must be in the row's tenant). Rows without a tenant (global/system) keep resolving as today.",
+      "rationale": "Three parts of the approval flow now disagree about the tenant. The approver is placed in the row's tenant (M-301), authorize() is re-checked in the row's tenant, and run() executes in whatever tenant the requester currently resolves to. That lets a decision made in tenant A execute stored input in tenant B, where nobody approved it. It breaks the D-006 rule that the approver must be in the row's tenant, and the CHANGELOG promise that approved executions run as the original requester 'user id + tenant'. It also strands the original key: the tenant is part of the idempotency identity, so the executed outcome is written under B and the key in A stays pending_approval until TTL. This came in with the L-005 fix, which swapped the stub actor (whose tenant_id matched the row) for the real user. The M-301 change made it wider by treating `tenant_id` as membership. `current_tenant_id` is the tenant-switcher attribute the package reads first, so a user switching tenants between request and accept is a normal flow.",
+      "implementation_hint": "In CapabilityRegistry::executeApproval, when the row's tenant is a non-empty string, add `'scope' => new CapabilityScope(tenantId: $tenantId)` to the invoke options. ResolveTenantFromCaller::resolve already returns an explicit scope first, so the pipeline, the idempotency lookup (which settles the original pending_approval row) and audit all use the row's tenant. Leave the path unchanged for rows with a null or empty tenant. Unit test (ApproverTenantResolutionTest style, requester resolver set): the requester invokes with current_tenant_id t1 and needs_approval, switches to t2, and an approver in t1 accepts. Assert that run() saw t1 and that a retry with the same key replays the executed result (no approval_required). If the owner would rather fail closed than pin, the alternative is to return a stale-scope failure when the requester no longer resolves to the row's tenant, but pinning matches the existing OriginalActorAuthorizer re-check."
+    },
+    {
+      "id": "L-402",
+      "title": "Fail approver resolution closed on any ScopeResolver error, not only package ones",
+      "category": "authorization",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": ["reliability"],
+      "locations": [
+        { "file": "packages/laravel-capabilities/src/Pipeline/ResolveTenantFromCaller.php", "line": 98, "snippet": "} catch (MissingJobTenantException|UnresolvedScopeException) { return null; }" },
+        { "file": "packages/laravel-capabilities/src/Pipeline/ResolveTenantFromCaller.php", "line": 59, "snippet": "} catch (\\Throwable $e) { throw new RuntimeException($e->getMessage(), 0, $e); }" },
+        { "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php", "line": 412, "snippet": "if (! $this->policy->forRow($row)->allows($row, $approver, $this->approverTenant($approver, $options))) {" },
+        { "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php", "line": 492, "snippet": "if (! $this->policy->forRow($row)->allows($row, $approver, $this->approverTenant($approver, $options))) {" },
+        { "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php", "line": 507, "snippet": "} catch (Throwable $e) { return CapabilityResult::failure(code: 'forbidden', ...); }" }
+      ],
+      "current_state": "Since M-301, accept and reject run the host's ScopeResolver against the approver. resolve() wraps any host exception in a RuntimeException, but tenantOfPrincipal() only catches MissingJobTenantException and UnresolvedScopeException, and nothing up the stack catches the rest. Reproduced: a host resolver that throws DomainException('No tenant selected') for a user with no tenant turns the invoke into `forbidden`, while accept and reject by the same user throw RuntimeException. On the HTTP routes that becomes a 500 instead of the package envelope. On a Telegram tap the callback is never answered, so the button keeps spinning and the worker logs an error.",
+      "recommended_state": "Any error a resolver raises while placing an approver means 'not placed': accept and reject return `forbidden`, the same as the invoke pipeline's resolve_scope stage. This is what the M-301 CHANGELOG entry already promises ('a resolver that cannot place the approver fails closed as forbidden').",
+      "rationale": "Before M-301 the approver's tenant was a plain attribute read, which could not throw. Now host code runs on every decision path, including chat approvers such as LinkedUser that may not carry the attributes a host resolver expects (Laravel turns an undefined-property warning into an ErrorException). ApprovalGateway::accept/reject return CapabilityResult. Letting host exceptions escape breaks that contract, and the approval flow now handles a failed resolve differently from the invoke flow.",
+      "implementation_hint": "In ResolveTenantFromCaller::tenantOfPrincipal, catch \\Throwable (the wrapped RuntimeException) as well and return null. If the owner wants the unexpected case visible, report it via FailureReporter. Extend the existing test 'a resolver that cannot place the approver fails closed as forbidden' with a resolver that throws a plain DomainException, and assert that accept and reject both return forbidden and run() never executes."
+    }
+  ],
+  "notes": "Iteration 5, core scope only (packages/laravel-capabilities), tree cb43279. The only core src change since iteration 4 (edd3edd) is M-301 (4e10bb3). Per the brief, this pass traced the approval/tenant/scope paths end to end: row stamping (InvokePipeline::buildApprovalRequired, which uses the resolved ctx tenant), approver placement (ApprovalManager::approverTenant -> ResolveTenantFromCaller::tenantOfPrincipal), resume (ApprovalResumer tenant guard), the original-actor re-check (OriginalActorAuthorizer, scope pinned to the row tenant), execution (CapabilityRegistry::executeApproval), the HTTP decision path (ApprovalController, which passes no tenant, and the provider singleton) and the chat decision path (messaging CallbackHandler with decided_via, where the default LinkedUser carries tenantId). M-301 verification: correct for its stated goal. The provider, the registry constructor, withApprovalManager and withScopeResolver all give the manager the same resolver that stamps rows. HTTP invokes carry no tenant option (the credential strips tenant keys and nothing produces tenant_hint), so a stamp and an approver check on the same user agree. MCP's trusted tenant_id applies only to SystemActor integration profiles, which are placed from first-class fields. Registry::withScopeResolver updates only the pipeline's manager clone, not the container singleton that HTTP and Telegram use, but the documented extension point is the container binding (spec 'Bind in the app'), and the provider applies it to both. Not raised: that split; the reject path checking status before scope (a status-only probe, pre-existing); approverTenant using caller 'http' for CLI-token approvals (DefaultScopeResolver ignores caller); DefaultScopeResolver now treating tenant_id/tenantId as membership for invokes too (a disclosed CHANGELOG behaviour change); ignoring per-invoke user_tenants/memberships/single_tenant_id options in approver placement on a resolver-less registry (the options are undocumented); RunCapabilityJob with a user actingAs also resolving scope from membership over the job tenantId, which is spec line 1429 ('scope from user (resolver)') and deliberate. Both findings were reproduced with throwaway PHP scripts against the audit tree's vendor autoload and IdempotencyHelpers (in the session scratchpad; the audit tree was not modified). Deferred items were honoured."
+}

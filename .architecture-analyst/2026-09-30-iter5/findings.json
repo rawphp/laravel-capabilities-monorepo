@@ -1,0 +1,223 @@
+{
+  "run": "2026-09-30-iter5",
+  "findings": [
+    {
+      "id": "L-401",
+      "title": "Run approved executions in the row's tenant, not the requester's current one",
+      "category": "authorization",
+      "severity": "high",
+      "effort": "small",
+      "impact": [
+        "security",
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+          "line": 764,
+          "snippet": "return $this->invoke(..., ['actor' => $actor /* real requester */, 'tenant_id' => $tenantId, 'job' => ['tenant_id' => $tenantId], 'executing_approval_id' => ..., 'idempotency_key' => ...]);"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Support/DefaultScopeResolver.php",
+          "line": 141,
+          "snippet": "if ($fromTrusted !== null && $fromMembership !== null && $fromTrusted !== $fromMembership) { $tenantId = $fromMembership; }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/OriginalActorAuthorizer.php",
+          "line": 51,
+          "snippet": "scope: $tenant === '' ? null : new CapabilityScope(tenantId: $tenant)"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/ResolveTenantFromCaller.php",
+          "line": 33,
+          "snippet": "if (isset($options['scope']) && $options['scope'] instanceof CapabilityScope) { return $options['scope']; }"
+        }
+      ],
+      "current_state": "executeApproval() (used by accept and resume) re-invokes the capability as the real requester and passes the row's tenant only as the trusted `tenant_id` option. Scope is then re-resolved, and for a user actor both DefaultScopeResolver and the spec's AppScopeResolver let the user's membership (`current_tenant_id`, and since M-301 also `tenant_id`/`tenantId`) win over that option. If the requester's resolved tenant has changed since the request, the approved run happens in the new tenant. Reproduced on the audit tree with the IdempotencyHelpers harness: row stamped t1, requester switches `current_tenant_id` to t2, a t1 approver accepts, run() sees tenantId t2. A retry under the original key in t1 then still answers approval_required, because the pending_approval idempotency row in t1 is never settled.",
+      "recommended_state": "Approved executions run under the tenant stamped on the approval row, the same scope OriginalActorAuthorizer already re-checks authorize() under. The approver was checked against that tenant too (D-006: approver must be in the row's tenant). Rows without a tenant (global/system) keep resolving as today.",
+      "rationale": "Three parts of the approval flow now disagree about the tenant. The approver is placed in the row's tenant (M-301), authorize() is re-checked in the row's tenant, and run() executes in whatever tenant the requester currently resolves to. That lets a decision made in tenant A execute stored input in tenant B, where nobody approved it. It breaks the D-006 rule that the approver must be in the row's tenant, and the CHANGELOG promise that approved executions run as the original requester 'user id + tenant'. It also strands the original key: the tenant is part of the idempotency identity, so the executed outcome is written under B and the key in A stays pending_approval until TTL. This came in with the L-005 fix, which swapped the stub actor (whose tenant_id matched the row) for the real user. The M-301 change made it wider by treating `tenant_id` as membership. `current_tenant_id` is the tenant-switcher attribute the package reads first, so a user switching tenants between request and accept is a normal flow.",
+      "implementation_hint": "In CapabilityRegistry::executeApproval, when the row's tenant is a non-empty string, add `'scope' => new CapabilityScope(tenantId: $tenantId)` to the invoke options. ResolveTenantFromCaller::resolve already returns an explicit scope first, so the pipeline, the idempotency lookup (which settles the original pending_approval row) and audit all use the row's tenant. Leave the path unchanged for rows with a null or empty tenant. Unit test (ApproverTenantResolutionTest style, requester resolver set): the requester invokes with current_tenant_id t1 and needs_approval, switches to t2, and an approver in t1 accepts. Assert that run() saw t1 and that a retry with the same key replays the executed result (no approval_required). If the owner would rather fail closed than pin, the alternative is to return a stale-scope failure when the requester no longer resolves to the row's tenant, but pinning matches the existing OriginalActorAuthorizer re-check.",
+      "_src": "laravel-auditor"
+    },
+    {
+      "id": "M-401",
+      "title": "Stop the default 110s/120s budget from refusing normal multi-round AI turns",
+      "category": "queues_events",
+      "severity": "high",
+      "effort": "small",
+      "impact": [
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-ai/src/Domain/TurnRunner.php",
+          "line": 97,
+          "snippet": "if ($llm instanceof DeadlineAwareLlmClient && $this->now() + $llm->requestTimeoutSeconds() * 1_000_000_000 >= $deadlineNs) { throw new RetryableLlmException(\"Turn time budget ...\"); }"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php",
+          "line": 85,
+          "snippet": "'timeout' => (int) $env('CAPABILITIES_AI_ANTHROPIC_TIMEOUT', 110),"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php",
+          "line": 98,
+          "snippet": "'claim_ttl' => (int) $env('CAPABILITIES_AI_CLAIM_TTL', Package::DEFAULT_CLAIM_TTL), // 120"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php",
+          "line": 147,
+          "snippet": "'max_tool_rounds' => (int) $env('CAPABILITIES_AI_MAX_TOOL_ROUNDS', 8),"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Support/AnthropicLlmClient.php",
+          "line": 248,
+          "snippet": "])->timeout($this->timeoutSeconds)->retry( // full 110s every round, whatever is left of the turn"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Support/ContainerBindings.php",
+          "line": 145,
+          "snippet": "if ($timeout >= $claimTtl) { throw new InvalidArgumentException(...) } // only check: 110 < 120"
+        }
+      ],
+      "current_state": "The M-302 fix gates each round with `now + full request timeout < turn deadline`, and every request still gets the full `llm.anthropic.timeout`. With the shipped defaults (timeout 110, claim_ttl 120), round 1 always starts, but any later round needs everything before it (LLM rounds plus tool invokes) to have finished within 10 seconds. A typical tool turn (about 4s to pick a tool, a quick invoke, about 4s per later round) fails as `Turn time budget ... cannot fit another LLM round` at round 3, and a slow first round (a long context, more than 10s) fails at round 2. Before the fix, these turns finished well inside the 120s job. `max_tool_rounds` 8 cannot be reached with the defaults. The new test only covers a 50s request timeout, so the default pairing is never exercised.",
+      "recommended_state": "A round is refused only when too little time is left for any useful request, not when a worst-case 110s request no longer fits. Each request's transport timeout is capped at what is left of the turn minus a small margin, so the worker still can never be killed mid-request. With the defaults, a multi-round turn whose actual total time is under claim_ttl completes, as it did before M-302.",
+      "rationale": "The fix swaps a rare failure (a worker killed when rounds really do add up to more than 120s) for a common one: any agent turn with more than one or two tool rounds fails as retryable on the default config. Tool use is the package's main path. Every tool call costs at least one more round, and a failed turn has usually already run its bus invokes, so a user who retries repeats the side effects. Docs tell hosts to 'raise claim_ttl for long multi-round turns', but with these defaults 'long' means anything over 10 seconds, which is surprising and undocumented as such. There is no recorded decision for this tradeoff in docs/spec.md or .do-work/decisions.md, and it is not the deferred 'single long capability call' residual.",
+      "implementation_hint": "Keep DeadlineAwareLlmClient, but make the deadline shrink the request instead of blocking the round. In AnthropicLlmClient::send use `->timeout($this->effectiveTimeoutSeconds())`, where the effective timeout is `min(timeoutSeconds, intdiv(turnDeadlineNs - hrtime(true), 1e9) - margin)` (margin about 2s) when a turn deadline is set. In retryFitsDeadline, compare `wait + effective timeout` rather than the full timeout. In TurnRunner, refuse a round only when the remaining budget is under a small floor, for example `min(requestTimeoutSeconds, 15)` exposed as a `minRoundSeconds()` on the contract or as a constant. A capped request that times out already surfaces as RetryableLlmException via ConnectionException, the same outcome as today's refusal but only when it is actually needed. Unit tests on the fake clock with the real defaults (timeout 110, budget 120): three 4s rounds complete, and a round with 5s left is refused without calling complete(). In AnthropicLlmClientTest, a client with withDeadline(now + 30s) sends a timeout of 28 or less. Correct the config, README and user-guide wording, which currently says a round needs 'one more timeout' of headroom.",
+      "_src": "laravel-auditor-siblings"
+    },
+    {
+      "id": "C-401",
+      "title": "Reject '/' in run capability names; `run approvals/<id>/accept` accepts",
+      "category": "wire_contract",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": [
+        "security",
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/capabilities-cli/internal/api/client.go",
+          "line": 273,
+          "snippet": "res, err := c.do(ctx, http.MethodPost, PathCapabilities+\"/\"+name, body, map[string]string{"
+        },
+        {
+          "file": "packages/capabilities-cli/internal/api/client.go",
+          "line": 259,
+          "snippet": "return c.do(ctx, http.MethodGet, PathCapabilities+\"/\"+name, nil, nil)"
+        },
+        {
+          "file": "packages/capabilities-cli/internal/api/client.go",
+          "line": 296,
+          "snippet": "return c.do(ctx, http.MethodPost, PathApprovals+\"/\"+id+\"/accept\", []byte(`{}`), nil)"
+        },
+        {
+          "file": "packages/capabilities-cli/internal/run/runner.go",
+          "line": 70,
+          "snippet": "if strings.TrimSpace(opts.Capability) == \"\" {"
+        },
+        {
+          "file": "packages/capabilities-cli/cmd/capabilities/cmd_run.go",
+          "line": 202,
+          "snippet": "entry, dres, derr := svc.Describe(context.Background(), name); if derr != nil { entry = nil }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Http/RouteTable.php",
+          "line": 106,
+          "snippet": "[self::ROUTE_APPROVAL_ACCEPT, 'POST', $prefix.'/approvals/{id}/accept', ...]"
+        }
+      ],
+      "current_state": "The client joins the capability name (and the approval id) into the URL path unchecked. The only check on `run <name>` is that it is non-empty (runner.go:70). So `capabilities run approvals/<id>/accept` goes like this. Describe returns 405, and the CLI then runs without a schema (cmd_run.go:202, validate.go skips an empty schema). It then POSTs `/capabilities/approvals/<id>/accept`, which core routes to ApprovalController@accept (RouteTable.php:106). The approval is accepted and `run` exits 0. `run approvals/<id>/reject` and `run auth/token` reach those routes the same way.",
+      "recommended_state": "`run`, `describe` and domain/verb dispatch refuse any capability name that is not a single path segment. They exit 2 with a validation_failed envelope and make no HTTP call. The approval id is held to the same rule.",
+      "rationale": "The CLI is agent-first. docs/agents.md tells agents that exit 4 means 'surface to human; approvals accept/reject'. Harnesses usually enforce that by command, allowing `capabilities run` and denying `capabilities approvals`. With the default requester_or_role policy, the requesting token may accept its own approval (ApprovalPolicy), and HttpAuthGate lets CLI tokens use the accept route. So the command split is the human gate in practice, and `run` walks around it. url.PathEscape alone does not fix this: Laravel's UriValidator rawurldecodes the path before matching, so an encoded %2F still hits the approvals route. Core registers no capability name containing '/' (the {name} route segment cannot match one), so rejecting it client-side loses nothing.",
+      "implementation_hint": "In internal/run (or api), add `func ValidName(s string) bool` that rejects empty strings, '/', '\\\\', '?', '#', '%', whitespace and '.'/'..'. Call it at the top of run.Run (runner.go:70), in cmdDescribe (cmd_run.go:32) and in writeCapabilityHelp, and return localFailEnvelope(validation_failed) with exit 2 before any HTTP. Apply the same check to the approvals id in cmd_approvals.go:39. Unit tests: `run approvals/x/accept` makes no request (use an httptest server that fails on any hit), and `approvals accept a/b` exits 2.",
+      "_src": "control-plane-auditor"
+    },
+    {
+      "id": "L-402",
+      "title": "Fail approver resolution closed on any ScopeResolver error, not only package ones",
+      "category": "authorization",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": [
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/ResolveTenantFromCaller.php",
+          "line": 98,
+          "snippet": "} catch (MissingJobTenantException|UnresolvedScopeException) { return null; }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/ResolveTenantFromCaller.php",
+          "line": 59,
+          "snippet": "} catch (\\Throwable $e) { throw new RuntimeException($e->getMessage(), 0, $e); }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+          "line": 412,
+          "snippet": "if (! $this->policy->forRow($row)->allows($row, $approver, $this->approverTenant($approver, $options))) {"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+          "line": 492,
+          "snippet": "if (! $this->policy->forRow($row)->allows($row, $approver, $this->approverTenant($approver, $options))) {"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+          "line": 507,
+          "snippet": "} catch (Throwable $e) { return CapabilityResult::failure(code: 'forbidden', ...); }"
+        }
+      ],
+      "current_state": "Since M-301, accept and reject run the host's ScopeResolver against the approver. resolve() wraps any host exception in a RuntimeException, but tenantOfPrincipal() only catches MissingJobTenantException and UnresolvedScopeException, and nothing up the stack catches the rest. Reproduced: a host resolver that throws DomainException('No tenant selected') for a user with no tenant turns the invoke into `forbidden`, while accept and reject by the same user throw RuntimeException. On the HTTP routes that becomes a 500 instead of the package envelope. On a Telegram tap the callback is never answered, so the button keeps spinning and the worker logs an error.",
+      "recommended_state": "Any error a resolver raises while placing an approver means 'not placed': accept and reject return `forbidden`, the same as the invoke pipeline's resolve_scope stage. This is what the M-301 CHANGELOG entry already promises ('a resolver that cannot place the approver fails closed as forbidden').",
+      "rationale": "Before M-301 the approver's tenant was a plain attribute read, which could not throw. Now host code runs on every decision path, including chat approvers such as LinkedUser that may not carry the attributes a host resolver expects (Laravel turns an undefined-property warning into an ErrorException). ApprovalGateway::accept/reject return CapabilityResult. Letting host exceptions escape breaks that contract, and the approval flow now handles a failed resolve differently from the invoke flow.",
+      "implementation_hint": "In ResolveTenantFromCaller::tenantOfPrincipal, catch \\Throwable (the wrapped RuntimeException) as well and return null. If the owner wants the unexpected case visible, report it via FailureReporter. Extend the existing test 'a resolver that cannot place the approver fails closed as forbidden' with a resolver that throws a plain DomainException, and assert that accept and reject both return forbidden and run() never executes.",
+      "_src": "laravel-auditor"
+    },
+    {
+      "id": "X-401",
+      "title": "Core CHANGELOG hides M-301's invoke tenant change; no BREAKING/upgrade note",
+      "category": "documentation",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": [
+        "security",
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Support/DefaultScopeResolver.php",
+          "line": 124,
+          "snippet": "} elseif (is_object($user) && isset($user->tenant_id)) {\n    $fromMembership = (string) $user->tenant_id;\n} elseif (is_object($user) && isset($user->tenantId)) {"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Support/DefaultScopeResolver.php",
+          "line": 143,
+          "snippet": "// Keep membership as authority for user actors (D-003); trusted option used when membership empty.\n$tenantId = $fromMembership;"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+          "line": 849,
+          "snippet": "private function approverTenant(object $approver, array $options): ?string   // was: $options['tenant_id'] ?? $this->tenantOf($approver)"
+        },
+        {
+          "file": "packages/laravel-capabilities/CHANGELOG.md",
+          "line": 313,
+          "snippet": "### Fixed\n- **In-tenant approvers can accept, reject and resume (D-003 / D-006, M-301).** ... `DefaultScopeResolver` reads a principal's `current_tenant_id`, then `tenant_id`, then `tenantId` as membership"
+        },
+        {
+          "file": "packages/laravel-capabilities/CHANGELOG.md",
+          "line": 97,
+          "snippet": "### Changed (BREAKING)   (no M-301 / ScopeResolver entry)"
+        }
+      ],
+      "current_state": "M-301 (4e10bb3) made DefaultScopeResolver treat a principal's `tenant_id` / `tenantId` as membership. That applies to every user invoke, not only approval decisions. Run against the tree, a principal with only `tenant_id = acme` used to resolve to `default-tenant` and now resolves to `acme`. With a trusted `tenant_id => other` option, the old resolver returned `other` and the new one returns `acme`. The approval side changed the same way: `accept`/`reject`'s `tenant_id` option used to override the approver's tenant and now only fills in when the approver has none. The core CHANGELOG lists all of this under `Fixed` as an approval-placement fix. `Changed (BREAKING)` has no entry, and nothing says that invoke scope changes for these principals.",
+      "recommended_state": "Core [Unreleased] `Changed (BREAKING)` gets a short M-301 entry with an upgrade note. It names the hosts affected: the default resolver plus principals that carry `tenant_id` / `tenantId` but no `current_tenant_id`. It states the effect: their invokes now resolve to that tenant instead of `default-tenant` or a trusted `tenant_id` option, which changes the `CapabilityScope` passed to `run()` and the tenant stamped on audit, idempotency and approval rows. It also says the `ApprovalGateway::accept()`/`reject()` `tenant_id` option no longer overrides the approver's own tenant, and that a host keeps the old rule by binding its own `ScopeResolver`.",
+      "rationale": "Tenant scope is the package's security boundary (D-003), and `Changed (BREAKING)` is where hosts learn about behaviour that affects an upgrade. That section already carries comparable behaviour changes with upgrade notes, such as the MCP integration-profile binding and the removed default-actor fallback. A host with a `users.tenant_id` column starts running capabilities under a different `$scope->tenantId` on upgrade, and nothing warns it. Rows it stamped `default-tenant` and in-flight idempotency keys stop matching. Any server-side `tenant_id` it passed to invokes or approvals is now overridden, and the changelog does not tell it to check. The code change itself is intended and tested (ApproverTenantResolutionTest), so this is a documentation gap.",
+      "implementation_hint": "packages/laravel-capabilities/CHANGELOG.md, under `### Changed (BREAKING)`: add `#### DefaultScopeResolver reads tenant_id / tenantId as membership (D-003, M-301)`. For a user principal with `tenant_id` or `tenantId` and no `current_tenant_id`, invokes and approval decisions now resolve to that tenant (previously `default-tenant`, or a trusted `tenant_id` option). On invokes, membership now wins over a trusted `tenant_id` option. On `ApprovalGateway::accept()`/`reject()`, the option only fills in when the approver has no membership tenant. **Upgrade:** rows and host data stamped `default-tenant` for these users no longer match the resolved scope. Bind a custom `ScopeResolver` to keep the old rule. Shorten the Fixed entry at line 313 to point here. Docs only.",
+      "_src": "cross-cutting-auditor"
+    }
+  ]
+}

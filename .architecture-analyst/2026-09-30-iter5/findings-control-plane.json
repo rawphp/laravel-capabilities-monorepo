@@ -1,0 +1,36 @@
+{
+  "auditor": "control-plane-auditor",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-audit5/packages/capabilities-cli",
+  "stack_summary": {
+    "go_module": "github.com/rawphp/capabilities-cli",
+    "role": "product CLI, HTTP client only (D-009, D-016)",
+    "server_contract": "rawphp/laravel-capabilities RouteTable / CapabilityController / ApprovalController / CatalogPresenter / HttpAuthGate",
+    "audited_head": "cb43279",
+    "testing": "go vet clean, go test ./... green, gofmt -l empty (run in the snapshot tree)"
+  },
+  "scanned_files_count": 18,
+  "findings": [
+    {
+      "id": "C-401",
+      "title": "Reject '/' in run capability names; `run approvals/<id>/accept` accepts",
+      "category": "wire_contract",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": ["security", "reliability"],
+      "locations": [
+        { "file": "packages/capabilities-cli/internal/api/client.go", "line": 273, "snippet": "res, err := c.do(ctx, http.MethodPost, PathCapabilities+\"/\"+name, body, map[string]string{" },
+        { "file": "packages/capabilities-cli/internal/api/client.go", "line": 259, "snippet": "return c.do(ctx, http.MethodGet, PathCapabilities+\"/\"+name, nil, nil)" },
+        { "file": "packages/capabilities-cli/internal/api/client.go", "line": 296, "snippet": "return c.do(ctx, http.MethodPost, PathApprovals+\"/\"+id+\"/accept\", []byte(`{}`), nil)" },
+        { "file": "packages/capabilities-cli/internal/run/runner.go", "line": 70, "snippet": "if strings.TrimSpace(opts.Capability) == \"\" {" },
+        { "file": "packages/capabilities-cli/cmd/capabilities/cmd_run.go", "line": 202, "snippet": "entry, dres, derr := svc.Describe(context.Background(), name); if derr != nil { entry = nil }" },
+        { "file": "packages/laravel-capabilities/src/Http/RouteTable.php", "line": 106, "snippet": "[self::ROUTE_APPROVAL_ACCEPT, 'POST', $prefix.'/approvals/{id}/accept', ...]" }
+      ],
+      "current_state": "The client joins the capability name (and the approval id) into the URL path unchecked. The only check on `run <name>` is that it is non-empty (runner.go:70). So `capabilities run approvals/<id>/accept` goes like this. Describe returns 405, and the CLI then runs without a schema (cmd_run.go:202, validate.go skips an empty schema). It then POSTs `/capabilities/approvals/<id>/accept`, which core routes to ApprovalController@accept (RouteTable.php:106). The approval is accepted and `run` exits 0. `run approvals/<id>/reject` and `run auth/token` reach those routes the same way.",
+      "recommended_state": "`run`, `describe` and domain/verb dispatch refuse any capability name that is not a single path segment. They exit 2 with a validation_failed envelope and make no HTTP call. The approval id is held to the same rule.",
+      "rationale": "The CLI is agent-first. docs/agents.md tells agents that exit 4 means 'surface to human; approvals accept/reject'. Harnesses usually enforce that by command, allowing `capabilities run` and denying `capabilities approvals`. With the default requester_or_role policy, the requesting token may accept its own approval (ApprovalPolicy), and HttpAuthGate lets CLI tokens use the accept route. So the command split is the human gate in practice, and `run` walks around it. url.PathEscape alone does not fix this: Laravel's UriValidator rawurldecodes the path before matching, so an encoded %2F still hits the approvals route. Core registers no capability name containing '/' (the {name} route segment cannot match one), so rejecting it client-side loses nothing.",
+      "implementation_hint": "In internal/run (or api), add `func ValidName(s string) bool` that rejects empty strings, '/', '\\\\', '?', '#', '%', whitespace and '.'/'..'. Call it at the top of run.Run (runner.go:70), in cmdDescribe (cmd_run.go:32) and in writeCapabilityHelp, and return localFailEnvelope(validation_failed) with exit 2 before any HTTP. Apply the same check to the approvals id in cmd_approvals.go:39. Unit tests: `run approvals/x/accept` makes no request (use an httptest server that fails on any hit), and `approvals accept a/b` exits 2."
+    }
+  ],
+  "notes": "Iteration 5. Scope: packages/capabilities-cli and its wire contract with core at cb43279. The only CLI change since iteration 4 is ee0b3c7 (C-301). C-301 is verified correct and complete. PrincipalCache now hashes cacheFormat 'v2' into the key (cache.go:137), so dirs under the pre-C-301 key are never read and the first describe refetches. The CHANGELOG no longer gives the --no-cache advice. A unit test proves the legacy key misses. The orphaned old dirs are a few KB, as happens on any token rotation; not raised. Core changes since iteration 4 checked for wire impact. M-301 (ApprovalManager / ApprovalResumer place the approver with the ScopeResolver) leaves the HTTP accept/reject routes, envelopes and error codes unchanged. The CLI sends no tenant hint or caller header (client.go:119-131, runner.go:164-166), so DefaultScopeResolver places a CLI approver by membership, the same rule that stamped the row. M-302 is AI-only. The describe metadata keys still match CacheEntry: CatalogPresenter::metadataFields emits description, readOnly, idempotent, schema_version, aliases, successor, sunset_at and cli. Re-checked and not raised: --retry-last on a different capability reuses the old key. That is harmless because core's IdempotencyGuard scopes rows by capability_name. Also not raised: a failed describe is retried once more inside run.Run (an extra round trip on an already-failing path), and alias names still miss the schema cache (dismissed in iteration 2). deferred_do_not_report honoured: catalog.ResolveAlias / Cache.GetByETag unused. Categories reconcile, registry_handles, capture_depth, plugin_shape and dual_path do not apply to a stateless HTTP client. Custom category slug: wire_contract."
+}
