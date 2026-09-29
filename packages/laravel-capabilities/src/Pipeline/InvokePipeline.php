@@ -3,7 +3,12 @@
 namespace Rawphp\Capabilities\Pipeline;
 
 use Closure;
+use Error;
+use Illuminate\Container\Container;
+use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use InvalidArgumentException;
+use PDOException;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Contracts\Authorizer;
 use Rawphp\Capabilities\Contracts\RateLimiter;
@@ -794,13 +799,33 @@ final class InvokePipeline
             $this->observation->invokeStartedAt ??= microtime(true);
             $state->output = $this->executeRun($state->definition, $state->input, $state->context);
         } catch (Throwable $e) {
-            return CapabilityResult::failure(
-                code: 'domain_error',
-                message: $e->getMessage(),
-            );
+            return $this->runFailure($e);
         }
 
         return null;
+    }
+
+    /**
+     * Bug-class errors are reported and hidden; missing models are not_found;
+     * anything else is a deliberate domain throw and keeps its message (L-004).
+     */
+    private function runFailure(Throwable $e): CapabilityResult
+    {
+        if ($e instanceof ModelNotFoundException) {
+            return CapabilityResult::failure(code: 'not_found', message: 'Not found.');
+        }
+
+        // QueryException is a PDOException.
+        if ($e instanceof Error || $e instanceof PDOException) {
+            $container = Container::getInstance();
+            if ($container->bound(ExceptionHandler::class)) {
+                $container->make(ExceptionHandler::class)->report($e);
+            }
+
+            return CapabilityResult::failure(code: 'internal', message: 'Internal error.');
+        }
+
+        return CapabilityResult::failure(code: 'domain_error', message: $e->getMessage());
     }
 
     /**

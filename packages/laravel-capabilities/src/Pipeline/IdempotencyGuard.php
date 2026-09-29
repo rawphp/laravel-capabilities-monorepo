@@ -21,7 +21,7 @@ use RuntimeException;
  *
  * Behaviours:
  * - no key / flag none / readOnly → continue (non-idempotent path)
- * - first key → insert processing, continue
+ * - first key → atomically claim with a processing row, continue (a lost claim is busy)
  * - completed + same hash → replay
  * - completed + different hash → conflict
  * - processing → busy (409/425)
@@ -156,8 +156,10 @@ final class IdempotencyGuard
         }
 
         if ($existing === null) {
+            // Atomic claim: of two racing first requests exactly one continues;
+            // the other re-reads the winner's row and is answered from it below.
             $now = $this->clock->now();
-            $this->store->put([
+            $claimed = $this->store->claim([
                 'tenant_id' => $context->tenantId(),
                 'actor_type' => $actorType,
                 'actor_id' => $actorId,
@@ -168,8 +170,21 @@ final class IdempotencyGuard
                 'created_at' => $now->format(DATE_ATOM),
                 'expires_at' => $now->add(new DateInterval('PT'.$this->config->ttlHours.'H'))->format(DATE_ATOM),
             ]);
+            if ($claimed) {
+                return ['action' => 'continue'];
+            }
 
-            return ['action' => 'continue'];
+            $existing = $this->store->find(
+                $context->tenantId(),
+                $actorType,
+                $actorId,
+                $definition->name,
+                $key,
+            );
+            if ($existing === null) {
+                // Winner's row not readable (expired or pruned since): retry later.
+                return ['action' => 'busy', 'result' => $this->busyResult()];
+            }
         }
 
         $status = (string) ($existing['status'] ?? '');
@@ -177,15 +192,7 @@ final class IdempotencyGuard
 
         // In-flight: busy regardless of hash (D-005 processing row).
         if ($status === 'processing') {
-            return [
-                'action' => 'busy',
-                'result' => CapabilityResult::failure(
-                    code: 'conflict',
-                    message: 'Idempotency key is already processing (D-005).',
-                    extra: ['retryable' => true, 'http_status' => 409],
-                ),
-                'record' => $existing,
-            ];
+            return ['action' => 'busy', 'result' => $this->busyResult(), 'record' => $existing];
         }
 
         // Failed: default replay failure for TTL (even if hash differs).
@@ -314,6 +321,15 @@ final class IdempotencyGuard
         }
 
         return $this->clock->now() >= $exp;
+    }
+
+    private function busyResult(): CapabilityResult
+    {
+        return CapabilityResult::failure(
+            code: 'conflict',
+            message: 'Idempotency key is already processing (D-005).',
+            extra: ['retryable' => true, 'http_status' => 409],
+        );
     }
 
     private function hydrateResult(mixed $stored, bool $okExpected): CapabilityResult

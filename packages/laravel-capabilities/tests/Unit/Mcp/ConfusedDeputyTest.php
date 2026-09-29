@@ -24,6 +24,7 @@ it('fail: integration bot cannot act as arbitrary user id from tool args [D-023]
         'mcp_auth' => [
             'allow_integration_credentials' => true,
             'integration_actors' => ['mcp-billing-service' => 'billing-bot'],
+            'integration_profiles' => ['mcp-billing-service' => ['billing']],
         ],
     ]);
     $h['mcp']->register('billing');
