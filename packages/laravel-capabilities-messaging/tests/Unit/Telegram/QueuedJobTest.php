@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Cache\ArrayStore;
+use Illuminate\Cache\Repository;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
@@ -56,6 +58,8 @@ it('fail: a retryable Bot API reply failure fails the job so the queue retries [
     $processor = H::processor([
         'identity' => linkedIdentity(),
         'adapter' => new TelegramAdapter($bot, static fn () => ['text' => 'hi', 'tool_calls' => []]),
+        // The retry re-sends the kept reply only (see ReplyRetryTest).
+        'pending_replies' => new Repository(new ArrayStore),
     ]);
 
     expect(fn () => (new ProcessTelegramUpdateJob(H::telegramUpdate(userId: 42)))->handle($processor))

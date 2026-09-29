@@ -2,6 +2,7 @@
 
 namespace Rawphp\CapabilitiesMessaging\Telegram;
 
+use Illuminate\Contracts\Cache\Repository;
 use Psr\Log\LoggerInterface;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\RateLimiter;
@@ -31,6 +32,10 @@ use Throwable;
  *
  * D-013: an optional core RateLimiter caps agent turns per chat_id per minute
  * (telegram.turns_per_minute), checked before identity so a flooding chat costs nothing.
+ *
+ * D-005: the agent turn and its tool invokes run at most once per update. A reply that fails to
+ * send transiently is kept in the host cache ($pendingReplies) and the job fails; the retry only
+ * re-sends it. Without that store the failure is terminal rather than a second turn.
  */
 final class ProcessTelegramUpdate
 {
@@ -49,6 +54,9 @@ final class ProcessTelegramUpdate
     public const LINKED_REPLY = 'Linked. You can chat with the assistant now.';
 
     public const LINK_FAILED_REPLY = 'That link code is invalid or expired. Ask for a new one in the app.';
+
+    /** Seconds a reply waiting for a queue retry is kept (job backoff is 10s + 60s). */
+    public const PENDING_REPLY_TTL = 3600;
 
     public const UNLINKED_REPLY = 'This Telegram account is not linked yet. Get a link code in the app and send /link <code> here.';
 
@@ -74,6 +82,7 @@ final class ProcessTelegramUpdate
         ?callable $profileResolver = null,
         private readonly ?RateLimiter $turnLimiter = null,
         private readonly ?LoggerInterface $logger = null,
+        private readonly ?Repository $pendingReplies = null,
     ) {
         $this->profileResolver = $profileResolver;
     }
@@ -148,10 +157,16 @@ final class ProcessTelegramUpdate
             throw new RuntimeException('unknown_chat');
         }
 
+        $topicId = TelegramUpdateParser::topicId($update);
+        $pendingKey = $this->pendingReplyKey($update);
+        $pending = $pendingKey === null ? null : $this->pendingReplies?->get($pendingKey);
+        if (is_array($pending) && is_string($pending['text'] ?? null)) {
+            return $this->resendPendingReply($pendingKey, (string) $chatId, $topicId, $pending);
+        }
+
         $this->enforceChatTurnLimit((string) $chatId);
 
         $telegramUserId = TelegramUpdateParser::telegramUserId($update);
-        $topicId = TelegramUpdateParser::topicId($update);
         $text = TelegramUpdateParser::text($update);
 
         $linkCode = $this->linkCode($text, $telegramUserId);
@@ -222,24 +237,12 @@ final class ProcessTelegramUpdate
         $replyText = is_array($answer)
             ? (string) ($answer['text'] ?? 'ok')
             : 'ok';
-        try {
-            $this->adapter->reply([
-                'chat_id' => (string) $chatId,
-                'topic_id' => $topicId,
-                'text' => $replyText,
-            ]);
-        } catch (Throwable $e) {
-            $message = 'reply_send_fail: '.$e->getMessage();
-            if ($e instanceof TelegramBotApiException && $e->retryable) {
-                throw new RetryableUpdateFailure($message, 0, $e);
-            }
-            throw new RuntimeException($message, 0, $e);
-        }
-        $this->mark('conversation_reply');
 
         // The reply is sent either way; ok reports whether the request itself went through.
         $last = $toolResults === [] ? null : $toolResults[array_key_last($toolResults)]['result'];
         $toolError = $last === null || $last->isOk() ? null : ($last->errorCode() ?? 'internal');
+
+        $this->sendReply((string) $chatId, $topicId, $replyText, $pendingKey, $toolError);
 
         return [
             'ok' => $toolError === null,
@@ -254,6 +257,67 @@ final class ProcessTelegramUpdate
             'steps' => $this->completedSteps,
             'tags' => $this->lastTags,
         ];
+    }
+
+    /**
+     * Send the agent's reply. A transient Bot API failure keeps the reply for the queue retry
+     * (when there is a store and an update key) and fails the job; anything else is terminal.
+     */
+    private function sendReply(string $chatId, string|int|null $topicId, string $text, ?string $pendingKey, ?string $toolError): void
+    {
+        try {
+            $this->adapter->reply(['chat_id' => $chatId, 'topic_id' => $topicId, 'text' => $text]);
+        } catch (Throwable $e) {
+            $message = 'reply_send_fail: '.$e->getMessage();
+            if ($e instanceof TelegramBotApiException && $e->retryable && $pendingKey !== null && $this->pendingReplies !== null) {
+                $this->pendingReplies->put($pendingKey, ['text' => $text, 'error' => $toolError], self::PENDING_REPLY_TTL);
+
+                throw new RetryableUpdateFailure($message, 0, $e);
+            }
+            throw new RuntimeException($message, 0, $e);
+        }
+        $this->mark('conversation_reply');
+    }
+
+    /**
+     * Queue retry after a transient reply failure: send the kept reply only — no turn limit hit,
+     * no identity, no agent turn, no tool invokes.
+     *
+     * @param  array<string, mixed>  $pending
+     * @return array<string, mixed>
+     */
+    private function resendPendingReply(string $pendingKey, string $chatId, string|int|null $topicId, array $pending): array
+    {
+        try {
+            $this->sendReply($chatId, $topicId, (string) $pending['text'], $pendingKey, $pending['error'] ?? null);
+        } catch (Throwable $e) {
+            if (! $e instanceof RetryableUpdateFailure) {
+                $this->pendingReplies?->forget($pendingKey);
+            }
+
+            throw $e;
+        }
+        $this->pendingReplies?->forget($pendingKey);
+
+        $error = is_string($pending['error'] ?? null) ? $pending['error'] : null;
+
+        return [
+            'ok' => $error === null,
+            'error' => $error,
+            'reply' => (string) $pending['text'],
+            'steps' => $this->completedSteps,
+            'tags' => $this->lastTags,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $update
+     */
+    private function pendingReplyKey(array $update): ?string
+    {
+        $key = TelegramUpdateParser::updateKey($update);
+
+        return $key === null ? null : 'capabilities-messaging:reply:'.$key;
     }
 
     /**

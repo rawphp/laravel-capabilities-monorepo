@@ -111,6 +111,14 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
+- **A failed reply retries only the send** — a transient Bot API failure (429/5xx) sending the
+  reply used to fail the job and re-run the whole update on retry: the chat turn limit again,
+  another LLM call through `AgentTurn`, and tool calls that only replayed if the new answer
+  matched the old one. `ProcessTelegramUpdate` now keeps the reply in the host cache (key
+  `capabilities-messaging:reply:telegram:<chat>:<update_id>`, one hour) before failing the job,
+  and the retry sends that reply and nothing else. Without a cache store (container-free
+  `MessagingBindings::build()`), a transient reply failure is terminal instead of a second turn.
+
 - **Replies land in the forum topic the user wrote in** — replies (and link confirmations) to a
   message in a forum supergroup topic now set `message_thread_id`, so they no longer land in the
   General topic.

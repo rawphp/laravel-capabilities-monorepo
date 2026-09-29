@@ -171,6 +171,7 @@ class MessagingServiceProvider extends ServiceProvider
                 self::toolNamesResolver($app),
                 turnLimiter: $app->bound(RateLimiter::class) ? $app->make(RateLimiter::class) : null,
                 logger: self::logger($app),
+                pendingReplies: $app->make(CacheRepository::class),
             );
         });
     }

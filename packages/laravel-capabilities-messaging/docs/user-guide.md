@@ -187,7 +187,7 @@ Button `callback_data` is a compact token that fits Telegram's 64-byte limit: `{
 
 ## If something goes wrong
 
-Webhook rejections (bad secret, queue failure) and update-processing failures are written to your app logger with `tags` `channel`, `chat_id` and `update_id`. Unlinked users and rate-limited chats log as `warning`; anything else as `error`. Updates run on your queue: a transient Telegram failure (429/5xx) sending the reply fails the job so it retries and ends in `failed_jobs`. Capability results, retryable or not, go back to your `AgentTurn` and never retry the update.
+Webhook rejections (bad secret, queue failure) and update-processing failures are written to your app logger with `tags` `channel`, `chat_id` and `update_id`. Unlinked users and rate-limited chats log as `warning`; anything else as `error`. Updates run on your queue: a transient Telegram failure (429/5xx) sending the reply keeps the reply in your default cache store for an hour and fails the job so it retries and ends in `failed_jobs`. The retry only re-sends that reply; the agent turn and its tool calls run once per update. Capability results, retryable or not, go back to your `AgentTurn` and never retry the update.
 
 Troubleshooting (monorepo): [Messaging / Telegram](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/troubleshooting.md#messaging-telegram).
 

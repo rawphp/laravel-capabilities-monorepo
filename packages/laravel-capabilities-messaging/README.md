@@ -88,7 +88,7 @@ Drivers (`config/capabilities-messaging.php`):
 - `queue_driver`: `auto` \| `laravel` \| `fake` — `auto` → fake when `APP_ENV=testing`, otherwise Laravel bus
 - `bot_driver`: `auto` \| `http` \| `fake` — `auto` → fake when testing, otherwise HTTP
 
-`ProcessTelegramUpdateJob` implements `ShouldQueue`: the webhook answers Telegram once the update is queued, and a queue worker runs the agent turn (3 tries, backoff 10s/60s). Transient Bot API failures sending the reply (429/5xx) throw `RetryableUpdateFailure` so the job retries and lands in `failed_jobs`; everything else returns without retrying. Capability results (output, `approval_required`, refusals, retryable failures) go back to the agent through `AgentTurn::respondWithResults()`, whose text is the reply.
+`ProcessTelegramUpdateJob` implements `ShouldQueue`: the webhook answers Telegram once the update is queued, and a queue worker runs the agent turn (3 tries, backoff 10s/60s). Transient Bot API failures sending the reply (429/5xx) keep the reply in your cache and throw `RetryableUpdateFailure`, so the job retries and lands in `failed_jobs`; a retry only re-sends that reply (no second agent turn or tool invoke). Everything else returns without retrying. Capability results (output, `approval_required`, refusals, retryable failures) go back to the agent through `AgentTurn::respondWithResults()`, whose text is the reply.
 
 Fake\* classes bind only when the matching driver is `fake`, or `auto` with `APP_ENV=testing`. Unit tests never call the live Telegram network; inject a transport on `HttpTelegramBotClient` or use `bot_driver=fake`.
 
