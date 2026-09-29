@@ -21,6 +21,11 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Added
 
+- **`auth login --token` warns on a non-`cli` caller** — the verification
+  `GET /capabilities` already returns the server-derived `meta.caller`. When it
+  is not `cli` (the PAT lacks the `capabilities:cli` ability), login still
+  stores the token but prints one stderr warning naming the caller, and
+  `--json` adds `data.caller`. Servers that omit `meta.caller` are unaffected.
 - **API version preflight on `run`** — before the invoke POST, `run` reads
   `data.api_version` from `GET /capabilities/health` and refuses (exit 1, no
   POST) when the server speaks a different capability API version, with an
@@ -48,6 +53,12 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
+- **`describe` keeps `description`, `readOnly` and `idempotent`** — the server
+  sends them on describe, but the CLI's schema cache dropped them, so
+  `describe --json`, `run <name> --help` and `<domain> <verb> --help` showed no
+  description and no retry-safety flags. They are now kept, cached, printed by
+  `describe --json`, and the description appears in capability help. Entries
+  cached by an older CLI lack them until the next live describe (`--no-cache`).
 - **HTTP redirects are never followed** — against a `--base-url` that 301s
   (e.g. `http://` to an HTTPS-only host), Go replayed the `run` POST as a GET,
   which hit the describe route and returned an ok envelope: the CLI exited

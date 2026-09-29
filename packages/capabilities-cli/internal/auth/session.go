@@ -21,6 +21,9 @@ type LoginResult struct {
 	// TokenPresent indicates success without exposing the secret.
 	TokenPresent bool
 	Flow         string // "device" | "token" | "pat"
+	// Caller is the caller the server derived for the token during --token
+	// verification (meta.caller); empty when the server did not say.
+	Caller string
 }
 
 // LoginWithToken verifies a pre-issued token (PAT / API token) with one
@@ -55,7 +58,11 @@ func LoginWithToken(ctx context.Context, store *Store, client *api.Client, profi
 	if err := store.SetToken(profile, token); err != nil {
 		return nil, err
 	}
-	return &LoginResult{Profile: profile, BaseURL: normalized, TokenPresent: true, Flow: "token"}, nil
+	r := &LoginResult{Profile: profile, BaseURL: normalized, TokenPresent: true, Flow: "token"}
+	if res.Envelope.Meta != nil {
+		r.Caller = res.Envelope.Meta.Caller
+	}
+	return r, nil
 }
 
 // loginTarget validates the profile name and normalizes the base URL before

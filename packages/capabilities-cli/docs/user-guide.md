@@ -312,7 +312,8 @@ Fetches from `GET /capabilities` via the HTTP client.
 capabilities describe <name> [--json] [--no-cache] [--profile=NAME]
 ```
 
-JSON Schema / description for one capability.
+JSON Schema, description, and `readOnly` / `idempotent` flags for one
+capability. `readOnly` / `idempotent` appear in `--json` only when true.
 
 ### `run` and `<domain> <verb>`
 

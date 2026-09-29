@@ -64,6 +64,23 @@ func TestRunNameHelpShowsCapabilitySchema(t *testing.T) {
 	}
 }
 
+func TestRunNameHelpJSONCarriesDescribeDescription(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"ok":true,"data":{"name":"create-invoice","schema_version":"1","description":"Create a draft invoice","readOnly":false,"idempotent":true,"input_schema":{"type":"object"}}}`))
+	}))
+	t.Cleanup(srv.Close)
+	root := t.TempDir()
+	st := auth.NewStore(root)
+	seedLogin(t, st, "default", srv.URL, "tok")
+	code, out, errb := CaptureExecute([]string{"run", "create-invoice", "--help", "--json"}, root, newClientFactory(srv))
+	if code != api.ExitOK {
+		t.Fatal(code, errb, out)
+	}
+	if !strings.Contains(out, "Create a draft invoice") {
+		t.Fatalf("help --json dropped the describe description:\n%s", out)
+	}
+}
+
 func TestApprovalsAcceptRequiresID(t *testing.T) {
 	srv, url := testAPI(t)
 	root := t.TempDir()

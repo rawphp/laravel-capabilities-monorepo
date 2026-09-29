@@ -233,7 +233,7 @@ func writeCapabilityHelp(env Env, domain, verb, canonical string, jsonOut bool, 
 			fmt.Fprintln(env.Stderr, err.Error())
 			return api.ExitInternal
 		}
-		// Describe carries no description; domain/verb come from the index.
+		info.Description = entry.Description
 		info.SchemaVersion = entry.SchemaVersion
 		info.Name = entry.Name
 		if entry.Canonical != "" {
