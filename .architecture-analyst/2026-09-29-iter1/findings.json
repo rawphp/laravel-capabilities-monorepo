@@ -1,0 +1,2174 @@
+{
+  "generated_at": "2026-09-29T12:22:44Z",
+  "stack_summary": {
+    "laravel": {
+      "present": true,
+      "version": "11.x|12.x|13.x (illuminate/* components; three packages, not a full app)",
+      "php_version": "8.2+",
+      "key_packages": [
+        "illuminate/support",
+        "illuminate/http",
+        "illuminate/routing",
+        "illuminate/console",
+        "illuminate/bus",
+        "illuminate/events",
+        "illuminate/database",
+        "illuminate/validation",
+        "pestphp/pest",
+        "phpstan/phpstan"
+      ]
+    },
+    "frontend": {
+      "framework": "none",
+      "framework_version": null,
+      "inertia_version": null,
+      "typescript": false,
+      "state_library": "none",
+      "ui_library": "none",
+      "build_tool": "unknown",
+      "key_packages": []
+    },
+    "testing": {
+      "backend": "pest",
+      "frontend": "none"
+    },
+    "tooling": {
+      "linter_backend": "none",
+      "linter_frontend": "none",
+      "formatter_frontend": "none",
+      "types_php": "phpstan"
+    },
+    "infrastructure_hints": {
+      "queue_driver": "unknown",
+      "cache_driver": "unknown",
+      "ci": "github-actions (tests.yml, split-packages.yml)",
+      "deploy": "unknown"
+    },
+    "notes": "Monorepo: packages/laravel-capabilities (core bus, ~22.8k LOC), packages/laravel-capabilities-messaging (~3k), packages/laravel-capabilities-ai (~4.5k), packages/capabilities-cli (Go, ~5.5k). No root app/routes/package.json. Unit-test-only policy (no feature/DB tests), >=95% coverage. Design oracle: docs/spec.md (D-002..D-023). Standing decisions: /Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.do-work/decisions.md (primary checkout, untracked).",
+    "control_plane": {
+      "present": true,
+      "language": "go",
+      "path": "packages/capabilities-cli",
+      "notes": "Go product CLI, HTTP client only (D-016)"
+    }
+  },
+  "mode": "audit",
+  "buckets": {
+    "critical": [],
+    "high": [
+      {
+        "id": "L-003",
+        "title": "Sanctum CLI tokens are always derived as caller=http, never cli",
+        "category": "security",
+        "severity": "high",
+        "effort": "small",
+        "impact": [
+          "security",
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Http/IlluminateHttpBridge.php",
+            "line": 310,
+            "snippet": "if ($authenticated || ...) { if (! isset($credential['adapter']) ...) { $credential['adapter'] = 'http'; } }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Http/CallerDeriver.php",
+            "line": 49,
+            "snippet": "$adapter = $credential['adapter'] ?? ...; if (is_string($adapter)) { ... 'http','api' => 'http' ... return $fromAdapter; }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Http/CallerDeriver.php",
+            "line": 65,
+            "snippet": "$abilities = $credential['token_abilities'] ?? [];  // never reached when adapter is set"
+          },
+          {
+            "file": "packages/laravel-capabilities/tests/Unit/Http/IlluminateHttpBridgeTest.php",
+            "line": 50,
+            "snippet": "->and($ctx->credential['token_abilities'] ?? null)->toBe(['capabilities:cli'])->and($ctx->credential['adapter'] ?? null)->toBe('http');"
+          }
+        ],
+        "current_state": "fromIlluminate() adds adapter='http' to every authenticated credential, including ones that carry token_abilities. CallerDeriver checks adapter before token_abilities, so the configured clients.token_abilities map ('capabilities:cli' => 'cli') never applies on the real HTTP path. The Go CLI deliberately does not send X-Capabilities-Caller (packages/capabilities-cli/internal/api/client.go:84), so CLI requests always run as caller=http.",
+        "recommended_state": "Derive the caller from token abilities first; fall back to adapter=http only when no ability maps. Either stop the bridge injecting adapter when token_abilities is non-empty, or make CallerDeriver treat adapter 'http' as the lowest-precedence fact.",
+        "rationale": "D-022: the caller is derived from the credential class. Because of this bug, surfaces.cli.enabled=false and per-capability surfaces without 'cli' do not block the CLI (it passes the http surface gate at CapabilityRegistry.php:894). A cli-only capability is unreachable from the CLI. Approval, rate-limit and audit logic keyed on the caller also sees the wrong surface. The unit test pins the buggy intermediate state and never composes bridge + deriver.",
+        "implementation_hint": "In IlluminateHttpBridge::buildCredential, set adapter='http' only when `$tokenAbilities === [] && $oauthClientId === null`. Add a unit test that runs IlluminateHttpBridge::fromArray(['authenticated'=>true,'user'=>$u,'token_abilities'=>['capabilities:cli']]) through CapabilityController::resolveCaller() and expects caller 'cli'. Add one more where the CLI token hits a capability with surfaces ['http'] and expects forbidden.",
+        "score": 34.0
+      },
+      {
+        "id": "L-004",
+        "title": "Invokes without an actor silently run as fabricated user id 1",
+        "category": "security",
+        "severity": "high",
+        "effort": "small",
+        "impact": [
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/ResolveActor.php",
+            "line": 40,
+            "snippet": "// Default user principal for in-process / schema unit paths when omitted.\n return self::defaultUser();"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/ResolveActor.php",
+            "line": 45,
+            "snippet": "$user = new stdClass; $user->id = $id; $user->name = 'default-user';"
+          },
+          {
+            "file": "packages/laravel-capabilities/docs/user-guide.md",
+            "line": 107,
+            "snippet": "$registry->invoke('create-invoice', [...], ['caller' => 'http']);  // no actor"
+          }
+        ],
+        "current_state": "If the 'actor' key is absent and caller != job, ResolveActor returns a stdClass with id=1. CapabilityContext::user() returns it as the user, and it drives authorize(), rate-limit keys, idempotency identity and audit. The user guide's basic invoke example omits the actor, and the Capability facade invoke passes whatever options the host gives it.",
+        "recommended_state": "Fail closed: throw 'Actor principal is required' for every caller when no actor/context is given, as already done for job and explicit null. Keep a defaultUser only inside test fixtures (e.g. PipelineHelpers::options()).",
+        "rationale": "D-002 forbids implicit principals. Host code that calls the bus from its own controller or listener without an actor gets an identity it never authenticated, and it is usually the id of the first (admin) user. Any authorize() that checks `$ctx->user() !== null`, or compares ids, passes for that principal. Where authorize calls `$user->can()`, the result is an opaque internal error.",
+        "implementation_hint": "Replace lines 36-40 with `throw new RuntimeException('Actor principal is required (D-002).');`. Move defaultUser() into tests/Fixtures and update the helper options that relied on the implicit default. Fix the user-guide example to pass 'actor' => $request->user(). Unit test: invoke without actor for callers http, cli, mcp and agent returns unauthenticated, and run() is not called.",
+        "score": 34.0
+      },
+      {
+        "id": "L-005",
+        "title": "Approved execution runs as a stdClass stub, not the requester",
+        "category": "authorization",
+        "severity": "high",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+            "line": 596,
+            "snippet": "} else { $actor = new stdClass; $actor->id = $actorId; $actor->tenant_id = $tenantId; }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+            "line": 146,
+            "snippet": "new OriginalActorAuthorizer($registry, static fn (string $type, string $id): ?object => self::authUserOrNull($app, $id))"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/OriginalActorAuthorizer.php",
+            "line": 42,
+            "snippet": "$actor = $this->actor(...);  // real user resolved for the pre-check, then discarded"
+          }
+        ],
+        "current_state": "On accept or resume, OriginalActorAuthorizer loads the real requester through the auth user provider to re-check authorize. executeApproval() then rebuilds a bare stdClass (id, tenant_id) and invokes the pipeline with it. authorize() and run() therefore see a non-User actor: `$actor->can(...)` (the user-guide example) throws, and domain code that reads user attributes breaks.",
+        "recommended_state": "Resolve the requester once through the same resolver OriginalActorAuthorizer uses, and pass that object as the actor to executeApproval. If the requester cannot be resolved, fail closed with a clear code.",
+        "rationale": "D-006 requires the stored invoke to run as the original requester. A stub that looks like a user but is not one turns every approved execution of a normal policy-based capability into an 'internal' failure after the approver has already decided.",
+        "implementation_hint": "Inject a `Closure(string $type, string $id): ?object` user resolver into CapabilityRegistry (or into the ApprovalManager executor closure in the provider), and use it in executeApproval instead of `new stdClass`. Unit test: a fake resolver returns an object with can(); the approved row executes and authorize() receives that same instance.",
+        "score": 34.0
+      },
+      {
+        "id": "M-009",
+        "title": "Stop tool invokes when a running turn is cancelled",
+        "category": "reliability",
+        "severity": "high",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-ai/src/Domain/TurnRunner.php",
+            "line": 71,
+            "snippet": "while ($rounds < $this->maxToolRounds) {  // no status check per round or before bus invoke"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Domain/TurnRunner.php",
+            "line": 160,
+            "snippet": "$result = $this->bus->invoke($name, $payload, $callOptions);"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Domain/TurnRunner.php",
+            "line": 188,
+            "snippet": "// Cooperative cancel: do not overwrite cancelled mid-run  (checked only after the loop)"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Domain/TurnRunner.php",
+            "line": 197,
+            "snippet": "$turn->status = Turn::STATUS_COMPLETED; ... $turn->save();  // non-CAS write"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Domain/TurnService.php",
+            "line": 75,
+            "snippet": "UPDATE ... SET status=cancelled WHERE status IN (queued, running); then append terminal=cancelled"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/docs/user-guide.md",
+            "line": 194,
+            "snippet": "If TurnRunner observes cancelled mid-loop, it does not overwrite status"
+          }
+        ],
+        "current_state": "Cancel flips the row to cancelled and emits a terminal event, but TurnRunner only re-reads status after the loop. A cancelled turn keeps calling the LLM and invoking mutating capabilities for up to max_tool_rounds (8), appending tool events after the terminal one. The final completed write is a plain save, so a cancel landing between the check and the save is overwritten.",
+        "recommended_state": "The runner re-checks status at the start of each round and before each bus invoke and stops when cancelled; the completed/failed writes are CAS updates (`WHERE status = running`).",
+        "rationale": "Users and hosts treat cancel as 'stop acting on my behalf'. Continuing capability mutations after cancel breaks that and makes the progress stream lie (terminal then more tool events).",
+        "implementation_hint": "Add `private function cancelled(string $ulid): bool { return Turn::query()->where('ulid',$ulid)->value('status') === Turn::STATUS_CANCELLED; }`; call at loop top and before `$this->bus->invoke`, returning the fresh turn. Replace the completed `$turn->save()` with a CAS update on status=running. Unit test: FakeLlmClient returns tool_calls twice; cancel after round 1 -> bus invoked once, no events after terminal.",
+        "score": 34.0
+      },
+      {
+        "id": "L-007",
+        "title": "Bus events never reach Laravel's dispatcher and accumulate on the singleton",
+        "category": "queues_events",
+        "severity": "high",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "performance",
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokeResultFinalizer.php",
+            "line": 161,
+            "snippet": "$this->observation->invokedEvents[] = $event;"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokeResultFinalizer.php",
+            "line": 184,
+            "snippet": "$this->observation->failedEvents[] = $event; $this->observation->logs[] = [...]"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokeObservation.php",
+            "line": 1,
+            "snippet": "public array $failedEvents = []; public array $invokedEvents = []; ... beginInvoke() never clears them"
+          }
+        ],
+        "current_state": "CapabilityInvoked, CapabilityFailed and CapabilityApproval* are only appended to arrays on InvokeObservation, which is owned by the singleton CapabilityRegistry. No Illuminate Dispatcher is called anywhere in src. beginInvoke() does not reset the arrays, so each invoke keeps its event (including output data) and log lines for the life of the process.",
+        "recommended_state": "Dispatch events through an injected Illuminate\\Contracts\\Events\\Dispatcher when events.enabled is true. Keep in-memory capture only as an opt-in test recorder, or cap and reset it per invoke.",
+        "rationale": "Spec \u00a7transactions item 5 (docs/spec.md:2454) says bus events are emitted for app listeners. In queue workers and Octane the arrays grow without bound (memory leak proportional to invokes x output size), and host listeners never fire.",
+        "implementation_hint": "Add an optional `?Dispatcher $events` to InvokeResultFinalizer, bound in makeRegistry from `$app->bound('events')`, and call `$events?->dispatch($event)`. Add `$this->observation->reset()` in beginInvoke() for the event/log arrays, or keep them only while a fake() recorder is active. Unit tests: a fake Dispatcher receives CapabilityInvoked once, and 1000 invokes leave the observation arrays bounded.",
+        "score": 34.0
+      },
+      {
+        "id": "L-012",
+        "title": "Approval store SQL fails on MySQL/Postgres (JSON scope, '' lease compare)",
+        "category": "database",
+        "severity": "high",
+        "effort": "small",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Persistence/DatabaseApprovalStore.php",
+            "line": 33,
+            "snippet": "'scope' => $record['scope'] ?? ($record['tenant_id'] ?? null),"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Boot/ContainerBindings.php",
+            "line": 55,
+            "snippet": "'scope' => 'scope_json',"
+          },
+          {
+            "file": "packages/laravel-capabilities/database/migrations/2026_07_27_000001_create_capabilities_approvals_table.php",
+            "line": 25,
+            "snippet": "$blueprint->json('scope_json')->nullable();"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Persistence/QueryTableGateway.php",
+            "line": 178,
+            "snippet": "->orWhere($physicalLease, '=', '')  // on a TIMESTAMP column"
+          }
+        ],
+        "current_state": "ApprovalManager::request stores the tenant id string as 'scope'. The gateway maps it to the JSON column scope_json and only JSON-encodes arrays or objects, so a tenant such as 'acme' or a UUID is inserted as invalid JSON. claimLease also compares the timestamp column execution_lease_until with ''. PostgreSQL rejects both (invalid json / invalid timestamp input), and MySQL rejects the JSON insert and in strict mode can reject the '' datetime comparison in UPDATE. Unit tests run on SQLite, which accepts both.",
+        "recommended_state": "Always JSON-encode values for *_json columns (or store scope as {'tenant_id': ...}). Drop the '' branch from the lease predicate (the column is a nullable timestamp). Write timestamps in a portable 'Y-m-d H:i:s' UTC form instead of DATE_ATOM, which MariaDB rejects.",
+        "rationale": "approval.store=database is the package default. In any multi-tenant app with non-numeric tenant ids, the first approval request raises a QueryException, and on PostgreSQL every accept fails before it reaches the domain.",
+        "implementation_hint": "QueryTableGateway::encodeValue: `if ($this->isJsonColumn($k)) return json_encode($value, ...)` for scalars too, with decodeValue symmetric. updateWhereLeaseFree: keep only whereNull OR <= now. Unit tests (still DB-free): assert the encoded row for scope 'acme' is the JSON string '\"acme\"', and assert the builder SQL for claimLease via `$query->toSql()` on a grammar-only connection contains no `= ?` with '' binding.",
+        "score": 34.0
+      },
+      {
+        "id": "M-002",
+        "title": "Make ProcessTelegramUpdateJob actually queue and let failures fail the job",
+        "category": "queues_events",
+        "severity": "high",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "performance"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdateJob.php",
+            "line": 11,
+            "snippet": "final class ProcessTelegramUpdateJob  // no ShouldQueue"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/MessagingServiceProvider.php",
+            "line": 89,
+            "snippet": "$app->make(BusDispatcher::class)->dispatch(new ProcessTelegramUpdateJob($update));"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 84,
+            "snippet": "} catch (Throwable $e) { $this->log(...); return ['ok' => false, ...]; }"
+          }
+        ],
+        "current_state": "Illuminate\\Bus\\Dispatcher::dispatch() only queues commands that implement ShouldQueue; this job does not, so the whole update (identity, agent turn, registry invokes, Bot API reply) runs inline inside the webhook HTTP request. ProcessTelegramUpdate::handle() also catches every Throwable and returns an array, so the job can never fail, retry, or land in failed_jobs.",
+        "recommended_state": "ProcessTelegramUpdateJob implements ShouldQueue (with Queueable, tries/backoff, optional queue/connection config) and transient failures (Bot API 429/5xx, registry retryable) propagate so the queue retries; terminal outcomes (identity_unresolved, rate_limited) return without throwing.",
+        "rationale": "Spec pipeline is 'verify webhook secret -> queue ProcessTelegramUpdate'. Inline processing makes Telegram wait on LLM/tool latency; Telegram re-delivers webhooks that do not answer in time, doubling replies. D-019 failed-job tags (failedJobTags()) are unreachable because no job ever fails.",
+        "implementation_hint": "Add `implements ShouldQueue` + `use Queueable` (or public $tries/$backoff/$queue/$connection like RunTurnJob). In ProcessTelegramUpdateJob::handle, rethrow when the result is a retryable failure (map from error code / TelegramBotApiException::$retryable). Unit test: `expect(new ProcessTelegramUpdateJob([]))->toBeInstanceOf(ShouldQueue::class)` and a retryable Bot API failure makes handle() throw.",
+        "score": 34.0
+      },
+      {
+        "id": "M-003",
+        "title": "Shrink approval callback_data to Telegram's 64-byte limit",
+        "category": "api",
+        "severity": "high",
+        "effort": "small",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Notifiers/TelegramApprovalNotifier.php",
+            "line": 83,
+            "snippet": "['text' => 'Accept', 'callback_data' => $signer->encode($accept)],"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/TelegramCallbackSigner.php",
+            "line": 100,
+            "snippet": "return rtrim(strtr(base64_encode(json_encode($payload...)), '+/', '-_'), '=');  // 'Compact token for Telegram callback_data size limits'"
+          }
+        ],
+        "current_state": "encode() base64s a JSON object carrying approval_id, action, exp, approver_hint and a 64-hex HMAC. Measured: 195 bytes for approval id '1' with empty hint, 228 bytes for a 26-char ULID. Telegram rejects inline buttons whose callback_data exceeds 64 bytes (BUTTON_DATA_INVALID).",
+        "recommended_state": "callback_data is at most 64 bytes, e.g. a compact 'a|<approval_id>|<exp>|<truncated HMAC>' token or a short random handle mapped server-side to the signed payload, with a unit test pinning the size budget.",
+        "rationale": "Every real notifyPending() through HttpTelegramBotClient will 400, get audited as approval.notify_failed and rethrown, so chat approvals never reach a human. FakeTelegramBotClient does not validate size, so the unit suite cannot see it.",
+        "implementation_hint": "Pack as `{a|r}{approval_id}.{exp base36}.{base64url(hmac)[0..15]}` (~50 bytes for a ULID; hint bound into the HMAC input but not transmitted \u2014 verify against the row's stored approver hint or drop hint binding). Add `expect(strlen($signer->encode($signer->sign(str_repeat('Z',26),'accept','12345'))))->toBeLessThanOrEqual(64)` and make FakeTelegramBotClient reject callback_data > 64 bytes so tests mirror the Bot API.",
+        "score": 34.0
+      },
+      {
+        "id": "L-001",
+        "title": "Class-based capabilities never run their own authorize()/needsApproval()",
+        "category": "authorization",
+        "severity": "high",
+        "effort": "medium",
+        "impact": [
+          "security",
+          "reliability",
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+            "line": 572,
+            "snippet": "$definitionAuth = $definition->authorize; if (is_callable($definitionAuth)) {...} return $this->authorizer->authorize(...)"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Discovery/AttributeDiscoverer.php",
+            "line": 100,
+            "snippet": "authorize: null, run: null,"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+            "line": 898,
+            "snippet": "$handler = new ($definition->handlerClass);"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Contracts/DefinesCapability.php",
+            "line": 13,
+            "snippet": "interface DefinesCapability { // public function authorize(...); needsApproval(...); run(...) }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+            "line": 168,
+            "snippet": "$authorizer = $authorizer ?? StubAuthorizer::deny();"
+          }
+        ],
+        "current_state": "For #[Capability] classes (the canonical D-017 path), the pipeline only calls the handler's run(). The class's authorize() is never invoked: allows() falls through to the global Authorizer, which the provider never binds, so it defaults to StubAuthorizer::deny(). needsApproval() on the class is never read either. Handlers are built with `new`, so constructor dependencies cannot be injected.",
+        "recommended_state": "When a definition has handlerClass, resolve the handler once per invoke through the container. Call its authorize() in stageAuthorize and in authorizes(), and its needsApproval() in stageNeedsApproval, with the same arity rules run() already uses. A handler that implements DefinesCapability but has no authorize() should fail closed at discovery with a clear BootException.",
+        "rationale": "Spec \u00a7capability class (docs/spec.md:755-800) makes authorize/needsApproval/run on the class the canonical contract. As written, a host that follows the spec gets every class capability denied (fail-closed but unusable). If the host binds a permissive Authorizer to get unblocked, the per-capability authorize() and approval rules are silently skipped. The suite hides this because PipelineHelpers::harness uses StubAuthorizer::allow() and RunArityTest only checks run().",
+        "implementation_hint": "In InvokePipeline, add `private function handler(CapabilityDefinition $d): ?object` that uses `Container::getInstance()->make($d->handlerClass)` (injectable factory for units) and memoises it on InvokeState. In allows(): `if ($h && method_exists($h,'authorize')) return (bool) $h->authorize($input,$ctx);`. Do the same for needsApproval in stageNeedsApproval. Unit tests: fixture class with authorize() returning false plus registry built with StubAuthorizer::allow() gives forbidden; class needsApproval() returning true gives approval_required; a class with a constructor dependency resolves from a fake container.",
+        "score": 24.0
+      },
+      {
+        "id": "L-002",
+        "title": "Approval is never requested; per-capability approval policy is ignored",
+        "category": "authorization",
+        "severity": "high",
+        "effort": "medium",
+        "impact": [
+          "security",
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+            "line": 617,
+            "snippet": "$needs = (bool) ($state->options['needs_approval'] ?? false); ... needs_approval_callback ... require_approval"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Registry/CapabilityDefinitionBuilder.php",
+            "line": 208,
+            "snippet": "public function approvalPolicy(?string $policy): self  // no needsApproval() builder method exists"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+            "line": 378,
+            "snippet": "if (! $this->policy->allows($row, $approver, ...))  // global default policy, not the capability's"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+            "line": 638,
+            "snippet": "$record = $this->approvalManager->request([...])  // approval_ttl_hours never passed"
+          }
+        ],
+        "current_state": "Approval is only triggered by invoke options (needs_approval, needs_approval_callback, require_approval). No adapter (HTTP, MCP, AI, job, artisan) sets them, and neither CapabilityDefinition nor the fluent builder can declare needsApproval. At accept time, ApprovalManager applies its single global policy (default requester_or_role), never the capability's approvalPolicy (e.g. 'role:finance'). approvalTtlHours is never passed to request().",
+        "recommended_state": "Make approval part of the definition. Add a needsApproval callable to CapabilityDefinition/Builder (plus class-method support, see L-001) and evaluate it in stageNeedsApproval. Persist the capability's approvalPolicy and TTL on the approval row. Have accept/reject build the ApprovalPolicy from the row's policy, falling back to the global default.",
+        "rationale": "Locked decision in AGENTS.md: governance (authz, approval, audit) is part of the capability on every surface. Today the whole D-006 state machine (store, controllers, resumer, notifiers) cannot be reached from any real surface. A capability that declares approvalPolicy 'role:finance' would let the requester self-approve under the global requester_or_role.",
+        "implementation_hint": "CapabilityDefinition: add `public readonly mixed $needsApproval = null`, plus Builder::needsApproval(callable). In buildApprovalRequired, add 'approval_policy' => $def->approvalPolicy and 'approval_ttl_hours' => $def->approvalTtlHours. In ApprovalManager::accept/reject: `$policy = isset($row['approval_policy']) ? ApprovalPolicy::fromString($row['approval_policy']) : $this->policy;` (add a nullable approval_policy column in a new migration). Unit tests: fluent needsApproval true on the HTTP caller gives approval_required; a role:finance row accepted by the requester without the role gives forbidden.",
+        "score": 24.0
+      },
+      {
+        "id": "L-006",
+        "title": "Audit is silently off in production; strict mode and approval audit are no-ops",
+        "category": "observability",
+        "severity": "high",
+        "effort": "medium",
+        "impact": [
+          "security",
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokeAuditStage.php",
+            "line": 44,
+            "snippet": "if (! $this->auditEnabled || $this->auditWriter === null || ...) { return null; }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Boot/ContainerBindings.php",
+            "line": 283,
+            "snippet": "$registry->withAuditConfig(...)  // never withAuditWriter / withAuditOutbox"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Boot/ContainerBindings.php",
+            "line": 522,
+            "snippet": "public static function makeAuditLogger(array $config = []): AuditLogger { ... return new AuditLogger; }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Audit/AuditOutbox.php",
+            "line": 1,
+            "snippet": "final class AuditOutbox { private array $rows = []; ...  // in-memory only; capabilities_audit_outbox table never written"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+            "line": 128,
+            "snippet": "ContainerBindings::makeApprovalManager(...)->withExecutor(...)->withOriginalAuthorizer(...)  // no withAudit()"
+          }
+        ],
+        "current_state": "The defaults are audit.enabled=true and driver=database, and the package ships a capabilities_audit_outbox migration. But no production AuditWriter exists (only InMemory and Failing), the provider never injects a bound AuditWriter, and the outbox is a PHP array. Every audit record is dropped, audit.mode=strict / required=true cannot fail, and approval request/decision audit is dropped too. The only signal is a warning in IntegrationHealthChecker:109.",
+        "recommended_state": "Ship a first-party DatabaseAuditWriter (TableGateway on capabilities_audit_outbox) for driver=database. Have the provider inject any bound AuditWriter into both the registry and ApprovalManager. In strict or required mode with no writer, fail at boot (BootGuard) instead of passing silently.",
+        "rationale": "AGENTS.md locked decisions: audit is part of the capability and D-010 defines best_effort vs strict. A governance product whose audit trail is empty by default, with no error, is the worst failure mode: operators believe they have records they do not have.",
+        "implementation_hint": "Add Persistence/DatabaseAuditWriter implements AuditWriter (gateway insert into MigrationCatalog::TABLE_AUDIT_OUTBOX). In makeRegistry, choose the writer by audit.driver (database \u2192 DatabaseAuditWriter, log \u2192 Log channel writer). In the provider, `if ($app->bound(AuditWriter::class)) $registry->withAuditWriter($app->make(AuditWriter::class))`, and the same for ApprovalManager::withAudit. BootGuard: throw when mode=strict or required=true and the writer would be null. Unit tests with ArrayTableGateway.",
+        "score": 24.0
+      },
+      {
+        "id": "M-010",
+        "title": "Invoke AI turn tool calls as caller=agent, not job",
+        "category": "security",
+        "severity": "high",
+        "effort": "medium",
+        "impact": [
+          "security",
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-ai/src/Support/ResolveConversationActor.php",
+            "line": 18,
+            "snippet": "public const CALLER_JOB = 'job';  /** In-process coach / job surface (legacy RunCoachCommandHandler shape). */"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Support/ResolveConversationActor.php",
+            "line": 107,
+            "snippet": "'caller' => self::CALLER_JOB,"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Domain/TurnRunner.php",
+            "line": 105,
+            "snippet": "$invokeOptions = $this->actors->invokeOptions($actor);"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 291,
+            "snippet": "caller: 'agent',  // messaging sibling uses agent for the same kind of LLM tool call"
+          }
+        ],
+        "current_state": "Every LLM-chosen tool call from TurnRunner reaches the bus as caller=job. The core surface gate and needsApproval(ctx) therefore see a job, not an agent: CAPABILITIES_SURFACE_AGENT=false does not stop AI turns, a capability narrowed to surfaces [http, job] (deliberately no agent) is still callable by the model, and approval rules keyed on caller=agent do not fire. The messaging sibling uses caller=agent for the identical case.",
+        "recommended_state": "TurnRunner tool invokes pass caller=agent (plus tool_profile for audit); the proposal-accept path's caller is decided explicitly in the spec (it is a human confirming via HTTP) instead of inheriting a legacy job shape.",
+        "rationale": "Spec Surfaces \u00a71 treats in-app LLM tool use as the agent surface, and 'per-capability surfaces can only narrow' is a governance guarantee. Only README text records caller=job, as a legacy shape; no D-0xx decision covers it. The host ToolCatalog limits what is offered, but surface narrowing and the agent kill switch exist precisely as defense in depth against catalog mistakes.",
+        "implementation_hint": "Add `invokeOptions(object $actor, string $caller, array $extra)` (or CALLER_AGENT) and use 'agent' in TurnRunner; add `capabilities-ai.agent_profile` (nullable) passed as tool_profile. Keep ProposalService on its current caller until a spec line decides it. Unit test with a bus spy: TurnRunner options['caller'] === 'agent'. Record the decision in docs/spec.md.",
+        "score": 24.0
+      },
+      {
+        "id": "C-001",
+        "title": "Implement device-code polling; CLI expects access_token from device start",
+        "category": "wire_contract",
+        "severity": "high",
+        "effort": "medium",
+        "impact": [
+          "reliability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/capabilities-cli/internal/auth/session.go",
+            "line": 50,
+            "snippet": "res, err := client.LoginDevice(ctx, map[string]any{\"client_id\": \"capabilities-cli\"})"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/auth/session.go",
+            "line": 59,
+            "snippet": "token := extractToken(payload); if token == \"\" { return nil, fmt.Errorf(\"device login response missing access_token\") }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Contracts/AuthTokenIssuer.php",
+            "line": 25,
+            "snippet": "Start a device-code flow. public function issueDeviceCode(...): array;"
+          },
+          {
+            "file": "packages/laravel-capabilities/tests/Fixtures/HttpHelpers.php",
+            "line": 189,
+            "snippet": "'device_code' => 'host-device-code', 'user_code' => 'HOST-USER', 'verification_uri' => ..., 'interval' => 5"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/auth/auth_test.go",
+            "line": 69,
+            "snippet": "w.Write([]byte(`{\"ok\":true,\"data\":{\"access_token\":\"device-tok\",\"device_code\":\"d\"}}`))"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/Http/AuthController.php",
+            "line": 105,
+            "snippet": "$data = $this->issuer->issueDeviceCode($request, $body); return HttpResponse::ok($data, ...)"
+          }
+        ],
+        "current_state": "`capabilities auth login --base-url=URL` (the documented default mode) makes one POST /capabilities/auth/device and requires `access_token` in that response. The core contract says issueDeviceCode *starts* a flow, and the core's own fixture returns the RFC 8628 start shape (device_code, user_code, verification_uri, interval) with no token. The CLI unit test fakes a server that returns a token straight from the device endpoint, so the two sides are each tested against a different contract.",
+        "recommended_state": "The CLI prints user_code + verification_uri, then polls POST /capabilities/auth/token with the device-code grant at `interval` until it gets a token, is denied, or passes `expires_in`. The core documents the pending/slow_down shape in AuthTokenIssuer so hosts can signal it.",
+        "rationale": "Against any host issuer written to the core contract, the default login path always fails with 'device login response missing access_token' (exit 1). The spec lists 'Device-code polling UX on auth routes' (docs/spec.md:3749) as expected. AuthController wraps whatever the issuer returns in ok:true, so today an issuer has no error-envelope way to say 'authorization_pending'. Both sides need to agree on that.",
+        "implementation_hint": "Core: in the AuthTokenIssuer docblock, define issueToken for grant_type=urn:ietf:params:oauth:grant-type:device_code, returning either {access_token,...} or {status:'authorization_pending'|'slow_down'|'access_denied'|'expired_token'}. Unit-test AuthController with the fake issuer. CLI: in LoginDeviceCode, parse data.{device_code,user_code,verification_uri,interval,expires_in}, write the prompt to stderr, and loop on client.LoginToken({grant_type, device_code, client_id}) with an injectable sleeper/clock. Keep the rule that the base URL is written only after a token is obtained. Replace the auth_test.go fake with the core fixture shape plus a pending-then-token sequence.",
+        "score": 24.0
+      },
+      {
+        "id": "M-001",
+        "title": "Wire Telegram ingress to a real agent and profile tools (bound path is an echo bot)",
+        "category": "architecture",
+        "severity": "high",
+        "effort": "medium",
+        "impact": [
+          "reliability",
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/src/MessagingServiceProvider.php",
+            "line": 118,
+            "snippet": "new TelegramAdapter($app->make(TelegramBotClient::class))  // no ingressHandler"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/MessagingServiceProvider.php",
+            "line": 144,
+            "snippet": "new ProcessTelegramUpdate(..., $registry, $bot, turnLimiter: ...)  // no profileResolver / agentRunner"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/TelegramAdapter.php",
+            "line": 69,
+            "snippet": "// Default echo ingress \u2014 tools only when caller provided tool_calls on the message."
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 391,
+            "snippet": "// Default: profile name is non-empty => empty tool list unless resolver provided. return [];"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 70,
+            "snippet": "$this->agentRunner = $agentRunner;  // never read anywhere"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/README.md",
+            "line": 13,
+            "snippet": "routes messages into the agent with a configured tool profile"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Contracts/CapabilityBus.php",
+            "line": 11,
+            "snippet": "interface CapabilityBus { invoke(); catalog(); }  // no profile->tools method; aiTools() lives only on concrete CapabilityRegistry:672"
+          }
+        ],
+        "current_state": "The container-bound TelegramAdapter has no ingress handler, so ConversationIngress::handle() returns the user's own text as the reply; ProcessTelegramUpdate is bound without a profile resolver, so the profile tool list is always [] and $agentRunner is dead state. A linked Telegram user gets their message echoed back, and a tapped approval button (callback_query.data) is echoed as text. README/user-guide claim messages reach the agent with the configured profile.",
+        "recommended_state": "Default ingress fails closed (clear 'no agent bound' error) instead of echoing, and the provider binds a profile resolver that turns agent_profile into tool names through a published core contract. Hosts plug the actual agent turn (laravel/ai or the AI sibling) via one documented binding.",
+        "rationale": "Spec \u00a76 pipeline is ConversationIngress -> laravel/ai agent (tools = profile) -> registry. D-007 forbids messaging from reaching into core internals, and core's only profile->tools API (CapabilityRegistry::aiTools) is not on a published contract, which is likely why the resolver was left unbound. Unit tests inject resolvers/handlers, so the suite is green while the shipped wiring is an echo bot.",
+        "implementation_hint": "1) Core: expose profile tool names on a published contract (e.g. add `toolNames(string $profile): list<string>` to a small `ToolProfiles` contract bound to the registry). 2) MessagingServiceProvider: pass `profileResolver: fn ($p) => $app->make(ToolProfiles::class)->toolNames($p)`; bind an `ingressHandler` from a host-overridable abstract (e.g. `Rawphp\\CapabilitiesMessaging\\Contracts\\AgentTurn`) and throw RuntimeException('No agent turn bound for messaging ingress') when unbound. 3) Delete the unused $agentRunner param. 4) Unit test: provider-built ProcessTelegramUpdate with no AgentTurn bound fails closed (no reply sent).",
+        "score": 24.0
+      },
+      {
+        "id": "X-001",
+        "title": "Enforce the 95% coverage floor in CI; all four packages are below it",
+        "category": "ci_cd",
+        "severity": "high",
+        "effort": "medium",
+        "impact": [
+          "reliability",
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": "AGENTS.md",
+            "line": 78,
+            "snippet": "\u226595% coverage ... Below 95% is a **failed** task \u2014 not a warning."
+          },
+          {
+            "file": ".github/workflows/tests.yml",
+            "line": 29,
+            "snippet": "coverage: none"
+          },
+          {
+            "file": "docs/versioning.md",
+            "line": 36,
+            "snippet": "| Coverage floor / Packagist API | **Not** enforced here (unit exit codes only ...) |"
+          },
+          {
+            "file": "composer.json",
+            "line": 58,
+            "snippet": "\"test\": [\"@test:core\", \"@test:messaging\", \"@test:ai\"]  (no --coverage --min)"
+          }
+        ],
+        "current_state": "AGENTS.md calls 95% line coverage blocking, but CI installs PHP with `coverage: none`, no composer script measures it, and Go runs plain `go test`. Measured today (PHP 8.5 + pcov, `pest --coverage --min=95`): core 92.5%, messaging 91.4%, AI 89.1%. Go CLI: 88.5% total (`go tool cover -func`), with helpfmt at 78.4% and flagschema at 83.6%. The suites are green, but every package misses the floor.",
+        "recommended_state": "CI runs PHP with pcov and `pest --coverage --min=95` for each package, and Go with a coverage-profile threshold. A PR that drops a package below the floor fails. If the floor is not realistic yet, lower it in AGENTS.md to the measured value and ratchet it up.",
+        "rationale": "The policy is enforced only by agent discipline, and it has drifted 3\u20136.5 points under the bar on every package. The prior audit's X-005 was deferred in UR-012 as polish. Measurement now shows the stated gate is false, not just unchecked, so severity stays high: docs and agents assert a guarantee the repo does not meet.",
+        "implementation_hint": "tests.yml php job: set `coverage: pcov`. Add composer scripts `test:core:coverage` = `pest --configuration=packages/laravel-capabilities/phpunit.xml --coverage --min=95` (and the same for messaging and AI), then call them from CI. Go job: `go test -coverprofile=c.out ./... && go tool cover -func=c.out | awk '/^total:/ {sub(\"%\",\"\",$3); if ($3+0 < 95) exit 1}'`. Then close the gap with real tests, or delete dead paths, before turning the gate on.",
+        "score": 24.0
+      }
+    ],
+    "quick_wins": [
+      {
+        "id": "C-003",
+        "title": "Pass --base-url override into domain/verb catalog load",
+        "category": "isolation",
+        "severity": "medium",
+        "effort": "trivial",
+        "impact": [
+          "reliability",
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/capabilities-cli/cmd/capabilities/cmd_domain.go",
+            "line": 18,
+            "snippet": "profile, base, args := profileAndBase(args)"
+          },
+          {
+            "file": "packages/capabilities-cli/cmd/capabilities/cmd_domain.go",
+            "line": 19,
+            "snippet": "idx, summaries, code := loadSynthIndex(env, profile)"
+          },
+          {
+            "file": "packages/capabilities-cli/cmd/capabilities/cmd_domain.go",
+            "line": 83,
+            "snippet": "c, err := clientFor(env, st, profile, \"\")"
+          },
+          {
+            "file": "packages/capabilities-cli/cmd/capabilities/cmd_domain.go",
+            "line": 65,
+            "snippet": "return invokeCapability(env, st, profile, base, canonical, ...)"
+          }
+        ],
+        "current_state": "For `capabilities --base-url=B <domain> <verb>`, the synthesis index (domain/verb \u2192 canonical name) is built from the profile's stored base URL, not from B. The resolved canonical name is then invoked against B. Every other command (catalog, describe, run, approvals) respects the override.",
+        "recommended_state": "loadSynthIndex takes `base` and passes it to clientFor, so resolution and invoke hit the same deployment.",
+        "rationale": "The CLI is built for one binary across many deployments (profiles plus --base-url). With the override, a domain/verb that exists only on B is reported unknown (exit 5). Worse, when the two deployments map the same domain/verb to different capabilities, the CLI POSTs a canonical name chosen from deployment A's catalog to deployment B, and sends the token to A as well.",
+        "implementation_hint": "Change the signature to `loadSynthIndex(env Env, profile, base string)` and use `clientFor(env, st, profile, base)`. Add a unit test with two httptest servers asserting the catalog GET goes to the override host.",
+        "score": 15.0
+      },
+      {
+        "id": "L-017",
+        "title": "Agent/MCP handle() invokes the full catalog when no profile is active",
+        "category": "authorization",
+        "severity": "medium",
+        "effort": "trivial",
+        "impact": [
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/Ai/AiToolAdapterV1.php",
+            "line": 183,
+            "snippet": "$profile = $options['profile'] ?? $this->activeProfile; if ($profile !== null) { ... } return $this->registry->invoke($name, $clean, $invokeOptions);"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/Mcp/McpToolAdapterV1.php",
+            "line": 217,
+            "snippet": "if ($profile !== null) { return $this->registry->runCapabilityInProfile(...); } return $this->registry->invoke($name, $clean, $invokeOptions);"
+          }
+        ],
+        "current_state": "If handle() is called before register(), or register failed and left activeProfile null, with no options['profile'], the adapters invoke any capability whose surfaces include agent/mcp by name. Tool-list generation refuses a full catalog (ProfileRequiredException), but execution does not apply the same rule.",
+        "recommended_state": "When surfaces.<agent|mcp>.require_profile is true (the default), return failure('not_runnable', normalized_code 'profile_required') if no profile resolves, matching the multi-profile guard McpToolAdapterV1 already has.",
+        "rationale": "D-008: least privilege for model tool calls, and progressive disclosure is not an escape hatch. A model can name a capability that is not in its tool list, and the fail-open fallback executes it (subject only to authorize).",
+        "implementation_hint": "Inject requireProfile into both adapters from config (the provider already builds McpToolAdapterV1). Replace the final `return $this->registry->invoke(...)` with the failure when requireProfile. Unit tests: an unregistered adapter handle('x') gives profile_required and run() is not called; require_profile=false keeps the current behaviour.",
+        "score": 15.0
+      },
+      {
+        "id": "L-018",
+        "title": "Unauthenticated auth/token and device routes ship without throttling",
+        "category": "security",
+        "severity": "medium",
+        "effort": "trivial",
+        "impact": [
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Http/RouteTable.php",
+            "line": 105,
+            "snippet": "? self::withoutAuthMiddleware($middleware) : $middleware;  // auth_token/auth_device/oauth_callback"
+          },
+          {
+            "file": "packages/laravel-capabilities/config/capabilities.php",
+            "line": 82,
+            "snippet": "'middleware' => ['api', 'auth:sanctum'],"
+          }
+        ],
+        "current_state": "The package strips auth:sanctum from POST /capabilities/auth/token, /auth/device and GET /auth/callback, which is correct because they issue credentials. It adds no rate limit. On Laravel 11+ the default 'api' group has no throttle unless the host opts in, so these credential-issuing endpoints accept unlimited attempts.",
+        "recommended_state": "Attach a configurable throttle (e.g. surfaces.http.auth_middleware defaulting to ['api','throttle:6,1']) to the unauthenticated auth routes.",
+        "rationale": "Brute-forcing password grants and device codes against the host AuthTokenIssuer is the standard attack on exactly these endpoints. The package owns the route table, so it should own a safe default.",
+        "implementation_hint": "In RouteTable::definitions, for the three auth keys use `$httpConfig['auth_middleware'] ?? [...withoutAuthMiddleware($middleware), 'throttle:capabilities-auth']`, and register a named RateLimiter in the provider. Unit test on RouteTable::definitions shows the auth routes include a throttle entry and list/invoke keep auth:sanctum.",
+        "score": 15.0
+      },
+      {
+        "id": "M-004",
+        "title": "Sign callbacks with telegram.callback_secret, never a literal fallback key",
+        "category": "security",
+        "severity": "medium",
+        "effort": "trivial",
+        "impact": [
+          "security",
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/src/MessagingServiceProvider.php",
+            "line": 113,
+            "snippet": "$secret = $cfg->webhookSecret() ?? 'deferred-unset';"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Boot/MessagingBindings.php",
+            "line": 153,
+            "snippet": "$secret = $cfg->webhookSecret() ?? 'deferred-unset';"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Notifiers/TelegramApprovalNotifier.php",
+            "line": 64,
+            "snippet": "$signer = $this->signer ?? new TelegramCallbackSigner($this->config->callbackSecret(), ...)  // only when no signer injected"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/config/capabilities-messaging.php",
+            "line": 12,
+            "snippet": "'callback_secret' => env('TELEGRAM_CALLBACK_SECRET', env('TELEGRAM_WEBHOOK_SECRET')),"
+          }
+        ],
+        "current_state": "The container always injects a signer keyed on the webhook secret, so the documented TELEGRAM_CALLBACK_SECRET is dead config. When the webhook secret is unset (e.g. skip_boot_checks outside production) buttons are signed with the public constant 'deferred-unset'.",
+        "recommended_state": "One signer built lazily from MessagingConfig::callbackSecret() (which already falls back to the webhook secret and throws when neither is set); no hard-coded key anywhere.",
+        "rationale": "A host that sets a distinct callback secret and builds CallbackHandler per the user guide verifies with a different key than the notifier signed with, so every button returns invalid_signature_or_expired. A known constant HMAC key is forgeable wherever it is used.",
+        "implementation_hint": "Replace both `webhookSecret() ?? 'deferred-unset'` with `$cfg->callbackSecret()` (the singleton closure resolves lazily, so D-021 boot is unaffected). Unit test: config with callback_secret='cb' and webhook_secret='wh' -> provider-bound signer verifies a payload signed with 'cb'; no secrets -> resolving the signer throws.",
+        "score": 15.0
+      },
+      {
+        "id": "X-002",
+        "title": "Add LICENSE (and SECURITY.md) to the split laravel-capabilities-ai package",
+        "category": "legal_licensing",
+        "severity": "medium",
+        "effort": "trivial",
+        "impact": [
+          "security",
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-ai/composer.json",
+            "line": 5,
+            "snippet": "\"license\": \"MIT\","
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/",
+            "line": null,
+            "snippet": "no LICENSE, no SECURITY.md (core, messaging, cli each have both)"
+          },
+          {
+            "file": "SECURITY.md",
+            "line": 20,
+            "snippet": "(`laravel-capabilities`, `laravel-capabilities-messaging`, or `capabilities-cli`)"
+          }
+        ],
+        "current_state": "split-packages.yml mirrors `packages/laravel-capabilities-ai` to the public rawphp/laravel-capabilities-ai repo, and v* tags are force-pushed there too. That tree has no LICENSE file and no SECURITY.md. The root SECURITY.md lists only the other three packages as report targets.",
+        "recommended_state": "The AI package root carries the same MIT LICENSE and a package SECURITY.md as its siblings. Root SECURITY.md names all four packages.",
+        "rationale": "MIT requires the copyright and permission notice to ship with the software. Composer metadata alone does not satisfy that, and GitHub shows the public repo as unlicensed. The package also has no private vulnerability-report path, even though it holds the Anthropic LLM client and turn endpoints.",
+        "implementation_hint": "cp packages/laravel-capabilities-messaging/LICENSE packages/laravel-capabilities-ai/; adapt packages/laravel-capabilities-messaging/SECURITY.md into the AI package; add `laravel-capabilities-ai` to the list at root SECURITY.md:20. Optional: a unit test in the AI package's tests/Unit/Architecture that asserts is_file(LICENSE) && is_file(SECURITY.md), mirroring the existing DocsTest.",
+        "score": 15.0
+      },
+      {
+        "id": "L-008",
+        "title": "Per-store DB connection config is ignored under a real Laravel container",
+        "category": "configuration",
+        "severity": "medium",
+        "effort": "trivial",
+        "impact": [
+          "reliability",
+          "scalability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+            "line": 373,
+            "snippet": "if (method_exists($app, 'bound') && $app->bound(ConnectionInterface::class)) { return $app->make(ConnectionInterface::class); }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+            "line": 384,
+            "snippet": "$connection = $app->make(ConnectionInterface::class);  // unconditional second attempt"
+          },
+          {
+            "file": "packages/laravel-capabilities/config/capabilities.php",
+            "line": 129,
+            "snippet": "'connection' => $env('CAPABILITIES_APPROVAL_CONNECTION', null),"
+          }
+        ],
+        "current_state": "boundConnectionOrNull() returns the container's ConnectionInterface before it looks at approval.connection or idempotency.connection. The Laravel framework aliases ConnectionInterface to 'db.connection', the default connection, so the named-connection branch at lines 392-410 is unreachable in real apps.",
+        "recommended_state": "Check the store-specific connection name first and resolve it through the 'db' manager. Use a bound ConnectionInterface only when no name is configured.",
+        "rationale": "Hosts that point approvals or idempotency at a dedicated connection (primary vs read replica, separate schema) silently write to the default connection. The config comment and README both promise the named connection works.",
+        "implementation_hint": "Reorder: `$name = $storeKey-specific ?? database.connection; if ($name !== null) return $app->make('db')->connection($name);` then fall back to the bound ConnectionInterface. Unit test with a fake container where ConnectionInterface is bound AND db->connection('ledger') returns a different fake: expect the 'ledger' connection for store=approval.",
+        "score": 15.0
+      },
+      {
+        "id": "L-011",
+        "title": "Idempotency config (ttl_hours, header, enabled, warn) never reaches the guard",
+        "category": "configuration",
+        "severity": "medium",
+        "effort": "trivial",
+        "impact": [
+          "reliability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+            "line": 164,
+            "snippet": "$idempotencyGuard = new IdempotencyGuard($idempotencyStore);  // IdempotencyConfig::defaults()"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+            "line": 494,
+            "snippet": "$this->pipeline->idempotencyGuard = new IdempotencyGuard($store);"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/Http/CapabilityController.php",
+            "line": 118,
+            "snippet": "$headerName = strtolower((string) ($this->httpConfig['idempotency_header'] ?? 'idempotency-key'));"
+          },
+          {
+            "file": "packages/laravel-capabilities/config/capabilities.php",
+            "line": 155,
+            "snippet": "'idempotency' => ['enabled' => true, 'driver' => ..., 'ttl_hours' => 24, 'header' => 'Idempotency-Key', 'warn_missing_key' => ...]"
+          }
+        ],
+        "current_state": "IdempotencyGuard is always built with IdempotencyConfig::defaults() and SystemClock. idempotency.enabled, ttl_hours, header and warn_missing_key from the published config are never applied. The HTTP controller reads an undocumented surfaces.http.idempotency_header instead of idempotency.header.",
+        "recommended_state": "Build the guard from IdempotencyConfig::fromArray($config['idempotency']) and the registry clock in makeRegistry/withIdempotencyStore. Read the header name from the same config in CapabilityController.",
+        "rationale": "Operators who change the TTL or disable missing-key warnings see no effect. The header setting exists in two places and only the undocumented one works.",
+        "implementation_hint": "Add `withIdempotencyConfig(array)` on CapabilityRegistry that rebuilds the guard with the store, clock and IdempotencyConfig. Call it from ContainerBindings::makeRegistry. Pass idempotency.header into CapabilityController's constructor from the provider. Unit tests: ttl_hours=1 gives expires_at of now+1h, and header 'X-Idem' is honoured.",
+        "score": 15.0
+      },
+      {
+        "id": "M-011",
+        "title": "Read table_prefix from the app config, not the package file",
+        "category": "configuration",
+        "severity": "medium",
+        "effort": "trivial",
+        "impact": [
+          "reliability",
+          "performance"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-ai/src/Models/TableNames.php",
+            "line": 14,
+            "snippet": "$configPath = dirname(__DIR__, 2).'/config/capabilities-ai.php'; ... $config = require $configPath;"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php",
+            "line": 29,
+            "snippet": "'table_prefix' => $env('CAPABILITIES_AI_TABLE_PREFIX', 'capabilities_ai_'),  // getenv at require time"
+          }
+        ],
+        "current_state": "Every model getTable() and every migration re-requires the package's own config file and reads the env var via getenv. A host-published/overridden config('capabilities-ai.table_prefix') is ignored, and after `php artisan config:cache` Laravel no longer loads .env, so a prefix set only in .env silently falls back to capabilities_ai_ at runtime.",
+        "recommended_state": "TableNames reads config('capabilities-ai.table_prefix') when a container with config is bound (cached config honored), falling back to the package file only in container-less unit boots.",
+        "rationale": "Migrations run before config:cache can create prefixed tables while cached-config workers query unprefixed ones: every conversation/turn query then fails. Re-requiring a PHP file on each query is also wasted work.",
+        "implementation_hint": "`if (function_exists('app') && app()->bound('config')) { $p = config('capabilities-ai.table_prefix'); if (is_string($p) && $p !== '') return $p; }` then existing fallback; memoize in a static. Unit test: bound config repository with prefix 'x_' -> TableNames::turns() === 'x_turns'.",
+        "score": 15.0
+      },
+      {
+        "id": "M-016",
+        "title": "Refuse new messages on closed conversations",
+        "category": "reliability",
+        "severity": "medium",
+        "effort": "trivial",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-ai/src/Domain/ConversationService.php",
+            "line": 57,
+            "snippet": "Conversation::query()->where('ulid', $conversationUlid)->where('user_id', $userId)->firstOrFail()  // no status filter"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Domain/ConversationService.php",
+            "line": 167,
+            "snippet": "$conversation->status = 'closed';"
+          }
+        ],
+        "current_state": "DELETE /conversations/{ulid} marks the conversation closed, but createUserMessage() on that ulid still creates a message and dispatches a new LLM turn.",
+        "recommended_state": "createUserMessage() rejects a closed conversation (409 conflict) before persisting anything.",
+        "rationale": "Destroy/close is the user's way to end a conversation; silently reopening it for new paid turns contradicts that and makes the status column meaningless.",
+        "implementation_hint": "After loading the owned conversation: `if ($conversation->status === 'closed') throw new RuntimeException(\"Conversation {$ulid} is closed\");` and map RuntimeException to 409 in storeMessage(). Unit test: destroy then createUserMessage throws and dispatch spy not called.",
+        "score": 15.0
+      },
+      {
+        "id": "L-009",
+        "title": "Uncaught throwables leak messages and strand idempotency keys",
+        "category": "api",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "security",
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+            "line": 201,
+            "snippet": "} catch (Throwable $e) { ... return CapabilityResult::failure(code: 'internal', message: $e->getMessage(), ...); }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+            "line": 596,
+            "snippet": "if (! $this->allows($state->definition, $state->input, $state->context)) {  // authorize exceptions escape to the outer catch"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokeResultFinalizer.php",
+            "line": 40,
+            "snippet": "if ($state->idempotencyKey && ...) { $this->idempotencyGuard->storeResult(...) }  // only on finishFailure, not the outer catch"
+          }
+        ],
+        "current_state": "The outer catch in InvokePipeline::execute() returns $e->getMessage() on the wire and does not report the exception. That covers exceptions from authorize() callables, stores, the rate limiter, output validation and strict audit. A QueryException message includes SQL and bindings. The catch also skips finishFailure, so an idempotency row claimed in stageIdempotencyLookup stays 'processing' and every retry with that key gets 'busy' until the TTL (default 24h) expires.",
+        "recommended_state": "Route the outer catch through the same sanitising as runFailure(): report to ExceptionHandler and return a generic 'Internal error.' message. Then call finishFailure (or mark the idempotency row failed) so a claimed key is released.",
+        "rationale": "D-005 requires stored outcomes. A permanently busy key breaks CLI and agent retries after a transient failure. Leaking SQL text to HTTP, MCP and agent callers is an information-disclosure issue, and a model-facing surface will repeat it verbatim.",
+        "implementation_hint": "In the catch: `$this->reportThrowable($e); $failure = CapabilityResult::failure('internal','Internal error.', meta: [...]); return $this->results()->finishFailure($state, $failure);` (guard against re-throw). Unit tests: an authorize closure that throws RuntimeException('SQLSTATE secret') returns message 'Internal error.'; a second invoke with the same key replays the stored failure instead of returning busy.",
+        "score": 12.75
+      },
+      {
+        "id": "M-007",
+        "title": "Resolve chat identities to the host user model, not a LinkedUser DTO",
+        "category": "security",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "security",
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/src/MessagingServiceProvider.php",
+            "line": 102,
+            "snippet": "new IdentityLinker($app->make(MessagingConfig::class), metrics: ...)  // no userFactory"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Identity/IdentityLinker.php",
+            "line": 39,
+            "snippet": "$this->userFactory = $userFactory ?? static fn (...) => new LinkedUser(id: $id, tenantId: $tenantId);"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Support/ResolveConversationActor.php",
+            "line": 51,
+            "snippet": "$modelClass = self::assertQueryableModel($this->userModelClass());  // AI sibling loads the real model"
+          }
+        ],
+        "current_state": "The bound IdentityLinker has no user factory and there is no config for one, so every Telegram tool call reaches CapabilityBus::invoke with actor = LinkedUser (id/tenantId DTO). Capability authorize()/policies written against the host User model receive a different type; hosts must rebind the whole linker to fix it.",
+        "recommended_state": "A `capabilities-messaging.user_model` key (fallback auth.providers.users.model) drives the default userFactory, which loads the model and fails closed when the id does not resolve, the same rule the AI sibling applies.",
+        "rationale": "Governance runs on the actor (D-002/D-003). Two siblings resolving the actor differently means the same capability is authorized against different principal types per surface, which is how policy checks silently deny (or, with loose policies keyed on ->id, allow) the wrong thing.",
+        "implementation_hint": "In MessagingServiceProvider pass `userFactory: fn (string $id, ?string $tenant) => $model::query()->find($id) ?? throw new RuntimeException(...)` built from config; keep LinkedUser only as the explicit test default. Unit test with a stub model class that the bound linker returns that class and fails closed on unknown id.",
+        "score": 12.75
+      },
+      {
+        "id": "M-013",
+        "title": "Rate-limit AI chat message creation per user",
+        "category": "security",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "security",
+          "scalability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php",
+            "line": 34,
+            "snippet": "'middleware' => ['api', 'auth:sanctum'],  // Laravel 11+ api group has no throttle unless the host opts in"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php",
+            "line": 110,
+            "snippet": "'max_concurrent_turns' => (int) $env('CAPABILITIES_AI_MAX_CONCURRENT_TURNS', 0),  // 0 = unlimited"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Http/ChatController.php",
+            "line": 65,
+            "snippet": "$ids = $conversations->createUserMessage(...);  // each POST dispatches an LLM turn"
+          }
+        ],
+        "current_state": "Each POST /messages creates a turn and dispatches an LLM job. There is no per-user limit, the global ceiling defaults to unlimited, and core's RateLimiter contract (D-013) is not used, although the messaging sibling applies it for turns_per_minute.",
+        "recommended_state": "A `turns_per_minute` (per authenticated user) limit through core's RateLimiter, returning 429 rate_limited before anything is persisted, on by default with a sane value.",
+        "rationale": "Any authenticated user can spend unbounded provider tokens and fill the queue. D-013 names agent loop protection as a bus concern, and the two siblings should enforce it the same way.",
+        "implementation_hint": "Inject `?RateLimiter` into ConversationService (bound when core provides it); key `rl:ai:user:{userId}`, `tooManyAttempts($key, $max)` -> throw TurnCapacityExceededException-like RateLimited; `hit($key, 60)`. Unit test with an in-memory RateLimiter fake: N+1th create throws and persists nothing.",
+        "score": 12.75
+      },
+      {
+        "id": "C-002",
+        "title": "Honour server error.cli_exit; CLI remaps 10 server codes to exit 1",
+        "category": "wire_contract",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/capabilities-cli/internal/api/errors.go",
+            "line": 31,
+            "snippet": "func ExitCode(code string) int { switch code { ... default: return ExitInternal"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/api/errors.go",
+            "line": 88,
+            "snippet": "type ErrorBody struct { Code ...; Message ...; Violations ...; ApprovalID ...; RequestID ...; Retryable ...; RetryAfter ... } // no cli_exit"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/api/errors.go",
+            "line": 194,
+            "snippet": "ExitCode:   ExitCode(code),"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/api/client.go",
+            "line": 205,
+            "snippet": "func codeFromHTTP(status int) string { ... default: return CodeInternal } // 410, 501 -> internal"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Support/ErrorCodeMap.php",
+            "line": 13,
+            "snippet": "'gone' => [410, cli_exit 5], 'expired' => [410, 5], 'capability_not_in_profile' => [403, 3], 'not_configured' => [501, 5], ..."
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+            "line": 881,
+            "snippet": "code: 'gone',  // invoke after sunset_at"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+            "line": 405,
+            "snippet": "return CapabilityResult::failure('expired', 'Approval has expired.', ['http_status' => 410]);"
+          }
+        ],
+        "current_state": "The core ErrorCodeMap has 20 codes, and every error envelope carries `cli_exit`. The CLI only knows the 10 codes from the original D-018 table, never decodes `error.cli_exit`, and maps every other code to exit 1 (internal). Examples: run after sunset (`gone`) exits 1 instead of 5, `approvals accept` on an expired approval exits 1 instead of 5, a profile refusal (`capability_not_in_profile`) exits 1 instead of 3, and login against an unbound issuer (`not_configured`) exits 1 instead of 5.",
+        "recommended_state": "When the envelope's `cli_exit` is an integer from 1 to 6, the CLI uses it as the process exit code. The local table is only a fallback for non-envelope responses. codeFromHTTP maps 410 to a domain-class code, not internal.",
+        "rationale": "docs/agents.md tells agents to branch on exit codes 1\u20136, and exit 1 reads as 'internal error, retry later'. Agents will retry sunset capabilities, expired approvals and profile denials that can never succeed. The server already sends the right answer on the wire, and the client drops it. That is two exit tables drifting apart with no shared fixture.",
+        "implementation_hint": "Add `CLIExit *int `json:\"cli_exit\"`` to ErrorBody. In ParseErrorEnvelope, set ExitCode from *CLIExit when 1<=v<=6, otherwise ExitCode(code). Add `case 410: return CodeDomainError`-class handling in codeFromHTTP, or a dedicated code. Add a table-driven Go test that loads a JSON fixture of ErrorCodeMap::MAP (generate it once from PHP into testdata and assert it in a core unit test) so each side fails when the other adds a code.",
+        "score": 12.75
+      },
+      {
+        "id": "C-004",
+        "title": "Invalidate cached describe schema on server schema_version/etag change",
+        "category": "wire_contract",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/capabilities-cli/internal/catalog/service.go",
+            "line": 90,
+            "snippet": "if e, ok := s.Cache.Get(name, \"\"); ok { return e, nil, nil }"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/catalog/cache.go",
+            "line": 62,
+            "snippet": "if version != \"\" && e.SchemaVersion != version { return nil, false }  // never exercised by callers"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/run/runner.go",
+            "line": 131,
+            "snippet": "if err := ValidateLocal(schema, opts.InputJSON); err != nil { res.ExitCode = ExitValidation ... return res }"
+          },
+          {
+            "file": "packages/capabilities-cli/cmd/capabilities/cmd_run.go",
+            "line": 148,
+            "snippet": "entry, _, derr := svc.Describe(context.Background(), name)  // flag schema from same cache"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/catalog/service.go",
+            "line": 112,
+            "snippet": "func (s *Service) Refresh(...) { _ = s.Cache.Invalidate(\"\"); list, _, err := s.List(ctx) ... }  // does not populate describe cache"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Schema/CatalogPresenter.php",
+            "line": 77,
+            "snippet": "'schema_version' => $this->aggregateSchemaVersion($capabilities), 'etag' => $this->etag($capabilities),"
+          }
+        ],
+        "current_state": "Describe cache entries have no TTL and are read with an empty version, so a cached input schema is used indefinitely. It is cleared only by `--no-cache`, `catalog --refresh`, re-login or token change. The server sends per-row schema_version and a list etag, and the domain/verb path fetches the live list on every call, but neither value is compared with the cache. The auth-login 'prefetch' only clears the cache.",
+        "recommended_state": "Cached entries are checked against the server's current schema_version for that capability. The domain/verb path already has the live list rows, and `run` can use a cheap list or an ETag/If-None-Match describe. A mismatch refetches.",
+        "rationale": "Local validation and flag parsing fail closed before the network (exit 2). After a server schema change (field renamed, requirement dropped, new property exposed as a flag), a stale cache rejects valid input with exit 2 and 'unknown flag'. docs/agents.md tells agents that exit 2 means their input is wrong, so they fix input instead of refreshing the cache.",
+        "implementation_hint": "In invokeCapability, pass the matching summary.SchemaVersion (from loadSynthIndex) into Service.Describe via a new DescribeVersion(ctx, name, version) that calls Cache.Get(name, version). For `run` without a list, either fetch the compact list or have the core emit an ETag header on describe (HttpResponse headers) and send If-None-Match. As a cheap safety net, on server `validation_failed` after a local pass, invalidate that entry. Also stop calling Describe twice per run (cmd_run.go:148 and runner.go:118) by passing the entry through.",
+        "score": 12.75
+      },
+      {
+        "id": "C-005",
+        "title": "Verify --token against the API before persisting it over a working profile",
+        "category": "auth_flow",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/capabilities-cli/internal/auth/session.go",
+            "line": 22,
+            "snippet": "// Base URL is written only after the token is accepted so a bad login cannot re-point an already-working profile."
+          },
+          {
+            "file": "packages/capabilities-cli/internal/auth/session.go",
+            "line": 31,
+            "snippet": "if err := store.SetBaseURL(profile, baseURL); ... store.SetToken(profile, token)"
+          },
+          {
+            "file": "packages/capabilities-cli/cmd/capabilities/cmd_auth.go",
+            "line": 75,
+            "snippet": "_, _ = svc.Refresh(context.Background())  // 401 swallowed"
+          },
+          {
+            "file": "packages/capabilities-cli/cmd/capabilities/cmd_auth.go",
+            "line": 87,
+            "snippet": "fmt.Fprintf(env.Stdout, \"logged in profile=%s base_url=%s\\n\", profile, base)"
+          }
+        ],
+        "current_state": "LoginWithToken never contacts the server. Its comment says the token was 'accepted', but it writes the base URL and token straight away. The following catalog prefetch drops any 401, so a mistyped or revoked PAT (or the wrong --base-url) prints 'logged in', exits 0, reports logged_in=true in `auth status`, and overwrites the profile's previous working credentials.",
+        "recommended_state": "Before writing anything, `--token` login makes one authenticated GET /capabilities against the normalised base URL. On a structured error it returns that error (unauthenticated gives exit 3) and leaves the profile untouched. This matches the no-clobber guarantee the device and OAuth paths already have.",
+        "rationale": "This is the only login path that works against a host with no AuthTokenIssuer (a bare Sanctum PAT). It is the path agents and CI use, and a silent success there turns into a confusing exit-3 failure on the first real call.",
+        "implementation_hint": "Give LoginWithToken a *api.Client (as LoginDeviceCode has). Normalise baseURL, set client.BaseURL/Token, call ListCapabilities, and if res.Err != nil return res.Err before SetBaseURL/SetToken. Update the comment. Extend session_clobber_test.go with a 401 case for the token path.",
+        "score": 12.75
+      },
+      {
+        "id": "L-010",
+        "title": "transactions.wrap_run=true does not wrap run() in a transaction",
+        "category": "database",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+            "line": 796,
+            "snippet": "// Domain owns its transaction by default; wrap_run is opt-in (D-010).\n if ($this->wrapRun) { $this->observation->lastRunWasWrapped = true; }"
+          },
+          {
+            "file": "packages/laravel-capabilities/config/capabilities.php",
+            "line": 106,
+            "snippet": "'transactions' => ['wrap_run' => false],"
+          }
+        ],
+        "current_state": "When wrap_run is true, the pipeline sets a flag that tests read (lastRunWasWrapped) but calls run() exactly as it does when the flag is off. No DB::transaction or ConnectionInterface::transaction is ever opened.",
+        "recommended_state": "When wrap_run is true, execute run() (and a synchronous audit write, per spec) inside `$connection->transaction(...)` on an injected connection. Otherwise remove the option from config and spec.",
+        "rationale": "Spec D-010 table (docs/spec.md:2477) promises 'Registry wraps run() (+ optional sync audit) in one DB::transaction'. An app that opts in for atomicity gets none and partial writes commit, while tests pass because they only assert the flag.",
+        "implementation_hint": "Inject `?ConnectionInterface $transactionConnection` into InvokePipeline via makeRegistry. In stageRun: `$state->output = $this->wrapRun && $conn ? $conn->transaction(fn () => $this->executeRun(...)) : $this->executeRun(...)`. Unit test with a mock ConnectionInterface that expects transaction() to be called once, and zero times when wrap_run is false.",
+        "score": 12.75
+      },
+      {
+        "id": "L-013",
+        "title": "Atomic approval mode: reject ignores the execution lease; racing accept recurses",
+        "category": "queues_events",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+            "line": 455,
+            "snippet": "$locked = $this->store->claimLease($id, STATUS_PENDING, ...);  // Shape B keeps status pending while run() executes"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+            "line": 470,
+            "snippet": "if ($locked === null) { return $this->accept($id, $approver, $options); }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+            "line": 517,
+            "snippet": "$updated = $this->store->compareAndUpdate($id, STATUS_PENDING, ['status' => STATUS_REJECTED, ...]);  // no lease predicate"
+          }
+        ],
+        "current_state": "With approval.execution=atomic, the row stays 'pending' with an execution lease while run() executes. A concurrent accept fails claimLease and calls accept() again, which sees pending again and loops until the lease clears (up to lease_seconds=120): a hot DB loop with unbounded recursion. A concurrent reject's compareAndUpdate ignores the lease, so it can flip an executing row to 'rejected' after run() has already side-effected. The executor's later pending\u2192executed update then fails.",
+        "recommended_state": "Before retrying, treat a pending row with a live lease as in progress (return conflict/in_progress) and do not recurse. Make reject lease-aware (use updateWhereLeaseFree), or refuse to reject while a lease is held.",
+        "rationale": "D-006 requires single execution plus a consistent terminal state. Atomic mode is a documented config value (approval.execution).",
+        "implementation_hint": "In accept(), check `$row['execution_lease_until'] > now` before claimLease and return failure('conflict', ..., ['in_progress'=>true]). Replace the recursive calls with a single re-read. For reject, use `$this->store->claimLease($id, STATUS_PENDING, $now, [...rejected])`. Unit tests with InMemoryApprovalStore + FixedClock: a held lease gives conflict for both accept and reject, and the executor is not called.",
+        "score": 12.75
+      },
+      {
+        "id": "L-014",
+        "title": "Approval crash-recovery sweep is never scheduled; resume.* config is inert",
+        "category": "queues_events",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ResumeApprovedApprovals.php",
+            "line": 11,
+            "snippet": "Invoked by a host scheduler ... Core does **not** register a `capabilities:approvals-resume` Artisan command"
+          },
+          {
+            "file": "packages/laravel-capabilities/config/capabilities.php",
+            "line": 133,
+            "snippet": "'resume' => ['enabled' => true, 'every_seconds' => 60, 'grace_seconds' => 30, ...]"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/Artisan/ArtisanCommandTable.php",
+            "line": 48,
+            "snippet": "'signature' => 'capability:run {name} ...'  // only run + integration-health commands"
+          }
+        ],
+        "current_state": "The default execution=deferred flips a row to 'approved' and then runs it inline. If the process dies in between, only ResumeApprovedApprovals can finish it. Nothing schedules it or exposes a command, and README/user-guide never tell hosts to wire it. resume.enabled=true and every_seconds read as if automatic.",
+        "recommended_state": "When resume.enabled is true, register an Artisan command (capabilities:approvals-resume) and schedule it every every_seconds via callAfterResolving(Schedule::class). Alternatively, fail or warn loudly in integration-health when the command is not scheduled.",
+        "rationale": "The spec (docs/spec.md:1966) makes Shape A plus a scheduled resume job the default package path. Without the scheduler, approved-but-not-executed rows sit in limbo, which is exactly what D-006/P2-004 exists to prevent.",
+        "implementation_hint": "Add Adapters/Artisan/ResumeApprovalsCommand calling ResumeApprovedApprovals::handle(), and add it to ArtisanCommandTable. In boot(): `$this->callAfterResolving(Schedule::class, fn ($s) => $s->command('capabilities:approvals-resume')->everyMinute()->withoutOverlapping())` when resume.enabled. Unit-test the pure registration table and the scheduler callback with a fake Schedule.",
+        "score": 12.75
+      },
+      {
+        "id": "L-016",
+        "title": "RunCapabilityJob is not a queueable job; dispatch() only builds an object",
+        "category": "queues_events",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/RunCapabilityJob.php",
+            "line": 17,
+            "snippet": "final class RunCapabilityJob  // no ShouldQueue, Dispatchable, Queueable, SerializesModels, failed()"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/RunCapabilityJob.php",
+            "line": 83,
+            "snippet": "public static function dispatch(array $payload): self { self::assertDispatchable($payload); return self::fromPayload($payload); }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/RunCapabilityJob.php",
+            "line": 205,
+            "snippet": "$resolver = $options['user_resolver'] ?? null; if (! is_callable($resolver)) { throw MissingJobActorException::unresolvableUser(...); }"
+          }
+        ],
+        "current_state": "The default-on job surface is a plain object. Its static dispatch() shadows Laravel's convention but enqueues nothing. If a host pushes it to the Bus, handle() gets $options=[], so every user actingAs throws unresolvableUser. There is no failed() hook and no retry or backoff policy.",
+        "recommended_state": "Implement ShouldQueue with Dispatchable/Queueable/InteractsWithQueue. Resolve users through an injected resolver (the same default as OriginalActorAuthorizer, via the auth provider) instead of $options. Rename the pure helpers (make/runNow) so dispatch() really queues. Add failed() that records the job failure tags.",
+        "rationale": "D-002 and the surfaces table present 'job' as a surface. Hosts will reasonably expect `RunCapabilityJob::dispatch([...])` to queue, and it silently does nothing.",
+        "implementation_hint": "Add `implements ShouldQueue` plus the traits. Make handle(CapabilityRegistry $registry, ?UserResolver $users = null) use container method injection. Move the current pure dispatch() to `static make()`. Unit tests with Bus::fake()-equivalent fakes (Illuminate\\Support\\Testing\\Fakes\\BusFake needs no DB): dispatch pushes one job, handle resolves the user via the fake resolver, and failed() records tags.",
+        "score": 12.75
+      },
+      {
+        "id": "M-005",
+        "title": "Send messaging webhook/processing failures to the Laravel logger",
+        "category": "observability",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/TelegramWebhookController.php",
+            "line": 114,
+            "snippet": "private function log(...) { $this->logs[] = [...]; }  // never reaches Log"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 448,
+            "snippet": "private function log(...) { $this->logs[] = [...]; }"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 85,
+            "snippet": "$this->log('error', $e->getMessage(), ['failure' => ..., 'tags' => $this->lastTags]);"
+          }
+        ],
+        "current_state": "Both classes record errors (bad secret, queue failure, identity_unresolved, rate_limited, registry_forbidden, reply_send_fail) only into private arrays exposed for tests. Nothing is written to a PSR logger, and handle() swallows the exception, so in production a failing bot is silent.",
+        "recommended_state": "Inject an optional Psr\\Log\\LoggerInterface (container-resolved) and write each entry through it with the D-019 tags; tests assert against a fake logger instead of the internal array.",
+        "rationale": "D-019 asks for failure observability with channel/chat/update tags; the tags are computed (failedJobTags) but never emitted. Combined with M-002 there is no failed job, no log line and no reply for any failure.",
+        "implementation_hint": "Add `?LoggerInterface $logger = null` to both constructors; provider passes `$app->bound(LoggerInterface::class) ? $app->make(LoggerInterface::class) : null`. log() calls `$this->logger?->log($level, $message, $context)`. Unit test with a recording logger that an unlinked user produces one warning with tags.chat_id.",
+        "score": 12.75
+      },
+      {
+        "id": "M-008",
+        "title": "Give code_link a chat-side bind step (default mode cannot link anyone)",
+        "category": "architecture",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/config/capabilities-messaging.php",
+            "line": 32,
+            "snippet": "'mode' => env('CAPABILITIES_MESSAGING_IDENTITY_MODE', 'code_link'),"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Identity/IdentityLinker.php",
+            "line": 81,
+            "snippet": "public function bindWithCode(...)  // no caller anywhere in src/"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 215,
+            "snippet": "if ($user === null) { throw new RuntimeException('identity_unresolved'); }"
+          }
+        ],
+        "current_state": "code_link is the default identity mode, but nothing in the update pipeline consumes a code (no /start <code> or /link <code> handling); an unlinked user's message just fails identity_unresolved. bindWithCode() is reachable only from tests.",
+        "recommended_state": "ProcessTelegramUpdate recognises a link command before identity resolution and calls IdentityLinker::bindWithCode, replying with success/failure; or the default mode is allowlist until the chat-side step exists.",
+        "rationale": "User guide step 2 says 'The Telegram user presents the code' but the package provides no way to present it. Fresh installs fail closed (safe), but the documented default flow cannot work. The in-memory store itself is the documented L-006 residual and is not re-raised here.",
+        "implementation_hint": "In process(), before resolve: `if (preg_match('#^/(start|link)\\s+([0-9a-f]{16})$#', $text, $m)) { $u = $this->identity->bindWithCode($telegramUserId, $m[2]); reply(linked|invalid); return; }`. Unit tests: valid code binds + replies, reused/expired code refused, allowlist mode ignores the command.",
+        "score": 12.75
+      },
+      {
+        "id": "M-012",
+        "title": "Set an HTTP timeout on AnthropicLlmClient that matches max_tokens",
+        "category": "reliability",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "performance"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-ai/src/Support/AnthropicLlmClient.php",
+            "line": 212,
+            "snippet": "Http::withHeaders([...])->retry(...)->post(.../v1/messages, $payload);  // no ->timeout(): Laravel default 30s"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php",
+            "line": 63,
+            "snippet": "'max_tokens' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS', 64000),"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Package.php",
+            "line": 16,
+            "snippet": "public const DEFAULT_CLAIM_TTL = 120;  // RunTurnJob timeout"
+          }
+        ],
+        "current_state": "Non-streaming requests default to max_tokens=64000, but the Laravel HTTP client's default timeout (PendingRequest: 'timeout' => 30) is left in place. Any reply that takes more than 30s to generate becomes a ConnectionException -> RetryableLlmException -> failed turn, and the whole multi-round turn is further capped by the 120s job timeout.",
+        "recommended_state": "A `llm.anthropic.timeout` config (seconds) applied via ->timeout(), with documented relation to claim_ttl (timeout x max rounds must fit inside it), and a max_tokens default the timeout can actually deliver.",
+        "rationale": "The config comment says max_tokens was raised to stop truncated long replies; with a 30s transport cap those replies now fail outright instead of truncating, and the failure surfaces as 'retryable' so callers retry into the same wall.",
+        "implementation_hint": "Add `'timeout' => (int) $env('CAPABILITIES_AI_ANTHROPIC_TIMEOUT', 110)` and `->timeout($this->timeoutSeconds)` in send(); pass through ContainerBindings::makeLlmClient. Unit test with Http::fake asserting the request options carry the configured timeout (or inject the PendingRequest factory).",
+        "score": 12.75
+      },
+      {
+        "id": "X-004",
+        "title": "Constrain sibling packages' core requirement instead of \"*\"",
+        "category": "dependency_hygiene",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/composer.json",
+            "line": 20,
+            "snippet": "\"rawphp/laravel-capabilities\": \"*\","
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/composer.json",
+            "line": 20,
+            "snippet": "\"rawphp/laravel-capabilities\": \"*\","
+          },
+          {
+            "file": "docs/versioning.md",
+            "line": 75,
+            "snippet": "breaking changes may land without a `1.0.0` major bump (SemVer allows this on 0.x)"
+          }
+        ],
+        "current_state": "Messaging and AI accept any core version. Twenty lockstep v* tags (v0.1.1 through v0.5.3) are already pushed to every package remote. The AI package uses core APIs that change between 0.x minors (CapabilityBus::invoke, CapabilityResult, error envelope, agent_turn budget).",
+        "recommended_state": "Each sibling requires the core minor it was built with, e.g. `\"rawphp/laravel-capabilities\": \"^0.5.3\"` (caret on 0.x means >=0.5.3 <0.6.0). The release script bumps it with each tag. A unit test asserts the constraint is not `*`.",
+        "rationale": "With lockstep tags and 0.x breaking minors, `*` lets Composer pair, for example, messaging v0.3.0 with core v0.5.3, or a future core 1.x with today's siblings. Nothing flags the mismatch, and the resulting breaks are hard to trace. Each tag should be a tested set.",
+        "implementation_hint": "In scripts/release.sh, after computing NEW_TAG, rewrite both sibling require entries to `^${MAJOR}.${MINOR}.${PATCH}` with php -r or jq, then commit before tagging. In the monorepo, the root path repositories with `*@dev` still resolve because of branch-alias `0.x-dev`; check that `composer update` still links the path packages, or add `\"version\"` to the path repo options. Extend the existing AI ArchitectureTest (which already reads composer.json) with `expect($composer['require']['rawphp/laravel-capabilities'])->not->toBe('*')`.",
+        "score": 12.75
+      },
+      {
+        "id": "X-005",
+        "title": "Invert core \u2192 AI coupling in integration-health (class-string + config probes)",
+        "category": "dependency_direction",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "maintainability",
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Support/IntegrationHealthChecker.php",
+            "line": 23,
+            "snippet": "public const AI_CONTEXT = 'Rawphp\\\\CapabilitiesAi\\\\Contracts\\\\ConversationContextProvider';"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Support/IntegrationHealthChecker.php",
+            "line": 288,
+            "snippet": "return str_contains($short, 'AlwaysReady');"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/Artisan/IntegrationHealthCommand.php",
+            "line": 148,
+            "snippet": "$abstract = 'Rawphp\\\\CapabilitiesAi\\\\Contracts\\\\IdempotencyReadiness';"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/Artisan/IntegrationHealthCommand.php",
+            "line": 171,
+            "snippet": "$abstract = 'Rawphp\\\\CapabilitiesAi\\\\Contracts\\\\ProgressStoreReadiness';"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/tests/Unit/Architecture/ArchitectureTest.php",
+            "line": 78,
+            "snippet": "expect($blob)->not->toContain('laravel-capabilities-ai');  // composer only; src strings unchecked"
+          }
+        ],
+        "current_state": "Core hard-codes four AI-package FQCNs, the AI config shape (`capabilities-ai.routes.enabled`, `queue.name`), an `isReady()` method name, and a class-name substring check for `AlwaysReady`. Core tests use the same literal strings, so nothing fails if the AI package renames or moves a contract. The health check would then silently report 'unbound' or 'skipped'. The architecture test only checks core's composer.json, not these source-level references.",
+        "recommended_state": "Dependencies point sibling \u2192 core only. Core defines a small `IntegrationHealthContributor` contract (checks(): list of rows). The AI package registers its contributor (container tag), and integration-health iterates the tagged contributors. Core then holds no AI names, and the D-024 placement of the command in core is unchanged. Minimum alternative: an AI-package unit test that asserts each core constant resolves (`interface_exists(IntegrationHealthChecker::AI_CONTEXT)` etc.) and that `AlwaysReadyIdempotency` matches the substring check.",
+        "rationale": "D-007 and D-024 keep core thin, with siblings depending on core contracts. String probes make core the one place that must track AI internals, which is the wrong direction. It is also invisible to static analysis and to the existing 'core does not require AI' test. Because the failure mode is a readiness check that passes silently, the diagnostic stops protecting hosts from the unsafe AlwaysReady binding it exists to catch.",
+        "implementation_hint": "Fast guard (trivial): add packages/laravel-capabilities-ai/tests/Unit/Architecture/CoreHealthProbeTest.php that asserts interface_exists for IntegrationHealthChecker::AI_CONTEXT, AI_TOOL_CATALOG, 'Rawphp\\\\CapabilitiesAi\\\\Contracts\\\\IdempotencyReadiness' and ProgressStoreReadiness, plus method_exists(ProgressStoreReadiness::class,'isReady'). Structural fix (small): add Rawphp\\\\Capabilities\\\\Contracts\\\\IntegrationHealthContributor, have CapabilitiesAiServiceProvider tag its implementation, and move the checkAiChat/progress logic into the AI package.",
+        "score": 12.75
+      },
+      {
+        "id": "X-006",
+        "title": "Run Pint and PHPStan in CI; PHPStan is installed but never configured or run",
+        "category": "ci_cd",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "maintainability",
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "composer.json",
+            "line": 16,
+            "snippet": "\"phpstan/phpstan\": \"^2.0\""
+          },
+          {
+            "file": "composer.json",
+            "line": 57,
+            "snippet": "\"format:test\": \"pint --test --config=pint.json ...\"  (not called by CI or release.sh)"
+          },
+          {
+            "file": "AGENTS.md",
+            "line": 170,
+            "snippet": "PHPStan max on package code when CI lands."
+          },
+          {
+            "file": ".github/workflows/tests.yml",
+            "line": 36,
+            "snippet": "run: composer test   (only PHP gate step)"
+          }
+        ],
+        "current_state": "CI and scripts/release.sh run only the Pest and Go suites. Pint passes today (`composer format:test` \u2192 passed) but is not gated. PHPStan is in root and core require-dev, but there is no phpstan.neon anywhere, no composer script, and no CI step. Messaging and AI don't declare it. The prior X-008 is still open.",
+        "recommended_state": "The tests.yml php job runs `composer format:test` and `composer analyse` (phpstan.neon at root with paths for all three package src dirs, at a level that passes today plus a baseline). release.sh runs the same commands.",
+        "rationale": "AGENTS.md makes PHPStan max a stated goal once CI exists, and CI now exists. Without a gate, an unused dev dependency signals safety the repo does not have. X-005 (string class probes) is exactly the kind of drift static analysis plus a custom rule could flag.",
+        "implementation_hint": "Add phpstan.neon: `parameters: { level: 6, paths: [packages/laravel-capabilities/src, packages/laravel-capabilities-messaging/src, packages/laravel-capabilities-ai/src] }`, generate a baseline with `vendor/bin/phpstan analyse --generate-baseline`, and add the composer script `\"analyse\": \"phpstan analyse --memory-limit=1G\"`. In tests.yml, add steps `composer format:test` and `composer analyse` before `composer test`. Mirror them in the scripts/release.sh gates.",
+        "score": 12.75
+      },
+      {
+        "id": "X-007",
+        "title": "CI tests only Laravel 12 on PHP 8.2; add the declared 11/13 and 8.3+ cells",
+        "category": "ci_cd",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": ".github/workflows/tests.yml",
+            "line": 27,
+            "snippet": "php-version: '8.2'"
+          },
+          {
+            "file": "packages/laravel-capabilities/composer.json",
+            "line": 20,
+            "snippet": "\"illuminate/support\": \"^11.0|^12.0|^13.0\""
+          },
+          {
+            "file": "composer.lock",
+            "line": null,
+            "snippet": "illuminate/support v12.64.0 (single locked resolution)"
+          },
+          {
+            "file": "AGENTS.md",
+            "line": 170,
+            "snippet": "PHP: Laravel 11 / 12 / 13 ..., PHP ^8.2 (Laravel 13 needs PHP ^8.3)"
+          }
+        ],
+        "current_state": "CI runs one cell: PHP 8.2 with the committed lock, which resolves Illuminate 12.64. Laravel 11 and 13, and PHP 8.3, 8.4 and 8.5, are declared supported but never exercised. A local run on PHP 8.5 already surfaces deprecations CI never sees (e.g. ReflectionProperty::setAccessible in CoverageBoost2Test.php:580).",
+        "recommended_state": "A small matrix in tests.yml: {php 8.2, laravel 11 prefer-lowest}, {php 8.3, laravel 12}, {php 8.4, laravel 13}. Each cell runs `composer update illuminate/*:^N --with-all-dependencies` before the suites.",
+        "rationale": "The packages are published libraries that promise a three-major Illuminate range. Framework API drift across 11\u219213 (container, routing, validation, query builder signatures used by QueryTableGateway) will only show up in consumer apps. Matrix cells are cheap because the suite is unit-only and DB-free.",
+        "implementation_hint": "In tests.yml: `strategy.matrix.include: [{php: '8.2', illuminate: '^11.0', stability: 'prefer-lowest'}, {php: '8.3', illuminate: '^12.0', stability: 'prefer-stable'}, {php: '8.4', illuminate: '^13.0', stability: 'prefer-stable'}]`, then `composer require \"illuminate/support:${{ matrix.illuminate }}\" --no-update && composer update --${{ matrix.stability }} --with-all-dependencies`. Keep the lockfile cell as the default fast job.",
+        "score": 12.75
+      },
+      {
+        "id": "L-015",
+        "title": "Capability discovery rescans and tokenizes app/Capabilities on every boot",
+        "category": "caching",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "performance",
+          "scalability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+            "line": 429,
+            "snippet": "$this->bootCapabilityDiscovery();"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Discovery/AttributeDiscoverer.php",
+            "line": 127,
+            "snippet": "new RegexIterator(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path)), ...)"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Discovery/AttributeDiscoverer.php",
+            "line": 158,
+            "snippet": "token_get_all($contents)  // per file, per boot"
+          }
+        ],
+        "current_state": "Every application boot (every FPM request, every queue job boot) resolves the CapabilityRegistry singleton with its stores, walks the capabilities directory, reads and tokenizes every PHP file, and reflects each attribute. No manifest or cache exists, unlike Laravel's event/package discovery.",
+        "recommended_state": "Add a capabilities:cache / capabilities:clear command that writes a class map (bootstrap/cache/capabilities.php). When the manifest exists, DefinitionCatalog::discover(classMap: ...) should use it, falling back to scanning in local environments. Hook it into `optimize` via $this->optimizes() on Laravel 11.27+.",
+        "rationale": "The cost grows with the number of capabilities and is paid on requests that never touch the bus. The package already supports classMap discovery (DefinitionCatalog::discover), so the fix is a small wiring change.",
+        "implementation_hint": "CapabilityDiscoveryBoot::run: `$map = DiscoveryManifest::load($path) ?? null; $registry->discover(paths: $paths, classMap: $map ?? [])`. The new command uses AttributeDiscoverer::fromPaths to write the list of class names. Unit tests: with a manifest present, the filesystem iterator is not invoked (inject a fake discoverer); the cache command output round-trips.",
+        "score": 12.75
+      },
+      {
+        "id": "M-015",
+        "title": "Expire Redis progress keys and read from the cursor",
+        "category": "caching",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "scalability",
+          "performance"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-ai/src/Support/RedisProgressStore.php",
+            "line": 41,
+            "snippet": "$this->redis->rPush($key, $payload);  // no EXPIRE: keys live forever"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Support/RedisProgressStore.php",
+            "line": 55,
+            "snippet": "$rows = $this->lRange($key);  // lRange(key, 0, -1) then skip < cursor in PHP"
+          }
+        ],
+        "current_state": "Every turn leaves a permanent Redis list, and each events poll downloads the whole list and discards everything before the cursor in PHP.",
+        "recommended_state": "Append sets a TTL (config, e.g. 24h) and since() calls LRANGE key cursor -1 so each poll reads only new events.",
+        "rationale": "Progress is transient by design (contract: 'not MySQL product DB'); unbounded keys grow Redis memory with every turn forever, and full-list reads make polling cost grow with turn length.",
+        "implementation_hint": "After rPush: `$this->redis->expire($key, $this->ttlSeconds)` (config progress.ttl_seconds, default 86400). In lRange(): pass `$cursor` as start and re-index from $cursor. Unit test with the existing fake Redis: expire called on append; since(t, 2) requests range starting at 2.",
+        "score": 12.75
+      },
+      {
+        "id": "M-014",
+        "title": "Use the D-018 error envelope for every ChatController failure",
+        "category": "api",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "dx",
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-ai/src/Http/ChatController.php",
+            "line": 27,
+            "snippet": "* Error branches reuse the core D-018 envelope (same shape as capability invoke)."
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Http/ChatController.php",
+            "line": 61,
+            "snippet": "return new JsonResponse(['message' => 'The given data was invalid.', 'errors' => $errors], 422);"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Http/ChatController.php",
+            "line": 72,
+            "snippet": "return new JsonResponse(['message' => $e->getMessage(), 'outcome' => AcceptOutcome::KIND_RETRYABLE], 429);"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Http/ChatController.php",
+            "line": 247,
+            "snippet": "return new JsonResponse(['message' => 'Unauthenticated'], 401);"
+          }
+        ],
+        "current_state": "404/409 go through CapabilityResult::failure() (D-018 shape), but 401, 422 and 429 return three different ad-hoc bodies. The docblock claims all error branches use the envelope.",
+        "recommended_state": "401 -> code unauthenticated, 422 -> validation_failed with violations[], 429 -> rate_limited with retryable, all via the existing failure() helper.",
+        "rationale": "D-018: every non-success response uses one envelope so clients (and the Go CLI patterns) branch on error.code. Clients of this API currently need three parsers.",
+        "implementation_hint": "Replace the three literals with `$this->failure('unauthenticated', ...)`, a validation_failed result carrying `violations` built from $errors, and `failure('rate_limited', ...)`. Update ChatControllerTest expectations (unit).",
+        "score": 12.75
+      },
+      {
+        "id": "M-018",
+        "title": "Reconcile the AI package's SQLite-backed tests with the no-DB rule",
+        "category": "testing",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "maintainability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-ai/tests/Unit/Models/MigrationModelsTest.php",
+            "line": 18,
+            "snippet": "* Boot Eloquent + Schema facades against sqlite :memory: for package migrations."
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/tests/Unit/Jobs/RunTurnJobTest.php",
+            "line": 24,
+            "snippet": "$capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);"
+          },
+          {
+            "file": "AGENTS.md",
+            "line": 75,
+            "snippet": "Tests must pass with no MySQL/Postgres/SQLite, no migrations run, no schema."
+          }
+        ],
+        "current_state": "13 of the AI package's test files boot Capsule on sqlite :memory: and run the package migrations, because ConversationService/TurnRunner/TurnClaim/ProposalService call Eloquent statics and DatabaseConnection::resolve() directly. AGENTS.md says 'no SQLite, no migrations' as blocking policy.",
+        "recommended_state": "Either an explicit recorded exception (AGENTS.md + .do-work/decisions.md) that packages owning their own tables may unit-test CAS/claim SQL on sqlite :memory:, or repository ports with in-memory fakes. The smaller, honest fix is the recorded exception.",
+        "rationale": "Right now the rule and the suite disagree, so the next agent either 'fixes' good CAS tests away or copies the pattern elsewhere believing it is allowed. The CAS claims (TurnClaim, ProposalService::casStatus) are exactly where a real SQL engine earns its place.",
+        "implementation_hint": "Add a line to AGENTS.md Testing: 'Exception: a package whose product is its own tables (laravel-capabilities-ai) may use sqlite :memory: + its migrations in unit tests; no external DB, no host schema.' Log it in .do-work/decisions.md. No code change.",
+        "score": 12.75
+      },
+      {
+        "id": "X-003",
+        "title": "Split PHP package repos ship a test suite that cannot run outside the monorepo",
+        "category": "ci_cd",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "dx",
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/tests/bootstrap.php",
+            "line": 16,
+            "snippet": "require $monorepoRoot.'/vendor/autoload.php';"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/tests/bootstrap.php",
+            "line": 16,
+            "snippet": "$coreSrc = $monorepoRoot.'/packages/laravel-capabilities/src';"
+          },
+          {
+            "file": "packages/laravel-capabilities/tests/Fixtures/ArchitectureHelpers.php",
+            "line": 61,
+            "snippet": "public const MONOREPO_ROOT = __DIR__.'/../../../..';"
+          },
+          {
+            "file": "packages/laravel-capabilities/tests/Unit/TestingHelpers/D020ConsumerDocsTest.php",
+            "line": 30,
+            "snippet": "$path = d020MonorepoRoot().'/docs/spec.md';"
+          },
+          {
+            "file": "packages/laravel-capabilities/composer.json",
+            "line": 62,
+            "snippet": "\"test\": \"pest --configuration=phpunit.xml --colors=always\""
+          },
+          {
+            "file": ".github/workflows/split-packages.yml",
+            "line": 97,
+            "snippet": "rsync -a --delete --exclude '.git' --exclude 'vendor/' ... (tests/ and phpunit.xml are mirrored)"
+          }
+        ],
+        "current_state": "The split mirrors tests/, phpunit.xml and a `composer test` script into each PHP package remote. The bootstraps and Pest.php require `dirname(package,2)/vendor/autoload.php`. The AI bootstrap loads core from `packages/laravel-capabilities/src`. Core architecture and doc tests read `docs/spec.md`, `docs/requirements-inventory.md`, the root README and sibling composer.json through MONOREPO_ROOT. In a split clone, `composer install && composer test` fatals at bootstrap. No package has a .gitattributes, so Packagist dist archives also include tests/, docs/ and phpunit.xml.",
+        "recommended_state": "Pick one: (a) the split excludes monorepo-only test scaffolding (tests/, phpunit.xml, `scripts.test`) and each package gets `.gitattributes` export-ignore; or (b) the bootstraps fall back to the package-local vendor and monorepo-coupled tests are skipped when MONOREPO_ROOT is absent. Package READMEs say to contribute through the monorepo.",
+        "rationale": "AGENTS.md requires packages to be self-contained after the split. Right now a contributor or auditor who clones a public package repo gets a broken `composer test`, and PRs on those repos have no CI. Option (a) is the smaller change and keeps the monorepo as the one test authority. The CLI shows the working pattern: its Go tests run standalone in its own release.yml.",
+        "implementation_hint": "split-packages.yml rsync: add `--exclude 'tests/' --exclude 'phpunit.xml'` for PHP paths only (the matrix entry can carry an `excludes` field, since the CLI must keep *_test.go). Remove `scripts.test` from the three package composer.json files, or point it at a message. Add packages/*/.gitattributes with `/tests export-ignore`, `/phpunit.xml export-ignore`, `/docs export-ignore` (the prior X-011 is still open).",
+        "score": 12.75
+      }
+    ],
+    "medium": [
+      {
+        "id": "M-006",
+        "title": "Move test scaffolding out of messaging production classes",
+        "category": "testing",
+        "severity": "medium",
+        "effort": "medium",
+        "impact": [
+          "maintainability",
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 108,
+            "snippet": "public function runPipeline(array $update, array $options = [])  // simulates webhook steps via fail_at / secret_valid flags"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 189,
+            "snippet": "if ($failAt === 'invalid_update_shape' || ...)  // fail_at injection threaded through process()"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/TelegramWebhookController.php",
+            "line": 23,
+            "snippet": "private int $registryInvokeCount = 0;  // never incremented"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Notifiers/TelegramApprovalNotifier.php",
+            "line": 29,
+            "snippet": "private int $capabilityExecuteCount = 0; private int $domainServiceCalls = 0;  // never incremented"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/TelegramAdapter.php",
+            "line": 19,
+            "snippet": "private array $handled = []; private array $replies = [];  // grows per message on a container singleton"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Support/HttpTelegramBotClient.php",
+            "line": 83,
+            "snippet": "$this->calls[] = ['method' => $method, 'args' => $params];  // production client records every Bot API call"
+          }
+        ],
+        "current_state": "Production classes carry fault-injection flags (fail_at, failNext, failIngress/failReply), a runPipeline() simulator that 'marks' verify_webhook_secret without verifying anything, guard counters that are constant zero (so tests asserting them are tautologies), and recorder arrays on container singletons that grow for the life of a queue worker. 142 test calls go through runPipeline() rather than the real controller -> UpdateQueue -> job path.",
+        "recommended_state": "Fault injection lives in test fakes (FakeThreadStore, FakeTelegramAdapter / ingress handlers), constant counters and their assertions are deleted, recorders exist only on Fake* classes, and pipeline-order tests drive TelegramWebhookController + a FakeQueue + ProcessTelegramUpdate.",
+        "rationale": "The suite is 95%+ covered yet missed M-001..M-003 because it exercises a simulation of the pipeline, not the wired path. The unbounded recorder arrays are a memory leak in long-running workers (also holding user objects).",
+        "implementation_hint": "Step 1: delete registryInvokeCount/capabilityExecuteCount/domainServiceCalls/domainBypassAttempted and their tests. Step 2: remove $calls from HttpTelegramBotClient and $handled/$replies from TelegramAdapter (tests use FakeTelegramBotClient / an ingress handler spy). Step 3: replace runPipeline()+fail_at with tests that compose controller->FakeQueue->processor and inject failing fakes. Keep coverage >=95% by testing the real branches.",
+        "score": 9.0
+      }
+    ],
+    "enhancements": [
+      {
+        "id": "L-019",
+        "title": "HTTP describe exposes schemas of capabilities hidden from caller's surface",
+        "category": "api",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Schema/CatalogPresenter.php",
+            "line": 89,
+            "snippet": "public function describe(string $nameOrAlias, mixed $actor = null): array { ... isDiscoverable($actor) ... return $this->fullEntry($definition); }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/Http/CapabilityController.php",
+            "line": 79,
+            "snippet": "$detail = $this->registry->catalog()->describe($name, $request->user);"
+          }
+        ],
+        "current_state": "list() filters by caller surface and canDiscover, but describe() only checks canDiscover. Any authenticated HTTP user can therefore GET the full input/output JSON Schema of mcp-only or agent-only capabilities by name.",
+        "recommended_state": "Pass the caller into describe() and return not_found when the capability is not in effectiveSurfaces for that caller, matching list().",
+        "rationale": "Discovery should be consistent (D-008/D-003): list and describe must not disagree about what a caller can see.",
+        "implementation_hint": "Change describe(string $name, mixed $actor = null, ?string $caller = null) to apply the same surface filter as list(). Pass $caller['caller'] from CapabilityController::describe. Unit test: an mcp-only capability described via caller http gives not_found.",
+        "score": 5.0
+      },
+      {
+        "id": "X-010",
+        "title": "Point Dependabot at the CLI's nested release workflow",
+        "category": "dependency_hygiene",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "security"
+        ],
+        "locations": [
+          {
+            "file": ".github/dependabot.yml",
+            "line": 16,
+            "snippet": "- package-ecosystem: github-actions\\n    directory: \"/\""
+          },
+          {
+            "file": "packages/capabilities-cli/.github/workflows/release.yml",
+            "line": null,
+            "snippet": "uses: goreleaser/goreleaser-action@v6, actions/setup-go@v5, actions/checkout@v4"
+          }
+        ],
+        "current_state": "The github-actions updater scans only /.github/workflows. The CLI's release workflow handles signing keys (CAPABILITIES_RELEASE_SIGNING_KEY, Apple and Windows certs) and lives under packages/capabilities-cli/.github/workflows, so it never gets update PRs in the monorepo. The split child repo has no dependabot.yml either.",
+        "recommended_state": "dependabot.yml covers both workflow roots, so action bumps for the release pipeline arrive as monorepo PRs and flow to the child through the split.",
+        "rationale": "This is the only workflow that holds long-lived signing secrets. Stale action versions there carry the most supply-chain risk, and it is the one location the current config misses.",
+        "implementation_hint": "Change the github-actions entry to `directories: [\"/\", \"/packages/capabilities-cli\"]` (Dependabot supports `directories` for multi-root configs).",
+        "score": 5.0
+      },
+      {
+        "id": "C-006",
+        "title": "Emit D-018 error envelope on stdout for approvals and catalog failures",
+        "category": "wire_contract",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "dx",
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/capabilities-cli/cmd/capabilities/cmd_approvals.go",
+            "line": 56,
+            "snippet": "if res.Err != nil { fmt.Fprintln(env.Stderr, res.Err.Error()); return res.Err.ExitCode }"
+          },
+          {
+            "file": "packages/capabilities-cli/cmd/capabilities/cmd_catalog.go",
+            "line": 45,
+            "snippet": "if se, ok := err.(*api.StructuredError); ok { fmt.Fprintln(env.Stderr, se.Error()); return se.ExitCode }"
+          },
+          {
+            "file": "packages/capabilities-cli/cmd/capabilities/cmd_run.go",
+            "line": 44,
+            "snippet": "// describe: machine envelope on stdout + short stderr line"
+          }
+        ],
+        "current_state": "`run`, `describe` and domain not-found write the server's error envelope to stdout. `approvals accept|reject` and `catalog` write only a stderr line on failure, so stdout is empty. The approval_id, violations and request_id from the server are lost.",
+        "recommended_state": "Every command that received a structured error writes the envelope to stdout (se.Body when present, otherwise writeStructuredErrorStdout), as describe does.",
+        "rationale": "docs/agents.md:19 says 'Stdout is machine; stderr is human \u2014 parse stdout envelopes only'. Approval decisions are exactly where an agent needs the machine code (expired, conflict, forbidden).",
+        "implementation_hint": "Extract describe's error branch (cmd_run.go:44-52) into a helper `writeErrorEnvelope(env, se)` and call it from cmdApprovals and cmdCatalog. Add CLI tests asserting stdout JSON with ok:false on a 410 approval and a 401 catalog.",
+        "score": 5.0
+      },
+      {
+        "id": "C-008",
+        "title": "Reserve 'self-update' CLI domain on both sides; lists are hand-copied",
+        "category": "structure",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "maintainability",
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/capabilities-cli/cmd/capabilities/cli.go",
+            "line": 98,
+            "snippet": "case \"self-update\": return cmdSelfUpdate(env, rest)"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/synth/synth.go",
+            "line": 21,
+            "snippet": "var reservedDomains = map[string]struct{}{ \"auth\", \"catalog\", \"describe\", \"run\", \"mcp\", \"approvals\", \"version\", \"help\" }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Registry/CapabilityDefinition.php",
+            "line": 26,
+            "snippet": "public const RESERVED_CLI_DOMAINS = ['auth','catalog','describe','run','mcp','approvals','version','help'];"
+          }
+        ],
+        "current_state": "`self-update` is a reserved meta-command in the CLI dispatcher but appears in neither reserved list. The core accepts cliDomain 'self-update' (it matches /^[a-z][a-z0-9-]*$/), and the CLI synth index maps it without a reserved_domain error, so the capability can never be reached by domain/verb. The dispatcher silently runs the self-updater instead.",
+        "recommended_state": "Both lists include 'self-update', and a test on each side pins the list to one shared fixture so a new meta-command cannot be added to only one side.",
+        "rationale": "The two copies of the reserved list are what lets the catalog and CLI synthesis disagree. They have already drifted by one entry.",
+        "implementation_hint": "Add 'self-update' to RESERVED_CLI_DOMAINS and reservedDomains. Add a Go test asserting every `case` string in Execute's reserved switch that matches the token pattern is in reservedDomains. Add a small JSON fixture (e.g. docs/contracts/reserved-cli-domains.json) read by both a Pest unit and a Go test.",
+        "score": 5.0
+      },
+      {
+        "id": "L-020",
+        "title": "Singleton CapabilityController retains the last actor/options across requests",
+        "category": "architecture",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "reliability",
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/Http/CapabilityController.php",
+            "line": 27,
+            "snippet": "private ?array $lastInvokeOptions = null;  // test hook on a container singleton"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/Http/CapabilityController.php",
+            "line": 128,
+            "snippet": "$this->lastInvokeOptions = $options;  // includes 'actor' => $request->user"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+            "line": 188,
+            "snippet": "$this->app->singleton(CapabilityController::class, ...)"
+          }
+        ],
+        "current_state": "The controller is a container singleton and stores the last invoke options, including the authenticated user object, purely for tests. Under Octane or other long-lived workers, the previous request's user stays referenced by the next request's controller.",
+        "recommended_state": "Remove the mutable test hook from production code: assert invoke options through a fake CapabilityBus in unit tests, or bind the controller as scoped instead of singleton.",
+        "rationale": "'Singleton service classes holding request state' is a Laravel anti-pattern. It is a cross-request state leak under Octane and keeps request-scoped objects alive.",
+        "implementation_hint": "Delete lastInvokeOptions/lastInvokeOptions(). Tests that read it should use a recording CapabilityBus fake. Use `$this->app->scoped(...)` for the three HTTP controllers.",
+        "score": 5.0
+      },
+      {
+        "id": "M-017",
+        "title": "Append the queued progress event before dispatching the turn",
+        "category": "reliability",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-ai/src/Domain/ConversationService.php",
+            "line": 84,
+            "snippet": "($this->dispatch)($job);  then  $this->progress->append($turn->ulid, ['kind' => 'status', 'data' => ['status' => 'queued']]);"
+          }
+        ],
+        "current_state": "The queued status event is written after dispatch. With the sync queue driver (or a fast worker) the turn's running/terminal events land first and the stream ends with status=queued.",
+        "recommended_state": "Append the queued event, then dispatch.",
+        "rationale": "Clients that read the last status event (rather than stopping at terminal) show a finished turn as queued.",
+        "implementation_hint": "Swap the two statements; unit test with a dispatch callable that appends 'running' synchronously and assert event order queued -> running.",
+        "score": 5.0
+      },
+      {
+        "id": "C-009",
+        "title": "Document or detect surfaces.http.prefix; CLI hardcodes /capabilities",
+        "category": "wire_contract",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/capabilities-cli/internal/api/client.go",
+            "line": 24,
+            "snippet": "PathCapabilities = \"/capabilities\"  // all paths hardcode the prefix"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Http/RouteTable.php",
+            "line": 79,
+            "snippet": "$prefix = trim((string) ($httpConfig['prefix'] ?? 'capabilities'), '/');"
+          },
+          {
+            "file": "packages/laravel-capabilities/config/capabilities.php",
+            "line": 81,
+            "snippet": "'prefix' => 'capabilities',"
+          }
+        ],
+        "current_state": "The core lets hosts rename the HTTP route prefix. The CLI always appends `/capabilities/...` to --base-url. A host with prefix `api/capabilities` works (base-url `https://host/api`), but any prefix whose last segment is not `capabilities` (e.g. `caps`, `v1/tools`) is unreachable from the product CLI. The user sees a generic 404 not_found (exit 5), and neither package documents the constraint.",
+        "recommended_state": "Either the config comment and CLI docs state that the CLI needs a prefix ending in `capabilities` (with --base-url set to everything before it), or the CLI accepts an API root URL that already includes the prefix.",
+        "rationale": "This is a config knob that silently breaks the only first-party client. The cheapest fix is a documented constraint. Health's api_version cannot help, because the health route sits under the same prefix.",
+        "implementation_hint": "Minimal: add a comment on config 'prefix' and a line in packages/capabilities-cli/docs/authentication.md. Optional: when CheckAPIVersion/health returns a non-envelope 404, add a hint mentioning surfaces.http.prefix.",
+        "score": 5.0
+      },
+      {
+        "id": "X-009",
+        "title": "Fix CI/release/docs drift: 'core + messaging' labels, stale split notes",
+        "category": "documentation",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": ".github/workflows/tests.yml",
+            "line": 18,
+            "snippet": "name: PHP unit (core + messaging)   (composer test also runs AI)"
+          },
+          {
+            "file": "README.md",
+            "line": 156,
+            "snippet": "composer test              # core + messaging unit suite"
+          },
+          {
+            "file": "scripts/release.sh",
+            "line": 39,
+            "snippet": "#   1. composer test          (Pest core + messaging)"
+          },
+          {
+            "file": "docs/versioning.md",
+            "line": 57,
+            "snippet": "`composer test` (core + messaging Pest)"
+          },
+          {
+            "file": "docs/versioning.md",
+            "line": 38,
+            "snippet": "Tag concurrency uses `cancel-in-progress: false` for tags ... Branch runs may still cancel superseded work."
+          },
+          {
+            "file": ".github/workflows/split-packages.yml",
+            "line": 13,
+            "snippet": "Ensure the three package repos exist"
+          },
+          {
+            "file": ".github/workflows/split-packages.yml",
+            "line": 94,
+            "snippet": "Keep committed dist docs (dist/README.md, dist/.gitkeep) \u2014 capabilities-cli unit tests require them."
+          },
+          {
+            "file": ".gitignore",
+            "line": 14,
+            "snippet": "!packages/capabilities-cli/dist/.gitkeep"
+          }
+        ],
+        "current_state": "`composer test` runs core, messaging and AI, but four places label it 'core + messaging'. versioning.md describes per-ref cancel behaviour, while the workflow uses one `split-packages` group with cancel-in-progress false for every ref. The split header says 'three' repos (the matrix has four). The rsync dist include rules and .gitignore whitelist refer to dist/README.md and .gitkeep, which were untracked in 39382de (v0.1.3). No test needs them.",
+        "recommended_state": "Labels say 'core + messaging + AI'. versioning.md describes the single serialized group. The split header says four repos. The dead dist include rules and .gitignore negations are removed (the CLI's own .gitignore already ignores dist/).",
+        "rationale": "These are the files an operator reads while cutting a release. Wrong suite names and dead rsync rules make the next person doubt whether AI is gated or whether dist/ matters.",
+        "implementation_hint": "Edit tests.yml:18, README.md:156, scripts/release.sh:39,68,343,468,554, docs/versioning.md:38,57, split-packages.yml:13 and 94\u2013104 (drop the three dist lines, keep `--exclude 'dist/'`), and .gitignore:13\u201315 (replace with nothing; packages/capabilities-cli/.gitignore covers dist/).",
+        "score": 5.0
+      },
+      {
+        "id": "C-007",
+        "title": "Send retry_after on pipeline rate_limited so CLI backoff hint works",
+        "category": "wire_contract",
+        "severity": "low",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+            "line": 758,
+            "snippet": "private function rateLimitedResult(string $message) { return CapabilityResult::failure('rate_limited', $message, extra: [... 'retryable' => true]); }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Contracts/RateLimiter.php",
+            "line": 19,
+            "snippet": "tooManyAttempts / hit / remaining / clear  // no availableIn"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/api/client.go",
+            "line": 142,
+            "snippet": "if secs := ParseRetryAfter(res.Header.Get(\"Retry-After\"), time.Now()); secs > 0 { out.Err.RetryAfter = secs }"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/run/runner.go",
+            "line": 190,
+            "snippet": "if apiRes.Err.Code == api.CodeRateLimited && apiRes.Err.RetryAfter > 0 { ... withRetryAfter ... }"
+          }
+        ],
+        "current_state": "The CLI parses `Retry-After` and `error.retry_after` and exposes the wait on stdout (docs/agents.md:81). The core pipeline's own rate_limited envelope sends neither: HttpResponse sets only Content-Type, and the RateLimiter contract cannot report the remaining decay. The hint only reaches the CLI from Laravel's throttle middleware or a proxy.",
+        "recommended_state": "Pipeline rate limits include `retry_after` (seconds) in the error envelope. HttpResponse::fromResult adds a `Retry-After` header on 429 when it is present.",
+        "rationale": "The CLI side of this contract exists and is tested, but the core's main rate-limit path never feeds it, so agents fall back to guessing a backoff.",
+        "implementation_hint": "Add `availableIn(string $key): int` to Contracts\\RateLimiter (Illuminate adapter: RateLimiter::availableIn). Pass the max of the tripped keys into rateLimitedResult as extra['retry_after']. In HttpResponse::fromResult, when status==429 and error.retry_after>0, add header Retry-After. Unit-test both in core. This is a contract change, so note it in the changelog for host implementations.",
+        "score": 4.25
+      },
+      {
+        "id": "X-008",
+        "title": "Package CHANGELOGs lag the 20+ lockstep tags; core has two [Unreleased] blocks",
+        "category": "documentation",
+        "severity": "low",
+        "effort": "small",
+        "impact": [
+          "dx",
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/CHANGELOG.md",
+            "line": 146,
+            "snippet": "## [Unreleased]   (second Unreleased block, below [0.5.2])"
+          },
+          {
+            "file": "packages/laravel-capabilities/CHANGELOG.md",
+            "line": 60,
+            "snippet": "### Added   (second Added heading inside the first [Unreleased], see line 14)"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/CHANGELOG.md",
+            "line": 12,
+            "snippet": "## [Unreleased] ... ## [0.x] \u2014 pre-stable   (no version sections)"
+          },
+          {
+            "file": "packages/capabilities-cli/CHANGELOG.md",
+            "line": 12,
+            "snippet": "## [Unreleased] ... ## [0.x]   (no version sections; GitHub Releases cut per tag)"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/CHANGELOG.md",
+            "line": 41,
+            "snippet": "## [0.5.1] - 2026-08-09   (tags v0.5.2, v0.5.3 absent)"
+          },
+          {
+            "file": "docs/versioning.md",
+            "line": 311,
+            "snippet": "fill dated CHANGELOG sections when cutting each tag."
+          }
+        ],
+        "current_state": "Tags v0.1.1\u2013v0.5.3 are force-pushed to all four package remotes. Only core has dated sections (0.5.2, 0.5.3), and core also has a stale second `[Unreleased]` holding shipped work. Messaging and CLI have none. AI stops at 0.5.1. scripts/release.sh never touches CHANGELOGs, even though docs/versioning.md says to fill them per tag.",
+        "recommended_state": "Each tag produces a dated section in every package CHANGELOG (or an explicit 'No changes' line), and there is exactly one `[Unreleased]` per file. release.sh refuses to tag while `[Unreleased]` is non-empty in any package, or it promotes those sections automatically.",
+        "rationale": "The package remotes are the consumer-facing products. For 0.x, where breaking changes land on minors, the CHANGELOG is the only upgrade guide. Tags without notes make X-004's pairing problem worse.",
+        "implementation_hint": "Add a release.sh step: for each packages/*/CHANGELOG.md, replace the first `## [Unreleased]` with `## [Unreleased]\\n\\n## [X.Y.Z] - $(date +%F)` and fail if a file has more than one `## [Unreleased]`. Fix the core file by merging lines 146+ into the correct released section.",
+        "score": 4.25
+      },
+      {
+        "id": "X-011",
+        "title": "Reconcile requirements inventory: stale CLI mcp rows, AI package absent",
+        "category": "documentation",
+        "severity": "low",
+        "effort": "small",
+        "impact": [
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": "docs/requirements-inventory.md",
+            "line": 5588,
+            "snippet": "- [x] TestMcpwithoutauthNotCommandGuard [CLI-AUTH]"
+          },
+          {
+            "file": "docs/requirements-inventory.md",
+            "line": 5714,
+            "snippet": "- [x] TestMcpDoesNotRequireAuthAsCommand [CLI-AUTH]"
+          },
+          {
+            "file": "tools/generate_requirement_stubs.py",
+            "line": 2955,
+            "snippet": "clia.add(\"go\", \"TestMcpDoesNotRequireAuthAsCommand\", \"CLI-AUTH\")"
+          },
+          {
+            "file": "tools/report_inventory_gaps.py",
+            "line": 46,
+            "snippet": "\"messaging\": ..., \"cli\": ...   (no ai entry)"
+          }
+        ],
+        "current_state": "`python3 tools/report_inventory_gaps.py` reports 2 unmatched rows. Both are `mcp` auth-guard scenarios for a CLI command that was hard-removed (help.go:164), yet the inventory marks them [x]. The only live test is `TestMcpwithoutauthfails`. The AI package (\u22484.5k LOC, 311 tests) has no inventory rows, and the sync and gap tools don't scan it, even though AGENTS.md treats inventory\u2192tests as the contract scaffold.",
+        "recommended_state": "The generator catalog drops or renames the two mcp rows. The gap report runs clean and is cheap enough to run in CI. AGENTS.md either states that the AI package is governed by its own tests and README instead of the inventory, or the tools gain an `ai` package entry.",
+        "rationale": "A gap tool that always reports stale noise stops being read. Checked boxes for tests that don't exist undermine the 'tests are SOT' contract. The tools' own unit tests (31, green) are also not in CI.",
+        "implementation_hint": "Remove lines 1581 and 2955 from tools/generate_requirement_stubs.py (or map them to TestMcpwithoutauthfails), regenerate, and re-run sync. Add a tests.yml job: `python3 -m unittest discover -s tools/tests && python3 tools/report_inventory_gaps.py --fail-on-gaps` (add the flag). Add one AGENTS.md line on AI package inventory scope.",
+        "score": 4.25
+      }
+    ]
+  },
+  "dropped_count": 0,
+  "merges": [],
+  "warnings": [
+    "findings-laravel-siblings.json uses non-standard prefix M- (auditor \"laravel-auditor-siblings\"); kept as-is by orchestrator instruction.",
+    "Mode not supplied by orchestrator; recorded as \"audit\".",
+    "Coverage numbers in X-001 were measured on PHP 8.5 + pcov locally; CI runs PHP 8.2 (auditor note)."
+  ]
+}

@@ -1,0 +1,626 @@
+{
+  "auditor": "laravel-auditor-siblings",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-analyst-loop",
+  "stack_summary": {
+    "laravel": "illuminate/* ^11|^12|^13 library packages",
+    "php": "^8.2",
+    "testing": "pest unit-only",
+    "scope": [
+      "packages/laravel-capabilities-messaging",
+      "packages/laravel-capabilities-ai"
+    ]
+  },
+  "scanned_files_count": 64,
+  "findings": [
+    {
+      "id": "M-001",
+      "title": "Wire Telegram ingress to a real agent and profile tools (bound path is an echo bot)",
+      "category": "architecture",
+      "severity": "high",
+      "effort": "medium",
+      "impact": [
+        "reliability",
+        "maintainability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-messaging/src/MessagingServiceProvider.php",
+          "line": 118,
+          "snippet": "new TelegramAdapter($app->make(TelegramBotClient::class))  // no ingressHandler"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/MessagingServiceProvider.php",
+          "line": 144,
+          "snippet": "new ProcessTelegramUpdate(..., $registry, $bot, turnLimiter: ...)  // no profileResolver / agentRunner"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Telegram/TelegramAdapter.php",
+          "line": 69,
+          "snippet": "// Default echo ingress — tools only when caller provided tool_calls on the message."
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+          "line": 391,
+          "snippet": "// Default: profile name is non-empty => empty tool list unless resolver provided. return [];"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+          "line": 70,
+          "snippet": "$this->agentRunner = $agentRunner;  // never read anywhere"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/README.md",
+          "line": 13,
+          "snippet": "routes messages into the agent with a configured tool profile"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Contracts/CapabilityBus.php",
+          "line": 11,
+          "snippet": "interface CapabilityBus { invoke(); catalog(); }  // no profile->tools method; aiTools() lives only on concrete CapabilityRegistry:672"
+        }
+      ],
+      "current_state": "The container-bound TelegramAdapter has no ingress handler, so ConversationIngress::handle() returns the user's own text as the reply; ProcessTelegramUpdate is bound without a profile resolver, so the profile tool list is always [] and $agentRunner is dead state. A linked Telegram user gets their message echoed back, and a tapped approval button (callback_query.data) is echoed as text. README/user-guide claim messages reach the agent with the configured profile.",
+      "recommended_state": "Default ingress fails closed (clear 'no agent bound' error) instead of echoing, and the provider binds a profile resolver that turns agent_profile into tool names through a published core contract. Hosts plug the actual agent turn (laravel/ai or the AI sibling) via one documented binding.",
+      "rationale": "Spec §6 pipeline is ConversationIngress -> laravel/ai agent (tools = profile) -> registry. D-007 forbids messaging from reaching into core internals, and core's only profile->tools API (CapabilityRegistry::aiTools) is not on a published contract, which is likely why the resolver was left unbound. Unit tests inject resolvers/handlers, so the suite is green while the shipped wiring is an echo bot.",
+      "implementation_hint": "1) Core: expose profile tool names on a published contract (e.g. add `toolNames(string $profile): list<string>` to a small `ToolProfiles` contract bound to the registry). 2) MessagingServiceProvider: pass `profileResolver: fn ($p) => $app->make(ToolProfiles::class)->toolNames($p)`; bind an `ingressHandler` from a host-overridable abstract (e.g. `Rawphp\\CapabilitiesMessaging\\Contracts\\AgentTurn`) and throw RuntimeException('No agent turn bound for messaging ingress') when unbound. 3) Delete the unused $agentRunner param. 4) Unit test: provider-built ProcessTelegramUpdate with no AgentTurn bound fails closed (no reply sent)."
+    },
+    {
+      "id": "M-002",
+      "title": "Make ProcessTelegramUpdateJob actually queue and let failures fail the job",
+      "category": "queues_events",
+      "severity": "high",
+      "effort": "small",
+      "impact": [
+        "reliability",
+        "performance"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdateJob.php",
+          "line": 11,
+          "snippet": "final class ProcessTelegramUpdateJob  // no ShouldQueue"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/MessagingServiceProvider.php",
+          "line": 89,
+          "snippet": "$app->make(BusDispatcher::class)->dispatch(new ProcessTelegramUpdateJob($update));"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+          "line": 84,
+          "snippet": "} catch (Throwable $e) { $this->log(...); return ['ok' => false, ...]; }"
+        }
+      ],
+      "current_state": "Illuminate\\Bus\\Dispatcher::dispatch() only queues commands that implement ShouldQueue; this job does not, so the whole update (identity, agent turn, registry invokes, Bot API reply) runs inline inside the webhook HTTP request. ProcessTelegramUpdate::handle() also catches every Throwable and returns an array, so the job can never fail, retry, or land in failed_jobs.",
+      "recommended_state": "ProcessTelegramUpdateJob implements ShouldQueue (with Queueable, tries/backoff, optional queue/connection config) and transient failures (Bot API 429/5xx, registry retryable) propagate so the queue retries; terminal outcomes (identity_unresolved, rate_limited) return without throwing.",
+      "rationale": "Spec pipeline is 'verify webhook secret -> queue ProcessTelegramUpdate'. Inline processing makes Telegram wait on LLM/tool latency; Telegram re-delivers webhooks that do not answer in time, doubling replies. D-019 failed-job tags (failedJobTags()) are unreachable because no job ever fails.",
+      "implementation_hint": "Add `implements ShouldQueue` + `use Queueable` (or public $tries/$backoff/$queue/$connection like RunTurnJob). In ProcessTelegramUpdateJob::handle, rethrow when the result is a retryable failure (map from error code / TelegramBotApiException::$retryable). Unit test: `expect(new ProcessTelegramUpdateJob([]))->toBeInstanceOf(ShouldQueue::class)` and a retryable Bot API failure makes handle() throw."
+    },
+    {
+      "id": "M-003",
+      "title": "Shrink approval callback_data to Telegram's 64-byte limit",
+      "category": "api",
+      "severity": "high",
+      "effort": "small",
+      "impact": [
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Notifiers/TelegramApprovalNotifier.php",
+          "line": 83,
+          "snippet": "['text' => 'Accept', 'callback_data' => $signer->encode($accept)],"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Telegram/TelegramCallbackSigner.php",
+          "line": 100,
+          "snippet": "return rtrim(strtr(base64_encode(json_encode($payload...)), '+/', '-_'), '=');  // 'Compact token for Telegram callback_data size limits'"
+        }
+      ],
+      "current_state": "encode() base64s a JSON object carrying approval_id, action, exp, approver_hint and a 64-hex HMAC. Measured: 195 bytes for approval id '1' with empty hint, 228 bytes for a 26-char ULID. Telegram rejects inline buttons whose callback_data exceeds 64 bytes (BUTTON_DATA_INVALID).",
+      "recommended_state": "callback_data is at most 64 bytes, e.g. a compact 'a|<approval_id>|<exp>|<truncated HMAC>' token or a short random handle mapped server-side to the signed payload, with a unit test pinning the size budget.",
+      "rationale": "Every real notifyPending() through HttpTelegramBotClient will 400, get audited as approval.notify_failed and rethrown, so chat approvals never reach a human. FakeTelegramBotClient does not validate size, so the unit suite cannot see it.",
+      "implementation_hint": "Pack as `{a|r}{approval_id}.{exp base36}.{base64url(hmac)[0..15]}` (~50 bytes for a ULID; hint bound into the HMAC input but not transmitted — verify against the row's stored approver hint or drop hint binding). Add `expect(strlen($signer->encode($signer->sign(str_repeat('Z',26),'accept','12345'))))->toBeLessThanOrEqual(64)` and make FakeTelegramBotClient reject callback_data > 64 bytes so tests mirror the Bot API."
+    },
+    {
+      "id": "M-004",
+      "title": "Sign callbacks with telegram.callback_secret, never a literal fallback key",
+      "category": "security",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": [
+        "security",
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-messaging/src/MessagingServiceProvider.php",
+          "line": 113,
+          "snippet": "$secret = $cfg->webhookSecret() ?? 'deferred-unset';"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Boot/MessagingBindings.php",
+          "line": 153,
+          "snippet": "$secret = $cfg->webhookSecret() ?? 'deferred-unset';"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Notifiers/TelegramApprovalNotifier.php",
+          "line": 64,
+          "snippet": "$signer = $this->signer ?? new TelegramCallbackSigner($this->config->callbackSecret(), ...)  // only when no signer injected"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/config/capabilities-messaging.php",
+          "line": 12,
+          "snippet": "'callback_secret' => env('TELEGRAM_CALLBACK_SECRET', env('TELEGRAM_WEBHOOK_SECRET')),"
+        }
+      ],
+      "current_state": "The container always injects a signer keyed on the webhook secret, so the documented TELEGRAM_CALLBACK_SECRET is dead config. When the webhook secret is unset (e.g. skip_boot_checks outside production) buttons are signed with the public constant 'deferred-unset'.",
+      "recommended_state": "One signer built lazily from MessagingConfig::callbackSecret() (which already falls back to the webhook secret and throws when neither is set); no hard-coded key anywhere.",
+      "rationale": "A host that sets a distinct callback secret and builds CallbackHandler per the user guide verifies with a different key than the notifier signed with, so every button returns invalid_signature_or_expired. A known constant HMAC key is forgeable wherever it is used.",
+      "implementation_hint": "Replace both `webhookSecret() ?? 'deferred-unset'` with `$cfg->callbackSecret()` (the singleton closure resolves lazily, so D-021 boot is unaffected). Unit test: config with callback_secret='cb' and webhook_secret='wh' -> provider-bound signer verifies a payload signed with 'cb'; no secrets -> resolving the signer throws."
+    },
+    {
+      "id": "M-005",
+      "title": "Send messaging webhook/processing failures to the Laravel logger",
+      "category": "observability",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "reliability",
+        "dx"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Telegram/TelegramWebhookController.php",
+          "line": 114,
+          "snippet": "private function log(...) { $this->logs[] = [...]; }  // never reaches Log"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+          "line": 448,
+          "snippet": "private function log(...) { $this->logs[] = [...]; }"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+          "line": 85,
+          "snippet": "$this->log('error', $e->getMessage(), ['failure' => ..., 'tags' => $this->lastTags]);"
+        }
+      ],
+      "current_state": "Both classes record errors (bad secret, queue failure, identity_unresolved, rate_limited, registry_forbidden, reply_send_fail) only into private arrays exposed for tests. Nothing is written to a PSR logger, and handle() swallows the exception, so in production a failing bot is silent.",
+      "recommended_state": "Inject an optional Psr\\Log\\LoggerInterface (container-resolved) and write each entry through it with the D-019 tags; tests assert against a fake logger instead of the internal array.",
+      "rationale": "D-019 asks for failure observability with channel/chat/update tags; the tags are computed (failedJobTags) but never emitted. Combined with M-002 there is no failed job, no log line and no reply for any failure.",
+      "implementation_hint": "Add `?LoggerInterface $logger = null` to both constructors; provider passes `$app->bound(LoggerInterface::class) ? $app->make(LoggerInterface::class) : null`. log() calls `$this->logger?->log($level, $message, $context)`. Unit test with a recording logger that an unlinked user produces one warning with tags.chat_id."
+    },
+    {
+      "id": "M-006",
+      "title": "Move test scaffolding out of messaging production classes",
+      "category": "testing",
+      "severity": "medium",
+      "effort": "medium",
+      "impact": [
+        "maintainability",
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+          "line": 108,
+          "snippet": "public function runPipeline(array $update, array $options = [])  // simulates webhook steps via fail_at / secret_valid flags"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+          "line": 189,
+          "snippet": "if ($failAt === 'invalid_update_shape' || ...)  // fail_at injection threaded through process()"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Telegram/TelegramWebhookController.php",
+          "line": 23,
+          "snippet": "private int $registryInvokeCount = 0;  // never incremented"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Notifiers/TelegramApprovalNotifier.php",
+          "line": 29,
+          "snippet": "private int $capabilityExecuteCount = 0; private int $domainServiceCalls = 0;  // never incremented"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Telegram/TelegramAdapter.php",
+          "line": 19,
+          "snippet": "private array $handled = []; private array $replies = [];  // grows per message on a container singleton"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Support/HttpTelegramBotClient.php",
+          "line": 83,
+          "snippet": "$this->calls[] = ['method' => $method, 'args' => $params];  // production client records every Bot API call"
+        }
+      ],
+      "current_state": "Production classes carry fault-injection flags (fail_at, failNext, failIngress/failReply), a runPipeline() simulator that 'marks' verify_webhook_secret without verifying anything, guard counters that are constant zero (so tests asserting them are tautologies), and recorder arrays on container singletons that grow for the life of a queue worker. 142 test calls go through runPipeline() rather than the real controller -> UpdateQueue -> job path.",
+      "recommended_state": "Fault injection lives in test fakes (FakeThreadStore, FakeTelegramAdapter / ingress handlers), constant counters and their assertions are deleted, recorders exist only on Fake* classes, and pipeline-order tests drive TelegramWebhookController + a FakeQueue + ProcessTelegramUpdate.",
+      "rationale": "The suite is 95%+ covered yet missed M-001..M-003 because it exercises a simulation of the pipeline, not the wired path. The unbounded recorder arrays are a memory leak in long-running workers (also holding user objects).",
+      "implementation_hint": "Step 1: delete registryInvokeCount/capabilityExecuteCount/domainServiceCalls/domainBypassAttempted and their tests. Step 2: remove $calls from HttpTelegramBotClient and $handled/$replies from TelegramAdapter (tests use FakeTelegramBotClient / an ingress handler spy). Step 3: replace runPipeline()+fail_at with tests that compose controller->FakeQueue->processor and inject failing fakes. Keep coverage >=95% by testing the real branches."
+    },
+    {
+      "id": "M-007",
+      "title": "Resolve chat identities to the host user model, not a LinkedUser DTO",
+      "category": "security",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "security",
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-messaging/src/MessagingServiceProvider.php",
+          "line": 102,
+          "snippet": "new IdentityLinker($app->make(MessagingConfig::class), metrics: ...)  // no userFactory"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Identity/IdentityLinker.php",
+          "line": 39,
+          "snippet": "$this->userFactory = $userFactory ?? static fn (...) => new LinkedUser(id: $id, tenantId: $tenantId);"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Support/ResolveConversationActor.php",
+          "line": 51,
+          "snippet": "$modelClass = self::assertQueryableModel($this->userModelClass());  // AI sibling loads the real model"
+        }
+      ],
+      "current_state": "The bound IdentityLinker has no user factory and there is no config for one, so every Telegram tool call reaches CapabilityBus::invoke with actor = LinkedUser (id/tenantId DTO). Capability authorize()/policies written against the host User model receive a different type; hosts must rebind the whole linker to fix it.",
+      "recommended_state": "A `capabilities-messaging.user_model` key (fallback auth.providers.users.model) drives the default userFactory, which loads the model and fails closed when the id does not resolve, the same rule the AI sibling applies.",
+      "rationale": "Governance runs on the actor (D-002/D-003). Two siblings resolving the actor differently means the same capability is authorized against different principal types per surface, which is how policy checks silently deny (or, with loose policies keyed on ->id, allow) the wrong thing.",
+      "implementation_hint": "In MessagingServiceProvider pass `userFactory: fn (string $id, ?string $tenant) => $model::query()->find($id) ?? throw new RuntimeException(...)` built from config; keep LinkedUser only as the explicit test default. Unit test with a stub model class that the bound linker returns that class and fails closed on unknown id."
+    },
+    {
+      "id": "M-008",
+      "title": "Give code_link a chat-side bind step (default mode cannot link anyone)",
+      "category": "architecture",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "reliability",
+        "dx"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-messaging/config/capabilities-messaging.php",
+          "line": 32,
+          "snippet": "'mode' => env('CAPABILITIES_MESSAGING_IDENTITY_MODE', 'code_link'),"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Identity/IdentityLinker.php",
+          "line": 81,
+          "snippet": "public function bindWithCode(...)  // no caller anywhere in src/"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+          "line": 215,
+          "snippet": "if ($user === null) { throw new RuntimeException('identity_unresolved'); }"
+        }
+      ],
+      "current_state": "code_link is the default identity mode, but nothing in the update pipeline consumes a code (no /start <code> or /link <code> handling); an unlinked user's message just fails identity_unresolved. bindWithCode() is reachable only from tests.",
+      "recommended_state": "ProcessTelegramUpdate recognises a link command before identity resolution and calls IdentityLinker::bindWithCode, replying with success/failure; or the default mode is allowlist until the chat-side step exists.",
+      "rationale": "User guide step 2 says 'The Telegram user presents the code' but the package provides no way to present it. Fresh installs fail closed (safe), but the documented default flow cannot work. The in-memory store itself is the documented L-006 residual and is not re-raised here.",
+      "implementation_hint": "In process(), before resolve: `if (preg_match('#^/(start|link)\\s+([0-9a-f]{16})$#', $text, $m)) { $u = $this->identity->bindWithCode($telegramUserId, $m[2]); reply(linked|invalid); return; }`. Unit tests: valid code binds + replies, reused/expired code refused, allowlist mode ignores the command."
+    },
+    {
+      "id": "M-009",
+      "title": "Stop tool invokes when a running turn is cancelled",
+      "category": "reliability",
+      "severity": "high",
+      "effort": "small",
+      "impact": [
+        "reliability",
+        "security"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-ai/src/Domain/TurnRunner.php",
+          "line": 71,
+          "snippet": "while ($rounds < $this->maxToolRounds) {  // no status check per round or before bus invoke"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Domain/TurnRunner.php",
+          "line": 160,
+          "snippet": "$result = $this->bus->invoke($name, $payload, $callOptions);"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Domain/TurnRunner.php",
+          "line": 188,
+          "snippet": "// Cooperative cancel: do not overwrite cancelled mid-run  (checked only after the loop)"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Domain/TurnRunner.php",
+          "line": 197,
+          "snippet": "$turn->status = Turn::STATUS_COMPLETED; ... $turn->save();  // non-CAS write"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Domain/TurnService.php",
+          "line": 75,
+          "snippet": "UPDATE ... SET status=cancelled WHERE status IN (queued, running); then append terminal=cancelled"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/docs/user-guide.md",
+          "line": 194,
+          "snippet": "If TurnRunner observes cancelled mid-loop, it does not overwrite status"
+        }
+      ],
+      "current_state": "Cancel flips the row to cancelled and emits a terminal event, but TurnRunner only re-reads status after the loop. A cancelled turn keeps calling the LLM and invoking mutating capabilities for up to max_tool_rounds (8), appending tool events after the terminal one. The final completed write is a plain save, so a cancel landing between the check and the save is overwritten.",
+      "recommended_state": "The runner re-checks status at the start of each round and before each bus invoke and stops when cancelled; the completed/failed writes are CAS updates (`WHERE status = running`).",
+      "rationale": "Users and hosts treat cancel as 'stop acting on my behalf'. Continuing capability mutations after cancel breaks that and makes the progress stream lie (terminal then more tool events).",
+      "implementation_hint": "Add `private function cancelled(string $ulid): bool { return Turn::query()->where('ulid',$ulid)->value('status') === Turn::STATUS_CANCELLED; }`; call at loop top and before `$this->bus->invoke`, returning the fresh turn. Replace the completed `$turn->save()` with a CAS update on status=running. Unit test: FakeLlmClient returns tool_calls twice; cancel after round 1 -> bus invoked once, no events after terminal."
+    },
+    {
+      "id": "M-010",
+      "title": "Invoke AI turn tool calls as caller=agent, not job",
+      "category": "security",
+      "severity": "high",
+      "effort": "medium",
+      "impact": [
+        "security",
+        "maintainability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-ai/src/Support/ResolveConversationActor.php",
+          "line": 18,
+          "snippet": "public const CALLER_JOB = 'job';  /** In-process coach / job surface (legacy RunCoachCommandHandler shape). */"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Support/ResolveConversationActor.php",
+          "line": 107,
+          "snippet": "'caller' => self::CALLER_JOB,"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Domain/TurnRunner.php",
+          "line": 105,
+          "snippet": "$invokeOptions = $this->actors->invokeOptions($actor);"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+          "line": 291,
+          "snippet": "caller: 'agent',  // messaging sibling uses agent for the same kind of LLM tool call"
+        }
+      ],
+      "current_state": "Every LLM-chosen tool call from TurnRunner reaches the bus as caller=job. The core surface gate and needsApproval(ctx) therefore see a job, not an agent: CAPABILITIES_SURFACE_AGENT=false does not stop AI turns, a capability narrowed to surfaces [http, job] (deliberately no agent) is still callable by the model, and approval rules keyed on caller=agent do not fire. The messaging sibling uses caller=agent for the identical case.",
+      "recommended_state": "TurnRunner tool invokes pass caller=agent (plus tool_profile for audit); the proposal-accept path's caller is decided explicitly in the spec (it is a human confirming via HTTP) instead of inheriting a legacy job shape.",
+      "rationale": "Spec Surfaces §1 treats in-app LLM tool use as the agent surface, and 'per-capability surfaces can only narrow' is a governance guarantee. Only README text records caller=job, as a legacy shape; no D-0xx decision covers it. The host ToolCatalog limits what is offered, but surface narrowing and the agent kill switch exist precisely as defense in depth against catalog mistakes.",
+      "implementation_hint": "Add `invokeOptions(object $actor, string $caller, array $extra)` (or CALLER_AGENT) and use 'agent' in TurnRunner; add `capabilities-ai.agent_profile` (nullable) passed as tool_profile. Keep ProposalService on its current caller until a spec line decides it. Unit test with a bus spy: TurnRunner options['caller'] === 'agent'. Record the decision in docs/spec.md."
+    },
+    {
+      "id": "M-011",
+      "title": "Read table_prefix from the app config, not the package file",
+      "category": "configuration",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": [
+        "reliability",
+        "performance"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-ai/src/Models/TableNames.php",
+          "line": 14,
+          "snippet": "$configPath = dirname(__DIR__, 2).'/config/capabilities-ai.php'; ... $config = require $configPath;"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php",
+          "line": 29,
+          "snippet": "'table_prefix' => $env('CAPABILITIES_AI_TABLE_PREFIX', 'capabilities_ai_'),  // getenv at require time"
+        }
+      ],
+      "current_state": "Every model getTable() and every migration re-requires the package's own config file and reads the env var via getenv. A host-published/overridden config('capabilities-ai.table_prefix') is ignored, and after `php artisan config:cache` Laravel no longer loads .env, so a prefix set only in .env silently falls back to capabilities_ai_ at runtime.",
+      "recommended_state": "TableNames reads config('capabilities-ai.table_prefix') when a container with config is bound (cached config honored), falling back to the package file only in container-less unit boots.",
+      "rationale": "Migrations run before config:cache can create prefixed tables while cached-config workers query unprefixed ones: every conversation/turn query then fails. Re-requiring a PHP file on each query is also wasted work.",
+      "implementation_hint": "`if (function_exists('app') && app()->bound('config')) { $p = config('capabilities-ai.table_prefix'); if (is_string($p) && $p !== '') return $p; }` then existing fallback; memoize in a static. Unit test: bound config repository with prefix 'x_' -> TableNames::turns() === 'x_turns'."
+    },
+    {
+      "id": "M-012",
+      "title": "Set an HTTP timeout on AnthropicLlmClient that matches max_tokens",
+      "category": "reliability",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "reliability",
+        "performance"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-ai/src/Support/AnthropicLlmClient.php",
+          "line": 212,
+          "snippet": "Http::withHeaders([...])->retry(...)->post(.../v1/messages, $payload);  // no ->timeout(): Laravel default 30s"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php",
+          "line": 63,
+          "snippet": "'max_tokens' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS', 64000),"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Package.php",
+          "line": 16,
+          "snippet": "public const DEFAULT_CLAIM_TTL = 120;  // RunTurnJob timeout"
+        }
+      ],
+      "current_state": "Non-streaming requests default to max_tokens=64000, but the Laravel HTTP client's default timeout (PendingRequest: 'timeout' => 30) is left in place. Any reply that takes more than 30s to generate becomes a ConnectionException -> RetryableLlmException -> failed turn, and the whole multi-round turn is further capped by the 120s job timeout.",
+      "recommended_state": "A `llm.anthropic.timeout` config (seconds) applied via ->timeout(), with documented relation to claim_ttl (timeout x max rounds must fit inside it), and a max_tokens default the timeout can actually deliver.",
+      "rationale": "The config comment says max_tokens was raised to stop truncated long replies; with a 30s transport cap those replies now fail outright instead of truncating, and the failure surfaces as 'retryable' so callers retry into the same wall.",
+      "implementation_hint": "Add `'timeout' => (int) $env('CAPABILITIES_AI_ANTHROPIC_TIMEOUT', 110)` and `->timeout($this->timeoutSeconds)` in send(); pass through ContainerBindings::makeLlmClient. Unit test with Http::fake asserting the request options carry the configured timeout (or inject the PendingRequest factory)."
+    },
+    {
+      "id": "M-013",
+      "title": "Rate-limit AI chat message creation per user",
+      "category": "security",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "security",
+        "scalability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php",
+          "line": 34,
+          "snippet": "'middleware' => ['api', 'auth:sanctum'],  // Laravel 11+ api group has no throttle unless the host opts in"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php",
+          "line": 110,
+          "snippet": "'max_concurrent_turns' => (int) $env('CAPABILITIES_AI_MAX_CONCURRENT_TURNS', 0),  // 0 = unlimited"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Http/ChatController.php",
+          "line": 65,
+          "snippet": "$ids = $conversations->createUserMessage(...);  // each POST dispatches an LLM turn"
+        }
+      ],
+      "current_state": "Each POST /messages creates a turn and dispatches an LLM job. There is no per-user limit, the global ceiling defaults to unlimited, and core's RateLimiter contract (D-013) is not used, although the messaging sibling applies it for turns_per_minute.",
+      "recommended_state": "A `turns_per_minute` (per authenticated user) limit through core's RateLimiter, returning 429 rate_limited before anything is persisted, on by default with a sane value.",
+      "rationale": "Any authenticated user can spend unbounded provider tokens and fill the queue. D-013 names agent loop protection as a bus concern, and the two siblings should enforce it the same way.",
+      "implementation_hint": "Inject `?RateLimiter` into ConversationService (bound when core provides it); key `rl:ai:user:{userId}`, `tooManyAttempts($key, $max)` -> throw TurnCapacityExceededException-like RateLimited; `hit($key, 60)`. Unit test with an in-memory RateLimiter fake: N+1th create throws and persists nothing."
+    },
+    {
+      "id": "M-014",
+      "title": "Use the D-018 error envelope for every ChatController failure",
+      "category": "api",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "dx",
+        "maintainability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-ai/src/Http/ChatController.php",
+          "line": 27,
+          "snippet": "* Error branches reuse the core D-018 envelope (same shape as capability invoke)."
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Http/ChatController.php",
+          "line": 61,
+          "snippet": "return new JsonResponse(['message' => 'The given data was invalid.', 'errors' => $errors], 422);"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Http/ChatController.php",
+          "line": 72,
+          "snippet": "return new JsonResponse(['message' => $e->getMessage(), 'outcome' => AcceptOutcome::KIND_RETRYABLE], 429);"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Http/ChatController.php",
+          "line": 247,
+          "snippet": "return new JsonResponse(['message' => 'Unauthenticated'], 401);"
+        }
+      ],
+      "current_state": "404/409 go through CapabilityResult::failure() (D-018 shape), but 401, 422 and 429 return three different ad-hoc bodies. The docblock claims all error branches use the envelope.",
+      "recommended_state": "401 -> code unauthenticated, 422 -> validation_failed with violations[], 429 -> rate_limited with retryable, all via the existing failure() helper.",
+      "rationale": "D-018: every non-success response uses one envelope so clients (and the Go CLI patterns) branch on error.code. Clients of this API currently need three parsers.",
+      "implementation_hint": "Replace the three literals with `$this->failure('unauthenticated', ...)`, a validation_failed result carrying `violations` built from $errors, and `failure('rate_limited', ...)`. Update ChatControllerTest expectations (unit)."
+    },
+    {
+      "id": "M-015",
+      "title": "Expire Redis progress keys and read from the cursor",
+      "category": "caching",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "scalability",
+        "performance"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-ai/src/Support/RedisProgressStore.php",
+          "line": 41,
+          "snippet": "$this->redis->rPush($key, $payload);  // no EXPIRE: keys live forever"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Support/RedisProgressStore.php",
+          "line": 55,
+          "snippet": "$rows = $this->lRange($key);  // lRange(key, 0, -1) then skip < cursor in PHP"
+        }
+      ],
+      "current_state": "Every turn leaves a permanent Redis list, and each events poll downloads the whole list and discards everything before the cursor in PHP.",
+      "recommended_state": "Append sets a TTL (config, e.g. 24h) and since() calls LRANGE key cursor -1 so each poll reads only new events.",
+      "rationale": "Progress is transient by design (contract: 'not MySQL product DB'); unbounded keys grow Redis memory with every turn forever, and full-list reads make polling cost grow with turn length.",
+      "implementation_hint": "After rPush: `$this->redis->expire($key, $this->ttlSeconds)` (config progress.ttl_seconds, default 86400). In lRange(): pass `$cursor` as start and re-index from $cursor. Unit test with the existing fake Redis: expire called on append; since(t, 2) requests range starting at 2."
+    },
+    {
+      "id": "M-016",
+      "title": "Refuse new messages on closed conversations",
+      "category": "reliability",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": [
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-ai/src/Domain/ConversationService.php",
+          "line": 57,
+          "snippet": "Conversation::query()->where('ulid', $conversationUlid)->where('user_id', $userId)->firstOrFail()  // no status filter"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Domain/ConversationService.php",
+          "line": 167,
+          "snippet": "$conversation->status = 'closed';"
+        }
+      ],
+      "current_state": "DELETE /conversations/{ulid} marks the conversation closed, but createUserMessage() on that ulid still creates a message and dispatches a new LLM turn.",
+      "recommended_state": "createUserMessage() rejects a closed conversation (409 conflict) before persisting anything.",
+      "rationale": "Destroy/close is the user's way to end a conversation; silently reopening it for new paid turns contradicts that and makes the status column meaningless.",
+      "implementation_hint": "After loading the owned conversation: `if ($conversation->status === 'closed') throw new RuntimeException(\"Conversation {$ulid} is closed\");` and map RuntimeException to 409 in storeMessage(). Unit test: destroy then createUserMessage throws and dispatch spy not called."
+    },
+    {
+      "id": "M-017",
+      "title": "Append the queued progress event before dispatching the turn",
+      "category": "reliability",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": [
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-ai/src/Domain/ConversationService.php",
+          "line": 84,
+          "snippet": "($this->dispatch)($job);  then  $this->progress->append($turn->ulid, ['kind' => 'status', 'data' => ['status' => 'queued']]);"
+        }
+      ],
+      "current_state": "The queued status event is written after dispatch. With the sync queue driver (or a fast worker) the turn's running/terminal events land first and the stream ends with status=queued.",
+      "recommended_state": "Append the queued event, then dispatch.",
+      "rationale": "Clients that read the last status event (rather than stopping at terminal) show a finished turn as queued.",
+      "implementation_hint": "Swap the two statements; unit test with a dispatch callable that appends 'running' synchronously and assert event order queued -> running."
+    },
+    {
+      "id": "M-018",
+      "title": "Reconcile the AI package's SQLite-backed tests with the no-DB rule",
+      "category": "testing",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "maintainability",
+        "dx"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-ai/tests/Unit/Models/MigrationModelsTest.php",
+          "line": 18,
+          "snippet": "* Boot Eloquent + Schema facades against sqlite :memory: for package migrations."
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/tests/Unit/Jobs/RunTurnJobTest.php",
+          "line": 24,
+          "snippet": "$capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);"
+        },
+        {
+          "file": "AGENTS.md",
+          "line": 75,
+          "snippet": "Tests must pass with no MySQL/Postgres/SQLite, no migrations run, no schema."
+        }
+      ],
+      "current_state": "13 of the AI package's test files boot Capsule on sqlite :memory: and run the package migrations, because ConversationService/TurnRunner/TurnClaim/ProposalService call Eloquent statics and DatabaseConnection::resolve() directly. AGENTS.md says 'no SQLite, no migrations' as blocking policy.",
+      "recommended_state": "Either an explicit recorded exception (AGENTS.md + .do-work/decisions.md) that packages owning their own tables may unit-test CAS/claim SQL on sqlite :memory:, or repository ports with in-memory fakes. The smaller, honest fix is the recorded exception.",
+      "rationale": "Right now the rule and the suite disagree, so the next agent either 'fixes' good CAS tests away or copies the pattern elsewhere believing it is allowed. The CAS claims (TurnClaim, ProposalService::casStatus) are exactly where a real SQL engine earns its place.",
+      "implementation_hint": "Add a line to AGENTS.md Testing: 'Exception: a package whose product is its own tables (laravel-capabilities-ai) may use sqlite :memory: + its migrations in unit tests; no external DB, no host schema.' Log it in .do-work/decisions.md. No code change."
+    }
+  ],
+  "notes": "Scope: messaging + AI sibling packages (src, config, routes, migrations, README/user-guide, selected tests); core read only to check the contracts siblings use. Read AGENTS.md, docs/spec.md (D-007, D-018, D-021, D-024, messaging §6) and the primary checkout's .do-work/decisions.md. No prior audit findings covered these packages (the AI package did not exist at 2026-07-31). Boundary check (D-007/D-011): siblings import only core Contracts\\* plus Support\\CapabilityContext/CapabilityResult (bus DTOs), Support\\Redactor (AI TurnRunner) and Support\\ErrorCodeMap; no reach into core Registry/Pipeline internals. The gap is the other way round: core publishes no profile->tools contract, so messaging leaves profile resolution unbound (M-001). Deliberate / documented, not raised: L-006 in-memory IdentityLinker/ThreadStore (README residual; decisions.md UR-012 deferred L-006); CallbackHandler not wired into the webhook path (user-guide says 'not yet'; M-003/M-004 still apply because the notifier ships buttons); siblings requiring rawphp/laravel-capabilities '*' (docs/versioning.md:155 explains path resolution, consumers pin); caller=job for proposal accept (only TurnRunner tool calls raised, M-010). Dropped as low value: the AI composer.json omits illuminate/console and illuminate/routing (Command, Route facade), which laravel/framework always provides in real hosts. Priority order: M-001, M-002 and M-003 together mean the Telegram surface cannot work end to end on real infrastructure even though unit tests pass (M-006 explains why). For AI: M-009, M-010, then M-011/M-012."
+}
