@@ -41,4 +41,26 @@ final class TurnClaim
 
         return Turn::query()->where('ulid', $turnUlid)->first();
     }
+
+    /**
+     * Fail a turn that was never claimed: UPDATE … WHERE status=queued.
+     *
+     * @return bool false when the turn is missing or already left queued
+     */
+    public function failUnclaimed(string $turnUlid, string $error): bool
+    {
+        $now = Carbon::now()->toDateTimeString();
+
+        $rows = DatabaseConnection::resolve()->table(TableNames::turns())
+            ->where('ulid', $turnUlid)
+            ->where('status', Turn::STATUS_QUEUED)
+            ->update([
+                'status' => Turn::STATUS_FAILED,
+                'error' => $error,
+                'finished_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+        return $rows === 1;
+    }
 }

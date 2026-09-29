@@ -4,11 +4,15 @@ namespace Rawphp\Capabilities\Schema;
 
 use Rawphp\Capabilities\Contracts\SchemaProvider;
 use Rawphp\Capabilities\Registry\CapabilityDefinition;
+use Rawphp\Capabilities\Support\CapabilityContext;
 use Rawphp\Capabilities\Support\CapabilityData;
 use Rawphp\Capabilities\Support\CapabilityResult;
 
 /**
  * Post-run output contract enforcement (D-014). Fail closed — never return malformed success.
+ *
+ * Fields marked `x-tenant-scoped` (#[Field(tenantScoped: true)]) must equal the invoking
+ * tenant, so a run() that loaded another tenant's resource cannot return it (D-003).
  */
 final class OutputValidator
 {
@@ -19,7 +23,7 @@ final class OutputValidator
     /**
      * @return CapabilityResult|null failure result, or null when valid / skipped
      */
-    public function validate(CapabilityDefinition $definition, mixed $output): ?CapabilityResult
+    public function validate(CapabilityDefinition $definition, mixed $output, ?CapabilityContext $context = null): ?CapabilityResult
     {
         $outputClass = $definition->output;
         if ($outputClass === null || $outputClass === '') {
@@ -50,7 +54,48 @@ final class OutputValidator
             // Array-shaped success after schema pass is acceptable.
         }
 
+        $tenantId = $context?->tenantId();
+        $crossTenant = $tenantId === null ? [] : $this->crossTenantFields($schema, $data, $tenantId, '');
+
+        if ($crossTenant !== []) {
+            return CapabilityResult::failure(
+                code: 'output_invalid',
+                message: 'Capability output contains a resource outside the active tenant.',
+                extra: ['violations' => $crossTenant],
+            );
+        }
+
         return null;
+    }
+
+    /**
+     * Global-system invokes (null tenant) and null scoped values are not checked.
+     *
+     * @param  array<string, mixed>  $schema
+     * @return list<array{field: string, message: string}>
+     */
+    private function crossTenantFields(array $schema, mixed $data, string $tenantId, string $path): array
+    {
+        if (($schema['x-tenant-scoped'] ?? false) === true) {
+            return $data === null || (is_scalar($data) && (string) $data === $tenantId)
+                ? []
+                : [['field' => $path, 'message' => 'does not belong to the active tenant']];
+        }
+
+        if (! is_array($data)) {
+            return [];
+        }
+
+        $violations = [];
+        foreach ($data as $key => $value) {
+            $child = array_is_list($data) ? ($schema['items'] ?? null) : ($schema['properties'][$key] ?? null);
+            if (is_array($child)) {
+                $childPath = $path === '' ? (string) $key : $path.'.'.$key;
+                array_push($violations, ...$this->crossTenantFields($child, $value, $tenantId, $childPath));
+            }
+        }
+
+        return $violations;
     }
 
     /**
