@@ -131,6 +131,7 @@ final class ContainerBindings
     /**
      * One Anthropic request must finish inside the turn job (claim_ttl), or the worker is
      * killed mid-request instead of the turn failing as a retryable timeout.
+     * claim_ttl is also the client's retry deadline, so 429 waits cannot push it past the job.
      *
      * @param  array<string, mixed>  $config
      */
@@ -153,6 +154,7 @@ final class ContainerBindings
             tracer: $tracer,
             maxRetries: (int) ($config['llm']['anthropic']['max_retries'] ?? 2),
             timeoutSeconds: $timeout,
+            deadlineSeconds: $claimTtl,
         );
     }
 
