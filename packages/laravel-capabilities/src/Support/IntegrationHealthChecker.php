@@ -19,10 +19,17 @@ final class IntegrationHealthChecker
     /** Surfaces that perform authorized invokes (authorizer required when any enabled). */
     private const INVOKE_SURFACES = ['http', 'mcp', 'agent', 'job', 'cli'];
 
-    /** Class-string probes for AI package (string-only; no hard dependency). */
+    /**
+     * Class-string probes for AI package contracts (string-only; no hard dependency).
+     * The AI package's CoreHealthProbeTest fails if any of these stop resolving.
+     */
     public const AI_CONTEXT = 'Rawphp\\CapabilitiesAi\\Contracts\\ConversationContextProvider';
 
     public const AI_TOOL_CATALOG = 'Rawphp\\CapabilitiesAi\\Contracts\\ToolCatalog';
+
+    public const AI_IDEMPOTENCY_READINESS = 'Rawphp\\CapabilitiesAi\\Contracts\\IdempotencyReadiness';
+
+    public const AI_PROGRESS_READINESS = 'Rawphp\\CapabilitiesAi\\Contracts\\ProgressStoreReadiness';
 
     /**
      * @param  array<string, mixed>  $capabilitiesConfig

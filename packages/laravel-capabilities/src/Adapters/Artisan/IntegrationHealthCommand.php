@@ -145,7 +145,7 @@ class IntegrationHealthCommand extends Command
     private function idempotencyReadinessClassCallback(): ?callable
     {
         return function (): ?string {
-            $abstract = 'Rawphp\\CapabilitiesAi\\Contracts\\IdempotencyReadiness';
+            $abstract = IntegrationHealthChecker::AI_IDEMPOTENCY_READINESS;
             try {
                 if (! $this->laravel->bound($abstract)) {
                     return null;
@@ -168,7 +168,7 @@ class IntegrationHealthCommand extends Command
     private function progressStoreReadyCallback(): callable
     {
         return function (): ?bool {
-            $abstract = 'Rawphp\\CapabilitiesAi\\Contracts\\ProgressStoreReadiness';
+            $abstract = IntegrationHealthChecker::AI_PROGRESS_READINESS;
             try {
                 if (! $this->laravel->bound($abstract)) {
                     return null;
