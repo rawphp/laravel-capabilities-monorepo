@@ -54,6 +54,7 @@ final class ConversationService
      *
      * @throws TurnRateLimitedException when $userId is over turns_per_minute (nothing persisted)
      * @throws TurnCapacityExceededException when queued + running turns are at the ceiling (nothing persisted)
+     * @throws ConversationClosedException when appending to a closed conversation (nothing persisted)
      */
     public function createUserMessage(
         string $content,
@@ -74,6 +75,10 @@ final class ConversationService
                 'status' => 'open',
                 'meta' => null,
             ]);
+
+        if ($conversation->status === 'closed') {
+            throw new ConversationClosedException($conversation->ulid);
+        }
 
         $message = Message::query()->create([
             'conversation_id' => $conversation->id,

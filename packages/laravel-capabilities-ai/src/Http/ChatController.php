@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesAi\Domain\AcceptOutcome;
+use Rawphp\CapabilitiesAi\Domain\ConversationClosedException;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnCapacityExceededException;
@@ -74,6 +75,8 @@ final class ChatController
             return $this->failure('rate_limited', $e->getMessage());
         } catch (ModelNotFoundException) {
             return $this->failure('not_found', 'Conversation not found');
+        } catch (ConversationClosedException $e) {
+            return $this->failure('conflict', $e->getMessage());
         }
 
         return new JsonResponse($ids, 201);

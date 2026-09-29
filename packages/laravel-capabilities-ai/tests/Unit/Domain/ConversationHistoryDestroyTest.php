@@ -8,8 +8,10 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Events\Dispatcher as EventDispatcher;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Schema;
+use Rawphp\CapabilitiesAi\Domain\ConversationClosedException;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Models\Conversation;
+use Rawphp\CapabilitiesAi\Models\Message;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 
@@ -119,4 +121,21 @@ it('createUserMessage refuses to append to another owner\'s conversation', funct
         ->toThrow(ModelNotFoundException::class)
         ->and(Turn::query()->count())->toBe(1)
         ->and($dispatched)->toHaveCount(1);
+});
+
+it('createUserMessage refuses a closed conversation before persisting or dispatching', function () {
+    bootHistorySqlite();
+    $dispatched = 0;
+    $svc = new ConversationService(static function () use (&$dispatched): void {
+        $dispatched++;
+    }, new ArrayProgressStore);
+    $ids = $svc->createUserMessage('bye', userId: 'u1');
+    Turn::query()->where('ulid', $ids['turn_ulid'])->update(['status' => Turn::STATUS_COMPLETED]);
+    $svc->destroy($ids['conversation_ulid'], 'u1');
+
+    expect(fn () => $svc->createUserMessage('again', $ids['conversation_ulid'], 'u1'))
+        ->toThrow(ConversationClosedException::class, "Conversation {$ids['conversation_ulid']} is closed")
+        ->and($dispatched)->toBe(1)
+        ->and(Message::query()->count())->toBe(1)
+        ->and(Turn::query()->count())->toBe(1);
 });

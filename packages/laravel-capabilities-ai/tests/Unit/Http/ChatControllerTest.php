@@ -841,3 +841,20 @@ it('storeMessage returns a 429 rate_limited envelope when the user is over turns
         ->and($body['error']['retryable'])->toBeTrue()
         ->and($dispatched)->toBe(0);
 });
+
+it('storeMessage returns 409 conflict for a closed conversation and creates nothing', function () {
+    $progress = bootHttpSqlite();
+    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    $ids = $conversations->createUserMessage('bye', userId: 'u1');
+    Turn::query()->where('ulid', $ids['turn_ulid'])->update(['status' => Turn::STATUS_COMPLETED]);
+    $conversations->destroy($ids['conversation_ulid'], 'u1');
+
+    $response = (new ChatController)->storeMessage(
+        chatRequest('u1', 'POST', ['content' => 'again', 'conversation_ulid' => $ids['conversation_ulid']]),
+        $conversations,
+    );
+
+    expect($response->getStatusCode())->toBe(409)
+        ->and(Turn::query()->count())->toBe(1);
+    expectChatErrorEnvelope($response->getData(true), 'conflict', "Conversation {$ids['conversation_ulid']} is closed");
+});
