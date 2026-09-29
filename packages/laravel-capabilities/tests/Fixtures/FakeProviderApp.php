@@ -218,6 +218,16 @@ final class FakeProviderApp implements ArrayAccess
         return false;
     }
 
+    /** Set to model a Laravel app with a bootstrap/cache directory (discovery manifest, L-015). */
+    public ?string $bootstrapDir = null;
+
+    public function bootstrapPath(string $path = ''): string
+    {
+        $base = $this->bootstrapDir ?? sys_get_temp_dir().'/capabilities-fake-provider-bootstrap';
+
+        return $path === '' ? $base : $base.'/'.ltrim($path, '/');
+    }
+
     public function configurationIsCached(): bool
     {
         return false;

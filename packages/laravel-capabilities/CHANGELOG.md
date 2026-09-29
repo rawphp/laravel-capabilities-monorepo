@@ -13,6 +13,18 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Added
 
+- **Discovery class-map cache (L-015).** `php artisan capabilities:cache` writes
+  `bootstrap/cache/capabilities.php` — the classes the `#[Capability]` scan finds under
+  `capabilities.path` — and `php artisan capabilities:clear` removes it
+  (`Adapters\Artisan\CacheCapabilitiesCommand` / `ClearCapabilitiesCommand`,
+  `Discovery\DiscoveryManifest`). When the manifest exists, boot discovery
+  (`CapabilityDiscoveryBoot::run(..., $manifestPath)`) registers from it and never walks or
+  tokenizes the directory; without it, behaviour is unchanged. Hooked into `optimize` /
+  `optimize:clear` via `ServiceProvider::optimizes()` (Laravel 11.27+). Like `event:cache`, a
+  stale manifest hides new classes until cleared. The two commands, like the scheduled resume
+  sweep, are package infrastructure: `ArtisanCommandRegistrar::infrastructure()` /
+  `all()` register them regardless of `surfaces.artisan.enabled`; `classes()` stays the ops
+  invoke-surface table only.
 - **Sibling packages register approval notifiers through the container (M-101 / L-101).**
   `Contracts\ApprovalNotifier::CONTAINER_TAG` (`capabilities.approval_notifiers`) names the tag
   the provider collects extra notifiers from, alongside the plain contract binding; each instance

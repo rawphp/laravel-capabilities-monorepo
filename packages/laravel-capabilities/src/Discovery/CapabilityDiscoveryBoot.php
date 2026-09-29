@@ -18,15 +18,24 @@ final class CapabilityDiscoveryBoot
      * Missing directories are a no-op (AttributeDiscoverer skips non-dirs).
      * Duplicate names throw via registry register() (D-017 single map).
      *
+     * When a manifest exists at $manifestPath (`capabilities:cache`, L-015) its class map is
+     * used and the filesystem is not walked; an empty manifest means "nothing to register".
+     *
      * @param  array<string, mixed>  $config  full capabilities config or subset with path
      * @return list<string> discovered capability names
      */
-    public static function run(CapabilityRegistry $registry, array $config = []): array
+    public static function run(CapabilityRegistry $registry, array $config = [], ?string $manifestPath = null): array
     {
-        $paths = DiscoveryPaths::fromConfig($config);
         $before = array_keys($registry->all());
 
-        $registry->discover(paths: $paths);
+        $classMap = DiscoveryManifest::load($manifestPath);
+        if ($classMap !== null) {
+            if ($classMap !== []) {
+                $registry->discover(classMap: $classMap);
+            }
+        } else {
+            $registry->discover(paths: DiscoveryPaths::fromConfig($config));
+        }
 
         $after = array_keys($registry->all());
 

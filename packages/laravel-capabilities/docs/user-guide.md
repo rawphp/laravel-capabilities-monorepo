@@ -88,6 +88,8 @@ Rules (fail closed):
 
 Place classes under `config('capabilities.path')` (default `app/Capabilities`) with `#[Rawphp\Capabilities\Attributes\Capability]` implementing `Rawphp\Capabilities\Contracts\DefinesCapability`. Boot discovery runs through the service provider — do not invent a third registration mechanism.
 
+**Cache the class map in production.** Without a cache every boot (each request, each queue job) walks and tokenizes the discovery path. `php artisan capabilities:cache` writes `bootstrap/cache/capabilities.php` (the classes the attribute scan finds — a cache, not another discovery path) and boot uses it instead of scanning; `php artisan capabilities:clear` removes it. Both are hooked into `optimize` / `optimize:clear` on Laravel 11.27+. Run `capabilities:clear` (or `optimize`) after adding, renaming or removing a capability class, exactly as for `event:cache`.
+
 The class owns its governance. On every invoke the pipeline resolves the handler **once through the container** (constructor injection works) and calls, in order:
 
 - `authorize(Input $input, CapabilityContext $ctx): bool` — the decision for this capability. Without it, the host `Authorizer` decides (deny by default).
@@ -338,6 +340,7 @@ Two different readiness signals — do not merge:
 | Surface | What | Purpose |
 |---------|------|---------|
 | **Artisan** `php artisan capabilities:approvals-resume [--id=…] [--force]` | `ResumeApprovalsCommand` / `ResumeApprovedApprovals` | Crash-recovery sweep for approved-but-not-executed approvals (D-006). Scheduled automatically when `approval.execution=deferred` and `approval.resume.enabled` — and registered whenever it is scheduled, even with `surfaces.artisan.enabled=false`; `--force --id=…` is the operator repair path that ignores grace and lease |
+| **Artisan** `php artisan capabilities:cache` / `capabilities:clear` | `CacheCapabilitiesCommand` / `ClearCapabilitiesCommand` / `Discovery\DiscoveryManifest` | Write / remove `bootstrap/cache/capabilities.php`, the cached `#[Capability]` class map boot uses instead of scanning `capabilities.path` (L-015). Registered whatever `surfaces.artisan.enabled` says; wired into `optimize` / `optimize:clear` |
 | **Artisan** `php artisan capabilities:integration-health` | `IntegrationHealthChecker` / `IntegrationHealthCommand` | Host **product** readiness: bindings, audit writer wired into the registry (warn when audit is on but records would be dropped), AI-chat mode, MCP tool counts, proposals + AlwaysReady safety, live AI progress-store ping (`ai_progress_ready`), progress/queue ops checks when AI package config is present |
 | **HTTP** `GET /{prefix}/health` (default `/capabilities/health`) | `CatalogHealth` / controller | **Surface/catalog** peer health for HTTP clients (D-011 / D-021), plus `api_version` (`RouteTable::API_VERSION`) that the product CLI checks before `run` |
 

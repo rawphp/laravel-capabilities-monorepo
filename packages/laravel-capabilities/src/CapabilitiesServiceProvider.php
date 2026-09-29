@@ -12,6 +12,8 @@ use Rawphp\Capabilities\Adapters\Ai\AiToolAdapter;
 use Rawphp\Capabilities\Adapters\Ai\AiToolAdapterV1;
 use Rawphp\Capabilities\Adapters\Artisan\ArtisanCommandRegistrar;
 use Rawphp\Capabilities\Adapters\Artisan\ArtisanCommandTable;
+use Rawphp\Capabilities\Adapters\Artisan\CacheCapabilitiesCommand;
+use Rawphp\Capabilities\Adapters\Artisan\ClearCapabilitiesCommand;
 use Rawphp\Capabilities\Adapters\Http\ApprovalController;
 use Rawphp\Capabilities\Adapters\Http\AuthController;
 use Rawphp\Capabilities\Adapters\Http\CapabilityController;
@@ -46,6 +48,7 @@ use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\ScopeResolver;
 use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\Capabilities\Discovery\CapabilityDiscoveryBoot;
+use Rawphp\Capabilities\Discovery\DiscoveryManifest;
 use Rawphp\Capabilities\Http\HttpAuthGate;
 use Rawphp\Capabilities\Http\HttpRouteRegistrar;
 use Rawphp\Capabilities\Http\RouteTable;
@@ -590,6 +593,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
         $this->bootArtisanCommands();
         $this->bootResumeSchedule();
         $this->bootMcpServers();
+        $this->bootDiscoveryCacheHooks();
 
         if ($this->app->runningInConsole()) {
             $this->publishes([
@@ -728,6 +732,21 @@ class CapabilitiesServiceProvider extends ServiceProvider
     }
 
     /**
+     * `php artisan optimize` / `optimize:clear` run the discovery cache pair (L-015;
+     * Laravel 11.27+ `optimizes()`; older hosts call the commands directly).
+     */
+    public function bootDiscoveryCacheHooks(): void
+    {
+        if (method_exists($this, 'optimizes')) {
+            $this->optimizes(
+                optimize: CacheCapabilitiesCommand::SIGNATURE_NAME,
+                clear: ClearCapabilitiesCommand::SIGNATURE_NAME,
+                key: 'capabilities',
+            );
+        }
+    }
+
+    /**
      * Register in-server Artisan ops commands from ArtisanCommandTable (REQ-024).
      *
      * @return list<class-string>
@@ -741,8 +760,9 @@ class CapabilitiesServiceProvider extends ServiceProvider
         }
         $approval = $approvalConfig ?? ($full['approval'] ?? []);
 
-        // The scheduled sweep (bootResumeSchedule) must always have its command (L-108).
-        $classes = ArtisanCommandRegistrar::classes($config, is_array($approval) ? $approval : []);
+        // Infrastructure commands (discovery cache, scheduled resume sweep) register
+        // regardless of the ops invoke surface flag (L-015 / L-108).
+        $classes = ArtisanCommandRegistrar::all($config, is_array($approval) ? $approval : []);
         if ($classes === []) {
             return [];
         }
@@ -773,7 +793,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
             return [];
         }
 
-        return CapabilityDiscoveryBoot::run($registry, $config);
+        return CapabilityDiscoveryBoot::run($registry, $config, DiscoveryManifest::pathFor($this->app));
     }
 
     /**
