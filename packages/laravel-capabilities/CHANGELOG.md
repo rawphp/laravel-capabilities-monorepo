@@ -51,6 +51,32 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   during discovery instead of being silently dropped from the catalog. Add
   `implements DefinesCapability` or remove the attribute.
 
+## [0.5.3] - 2026-09-29
+
+### Changed
+
+#### InvokePipeline run stage — bug-class errors no longer look like domain errors
+
+Before this release every throwable from a capability's run stage became 422
+`domain_error` (cli_exit 5, retryable false) with the exception message passed
+through, so PHP bugs and SQL errors reached callers as "domain" failures and
+leaked SQL text and model class names. The run-stage catch now maps:
+
+- **`\Error` (incl. `TypeError`) and `PDOException` (incl. `QueryException`)** →
+  `internal`, HTTP 500, cli_exit 1, retryable true, message `Internal error.`.
+  The exception is reported through the bound `ExceptionHandler`.
+- **`ModelNotFoundException`** → `not_found`, HTTP 404, cli_exit 5, retryable false,
+  message `Not found.`. Not reported.
+- **Everything else** (other `RuntimeException` / `Exception` throws) → unchanged:
+  422 `domain_error` with its message.
+
+The `capabilities_invoke_total` status label follows the new codes.
+
+Consumers: clients or middleware that matched 422 plus "No query results for model"
+or SQL text must switch to 404/`not_found` and 500/`internal`. A run-stage `internal`
+failure under an Idempotency-Key is stored and replayed for the key's TTL like any other
+failure, so a retry of a transient error needs a new key.
+
 ## [0.5.2] - 2026-08-27
 
 ### Fixed
