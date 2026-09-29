@@ -194,6 +194,12 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   exits with the server's code (`unauthenticated` → **3**), and a non-envelope
   response (e.g. a marketing page) exits **1**. The profile is only written
   after the server accepts the token.
+- **Error envelope on stdout for every structured failure** — `approvals
+  accept|reject`, `catalog`, and the domain/verb catalog lookup wrote only a
+  stderr line on failure, dropping the server's `approval_id`, `violations`
+  and `request_id`. They now print the server's D-018 envelope on stdout like
+  `run` and `describe`. A non-envelope error body (e.g. an HTML proxy page) is
+  replaced by a built envelope instead of being dumped on stdout.
 
 ## [0.x] — pre-stable
 

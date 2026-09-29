@@ -54,8 +54,7 @@ func cmdApprovals(env Env, args []string) int {
 		return api.ExitInternal
 	}
 	if res.Err != nil {
-		fmt.Fprintln(env.Stderr, res.Err.Error())
-		return res.Err.ExitCode
+		return writeErrorEnvelope(env, res.Err)
 	}
 	fmt.Fprintln(env.Stdout, string(res.Body))
 	return api.ExitOK

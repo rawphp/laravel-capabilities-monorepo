@@ -90,8 +90,7 @@ func loadSynthIndex(env Env, profile, base string) (*synth.Index, []catalog.Capa
 	list, _, err := svc.List(context.Background())
 	if err != nil {
 		if se, ok := err.(*api.StructuredError); ok {
-			fmt.Fprintln(env.Stderr, se.Error())
-			return nil, nil, se.ExitCode
+			return nil, nil, writeErrorEnvelope(env, se)
 		}
 		fmt.Fprintln(env.Stderr, err.Error())
 		return nil, nil, api.ExitInternal
@@ -235,8 +234,7 @@ func writeCapabilityHelp(env Env, domain, verb, canonical string, jsonOut bool, 
 		entry, _, err := svc.Describe(context.Background(), canonical)
 		if err != nil {
 			if se, ok := err.(*api.StructuredError); ok {
-				fmt.Fprintln(env.Stderr, se.Error())
-				return se.ExitCode
+				return writeErrorEnvelope(env, se)
 			}
 			fmt.Fprintln(env.Stderr, err.Error())
 			return api.ExitInternal

@@ -43,14 +43,7 @@ func cmdDescribe(env Env, args []string) int {
 	entry, _, err := svc.Describe(context.Background(), name)
 	if err != nil {
 		if se, ok := err.(*api.StructuredError); ok {
-			// Match domain not_found: machine envelope on stdout + short stderr line.
-			if len(se.Body) > 0 {
-				fmt.Fprintln(env.Stdout, string(se.Body))
-			} else {
-				writeStructuredErrorStdout(env, se)
-			}
-			fmt.Fprintln(env.Stderr, se.Error())
-			return se.ExitCode
+			return writeErrorEnvelope(env, se)
 		}
 		fmt.Fprintln(env.Stderr, err.Error())
 		return api.ExitInternal
@@ -68,7 +61,22 @@ func cmdDescribe(env Env, args []string) int {
 	return api.ExitOK
 }
 
+// writeErrorEnvelope puts the machine envelope on stdout (the server's own
+// D-018 body when it sent one, else one built from se) and a short line on
+// stderr, and returns the exit code. Stdout is machine; stderr is human.
+func writeErrorEnvelope(env Env, se *api.StructuredError) int {
+	var probe api.ErrorEnvelope
+	if json.Unmarshal(se.Body, &probe) == nil && !probe.OK && probe.Error != nil {
+		fmt.Fprintln(env.Stdout, string(se.Body))
+	} else {
+		writeStructuredErrorStdout(env, se)
+	}
+	fmt.Fprintln(env.Stderr, se.Error())
+	return se.ExitCode
+}
+
 func writeStructuredErrorStdout(env Env, se *api.StructuredError) {
+	exit := se.ExitCode
 	envBody := api.ErrorEnvelope{
 		OK: false,
 		Error: &api.ErrorBody{
@@ -78,6 +86,8 @@ func writeStructuredErrorStdout(env Env, se *api.StructuredError) {
 			ApprovalID: se.ApprovalID,
 			Retryable:  se.Retryable,
 			RequestID:  se.RequestID,
+			RetryAfter: se.RetryAfter,
+			CLIExit:    &exit,
 		},
 	}
 	b, _ := json.MarshalIndent(envBody, "", "  ")
