@@ -96,3 +96,13 @@ it('appends the queued status before dispatch so a synchronous worker cannot end
     );
     expect($statuses)->toBe([Turn::STATUS_QUEUED, Turn::STATUS_RUNNING]);
 });
+
+it('rejects a non-callable dispatch at construction', function () {
+    expect(fn () => new ConversationService('not-a-callable', new ArrayProgressStore, store: new InMemoryConversationStore))
+        ->toThrow(InvalidArgumentException::class, 'dispatch must be callable');
+});
+
+it('rejects a non-positive claim TTL at construction', function (int $ttl) {
+    expect(fn () => new ConversationService(static fn (object $job) => null, new ArrayProgressStore, $ttl, store: new InMemoryConversationStore))
+        ->toThrow(InvalidArgumentException::class, 'claimTtl must be positive');
+})->with([0, -5]);

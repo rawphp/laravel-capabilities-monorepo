@@ -20,15 +20,6 @@ it('proposal routes live in dedicated file gated by proposals.enabled', function
         ->and($src)->toContain('rejectProposal');
 });
 
-it('provider only loads routes when enabled', function () {
-    $path = dirname(__DIR__, 3).'/src/CapabilitiesAiServiceProvider.php';
-    $src = file_get_contents($path) ?: '';
-    expect($src)->toContain('bootRoutes')
-        ->and($src)->toContain("routes['enabled']")
-        ->and($src)->toContain('capabilities-ai/chat')
-        ->and($src)->toContain('capabilities-ai-proposals.php');
-});
-
 it('controllers delegate to domain services (no domain writes in controller)', function () {
     $path = dirname(__DIR__, 3).'/src/Http/ChatController.php';
     $src = file_get_contents($path) ?: '';

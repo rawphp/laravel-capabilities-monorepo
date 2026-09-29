@@ -311,3 +311,64 @@ it('host-prebound LlmClient and ProgressStore skip unsafe driver guards', functi
         udgRestoreAllowUnsafe($prev);
     }
 });
+
+it('SP reads CAPABILITIES_AI_ALLOW_UNSAFE truthy words and rejects anything else', function (string $value, bool $allowed) {
+    $prev = udgClearAllowUnsafe();
+    $_ENV['CAPABILITIES_AI_ALLOW_UNSAFE'] = $value;
+
+    try {
+        $app = bootUnsafeGuardContainer(
+            ['progress' => ['driver' => 'array'], 'llm' => ['driver' => 'fake']],
+            env: 'production',
+        );
+
+        if ($allowed) {
+            expect($app->make(LlmClient::class))->toBeInstanceOf(FakeLlmClient::class);
+        } else {
+            expect(fn () => $app->make(LlmClient::class))
+                ->toThrow(RuntimeException::class, 'progress.driver=array is not allowed outside testing');
+        }
+    } finally {
+        udgRestoreAllowUnsafe($prev);
+    }
+})->with([
+    'true' => ['true', true],
+    'YES (case-insensitive)' => ['YES', true],
+    'on' => ['on', true],
+    '0' => ['0', false],
+    'no' => ['no', false],
+    'off' => ['off', false],
+    'empty' => ['', false],
+]);
+
+it('SP allows unsafe drivers when capabilities-ai.allow_unsafe config is set', function () {
+    $prev = udgClearAllowUnsafe();
+
+    try {
+        $app = bootUnsafeGuardContainer(
+            ['allow_unsafe' => true, 'progress' => ['driver' => 'array'], 'llm' => ['driver' => 'fake']],
+            env: 'production',
+        );
+
+        expect($app->make(ProgressStore::class))->toBeInstanceOf(ArrayProgressStore::class);
+    } finally {
+        udgRestoreAllowUnsafe($prev);
+    }
+});
+
+it('reads the escape hatch from config only, so a cached allow_unsafe=false wins over the process env', function () {
+    $prev = udgClearAllowUnsafe();
+    $_ENV['CAPABILITIES_AI_ALLOW_UNSAFE'] = '1';
+
+    try {
+        $app = bootUnsafeGuardContainer(
+            ['allow_unsafe' => false, 'progress' => ['driver' => 'array'], 'llm' => ['driver' => 'fake']],
+            env: 'production',
+        );
+
+        expect(fn () => $app->make(ProgressStore::class))
+            ->toThrow(RuntimeException::class, 'progress.driver=array is not allowed outside testing');
+    } finally {
+        udgRestoreAllowUnsafe($prev);
+    }
+});

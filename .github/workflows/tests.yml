@@ -1,4 +1,4 @@
-# Monorepo unit suites (PHP core + messaging + AI, Go CLI).
+# Monorepo unit suites (PHP core + messaging + AI, Go CLI) with the 95% coverage floor.
 # Unit-only: no feature/DB services, no Redis, no full app boot.
 # Reusable via workflow_call so split-packages can gate mirrors on green tests.
 
@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   php:
-    name: PHP unit (core + messaging + AI)
+    name: PHP unit + coverage (core + messaging + AI)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -26,7 +26,7 @@ jobs:
         with:
           php-version: '8.2'
           extensions: mbstring, xml, dom, tokenizer
-          coverage: none
+          coverage: pcov
           tools: composer:v2
 
       - name: Install Composer dependencies
@@ -38,8 +38,15 @@ jobs:
       - name: PHPStan (composer analyse)
         run: composer analyse
 
-      - name: Pest unit suites (composer test)
-        run: composer test
+      # Runs each suite once with pcov; fails if a package is below 95% line coverage (AGENTS.md).
+      - name: Pest core + coverage floor (composer coverage:core)
+        run: composer coverage:core
+
+      - name: Pest messaging + coverage floor (composer coverage:messaging)
+        run: composer coverage:messaging
+
+      - name: Pest AI + coverage floor (composer coverage:ai)
+        run: composer coverage:ai
 
       - name: Inventory tools unit tests
         run: python3 -m unittest discover -s tools/tests
@@ -84,7 +91,7 @@ jobs:
         run: composer test
 
   go:
-    name: Go unit (capabilities-cli)
+    name: Go unit + coverage (capabilities-cli)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -99,5 +106,6 @@ jobs:
           go-version-file: packages/capabilities-cli/go.mod
           cache-dependency-path: packages/capabilities-cli/go.sum
 
-      - name: go test
-        run: go test ./...
+      # go test with a coverage profile; fails if the module total is below 95% (AGENTS.md).
+      - name: go test + coverage floor (scripts/coverage.sh)
+        run: bash scripts/coverage.sh

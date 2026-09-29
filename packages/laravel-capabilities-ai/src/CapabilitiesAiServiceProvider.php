@@ -228,14 +228,6 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
             };
         }
 
-        if (function_exists('dispatch')) {
-            return static function (object $job) use ($applyQueue): mixed {
-                $applyQueue($job);
-
-                return dispatch($job);
-            };
-        }
-
         return static function (object $job): void {
             throw new RuntimeException(
                 'No bus dispatcher available; bind Illuminate\\Contracts\\Bus\\Dispatcher or rebind ConversationService'
@@ -333,29 +325,14 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
     }
 
     /**
-     * Escape hatch for local demos: CAPABILITIES_AI_ALLOW_UNSAFE=1.
-     * Default closed — never the production happy path.
+     * Escape hatch for local demos (CAPABILITIES_AI_ALLOW_UNSAFE → allow_unsafe).
+     * Read from config only so cached config is honoured. Default closed.
      *
      * @param  array<string, mixed>  $config  capabilities-ai config slice
      */
     private static function allowUnsafeDrivers(array $config): bool
     {
-        if (! empty($config['allow_unsafe'])) {
-            return true;
-        }
-
-        $value = $_ENV['CAPABILITIES_AI_ALLOW_UNSAFE']
-            ?? $_SERVER['CAPABILITIES_AI_ALLOW_UNSAFE']
-            ?? getenv('CAPABILITIES_AI_ALLOW_UNSAFE');
-
-        if ($value === false || $value === null || $value === '') {
-            return false;
-        }
-
-        return match (strtolower((string) $value)) {
-            '1', 'true', '(true)', 'yes', 'on' => true,
-            default => false,
-        };
+        return filter_var($config['allow_unsafe'] ?? false, FILTER_VALIDATE_BOOLEAN);
     }
 
     /**

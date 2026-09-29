@@ -158,6 +158,8 @@ composer test:core
 composer test:messaging
 composer test:ai
 composer test:cli          # requires Go
+composer coverage          # core + messaging + AI with the 95% floor (needs pcov or Xdebug)
+composer coverage:cli      # Go tests; 95% floor on the module total
 composer format:test       # Pint (CI gate)
 composer analyse           # PHPStan, phpstan.neon (CI gate)
 python3 tools/report_inventory_gaps.py --fail-on-gaps   # inventory ↔ tests (CI gate)
