@@ -51,6 +51,11 @@ jobs:
       - name: Inventory tools unit tests
         run: python3 -m unittest discover -s tools/tests
 
+      # Release ship path (version bump, flag matrix, squash base, CHANGELOG gate);
+      # temp git fixtures only, no network.
+      - name: Release ship-path self-test
+        run: bash scripts/lib/test-release.sh
+
       - name: Requirements inventory has no gaps
         run: python3 tools/report_inventory_gaps.py --fail-on-gaps
 

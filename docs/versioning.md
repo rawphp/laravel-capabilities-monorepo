@@ -79,7 +79,7 @@ Setup (repo secrets / empty package remotes) is documented in the workflow file 
 # Fold the unpushed promotion commit(s) into one release commit:
 ./scripts/release.sh --yes --squash -m "Release v0.6.0" minor
 
-# Ship-path self-test (no full suites / no network):
+# Ship-path self-test (no full suites / no network; CI runs it in the PHP job):
 bash scripts/lib/test-release.sh
 ```
 
