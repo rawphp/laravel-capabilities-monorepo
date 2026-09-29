@@ -420,6 +420,9 @@ abstract class CapabilityData implements SchemaProvider
         if ($field->sensitive) {
             $schema['writeOnly'] = true;
         }
+        if ($field->tenantScoped) {
+            $schema['x-tenant-scoped'] = true;
+        }
 
         return $schema;
     }

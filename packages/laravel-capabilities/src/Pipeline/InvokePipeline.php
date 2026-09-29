@@ -13,6 +13,7 @@ use Rawphp\Capabilities\Contracts\Authorizer;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\SchemaProvider;
 use Rawphp\Capabilities\Events\CapabilityApprovalRequested;
+use Rawphp\Capabilities\Idempotency\IdempotencyKey;
 use Rawphp\Capabilities\Idempotency\RequestHash;
 use Rawphp\Capabilities\RateLimiting\AgentTurnBudget;
 use Rawphp\Capabilities\RateLimiting\RateLimitKey;
@@ -457,6 +458,9 @@ final class InvokePipeline
         if ($key === '') {
             $key = null;
         }
+        if ($key === null) {
+            $key = IdempotencyKey::derive($state->definition->idempotencyKeyFields, $state->rawInput);
+        }
         $state->idempotencyKey = $key;
         $state->requestHash = RequestHash::of($state->rawInput);
 
@@ -813,7 +817,7 @@ final class InvokePipeline
             return null;
         }
 
-        $check = $this->outputValidator->validate($state->definition, $state->output);
+        $check = $this->outputValidator->validate($state->definition, $state->output, $state->context);
         if ($check !== null) {
             return $check;
         }
