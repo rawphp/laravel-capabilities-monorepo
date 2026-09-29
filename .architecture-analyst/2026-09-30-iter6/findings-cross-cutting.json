@@ -1,0 +1,60 @@
+{
+ "auditor": "cross-cutting-auditor",
+ "version": "1.0",
+ "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-audit6",
+ "stack_summary": {
+  "laravel": {
+   "present": true,
+   "version": "11.x|12.x|13.x (illuminate/* components; three packages, not a full app)",
+   "php_version": "8.2+",
+   "key_packages": [
+    "illuminate/support",
+    "illuminate/http",
+    "illuminate/routing",
+    "illuminate/console",
+    "illuminate/bus",
+    "illuminate/events",
+    "illuminate/database",
+    "illuminate/validation",
+    "pestphp/pest",
+    "phpstan/phpstan"
+   ]
+  },
+  "frontend": {
+   "framework": "none",
+   "framework_version": null,
+   "inertia_version": null,
+   "typescript": false,
+   "state_library": "none",
+   "ui_library": "none",
+   "build_tool": "unknown",
+   "key_packages": []
+  },
+  "testing": {
+   "backend": "pest",
+   "frontend": "none"
+  },
+  "tooling": {
+   "linter_backend": "none",
+   "linter_frontend": "none",
+   "formatter_frontend": "none",
+   "types_php": "phpstan"
+  },
+  "infrastructure_hints": {
+   "queue_driver": "unknown",
+   "cache_driver": "unknown",
+   "ci": "github-actions (tests.yml, split-packages.yml)",
+   "deploy": "unknown"
+  },
+  "notes": "Monorepo: packages/laravel-capabilities (core bus, ~22.8k LOC), packages/laravel-capabilities-messaging (~3k), packages/laravel-capabilities-ai (~4.5k), packages/capabilities-cli (Go, ~5.5k). No root app/routes/package.json. Unit-test-only policy (no feature/DB tests), >=95% coverage. Design oracle: docs/spec.md (D-002..D-023). Standing decisions: /Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.do-work/decisions.md (primary checkout, untracked).",
+  "control_plane": {
+   "present": true,
+   "language": "go",
+   "path": "packages/capabilities-cli",
+   "notes": "Go product CLI, HTTP client only (D-016)"
+  }
+ },
+ "scanned_files_count": 41,
+ "findings": [],
+ "notes": "Iteration-6 check of the iteration-5 fixes (cb43279..a85ec63). X-401 is fixed. Core [Unreleased] 'Changed (BREAKING)' now has the 'DefaultScopeResolver reads tenant_id / tenantId as membership' entry with a before/after table, the approval-option change, and an upgrade note on binding a custom ScopeResolver. The M-301 Fixed entry points to it. The table matches DefaultScopeResolver::resolveUser (lines 105-145) for the default tenancy_required=false config. Changelog and docs discipline for the other fix commits is sound. L-401 and L-402 have accurate core Fixed entries, and FailureReporter::APPROVER_SCOPE_FAILED is additive. The M-401 AI Added entry, README config rows, config docblocks, user-guide claim_ttl paragraph and the DeadlineAwareLlmClient contract docblock all describe the same model (per-request cap = time left minus 2s, refuse under MIN_REQUEST_SECONDS=10). No stale requestTimeoutSeconds() or 'one more timeout' wording is left in packages/ or docs/. Removing requestTimeoutSeconds() is not a break because the contract is new in the same [Unreleased]. C-401 has an accurate CLI [Unreleased] Security entry. Gates on the audit tree: Pint --test passes, PHPStan reports no errors, gofmt -l is empty, report_inventory_gaps --fail-on-gaps finds no gaps, tools/tests pass and scripts/lib/test-release.sh passes 55/55. .github/, scripts/, tools/, composer.json, phpstan.neon, pint.json and the root docs are unchanged since iteration 5, which verified CI, split, release and Dependabot. Dependency direction is unchanged: the new src code is package-local and no new cross-package imports were added. Split readiness is unchanged. Not raised: CLI docs/user-guide.md:460 and docs/agents.md:77 do not list 'name/id not one path segment' as an exit-2 cause. The CHANGELOG covers it and the documented remedy (fix input) still applies, so this is too minor for a loop-stopping pass. FOR CORE AUDITOR / SYNTHESIZER (package-internal, outside cross-cutting scope, not deduped here): the L-401 fix at packages/laravel-capabilities/src/Registry/CapabilityRegistry.php:773 passes 'scope' => new CapabilityScope(tenantId: $tenantId). ResolveTenantFromCaller.php:34-35 returns an explicit scope as-is, so approved executions of tenanted rows now run with teamId/organizationId = null. DefaultScopeResolver.php:172-177 fills those from current_team_id / current_organization_id or the team_id / organization_id options, and a host resolver may fill them too. Before L-401, an approved run got the requester's team and org. Verify whether that is an intended narrowing or a regression."
+}

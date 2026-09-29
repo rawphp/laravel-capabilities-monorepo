@@ -1,0 +1,17 @@
+{
+  "auditor": "laravel-auditor-siblings",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-audit6",
+  "stack_summary": {
+    "laravel": "illuminate/* 11-13 component packages (library monorepo, not an app); lock resolves illuminate/http v12.64.0",
+    "scope": [
+      "packages/laravel-capabilities-messaging",
+      "packages/laravel-capabilities-ai"
+    ],
+    "testing": "pest, unit-only policy",
+    "types": "phpstan"
+  },
+  "scanned_files_count": 16,
+  "findings": [],
+  "notes": "Iteration-6 audit of messaging and AI on arch-audit6. Since iteration 5 (cb43279..HEAD), only dd85c59 (M-401) touches these packages. The core fixes L-401, L-402 and X-401 need no sibling change: CallbackHandler already maps every non-ok approval outcome to a toast, and L-402 only adds a reported, fail-closed catch inside core. M-401 verified correct and complete against the DEFAULT config (llm.anthropic.timeout 110, claim_ttl 120, max_tool_rounds 8, max_retries 2). TurnRunner sets the deadline to job start + 120s and refuses a round only when under MIN_REQUEST_SECONDS (10s) remain (TurnRunner.php:97-103). AnthropicLlmClient::timeoutFor (AnthropicLlmClient.php:339-347) gives each request min(110, left-2): 110s on round 1, and later rounds are capped instead of refused. A 4-round turn of about 42s completes, a slow 60s first round followed by short rounds completes, and a capped request that times out surfaces as ConnectionException, then RetryableLlmException, with 2s left to record the failed turn before the job's pcntl alarm at claim_ttl. RunTurnJob->timeout is set to claim_ttl (ConversationService.php:91). The 429 retry cap relies on Laravel re-reading PendingRequest options on each attempt. Verified in vendor illuminate/http v12.64.0: timeout() writes $this->options['timeout'] (PendingRequest.php:635), sendRequest merges $this->options on every attempt (PendingRequest.php:1306), and the retry-when callback receives ($exception, $this, $method) once per failed attempt, so ++$failedAttempts lines up with the sleep closure's $attempt. DeadlineAwareLlmClient is new since v0.5.3 ([Unreleased]), so removing requestTimeoutSeconds() is not a released-API break. Config, README, user-guide and CHANGELOG wording match the new rule. TurnRunnerTest and AnthropicLlmClientTest run against the snapshot: 108 passed (cache written to scratchpad, tree left clean). Considered and not raised: a claim_ttl of 10s or less passes the timeout<claim_ttl build check but then refuses every round. No realistic LLM turn job is configured that low, so this is not worth a change. Messaging's ProcessTelegramUpdateJob 120s timeout versus a host AgentTurn making two LLM calls is host-owned, and M-205's per-update marker already covers a killed attempt. Deferred items respected (sqlite AI tests, max_tokens 64000, a long capability call between rounds)."
+}

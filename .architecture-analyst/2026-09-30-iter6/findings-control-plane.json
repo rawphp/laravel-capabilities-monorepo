@@ -1,0 +1,15 @@
+{
+  "auditor": "control-plane-auditor",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-audit6/packages/capabilities-cli",
+  "stack_summary": {
+    "go_module": "github.com/rawphp/capabilities-cli",
+    "role": "product CLI, HTTP client only (D-009, D-016)",
+    "server_contract": "rawphp/laravel-capabilities RouteTable / CapabilityController / ApprovalController / CatalogPresenter / HttpAuthGate",
+    "audited_head": "a85ec63",
+    "testing": "go vet clean, go test ./... green (9 packages), gofmt -l empty (run in the snapshot tree)"
+  },
+  "scanned_files_count": 14,
+  "findings": [],
+  "notes": "Iteration 6. Scope: packages/capabilities-cli and its wire contract with core at a85ec63. The only CLI change since iteration 5 is 184227f (C-401). C-401 is verified correct and complete. api.CheckPathSegment (client.go:252) refuses empty, '.', '..', '/', '\\\\', '%', '?', '#', whitespace and control characters, and segmentPath (client.go:272) is now the only way DescribeCapability, InvokeCapability, AcceptApproval and RejectApproval build a path, so no caller can put an unchecked value into a URL. The CLI surfaces refuse before auth or HTTP with a validation_failed envelope and exit 2: cmdDescribe (cmd_run.go:33), invokeCapability for both run and domain/verb (cmd_run.go:159), writeCapabilityHelp for `run <name> --help` and domain help (cmd_domain.go:204), approvals accept/reject (cmd_approvals.go:40), and run.Run itself (runner.go:76). --retry-last never overrides the capability name, so a stored last-run cannot smuggle a multi-segment name. Every remaining path in client.go is a constant (list, include_schemas, health, auth/token, auth/device). Against core's RouteTable (RouteTable.php:100-110), a single-segment name can only reach GET/POST /capabilities/{name} (describe/invoke) or the GET-only health route, so the approval and auth-issuance routes are unreachable through `run`. Tests cover the client, run and command layers with a no-hit httptest server, and dotted/kebab names still pass. Core changes since iteration 5 checked for wire impact: L-401 (CapabilityRegistry::executeApproval passes the row's CapabilityScope) and L-402 (ResolveTenantFromCaller::tenantOfPrincipal fails closed on any resolver throw, reported via FailureReporter) are server-internal. Routes, envelopes, error codes and describe metadata keys are unchanged, and the CLI still sends no tenant or caller header. Considered and not raised: core does not validate capability name characters, so a host could in theory register a name with a space or '%' that the CLI now refuses. No convention or test in the repo uses such names, and they would need URL encoding on every surface anyway; speculative. deferred_do_not_report honoured: catalog.ResolveAlias / Cache.GetByETag unused. Categories reconcile, registry_handles, capture_depth, plugin_shape and dual_path do not apply to a stateless HTTP client."
+}
