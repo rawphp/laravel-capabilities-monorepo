@@ -450,11 +450,12 @@ Full guide: **[agents.md](agents.md)**.
 | 0 | Success **or help/usage** (bare binary, `--help`, bare `approvals`) |
 | 1 | Internal error |
 | 2 | `validation_failed` (also incomplete `approvals accept\|reject`) |
-| 3 | Unauthenticated / forbidden |
+| 3 | Unauthenticated / forbidden / `capability_not_in_profile` |
 | 4 | `approval_required` |
-| 5 | Domain error / conflict / not_found / output_invalid |
+| 5 | Domain error / conflict / not_found / output_invalid / `gone` / `expired` / `not_configured` |
 | 6 | Rate limited |
 
+The server's `error.cli_exit` (1–6) wins when present; this table is the fallback.
 These codes are part of the CLI contract (stable for automation).
 
 ---

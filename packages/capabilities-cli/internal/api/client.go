@@ -212,6 +212,8 @@ func codeFromHTTP(status int) string {
 		return CodeNotFound
 	case 409:
 		return CodeConflict
+	case 410:
+		return CodeGone
 	case 422:
 		return CodeValidationFailed
 	case 429:

@@ -167,6 +167,13 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   `data.status` (or `data.error`) `authorization_pending` / `slow_down`
   (+5s); `access_denied`, `expired_token`, or passing `expires_in` exit **3**.
   Nothing is written to the profile until a token is issued.
+- **Exit codes follow the server's `error.cli_exit`** — the CLI knew only the
+  original ten D-018 codes and exited **1** (internal) for the rest, so a sunset
+  capability (`gone`), an expired approval (`expired`), a profile refusal
+  (`capability_not_in_profile`) or an unbound auth issuer (`not_configured`)
+  looked retryable. When the envelope carries `cli_exit` 1–6 the CLI exits with
+  it; the local table is the fallback. A non-envelope HTTP 410 maps to `gone`
+  (exit **5**).
 
 ## [0.x] — pre-stable
 
