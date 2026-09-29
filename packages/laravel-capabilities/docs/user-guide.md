@@ -78,7 +78,7 @@ Rules (fail closed):
 
 - Domain and verb tokens: lowercase `[a-z][a-z0-9-]*`
 - Incomplete metadata (only domain or only verb) → definition error
-- Domain must not collide with reserved CLI meta-commands (`auth`, `catalog`, `describe`, `run`, `mcp`, `approvals`, `version`, `help`)
+- Domain must not collide with reserved CLI meta-commands (`auth`, `catalog`, `describe`, `run`, `mcp`, `approvals`, `version`, `help`, `self-update`)
 - Two definitions claiming the same `(domain, verb)` → register/boot failure (server authoritative)
 - Omit `cli` when unmapped — entry stays valid; clients use `run <name>` only
 - `cli` is **routing only** — JSON Schema remains the sole input/output contract

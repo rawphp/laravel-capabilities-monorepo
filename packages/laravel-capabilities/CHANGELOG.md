@@ -13,6 +13,10 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Added
 
+- **`self-update` is a reserved CLI domain (C-008).** `CapabilityDefinition::RESERVED_CLI_DOMAINS`
+  gains `self-update`, matching the Go CLI's meta-command dispatcher, so a capability can no
+  longer claim a `cli` domain the binary would never route to it. Definitions using that
+  domain now fail at registration.
 - **Approval is declared on the capability (D-006, L-002).** Fluent definitions gain
   `->needsApproval(fn (Input $input, CapabilityContext $ctx): bool)`; class capabilities
   use their `needsApproval()` method. Before, approval could only be triggered by the
