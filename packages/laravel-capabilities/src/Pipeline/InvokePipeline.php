@@ -744,6 +744,9 @@ final class InvokePipeline
             // The capability's own governance travels with the row (D-006): who may decide, how long.
             'approval_policy' => $state->definition->approvalPolicy,
             'approval_ttl_hours' => $state->definition->approvalTtlHours,
+            // Where the request came from, so a chat notifier can put the buttons in that
+            // conversation (M-101 / D-006 step 4); null for HTTP / CLI / job requests.
+            'messaging' => $ctx->messaging(),
         ]);
 
         $state->approvalId = (string) $record['id'];

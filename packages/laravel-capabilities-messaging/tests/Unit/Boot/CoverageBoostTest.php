@@ -207,8 +207,9 @@ it('covers ProcessTelegramUpdate logs tags and profile resolver', function () {
 });
 
 it('covers notifier missing chat and edit without message', function () {
-    $n = H::notifier();
-    expect(fn () => $n->notifyPending(['id' => 'a1']))->toThrow(RuntimeException::class);
+    $silent = H::bot();
+    H::notifier(null, $silent)->notifyPending(['id' => 'a1']);
+    expect($silent->calls())->toBe([]); // no chat target (HTTP / CLI request): nothing to send (M-101)
     $bot = H::bot();
     H::notifier(null, $bot)->editMessage(['id' => 'a'], 'expired');
     expect($bot->calls())->toBe([]); // no chat/message id: nothing to edit

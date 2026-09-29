@@ -2,6 +2,7 @@
 
 namespace Rawphp\CapabilitiesMessaging\Telegram;
 
+use Closure;
 use Illuminate\Contracts\Cache\Repository;
 use Psr\Log\LoggerInterface;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
@@ -83,9 +84,17 @@ final class ProcessTelegramUpdate
         private readonly ?RateLimiter $turnLimiter = null,
         private readonly ?LoggerInterface $logger = null,
         private readonly ?Repository $pendingReplies = null,
+        CallbackHandler|Closure|null $callbacks = null,
     ) {
         $this->profileResolver = $profileResolver;
+        $this->callbacks = $callbacks;
     }
+
+    /**
+     * Approval-button router, or a factory for one. A factory keeps the callback signer (and its
+     * secret — D-021) unresolved until the first tap; built once, then reused.
+     */
+    private CallbackHandler|Closure|null $callbacks;
 
     /**
      * @param  array<string, mixed>  $update  Telegram Update payload
@@ -155,6 +164,13 @@ final class ProcessTelegramUpdate
         $chatId = TelegramUpdateParser::chatId($update);
         if ($chatId === null) {
             throw new RuntimeException('unknown_chat');
+        }
+
+        // A tapped approval button is a decision for the approval SM, never chat text for the
+        // agent (M-101 / D-006 step 4). Routed before identity/turn work: the handler resolves
+        // the tapper itself and a tap is not an agent turn.
+        if (TelegramUpdateParser::isCallbackQuery($update)) {
+            return $this->handleApprovalCallback($update);
         }
 
         $topicId = TelegramUpdateParser::topicId($update);
@@ -257,6 +273,111 @@ final class ProcessTelegramUpdate
             'steps' => $this->completedSteps,
             'tags' => $this->lastTags,
         ];
+    }
+
+    /**
+     * Route a tapped approval button through {@see CallbackHandler} (accept / reject on core's
+     * ApprovalGateway) and acknowledge the tap. No handler wired ⇒ fail closed: the tap is
+     * acknowledged as unavailable and nothing else runs.
+     *
+     * @param  array<string, mixed>  $update
+     * @return array<string, mixed>
+     */
+    private function handleApprovalCallback(array $update): array
+    {
+        $callbackId = TelegramUpdateParser::callbackQueryId($update);
+
+        $handler = $this->callbackHandler();
+        if ($handler === null) {
+            $this->answerCallback($callbackId, self::CALLBACK_UNAVAILABLE_TOAST);
+            $this->log('error', 'Telegram approval callback received but no CallbackHandler is available', [
+                'failure' => 'callback_handler_unavailable',
+                'tags' => $this->lastTags,
+            ]);
+
+            return [
+                'ok' => false,
+                'error' => 'callback_handler_unavailable',
+                'steps' => $this->completedSteps,
+                'tags' => $this->lastTags,
+            ];
+        }
+
+        $outcome = $handler->handleCallbackData(
+            TelegramUpdateParser::callbackData($update),
+            TelegramUpdateParser::callbackFrom($update),
+        );
+        $this->mark('approval_callback');
+
+        $this->answerCallback($callbackId, $this->callbackToast($outcome));
+
+        $status = (string) $outcome['status'];
+        if ($status !== 'ok') {
+            $this->log('warning', 'Telegram approval callback not applied: '.$outcome['message'], [
+                'failure' => $outcome['message'],
+                'tags' => $this->lastTags,
+            ]);
+        }
+
+        return [
+            'ok' => $status === 'ok',
+            'callback' => $status,
+            'error' => $status === 'ok' ? null : (string) $outcome['message'],
+            'message' => (string) $outcome['message'],
+            'result' => $outcome['result'] ?? null,
+            'steps' => $this->completedSteps,
+            'tags' => $this->lastTags,
+        ];
+    }
+
+    public const CALLBACK_UNAVAILABLE_TOAST = 'Approvals cannot be decided from chat right now.';
+
+    /**
+     * Resolve the (possibly lazy) handler once; a factory that throws (e.g. no callback secret,
+     * D-021) means taps fail closed as unavailable rather than crashing the worker.
+     */
+    private function callbackHandler(): ?CallbackHandler
+    {
+        if ($this->callbacks instanceof Closure) {
+            try {
+                $built = ($this->callbacks)();
+            } catch (Throwable $e) {
+                $this->log('error', 'CallbackHandler could not be built: '.$e->getMessage(), ['tags' => $this->lastTags]);
+
+                return null;
+            }
+            $this->callbacks = $built instanceof CallbackHandler ? $built : null;
+        }
+
+        return $this->callbacks;
+    }
+
+    /**
+     * @param  array{status: string, result?: CapabilityResult|null, message: string}  $outcome
+     */
+    private function callbackToast(array $outcome): string
+    {
+        return match ((string) $outcome['status']) {
+            'ok' => $outcome['message'] === 'reject' ? 'Rejected.' : 'Approved.',
+            'already_handled' => 'This approval was already decided.',
+            'not_found' => 'Unknown approval.',
+            'forbidden' => 'You are not allowed to decide this approval.',
+            default => 'This button is no longer valid.',
+        };
+    }
+
+    private function answerCallback(?string $callbackId, string $text): void
+    {
+        if ($callbackId === null || $this->bot === null) {
+            return;
+        }
+
+        try {
+            $this->bot->answerCallbackQuery($callbackId, $text);
+        } catch (Throwable $e) {
+            // The decision (if any) is already persisted; a lost toast is only a log line.
+            $this->log('warning', 'answerCallbackQuery failed: '.$e->getMessage(), ['tags' => $this->lastTags]);
+        }
     }
 
     /**

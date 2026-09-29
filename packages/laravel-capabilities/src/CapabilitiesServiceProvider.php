@@ -73,7 +73,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
      * Container tag sibling packages / hosts use to register extra {@see ApprovalNotifier}s
      * on the single ApprovalManager (L-101). The contract binding itself is also attached.
      */
-    public const APPROVAL_NOTIFIER_TAG = 'capabilities.approval_notifiers';
+    public const APPROVAL_NOTIFIER_TAG = ApprovalNotifier::CONTAINER_TAG;
 
     /** Memoised so the registry and the ApprovalManager share one writer (D-010). */
     private ?AuditWriter $auditWriter = null;

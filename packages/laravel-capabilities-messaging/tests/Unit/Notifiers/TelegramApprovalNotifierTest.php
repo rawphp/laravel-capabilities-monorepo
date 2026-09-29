@@ -91,3 +91,12 @@ it('fail: editMessage sends nothing when telegram is disabled [D-021]', function
     ], 'expired');
     expect($bot->calls())->toBe([]);
 });
+
+it('edge: an approval with no chat target (HTTP / CLI request) is skipped, not an error [M-101]', function () {
+    $bot = H::bot();
+
+    H::notifier(null, $bot)->notifyPending(['id' => 'http-1', 'capability_name' => 'billing.void', 'messaging' => null]);
+    H::notifier(null, $bot)->notifyPending(['id' => 'http-2', 'capability_name' => 'billing.void']);
+
+    expect($bot->calls())->toBe([]);
+});

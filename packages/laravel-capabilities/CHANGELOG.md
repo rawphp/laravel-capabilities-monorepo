@@ -13,6 +13,12 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Added
 
+- **Sibling packages register approval notifiers through the container (M-101 / L-101).**
+  `Contracts\ApprovalNotifier::CONTAINER_TAG` (`capabilities.approval_notifiers`) names the tag
+  the provider collects extra notifiers from, alongside the plain contract binding; each instance
+  is attached once to the single `ApprovalManager`. Approval rows requested by the pipeline now
+  carry the invoke context's `messaging` meta (`channel`, `chat_id`, `message_id`, …; `null`
+  for HTTP / CLI / job requests) so a chat notifier knows where to put its buttons.
 - **`self-update` is a reserved CLI domain (C-008).** `CapabilityDefinition::RESERVED_CLI_DOMAINS`
   gains `self-update`, matching the Go CLI's meta-command dispatcher, so a capability can no
   longer claim a `cli` domain the binary would never route to it. Definitions using that

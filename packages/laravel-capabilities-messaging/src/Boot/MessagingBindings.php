@@ -18,6 +18,7 @@ use Rawphp\CapabilitiesMessaging\Support\HttpTelegramBotClient;
 use Rawphp\CapabilitiesMessaging\Support\LaravelUpdateQueue;
 use Rawphp\CapabilitiesMessaging\Support\TelegramBotClient;
 use Rawphp\CapabilitiesMessaging\Support\UpdateQueue;
+use Rawphp\CapabilitiesMessaging\Telegram\CallbackHandler;
 use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdate;
 use Rawphp\CapabilitiesMessaging\Telegram\TelegramAdapter;
 use Rawphp\CapabilitiesMessaging\Telegram\TelegramCallbackSigner;
@@ -76,6 +77,7 @@ final class MessagingBindings
             TelegramApprovalNotifier::class => TelegramApprovalNotifier::class,
             ApprovalNotifier::class => TelegramApprovalNotifier::class,
             TelegramWebhookController::class => TelegramWebhookController::class,
+            CallbackHandler::class => CallbackHandler::class,
             ProcessTelegramUpdate::class => ProcessTelegramUpdate::class,
         ];
 

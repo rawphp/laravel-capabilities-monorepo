@@ -10,6 +10,13 @@ namespace Rawphp\Capabilities\Contracts;
 interface ApprovalNotifier
 {
     /**
+     * Container tag the core provider collects extra notifiers from and attaches to the single
+     * ApprovalManager (L-101 / M-101). Siblings tag their implementation under this name; the
+     * plain contract binding is attached as well.
+     */
+    public const CONTAINER_TAG = 'capabilities.approval_notifiers';
+
+    /**
      * @param  array<string, mixed>  $approval  Approval record (id, capability_name, summary, …)
      */
     public function notifyPending(array $approval): void;

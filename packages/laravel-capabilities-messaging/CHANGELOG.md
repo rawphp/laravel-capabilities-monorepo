@@ -13,6 +13,10 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Breaking
 
+- **`TelegramBotClient::answerCallbackQuery(string $callbackQueryId, string $text = '', array $payload = []): array`**
+  is a new interface method (M-101). `HttpTelegramBotClient` and `FakeTelegramBotClient`
+  implement it; **hosts with their own `TelegramBotClient` must add it** (acknowledge a tapped
+  inline button; `text` shows as a toast).
 - **Test scaffolding removed from production classes** — gone: `ProcessTelegramUpdate::runPipeline()`
   (and its `fail_at` injection), `domainBypassAttempted()` and the constant `domain_bypass` /
   `observable` result keys; `TelegramWebhookController::registryInvokeCount()`;
@@ -96,10 +100,28 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Changed
 
+- **`TelegramApprovalNotifier::notifyPending()` skips rows with no chat target** instead of
+  throwing `Approval notify requires messaging.chat_id.` (M-101). Now that core fires notifiers
+  for every `approval_required`, HTTP / CLI / job approvals — which have no conversation to put
+  buttons in — pass through silently; only rows carrying `messaging.chat_id` (or `chat_id`) send.
 - **Core constraint is lockstep:** `require.rawphp/laravel-capabilities` is now `self.version` instead of `*`. This package at tag `v0.Y.Z` installs only with core `v0.Y.Z` (and `dev-main` with core `dev-main`). **Hosts:** require the same version of core and this package.
 
 ### Added
 
+- **The Telegram approval loop is wired end to end (M-101, D-006 step 4).**
+  - *Notify:* the provider tags `TelegramApprovalNotifier` with core's
+    `ApprovalNotifier::CONTAINER_TAG` (`capabilities.approval_notifiers`) in addition to the
+    contract alias, and core now attaches every tagged notifier to its single `ApprovalManager`.
+    Approval rows requested from a chat carry the originating `messaging` meta (channel,
+    `chat_id`, `message_id`, …), so the buttons land in that conversation.
+  - *Decide:* `ProcessTelegramUpdate` routes `callback_query` updates to the new container-bound
+    `Telegram\CallbackHandler` (`handleCallbackData()` decodes the compact token, then
+    accept / reject through core's `ApprovalGateway`) and acknowledges the tap with
+    `answerCallbackQuery` (`Approved.`, `Rejected.`, `already decided`, `not allowed`,
+    `no longer valid`). The token never reaches the host `AgentTurn`; a tap is not an agent
+    turn and spends no chat turn budget. With no `ApprovalGateway` bound (core absent) or no
+    callback secret, the tap is answered as unavailable and logged — the worker never crashes.
+    The handler is built lazily so no secret is required at boot (D-021).
 - **Audited tool profile** — Telegram tool calls pass the configured `agent_profile` as the
   `tool_profile` invoke option, so core audit entries record which profile gated the call.
 - **Allowlist user check in setup validation** — `TelegramSetup::validate()` / `runOrFail()`

@@ -53,6 +53,16 @@ final class FakeTelegramBotClient implements TelegramBotClient
         return ['ok' => true, 'result' => ['message_id' => $messageId, 'text' => $text]];
     }
 
+    public function answerCallbackQuery(string $callbackQueryId, string $text = '', array $payload = []): array
+    {
+        $this->calls[] = ['method' => 'answerCallbackQuery', 'args' => array_merge($payload, [
+            'callback_query_id' => $callbackQueryId,
+            'text' => $text,
+        ])];
+
+        return ['ok' => true, 'result' => true];
+    }
+
     /**
      * Mirror the Bot API: callback_data over 64 bytes is a 400 BUTTON_DATA_INVALID.
      *

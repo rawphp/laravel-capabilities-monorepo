@@ -59,6 +59,19 @@ final class HttpTelegramBotClient implements TelegramBotClient
         return $this->call('editMessageText', $params);
     }
 
+    public function answerCallbackQuery(string $callbackQueryId, string $text = '', array $payload = []): array
+    {
+        $params = ['callback_query_id' => $callbackQueryId];
+        if ($text !== '') {
+            $params['text'] = $text;
+        }
+        if (isset($payload['show_alert'])) {
+            $params['show_alert'] = (bool) $payload['show_alert'];
+        }
+
+        return $this->call('answerCallbackQuery', $params);
+    }
+
     /**
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
