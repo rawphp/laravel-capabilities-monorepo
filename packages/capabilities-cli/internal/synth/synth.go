@@ -18,15 +18,18 @@ import (
 )
 
 // Reserved domain tokens — always win as meta-commands; never synthesized as domains.
+// Mirrors CapabilityDefinition::RESERVED_CLI_DOMAINS in rawphp/laravel-capabilities;
+// change both together. A test pins every Execute meta-command to this set.
 var reservedDomains = map[string]struct{}{
-	"auth":      {},
-	"catalog":   {},
-	"describe":  {},
-	"run":       {},
-	"mcp":       {},
-	"approvals": {},
-	"version":   {},
-	"help":      {},
+	"auth":        {},
+	"catalog":     {},
+	"describe":    {},
+	"run":         {},
+	"mcp":         {},
+	"approvals":   {},
+	"version":     {},
+	"help":        {},
+	"self-update": {},
 }
 
 // MappingError codes for catalog row enrichment.

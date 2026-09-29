@@ -64,7 +64,7 @@ func ValidateLocal(schemaJSON, inputJSON []byte) error {
 	var input any
 	if err := json.Unmarshal(inputJSON, &input); err != nil {
 		return &ValidationError{
-			Message: "invalid JSON input",
+			Message:    "invalid JSON input",
 			Violations: []api.Violation{{Field: "", Message: "invalid JSON: " + err.Error()}},
 		}
 	}

@@ -38,20 +38,16 @@ func cmdAuth(env Env, args []string) int {
 		jsonOut, rest := flagBool(rest, "--json")
 		_ = rest
 		var err error
+		c := api.NewClient(base, "")
+		if env.NewClient != nil {
+			c = env.NewClient(base, "")
+		}
 		if token != "" {
-			_, err = auth.LoginWithToken(st, profile, base, token)
+			_, err = auth.LoginWithToken(context.Background(), st, c, profile, base, token)
 		} else if code != "" {
-			c := api.NewClient(base, "")
-			if env.NewClient != nil {
-				c = env.NewClient(base, "")
-			}
 			_, err = auth.LoginBrowserOAuth(context.Background(), st, c, profile, base, code)
 		} else {
-			c := api.NewClient(base, "")
-			if env.NewClient != nil {
-				c = env.NewClient(base, "")
-			}
-			_, err = auth.LoginDeviceCode(context.Background(), st, c, profile, base)
+			_, err = auth.LoginDeviceCode(context.Background(), st, c, profile, base, auth.DeviceFlow{Prompt: env.Stderr, Sleep: env.Sleep})
 		}
 		if err != nil {
 			se, ok := err.(*api.StructuredError)

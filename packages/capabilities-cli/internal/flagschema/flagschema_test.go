@@ -189,10 +189,10 @@ func TestMerge_table(t *testing.T) {
 			want:  map[string]any{"priority": int64(2)},
 		},
 		{
-			name:    "json-only nested stays from base",
-			base:    `{"meta":{"a":1},"tags":["x"]}`,
-			flags:   map[string]string{"currency": "USD"},
-			want:    map[string]any{"meta": map[string]any{"a": float64(1)}, "tags": []any{"x"}, "currency": "USD"},
+			name:  "json-only nested stays from base",
+			base:  `{"meta":{"a":1},"tags":["x"]}`,
+			flags: map[string]string{"currency": "USD"},
+			want:  map[string]any{"meta": map[string]any{"a": float64(1)}, "tags": []any{"x"}, "currency": "USD"},
 		},
 		// rejects
 		{

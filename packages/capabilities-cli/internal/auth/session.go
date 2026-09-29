@@ -5,9 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"time"
 
 	"github.com/rawphp/capabilities-cli/internal/api"
 )
+
+// cliClientID identifies this binary to the host's auth issuer.
+const cliClientID = "capabilities-cli"
 
 // LoginResult is the outcome of an auth login attempt (token never meant for stdout).
 type LoginResult struct {
@@ -18,47 +23,34 @@ type LoginResult struct {
 	Flow         string // "device" | "token" | "pat"
 }
 
-// LoginWithToken stores a pre-issued token (PAT / token endpoint result).
-// Base URL is written only after the token is accepted so a bad login cannot
-// re-point an already-working profile.
-func LoginWithToken(store *Store, profile, baseURL, token string) (*LoginResult, error) {
+// LoginWithToken verifies a pre-issued token (PAT / API token) with one
+// authenticated GET /capabilities, then stores it. Nothing is written unless
+// the server accepts the token with a capability envelope, so a mistyped
+// token or wrong --base-url cannot clobber an already-working profile.
+func LoginWithToken(ctx context.Context, store *Store, client *api.Client, profile, baseURL, token string) (*LoginResult, error) {
 	if token == "" {
 		return nil, fmt.Errorf("empty token")
 	}
-	if _, err := NormalizeBaseURL(baseURL); err != nil {
+	if _, err := profileName(profile); err != nil {
 		return nil, err
 	}
-	if err := store.SetBaseURL(profile, baseURL); err != nil {
-		return nil, err
-	}
-	if err := store.SetToken(profile, token); err != nil {
-		return nil, err
-	}
-	return &LoginResult{Profile: profile, BaseURL: baseURL, TokenPresent: true, Flow: "token"}, nil
-}
-
-// LoginDeviceCode performs device-code flow against the capability auth API.
-// Token is stored; never returned for printing.
-// Profile base URL is written only after a token is obtained so a failed
-// attempt cannot clobber a working profile's --base-url.
-func LoginDeviceCode(ctx context.Context, store *Store, client *api.Client, profile, baseURL string) (*LoginResult, error) {
 	normalized, err := NormalizeBaseURL(baseURL)
 	if err != nil {
 		return nil, err
 	}
 	client.BaseURL = normalized
-	res, err := client.LoginDevice(ctx, map[string]any{"client_id": "capabilities-cli"})
+	client.Token = token
+	res, err := client.ListCapabilities(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if res.Err != nil {
 		return nil, res.Err
 	}
-	var payload map[string]any
-	_ = json.Unmarshal(res.Body, &payload)
-	token := extractToken(payload)
-	if token == "" {
-		return nil, fmt.Errorf("device login response missing access_token")
+	if !res.Envelope.OK {
+		se := api.MapErrorCode(api.CodeInternal)
+		se.Message = fmt.Sprintf("HTTP %d from %s is not a capability API response; check --base-url", res.StatusCode, normalized)
+		return nil, se
 	}
 	if err := store.SetBaseURL(profile, normalized); err != nil {
 		return nil, err
@@ -66,7 +58,150 @@ func LoginDeviceCode(ctx context.Context, store *Store, client *api.Client, prof
 	if err := store.SetToken(profile, token); err != nil {
 		return nil, err
 	}
-	return &LoginResult{Profile: profile, BaseURL: normalized, TokenPresent: true, Flow: "device"}, nil
+	return &LoginResult{Profile: profile, BaseURL: normalized, TokenPresent: true, Flow: "token"}, nil
+}
+
+// DeviceCodeGrantType is the RFC 8628 grant polled on the token endpoint.
+const DeviceCodeGrantType = "urn:ietf:params:oauth:grant-type:device_code"
+
+const (
+	// minDeviceInterval floors the poll interval: the core throttles auth
+	// routes (6 requests/minute by default), so faster polling would 429.
+	minDeviceInterval = 10 * time.Second
+	// defaultDeviceExpiry bounds the poll loop when the server omits expires_in.
+	defaultDeviceExpiry = 10 * time.Minute
+	slowDownStep        = 5 * time.Second
+)
+
+// DeviceFlow wires the human prompt and the wait between polls.
+type DeviceFlow struct {
+	// Prompt receives user_code + verification_uri (stderr; never the token).
+	Prompt io.Writer
+	// Sleep waits between polls; nil waits in real time and honours ctx.
+	Sleep func(ctx context.Context, d time.Duration) error
+}
+
+// LoginDeviceCode runs the RFC 8628 device-code flow: POST the device route
+// for a device_code, show user_code + verification_uri, then poll the token
+// route with the device-code grant every interval until the host issues a
+// token, denies, or expires_in passes. The interval is at least 10 seconds;
+// slow_down or an HTTP 429 lengthens it (a 429 Retry-After wins when longer).
+//
+// The host issuer signals a pending poll inside the ok envelope as
+// data.status (or RFC data.error): authorization_pending | slow_down |
+// access_denied | expired_token. Any other response without access_token
+// fails closed.
+//
+// Profile base URL is written only after a token is obtained so a failed
+// attempt cannot clobber a working profile's --base-url.
+func LoginDeviceCode(ctx context.Context, store *Store, client *api.Client, profile, baseURL string, flow DeviceFlow) (*LoginResult, error) {
+	normalized, err := NormalizeBaseURL(baseURL)
+	if err != nil {
+		return nil, err
+	}
+	client.BaseURL = normalized
+	res, err := client.LoginDevice(ctx, map[string]any{"client_id": cliClientID})
+	if err != nil {
+		return nil, err
+	}
+	if res.Err != nil {
+		return nil, res.Err
+	}
+	var start struct {
+		Data struct {
+			DeviceCode      string `json:"device_code"`
+			UserCode        string `json:"user_code"`
+			VerificationURI string `json:"verification_uri"`
+			ExpiresIn       int    `json:"expires_in"`
+			Interval        int    `json:"interval"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(res.Body, &start)
+	if start.Data.DeviceCode == "" {
+		return nil, fmt.Errorf("device login response missing device_code")
+	}
+	if flow.Prompt != nil {
+		fmt.Fprintf(flow.Prompt, "To log in, open %s and enter code %s\nWaiting for approval…\n", start.Data.VerificationURI, start.Data.UserCode)
+	}
+	sleep := flow.Sleep
+	if sleep == nil {
+		sleep = sleepContext
+	}
+	interval := max(time.Duration(start.Data.Interval)*time.Second, minDeviceInterval)
+	expiry := time.Duration(start.Data.ExpiresIn) * time.Second
+	if expiry <= 0 {
+		expiry = defaultDeviceExpiry
+	}
+	for waited := time.Duration(0); waited+interval <= expiry; {
+		if err := sleep(ctx, interval); err != nil {
+			return nil, err
+		}
+		waited += interval
+		res, err := client.LoginToken(ctx, map[string]any{
+			"grant_type":  DeviceCodeGrantType,
+			"device_code": start.Data.DeviceCode,
+			"client_id":   cliClientID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if res.Err != nil && res.Err.Code == api.CodeRateLimited {
+			interval = max(interval+slowDownStep, time.Duration(res.Err.RetryAfter)*time.Second)
+			continue
+		}
+		if res.Err != nil {
+			return nil, res.Err
+		}
+		var payload map[string]any
+		_ = json.Unmarshal(res.Body, &payload)
+		if token := extractToken(payload); token != "" {
+			if err := store.SetBaseURL(profile, normalized); err != nil {
+				return nil, err
+			}
+			if err := store.SetToken(profile, token); err != nil {
+				return nil, err
+			}
+			return &LoginResult{Profile: profile, BaseURL: normalized, TokenPresent: true, Flow: "device"}, nil
+		}
+		switch status := devicePollStatus(payload); status {
+		case "authorization_pending":
+		case "slow_down":
+			interval += slowDownStep
+		case "access_denied":
+			return nil, deviceAuthError("device login was denied")
+		case "expired_token":
+			return nil, deviceAuthError("device code expired; run auth login again")
+		default:
+			return nil, fmt.Errorf("device token response missing access_token (status %q)", status)
+		}
+	}
+	return nil, deviceAuthError("device code expired; run auth login again")
+}
+
+func devicePollStatus(payload map[string]any) string {
+	data, _ := payload["data"].(map[string]any)
+	if s, ok := data["status"].(string); ok {
+		return s
+	}
+	s, _ := data["error"].(string)
+	return s
+}
+
+func deviceAuthError(msg string) *api.StructuredError {
+	se := api.MapErrorCode(api.CodeUnauthenticated)
+	se.Message = msg
+	return se
+}
+
+func sleepContext(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 // LoginBrowserOAuth is a placeholder for browser OAuth; uses token endpoint with code.
@@ -80,7 +215,7 @@ func LoginBrowserOAuth(ctx context.Context, store *Store, client *api.Client, pr
 	res, err := client.LoginToken(ctx, map[string]any{
 		"grant_type": "authorization_code",
 		"code":       code,
-		"client_id":  "capabilities-cli",
+		"client_id":  cliClientID,
 	})
 	if err != nil {
 		return nil, err

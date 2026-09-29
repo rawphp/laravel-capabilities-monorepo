@@ -7,16 +7,16 @@ import (
 
 func TestBuildMappingPriority(t *testing.T) {
 	tests := []struct {
-		name           string
-		entries        []Entry
-		wantDomain     string
-		wantVerb       string
-		wantCanonical  string
-		wantMapped     bool
-		lookupDomain   string
-		lookupVerb     string
-		wantRowError   string
-		wantMappedCmd  string
+		name          string
+		entries       []Entry
+		wantDomain    string
+		wantVerb      string
+		wantCanonical string
+		wantMapped    bool
+		lookupDomain  string
+		lookupVerb    string
+		wantRowError  string
+		wantMappedCmd string
 	}{
 		{
 			name: "metadata cli.domain+cli.verb wins",
@@ -170,7 +170,7 @@ func TestBuildCollisionDisablesBoth(t *testing.T) {
 }
 
 func TestBuildReservedDomainsNeverSynthesized(t *testing.T) {
-	reserved := []string{"auth", "catalog", "describe", "run", "mcp", "approvals", "version", "help"}
+	reserved := []string{"auth", "catalog", "describe", "run", "mcp", "approvals", "version", "help", "self-update"}
 	for _, domain := range reserved {
 		t.Run("metadata_"+domain, func(t *testing.T) {
 			idx := Build([]Entry{

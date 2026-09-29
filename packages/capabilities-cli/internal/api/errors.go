@@ -4,16 +4,18 @@ package api
 
 // Error codes from D-018 shared error envelope.
 const (
-	CodeValidationFailed  = "validation_failed"
-	CodeUnauthenticated   = "unauthenticated"
-	CodeForbidden         = "forbidden"
-	CodeApprovalRequired  = "approval_required"
-	CodeDomainError       = "domain_error"
-	CodeRateLimited       = "rate_limited"
-	CodeConflict          = "conflict"
-	CodeNotFound          = "not_found"
-	CodeOutputInvalid     = "output_invalid"
-	CodeInternal          = "internal"
+	CodeValidationFailed = "validation_failed"
+	CodeUnauthenticated  = "unauthenticated"
+	CodeForbidden        = "forbidden"
+	CodeApprovalRequired = "approval_required"
+	CodeDomainError      = "domain_error"
+	CodeRateLimited      = "rate_limited"
+	CodeConflict         = "conflict"
+	CodeNotFound         = "not_found"
+	CodeOutputInvalid    = "output_invalid"
+	CodeInternal         = "internal"
+	// CodeGone is a sunset capability (HTTP 410); also the fallback for a non-envelope 410.
+	CodeGone = "gone"
 )
 
 // CLI exit codes (D-018).
@@ -36,7 +38,7 @@ func ExitCode(code string) int {
 		return ExitAuth
 	case CodeApprovalRequired:
 		return ExitApproval
-	case CodeDomainError, CodeConflict, CodeNotFound, CodeOutputInvalid:
+	case CodeDomainError, CodeConflict, CodeNotFound, CodeOutputInvalid, CodeGone:
 		return ExitDomain
 	case CodeRateLimited:
 		return ExitRateLimit
@@ -67,6 +69,8 @@ func HTTPStatus(code string) int {
 		return 409
 	case CodeNotFound:
 		return 404
+	case CodeGone:
+		return 410
 	case CodeOutputInvalid:
 		return 500
 	case CodeInternal:
@@ -86,14 +90,16 @@ type ErrorEnvelope struct {
 
 // ErrorBody is the nested error object.
 type ErrorBody struct {
-	Code        string      `json:"code"`
-	Message     string      `json:"message"`
-	Violations  []Violation `json:"violations,omitempty"`
-	ApprovalID  *string     `json:"approval_id"`
-	RequestID   string      `json:"request_id,omitempty"`
-	Retryable   bool        `json:"retryable"`
+	Code       string      `json:"code"`
+	Message    string      `json:"message"`
+	Violations []Violation `json:"violations,omitempty"`
+	ApprovalID *string     `json:"approval_id"`
+	RequestID  string      `json:"request_id,omitempty"`
+	Retryable  bool        `json:"retryable"`
 	// RetryAfter is seconds to wait before retrying a rate_limited call (0 = unknown).
-	RetryAfter  int         `json:"retry_after,omitempty"`
+	RetryAfter int `json:"retry_after,omitempty"`
+	// CLIExit is the server's process exit for this code (core ErrorCodeMap).
+	CLIExit *int `json:"cli_exit,omitempty"`
 }
 
 // Violation is a field-level validation error.
@@ -120,7 +126,7 @@ type StructuredError struct {
 	Violations []Violation `json:"violations,omitempty"`
 	ApprovalID *string     `json:"approval_id"`
 	// RetryAfter is seconds from the 429 Retry-After header (0 = unknown).
-	RetryAfter int         `json:"retry_after,omitempty"`
+	RetryAfter int `json:"retry_after,omitempty"`
 	// Body is the raw HTTP payload for debugging; omitted from JSON (can be large/binary).
 	Body []byte `json:"-"`
 }
@@ -142,11 +148,11 @@ func (e *StructuredError) PublicData() map[string]any {
 		return nil
 	}
 	m := map[string]any{
-		"code":       e.Code,
-		"message":    e.Message,
-		"retryable":  e.Retryable,
+		"code":        e.Code,
+		"message":     e.Message,
+		"retryable":   e.Retryable,
 		"http_status": e.HTTPStatus,
-		"cli_exit":   e.ExitCode,
+		"cli_exit":    e.ExitCode,
 	}
 	if e.RequestID != "" {
 		m["request_id"] = e.RequestID
@@ -187,11 +193,17 @@ func ParseErrorEnvelope(env ErrorEnvelope, httpStatus int, raw []byte) *Structur
 	if code == "" {
 		code = CodeInternal
 	}
+	// The server's cli_exit wins so codes added on the server keep their exit
+	// class; the local table is the fallback for envelopes without one.
+	exit := ExitCode(code)
+	if v := env.Error.CLIExit; v != nil && *v >= ExitInternal && *v <= ExitRateLimit {
+		exit = *v
+	}
 	return &StructuredError{
 		Code:       code,
 		Message:    env.Error.Message,
 		HTTPStatus: httpStatus,
-		ExitCode:   ExitCode(code),
+		ExitCode:   exit,
 		Retryable:  env.Error.Retryable,
 		RequestID:  env.Error.RequestID,
 		Violations: env.Error.Violations,

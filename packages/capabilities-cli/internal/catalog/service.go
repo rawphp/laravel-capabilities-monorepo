@@ -84,13 +84,32 @@ func parseCapabilityList(res *api.Response) ([]CapabilitySummary, *api.Response,
 	return payload.Data.Capabilities, res, nil
 }
 
-// Describe returns schema for name (cache-aware).
+// Describe returns schema for name (cache-aware). res is nil on a cache hit.
 func (s *Service) Describe(ctx context.Context, name string) (*CacheEntry, *api.Response, error) {
 	if !s.NoCache && s.Cache != nil {
 		if e, ok := s.Cache.Get(name, ""); ok {
 			return e, nil, nil
 		}
 	}
+	return s.fetchDescribe(ctx, name)
+}
+
+// Refresh invalidates cache and re-lists.
+func (s *Service) Refresh(ctx context.Context) ([]CapabilitySummary, error) {
+	if s.Cache != nil {
+		_ = s.Cache.Invalidate("")
+	}
+	list, _, err := s.List(ctx)
+	return list, err
+}
+
+// ForceFetchDescribe skips the cached read and stores the live entry
+// (unless NoCache), replacing a stale one.
+func (s *Service) ForceFetchDescribe(ctx context.Context, name string) (*CacheEntry, *api.Response, error) {
+	return s.fetchDescribe(ctx, name)
+}
+
+func (s *Service) fetchDescribe(ctx context.Context, name string) (*CacheEntry, *api.Response, error) {
 	res, err := s.Client.DescribeCapability(ctx, name)
 	if err != nil {
 		return nil, nil, err
@@ -106,23 +125,6 @@ func (s *Service) Describe(ctx context.Context, name string) (*CacheEntry, *api.
 		_ = s.Cache.Put(entry)
 	}
 	return entry, res, nil
-}
-
-// Refresh invalidates cache and re-lists.
-func (s *Service) Refresh(ctx context.Context) ([]CapabilitySummary, error) {
-	if s.Cache != nil {
-		_ = s.Cache.Invalidate("")
-	}
-	list, _, err := s.List(ctx)
-	return list, err
-}
-
-// ForceFetchDescribe bypasses cache.
-func (s *Service) ForceFetchDescribe(ctx context.Context, name string) (*CacheEntry, *api.Response, error) {
-	prev := s.NoCache
-	s.NoCache = true
-	defer func() { s.NoCache = prev }()
-	return s.Describe(ctx, name)
 }
 
 func parseDescribe(res *api.Response) (*CacheEntry, error) {

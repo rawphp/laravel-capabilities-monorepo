@@ -158,6 +158,58 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   persisted input with the persisted `Idempotency-Key`, so the server replays
   the stored outcome instead of rejecting a mismatched body (409). Explicit
   input still wins.
+- **Device-code login polls for the token** — `auth login --base-url=URL`
+  used to require `access_token` in the `POST /capabilities/auth/device`
+  response, so it failed against any issuer that returns the RFC 8628 start
+  shape. It now prints `user_code` + `verification_uri` to stderr and polls
+  `POST /capabilities/auth/token` (`grant_type=urn:ietf:params:oauth:grant-type:device_code`)
+  every `interval` seconds (at least 10, to stay under the default auth-route
+  throttle) until a token arrives. Pending polls return `data.status` (or
+  `data.error`) `authorization_pending` / `slow_down` (+5s); an HTTP 429 backs
+  off by 5s or `Retry-After`, whichever is longer; `access_denied`,
+  `expired_token`, or passing `expires_in` exit **3**.
+  Nothing is written to the profile until a token is issued.
+- **Exit codes follow the server's `error.cli_exit`** — the CLI knew only the
+  original ten D-018 codes and exited **1** (internal) for the rest, so a sunset
+  capability (`gone`), an expired approval (`expired`), a profile refusal
+  (`capability_not_in_profile`) or an unbound auth issuer (`not_configured`)
+  looked retryable. When the envelope carries `cli_exit` 1–6 the CLI exits with
+  it; the local table is the fallback. A non-envelope HTTP 410 maps to `gone`
+  (exit **5**).
+- **`--base-url` applies to domain/verb resolution** — `capabilities
+  --base-url=B <domain> <verb>` built its domain/verb index from the profile's
+  stored host and then invoked the resolved name on `B` (sending the token to
+  both). The catalog lookup now uses `B` as well.
+- **Stale cached schemas no longer reject valid input** — cached describe
+  schemas never expired, so after a server schema change `run` and domain/verb
+  commands failed locally (exit **2**, `unknown flag`, missing required field)
+  on input the server accepts. A local rejection from a cached schema now
+  refetches the live schema once and re-checks; a server `validation_failed`
+  after a local pass drops the cached entry. `run` also describes once instead
+  of twice per invoke.
+- **`auth login --token` verifies the token first** — it used to store any
+  token without contacting the server, so a mistyped or revoked PAT (or a
+  wrong `--base-url`) printed `logged in`, exited 0, and overwrote a working
+  profile. It now makes one authenticated `GET /capabilities`; a rejection
+  exits with the server's code (`unauthenticated` → **3**), and a non-envelope
+  response (e.g. a marketing page) exits **1**. The profile is only written
+  after the server accepts the token.
+- **Error envelope on stdout for every structured failure** — `approvals
+  accept|reject`, `catalog`, and the domain/verb catalog lookup wrote only a
+  stderr line on failure, dropping the server's `approval_id`, `violations`
+  and `request_id`. They now print the server's D-018 envelope on stdout like
+  `run` and `describe`. A non-envelope error body (e.g. an HTML proxy page) is
+  replaced by a built envelope instead of being dumped on stdout.
+- **`self-update` is a reserved domain** — a capability with
+  `cli.domain = "self-update"` was mapped for synthesis but could never run
+  (the meta-command wins). It is now reported as `reserved_domain`, matching
+  the server, which rejects that domain at definition time.
+
+### Documentation
+
+- `docs/authentication.md` states the base-URL rule: the CLI appends
+  `/capabilities/…`, so the server's `surfaces.http.prefix` must end in
+  `capabilities` and `--base-url` is everything before it.
 
 ## [0.x] — pre-stable
 

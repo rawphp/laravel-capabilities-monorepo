@@ -6,13 +6,15 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rawphp/capabilities-cli/internal/api"
 )
 
 func TestAuthloginstorestokeninkeychainnotprompt(t *testing.T) {
 	st := tempStore(t)
-	res, err := LoginWithToken(st, "default", "https://app.example.com", "tok-abc")
+	c := tokenServer(t, 200, `{"ok":true,"data":{"capabilities":[]}}`, nil)
+	res, err := LoginWithToken(context.Background(), st, c, "default", c.BaseURL, "tok-abc")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,16 +64,10 @@ func TestAuthrequiredbeforerun(t *testing.T) {
 
 func TestAuthlogindevicecodeflow(t *testing.T) {
 	st := tempStore(t)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != api.PathAuthDevice {
-			t.Fatalf("path %s", r.URL.Path)
-		}
-		w.Write([]byte(`{"ok":true,"data":{"access_token":"device-tok","device_code":"d"}}`))
-	}))
-	t.Cleanup(srv.Close)
-	c := api.NewClient(srv.URL, "")
-	c.HTTP = srv.Client()
-	res, err := LoginDeviceCode(context.Background(), st, c, "default", srv.URL)
+	d := &deviceServer{start: deviceStart, polls: []string{`{"ok":true,"data":{"access_token":"device-tok"}}`}}
+	c := d.serve(t)
+	var waits []time.Duration
+	res, err := LoginDeviceCode(context.Background(), st, c, "default", c.BaseURL, DeviceFlow{Sleep: recordSleeps(&waits)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +137,8 @@ func TestAuthmissingtokenreturnsexitcode3(t *testing.T) {
 func TestAuthloginfetchesschemasintocache(t *testing.T) {
 	// LoginWithToken + schema cache dir exists for profile
 	st := tempStore(t)
-	_, err := LoginWithToken(st, "default", "https://app.example.com", "t")
+	c := tokenServer(t, 200, `{"ok":true,"data":{"capabilities":[]}}`, nil)
+	_, err := LoginWithToken(context.Background(), st, c, "default", c.BaseURL, "t")
 	if err != nil {
 		t.Fatal(err)
 	}

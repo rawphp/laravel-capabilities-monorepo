@@ -75,10 +75,14 @@ The token **`mcp` is reserved forever** (cannot be a synthesis domain) but is
 | **0** | Success **or help/usage** | Parse stdout envelope when you invoked a real command; bare help is not an error |
 | **1** | Internal error | Retry once; then fail the turn with stderr |
 | **2** | `validation_failed` | Fix input using `--help` / schema; do not retry same body. Includes **local** schema failures (no network) |
-| **3** | Unauthenticated / forbidden | Re-auth or wrong profile / host |
+| **3** | Unauthenticated / forbidden / `capability_not_in_profile` | Re-auth or wrong profile / host |
 | **4** | `approval_required` | Surface to human; `approvals accept/reject` |
-| **5** | Domain error / conflict / not_found / output_invalid | Read envelope on **stdout**; do not invent alternate paths |
+| **5** | Domain error / conflict / not_found / output_invalid / `gone` (sunset) / `expired` approval / `not_configured` | Read envelope on **stdout**; do not invent alternate paths or retry |
 | **6** | Rate limited | Back off and retry. When the server sent `Retry-After`, stdout `error.retry_after` holds the wait in seconds; otherwise pick your own backoff |
+
+When the server's error envelope carries `error.cli_exit` (1–6), the CLI exits
+with that value, so codes the server adds later keep their class. The table
+above is the fallback for envelopes without it.
 
 **Help/usage (exit 0):** bare `capabilities`, `capabilities help …`, `… --help`, bare `approvals`.  
 **Not help (exit 2):** `approvals accept` / `reject` without `<id>`; invalid flags / local schema failures (type, required, structure, **and** string formats).

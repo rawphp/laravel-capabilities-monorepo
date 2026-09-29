@@ -21,7 +21,7 @@ func TestDescribeDoesNotServeAnotherPrincipalsCachedSchema(t *testing.T) {
 	t.Cleanup(srv.Close)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	if _, err := auth.LoginWithToken(st, "default", srv.URL, "tok-alice"); err != nil {
+	if err := seedProfile(st, "default", srv.URL, "tok-alice"); err != nil {
 		t.Fatal(err)
 	}
 	describe := func() {
