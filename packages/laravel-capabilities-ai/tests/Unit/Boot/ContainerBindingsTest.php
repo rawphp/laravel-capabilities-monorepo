@@ -327,3 +327,19 @@ it('makeLlmClient passes core Metrics and Tracer into the anthropic client', fun
     ]))->toBe(7)
         ->and($tracer->spans())->toHaveCount(1);
 });
+
+it('max_message_chars defaults to 32000 from package config', function () {
+    expect(aiConfig()['max_message_chars'])->toBe(32000)
+        ->and(ContainerBindings::maxMessageCharsFromConfig(aiConfig()))->toBe(32000)
+        ->and(ContainerBindings::maxMessageCharsFromConfig([]))->toBe(32000);
+});
+
+it('max_message_chars: numeric values apply, 0 or negative disables, junk falls back to the default', function (mixed $raw, int $expected) {
+    expect(ContainerBindings::maxMessageCharsFromConfig(['max_message_chars' => $raw]))->toBe($expected);
+})->with([
+    'int' => [500, 500],
+    'numeric string' => ['2000', 2000],
+    'zero' => [0, 0],
+    'negative' => [-5, 0],
+    'junk' => ['lots', 32000],
+]);

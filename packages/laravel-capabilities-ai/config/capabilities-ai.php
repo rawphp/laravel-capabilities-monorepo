@@ -61,13 +61,19 @@ return [
             'api_key' => $env('ANTHROPIC_API_KEY'),
             'model' => $env('CAPABILITIES_AI_ANTHROPIC_MODEL', 'claude-sonnet-4-6'),
             'base_url' => $env('CAPABILITIES_AI_ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
-            /** Host-parity default (was hard-coded 1024; truncated long coach replies). */
+            /**
+             * Host-parity ceiling (was hard-coded 1024; truncated long coach replies). A ceiling,
+             * not a target: requests are non-streaming, so the reply a turn can actually get is
+             * whatever the model writes within `timeout` — a longer one fails the turn as a
+             * retryable timeout. Raise timeout and claim_ttl together for very long replies.
+             */
             'max_tokens' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS', 64000),
             /** 429 retries per request (honours Retry-After, capped at 60s); 0 disables. */
             'max_retries' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_RETRIES', 2),
             /**
              * Per-request HTTP timeout in seconds (Laravel's client default is 30s, too short for
-             * long replies). Keep it below claim_ttl: one turn job may make several requests.
+             * long replies). Must be below claim_ttl (the turn job timeout) or the anthropic
+             * LlmClient refuses to build; one turn job may make several requests.
              */
             'timeout' => (int) $env('CAPABILITIES_AI_ANTHROPIC_TIMEOUT', 110),
         ],
@@ -123,6 +129,12 @@ return [
      * persisted or dispatched. 0 disables.
      */
     'turns_per_minute' => (int) $env('CAPABILITIES_AI_TURNS_PER_MINUTE', 20),
+
+    /**
+     * Longest accepted chat message `content`, in characters. Longer → HTTP 422
+     * validation_failed, nothing persisted or dispatched. 0 = no cap.
+     */
+    'max_message_chars' => (int) $env('CAPABILITIES_AI_MAX_MESSAGE_CHARS', 32000),
 
     /** Max LLM rounds per turn; a turn still asking for tools after the last round fails (not retryable). */
     'max_tool_rounds' => (int) $env('CAPABILITIES_AI_MAX_TOOL_ROUNDS', 8),

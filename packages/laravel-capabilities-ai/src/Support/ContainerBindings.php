@@ -20,6 +20,7 @@ use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
+use Rawphp\CapabilitiesAi\Http\ChatController;
 use Rawphp\CapabilitiesAi\Package;
 use RuntimeException;
 
@@ -123,17 +124,36 @@ final class ContainerBindings
 
         return match ($resolved['resolved']) {
             'fake' => new FakeLlmClient,
-            'anthropic' => new AnthropicLlmClient(
-                apiKey: (string) ($config['llm']['anthropic']['api_key'] ?? ''),
-                model: (string) ($config['llm']['anthropic']['model'] ?? 'claude-sonnet-4-6'),
-                baseUrl: (string) ($config['llm']['anthropic']['base_url'] ?? 'https://api.anthropic.com'),
-                maxTokens: (int) ($config['llm']['anthropic']['max_tokens'] ?? 64000),
-                metrics: $metrics,
-                tracer: $tracer,
-                maxRetries: (int) ($config['llm']['anthropic']['max_retries'] ?? 2),
-                timeoutSeconds: (int) ($config['llm']['anthropic']['timeout'] ?? AnthropicLlmClient::DEFAULT_TIMEOUT_SECONDS),
-            ),
+            'anthropic' => self::makeAnthropicLlmClient($config, $metrics, $tracer),
         };
+    }
+
+    /**
+     * One Anthropic request must finish inside the turn job (claim_ttl), or the worker is
+     * killed mid-request instead of the turn failing as a retryable timeout.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    private static function makeAnthropicLlmClient(array $config, ?Metrics $metrics, ?Tracer $tracer): AnthropicLlmClient
+    {
+        $timeout = (int) ($config['llm']['anthropic']['timeout'] ?? AnthropicLlmClient::DEFAULT_TIMEOUT_SECONDS);
+        $claimTtl = self::claimTtlFromConfig($config);
+        if ($timeout >= $claimTtl) {
+            throw new InvalidArgumentException(
+                "llm.anthropic.timeout ({$timeout}s) must be below claim_ttl ({$claimTtl}s): one request has to fit inside the turn job"
+            );
+        }
+
+        return new AnthropicLlmClient(
+            apiKey: (string) ($config['llm']['anthropic']['api_key'] ?? ''),
+            model: (string) ($config['llm']['anthropic']['model'] ?? 'claude-sonnet-4-6'),
+            baseUrl: (string) ($config['llm']['anthropic']['base_url'] ?? 'https://api.anthropic.com'),
+            maxTokens: (int) ($config['llm']['anthropic']['max_tokens'] ?? 64000),
+            metrics: $metrics,
+            tracer: $tracer,
+            maxRetries: (int) ($config['llm']['anthropic']['max_retries'] ?? 2),
+            timeoutSeconds: $timeout,
+        );
     }
 
     /**
@@ -284,6 +304,19 @@ final class ContainerBindings
     {
         $raw = $config['turns_per_minute'] ?? ConversationService::DEFAULT_TURNS_PER_MINUTE;
         $max = is_numeric($raw) ? (int) $raw : ConversationService::DEFAULT_TURNS_PER_MINUTE;
+
+        return max($max, 0);
+    }
+
+    /**
+     * Longest accepted chat message (characters): package default when missing or non-numeric, 0 (no cap) when negative.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    public static function maxMessageCharsFromConfig(array $config): int
+    {
+        $raw = $config['max_message_chars'] ?? ChatController::DEFAULT_MAX_MESSAGE_CHARS;
+        $max = is_numeric($raw) ? (int) $raw : ChatController::DEFAULT_MAX_MESSAGE_CHARS;
 
         return max($max, 0);
     }

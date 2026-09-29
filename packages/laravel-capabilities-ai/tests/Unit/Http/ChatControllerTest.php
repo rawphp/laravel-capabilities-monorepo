@@ -343,6 +343,50 @@ it('storeMessage rejects invalid input with 422 before creating rows or dispatch
     'non-string conversation_ulid' => [['content' => 'hi', 'conversation_ulid' => ['x']], 'conversation_ulid'],
 ]);
 
+it('storeMessage rejects content longer than max_message_chars with 422 before creating rows', function () {
+    $dispatched = 0;
+    [$conversations, $store] = httpConversations(static function () use (&$dispatched): void {
+        $dispatched++;
+    });
+
+    $response = (new ChatController(maxMessageChars: 5))->storeMessage(chatRequest('u1', 'POST', ['content' => 'sixsix']), $conversations);
+
+    $body = $response->getData(true);
+    expect($response->getStatusCode())->toBe(422)
+        ->and($body['error']['code'])->toBe('validation_failed')
+        ->and($body['error']['violations'])->toBe([
+            ['field' => 'content', 'message' => 'The content field must not be longer than 5 characters.'],
+        ])
+        ->and($store->messages)->toBe([])
+        ->and($dispatched)->toBe(0);
+});
+
+it('storeMessage counts max_message_chars in characters, not bytes', function () {
+    [$conversations, $store] = httpConversations();
+
+    $response = (new ChatController(maxMessageChars: 5))->storeMessage(chatRequest('u1', 'POST', ['content' => 'ééééé']), $conversations);
+
+    expect($response->getStatusCode())->toBe(201)
+        ->and($store->messages)->toHaveCount(1);
+});
+
+it('storeMessage has no length cap when max_message_chars is 0', function () {
+    [$conversations, $store] = httpConversations();
+
+    $response = (new ChatController(maxMessageChars: 0))->storeMessage(chatRequest('u1', 'POST', ['content' => str_repeat('x', 40000)]), $conversations);
+
+    expect($response->getStatusCode())->toBe(201);
+});
+
+it('storeMessage applies the package default max_message_chars', function () {
+    [$conversations] = httpConversations();
+
+    $response = (new ChatController)->storeMessage(chatRequest('u1', 'POST', ['content' => str_repeat('x', ChatController::DEFAULT_MAX_MESSAGE_CHARS + 1)]), $conversations);
+
+    expect(ChatController::DEFAULT_MAX_MESSAGE_CHARS)->toBe(32000)
+        ->and($response->getStatusCode())->toBe(422);
+});
+
 it('storeMessage returns 404 for a well-formed but unknown conversation_ulid', function () {
     [$conversations, $store] = httpConversations();
 

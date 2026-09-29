@@ -1017,3 +1017,20 @@ it('LlmClientDefaults keeps host clients off multi-round tools unless they opt i
 
     expect($host->supportsToolRounds())->toBeFalse();
 });
+
+it('makeLlmClient refuses an anthropic timeout that does not fit inside claim_ttl', function (int $timeout, int $claimTtl) {
+    expect(fn () => ContainerBindings::makeLlmClient([
+        'claim_ttl' => $claimTtl,
+        'llm' => ['driver' => 'anthropic', 'anthropic' => ['api_key' => 'k', 'timeout' => $timeout]],
+    ]))->toThrow(InvalidArgumentException::class, "llm.anthropic.timeout ({$timeout}s) must be below claim_ttl ({$claimTtl}s)");
+})->with([
+    'equal' => [120, 120],
+    'above' => [300, 120],
+    'above a raised ttl' => [601, 600],
+]);
+
+it('makeLlmClient checks the timeout against the package default claim_ttl when unset', function () {
+    expect(fn () => ContainerBindings::makeLlmClient([
+        'llm' => ['driver' => 'anthropic', 'anthropic' => ['api_key' => 'k', 'timeout' => Package::DEFAULT_CLAIM_TTL]],
+    ]))->toThrow(InvalidArgumentException::class, 'must be below claim_ttl');
+});

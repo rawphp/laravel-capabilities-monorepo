@@ -34,6 +34,16 @@ final class ChatController
     /** Crockford base32; ConversationService mints uppercase hex, a subset. */
     private const ULID_PATTERN = '/^[0-9A-HJKMNP-TV-Z]{26}$/';
 
+    /** capabilities-ai.max_message_chars default: longest accepted user message, in characters. */
+    public const DEFAULT_MAX_MESSAGE_CHARS = 32000;
+
+    /**
+     * @param  int  $maxMessageChars  longest accepted `content` in characters; 0 = no cap
+     */
+    public function __construct(
+        private readonly int $maxMessageChars = self::DEFAULT_MAX_MESSAGE_CHARS,
+    ) {}
+
     public function history(Request $request, string $conversationUlid, ConversationService $conversations): JsonResponse
     {
         $userId = $this->userId($request);
@@ -92,6 +102,8 @@ final class ChatController
         $content = $request->input('content');
         if (! is_string($content) || trim($content) === '') {
             $violations[] = ['field' => 'content', 'message' => 'The content field must be a non-empty string.'];
+        } elseif ($this->maxMessageChars > 0 && mb_strlen($content) > $this->maxMessageChars) {
+            $violations[] = ['field' => 'content', 'message' => "The content field must not be longer than {$this->maxMessageChars} characters."];
         }
 
         $conversationUlid = $request->input('conversation_ulid');

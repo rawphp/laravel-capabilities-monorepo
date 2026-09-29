@@ -26,6 +26,7 @@ use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\StaleTurnReaper;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
+use Rawphp\CapabilitiesAi\Http\ChatController;
 use Rawphp\CapabilitiesAi\Support\ContainerBindings;
 use Rawphp\CapabilitiesAi\Support\EloquentConversationStore;
 use Rawphp\CapabilitiesAi\Support\EloquentTurnClaim;
@@ -177,6 +178,10 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
                 $app->make(ConversationStore::class),
             );
         });
+
+        $this->app->bind(ChatController::class, static fn (Container $app) => new ChatController(
+            ContainerBindings::maxMessageCharsFromConfig(self::configFromApp($app)),
+        ));
 
         $this->app->singleton(ProposalService::class, function (Container $app) {
             if (! $app->bound(CapabilityBus::class)) {
