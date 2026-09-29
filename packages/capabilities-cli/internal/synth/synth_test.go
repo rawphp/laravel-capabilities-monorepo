@@ -328,3 +328,53 @@ func TestIsReservedDomain(t *testing.T) {
 		t.Fatal("invoices must not be reserved")
 	}
 }
+
+func TestResolveMappingSplitsOnFirstSeparatorAndRejectsEdges(t *testing.T) {
+	tests := []struct {
+		cap, domain, verb string
+		ok                bool
+	}{
+		{"invoices.void/now", "invoices", "void/now", false}, // dot first; verb token invalid
+		{"invoices/void.now", "invoices", "void.now", false}, // slash first
+		{"invoices/void", "invoices", "void", true},
+		{".create", "", "", false},
+		{"invoices.", "", "", false},
+	}
+	for _, tt := range tests {
+		d, v, _, ok := ResolveMapping(tt.cap, nil)
+		if d != tt.domain || v != tt.verb || ok != tt.ok {
+			t.Fatalf("%q: got %q %q ok=%v want %q %q ok=%v", tt.cap, d, v, ok, tt.domain, tt.verb, tt.ok)
+		}
+	}
+}
+
+func TestBuildKeepsNamelessEntryUnmapped(t *testing.T) {
+	idx := Build([]Entry{{Name: ""}, {Name: "invoices.create"}})
+	row, ok := idx.Rows[""]
+	if !ok || row.Synthesized || row.MappedCommand != "" || row.MappingError != "" {
+		t.Fatalf("nameless row: %+v ok=%v", row, ok)
+	}
+	if name, ok := idx.Lookup("invoices", "create"); !ok || name != "invoices.create" {
+		t.Fatalf("named entry still synthesizes: %q %v", name, ok)
+	}
+}
+
+func TestSortedVerbsAndLookupMisses(t *testing.T) {
+	idx := Build([]Entry{{Name: "invoices.void"}, {Name: "invoices.create"}})
+	if got := idx.SortedVerbs("invoices"); len(got) != 2 || got[0] != "create" || got[1] != "void" {
+		t.Fatalf("sorted verbs: %v", got)
+	}
+	if got := idx.SortedVerbs("unknown"); len(got) != 0 {
+		t.Fatalf("unknown domain verbs: %v", got)
+	}
+	if _, ok := idx.Lookup("unknown", "create"); ok {
+		t.Fatal("unknown domain must miss")
+	}
+	var nilIdx *Index
+	if _, ok := nilIdx.Lookup("invoices", "create"); ok {
+		t.Fatal("nil index lookup must miss")
+	}
+	if nilIdx.DomainNames() != nil || nilIdx.Verbs("invoices") != nil {
+		t.Fatal("nil index lists nothing")
+	}
+}

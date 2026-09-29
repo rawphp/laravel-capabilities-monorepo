@@ -216,16 +216,13 @@ func Build(entries []Entry) *Index {
 	}
 
 	// Collision policy: two+ names for same pair → register neither.
-	for p, cs := range byPair {
+	for _, cs := range byPair {
 		if len(cs) > 1 {
 			for _, c := range cs {
 				row := idx.Rows[c.name]
 				row.MappingError = ErrCollision
 				row.Synthesized = false
-				// Keep domain/verb/mapped_command for agent diagnostics.
-				if row.MappedCommand == "" {
-					row.MappedCommand = p.domain + " " + p.verb
-				}
+				// Keep domain/verb/mapped_command (set above) for agent diagnostics.
 				idx.Rows[c.name] = row
 			}
 			continue
@@ -282,13 +279,6 @@ func (idx *Index) Verbs(domain string) []string {
 	for v := range verbs {
 		out = append(out, v)
 	}
-	return out
-}
-
-// SortedDomainNames returns domain names in lexicographic order.
-func (idx *Index) SortedDomainNames() []string {
-	out := idx.DomainNames()
-	sort.Strings(out)
 	return out
 }
 
