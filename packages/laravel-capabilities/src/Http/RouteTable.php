@@ -10,6 +10,13 @@ namespace Rawphp\Capabilities\Http;
  */
 final class RouteTable
 {
+    /**
+     * Wire version of this HTTP API. GET /health reports it so the product CLI
+     * can refuse to run against a server it cannot speak to. Bump on any
+     * breaking change to route shapes or the invoke/error envelopes.
+     */
+    public const API_VERSION = 1;
+
     public const ROUTE_LIST = 'list';
 
     public const ROUTE_DESCRIBE = 'describe';

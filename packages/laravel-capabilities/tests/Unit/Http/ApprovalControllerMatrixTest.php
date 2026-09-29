@@ -20,6 +20,7 @@ it('happy: approval accept when authorized [D-006]', function () {
     $controller = new ApprovalController($h['manager']);
     $approver = HttpHelpers::user(99);
     $approver->is_staff = true;
+    $approver->tenant_id = 't-1';
 
     $res = $controller->accept(
         HttpHelpers::authedRequest(['user' => $approver]),
@@ -76,6 +77,7 @@ it('happy: approval reject when authorized [D-006]', function () {
     $controller = new ApprovalController($h['manager']);
     $approver = HttpHelpers::user(99);
     $approver->is_staff = true;
+    $approver->tenant_id = 't-1';
 
     $res = $controller->reject(
         HttpHelpers::authedRequest(['user' => $approver, 'jsonBody' => ['reason' => 'nope']]),

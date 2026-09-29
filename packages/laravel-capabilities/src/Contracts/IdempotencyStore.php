@@ -6,6 +6,8 @@ namespace Rawphp\Capabilities\Contracts;
  * Stores mutating invoke outcomes by composite key (D-005).
  *
  * Identity: (tenant/scope, actor, capability, idempotency_key).
+ * Tenant is null (no tenant) or non-empty; drivers reject '' so it can never
+ * share the null-tenant row.
  *
  * Note: the production scaffold class
  * {@see \Rawphp\Capabilities\Idempotency\IdempotencyStore} is a separate type
@@ -45,6 +47,17 @@ interface IdempotencyStore
      * @return IdempotencyRecord
      */
     public function put(array $record): array;
+
+    /**
+     * Atomically take the composite identity for a new invoke.
+     *
+     * Writes $record only when no unexpired record holds the identity and
+     * returns true; returns false when another record holds it. Of two
+     * concurrent claims for one identity, exactly one returns true.
+     *
+     * @param  array<string, mixed>  $record
+     */
+    public function claim(array $record): bool;
 
     /**
      * Merge attributes for an existing identity; null when not found.

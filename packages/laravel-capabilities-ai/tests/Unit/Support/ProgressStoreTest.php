@@ -113,3 +113,53 @@ it('RedisProgressStore accepts Laravel-style connection wrappers that only expos
         ->and($events[0]['kind'])->toBe('status')
         ->and($events[1]['kind'])->toBe('terminal');
 });
+
+it('RedisProgressStore gives concurrent appends for one turn distinct indexes', function () {
+    $redis = new class
+    {
+        /** @var array<string, list<string>> */
+        public array $lists = [];
+
+        /** @var (callable(): void)|null */
+        public $beforeFirstPush = null;
+
+        public function rPush(string $key, string $value): int
+        {
+            if ($this->beforeFirstPush !== null) {
+                $interleave = $this->beforeFirstPush;
+                $this->beforeFirstPush = null;
+                $interleave();
+            }
+            $this->lists[$key][] = $value;
+
+            return count($this->lists[$key]);
+        }
+
+        /** @return list<string> */
+        public function lRange(string $key, int $start, int $end): array
+        {
+            return $this->lists[$key] ?? [];
+        }
+    };
+
+    $liveWorker = new RedisProgressStore($redis);
+    $retriedJob = new RedisProgressStore($redis);
+
+    // The retried job appends between the live worker's read and its push.
+    $redis->beforeFirstPush = fn () => $retriedJob->append('turn-race', ['kind' => 'error']);
+    $liveWorker->append('turn-race', ['kind' => 'status']);
+
+    $events = $liveWorker->since('turn-race', 0);
+    expect(array_column($events, 'index'))->toBe([0, 1])
+        ->and(array_column($events, 'kind'))->toBe(['error', 'status'])
+        ->and($liveWorker->since('turn-race', 1))->toHaveCount(1);
+});
+
+it('RedisProgressStore rejects events without a kind and clients without rpush', function () {
+    $store = new RedisProgressStore(new class {});
+
+    expect(fn () => $store->append('turn-x', ['kind' => '']))
+        ->toThrow(InvalidArgumentException::class, 'Progress event requires kind')
+        ->and(fn () => $store->append('turn-x', ['kind' => 'status']))
+        ->toThrow(RuntimeException::class, 'Redis client missing rPush');
+});

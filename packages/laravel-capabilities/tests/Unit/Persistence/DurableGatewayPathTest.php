@@ -49,6 +49,8 @@ function req049SqliteConnection(): ConnectionInterface
             idempotency_key text,
             result_json text,
             result_status text,
+            executor_actor_type text,
+            executor_actor_id text,
             decided_by text,
             decided_at text,
             decision_reason text,
