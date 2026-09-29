@@ -71,9 +71,4 @@ final class SurfaceNames
 
         return $map;
     }
-
-    public static function isKnown(string $surface): bool
-    {
-        return in_array($surface, self::ALL, true);
-    }
 }

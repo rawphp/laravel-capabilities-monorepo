@@ -270,6 +270,25 @@ profile — or no profile — returns `forbidden` with `normalized_code`
 
 ### Fixed
 
+- **`capability:run` works (D-016 / REQ-024).** `RunCapabilityCommand` called a non-existent
+  `ArtisanCapabilityInvoker::invoke()`, so every run printed an "undefined method" error and
+  exited 1. It now normalises the flags through `ArtisanCapabilityInvoker::parseFlags()`
+  (numeric `--acting-as` becomes an int; `--acting-as` with `--system` is refused) and calls
+  `run()`.
+- **HTTP routes register once, with their middleware once (REQ-021).** The provider now hands
+  the router straight to `HttpRouteRegistrar::registerInto()`, which calls `addRoute()` with a
+  `Controller@method` action. Before, the provider set `middleware` in the action and then
+  appended it again with `->middleware()`, so every route listed its middleware twice, and a
+  router passed directly to `registerInto()` got an array `uses` that Laravel read as a
+  closure. The `match()` fallback for routers without `addRoute()` is gone; every Illuminate
+  router has `addRoute()`.
+- **A stale approval execution counts once (D-019).** `ApprovalExecutor` added the stale
+  outcome to `approvals_resume_total{result=stale}` on every path, on top of the per-path
+  metric: a stale resume counted twice and a stale accept also counted as a resume. It now
+  increments `approvals_accept_total` or `approvals_resume_total` once, by path.
+- **`Capability::swapRegistry()` works without a container (D-020).** It registered a no-op
+  `resolved()` callback, which dereferences the facade application, so the helper documented
+  for container-free unit tests threw unless an app was bound. It now only swaps the root.
 - **Agent turn budget (D-013) is no longer agent-caller only:** the pipeline enforces `rate_limits.agent_turn.max_tool_calls` whenever an in-process adapter supplies `agent_turn_tool_calls`, whatever the caller. AI turns (`caller=job` from `rawphp/laravel-capabilities-ai`) are now capped. The option is never read from HTTP or tool input, and it can only deny.
 
 ### Fixed (HTTP surface)

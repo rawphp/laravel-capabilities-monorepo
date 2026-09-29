@@ -68,14 +68,6 @@ final class BootGuard
         private readonly bool $skipBootChecks = false,
     ) {}
 
-    public static function fromDefaults(?PeerVersionProbe $probe = null): self
-    {
-        return new self(
-            config: CapabilitiesConfig::defaults(),
-            probe: $probe ?? PeerVersionProbe::forMissingPeers(),
-        );
-    }
-
     /**
      * Run all boot-time surface dependency + peer checks.
      *
@@ -145,19 +137,6 @@ final class BootGuard
 
         $this->assertCliRequiresHttp($surfaces);
         $this->assertMessagingRules($surfaces);
-    }
-
-    /**
-     * Evaluate a single peer surface (agent/mcp) without full validate.
-     */
-    public function evaluatePeer(string $surface): PeerSurfaceStatus
-    {
-        $surfaces = $this->config['surfaces'] ?? [];
-        $cfg = (array) ($surfaces[$surface] ?? ['enabled' => true, 'require_package' => true, 'on_incompatible' => 'fail']);
-        $peer = SurfaceNames::PEER_PACKAGES[$surface] ?? $surface;
-        $probe = $this->probe ?? PeerVersionProbe::forMissingPeers();
-
-        return (new PeerSurfaceBootstrap($probe))->evaluate($surface, $peer, $cfg);
     }
 
     /**

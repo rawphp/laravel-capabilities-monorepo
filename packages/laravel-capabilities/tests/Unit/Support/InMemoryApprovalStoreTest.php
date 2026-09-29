@@ -42,3 +42,22 @@ it('InMemoryApprovalStore requires a Clock and fails loudly without it', functio
     expect(fn () => new InMemoryApprovalStore)
         ->toThrow(ArgumentCountError::class);
 });
+
+it('InMemoryApprovalStore keeps a caller-supplied id, updates by compare-and-swap, and misses return null', function () {
+    $clock = new FixedClock(new DateTimeImmutable('2026-05-03T00:00:00Z'));
+    $store = new InMemoryApprovalStore($clock);
+    $row = $store->put([
+        'id' => 'custom-id',
+        'capability_name' => 'c',
+        'status' => 'pending',
+        'tenant_id' => 't',
+    ]);
+    expect($row['id'])->toBe('custom-id');
+    expect($store->find('custom-id'))->not->toBeNull();
+    expect($store->findByStatus('pending'))->not->toBeEmpty();
+    $store->compareAndUpdate('custom-id', 'pending', ['status' => 'rejected']);
+    expect($store->find('custom-id')['status'])->toBe('rejected');
+    // miss paths
+    expect($store->compareAndUpdate('nope', 'pending', []))->toBeNull();
+    expect($store->claimLease('nope', 'pending', $clock->now()->format(DATE_ATOM), []))->toBeNull();
+});

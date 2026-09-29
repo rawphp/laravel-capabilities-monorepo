@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 use Rawphp\Capabilities\Adapters\PeerIncompatibleException;
 use Rawphp\Capabilities\Adapters\PeerSurfaceStatus;
+use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 use Rawphp\Capabilities\Boot\BootException;
 use Rawphp\Capabilities\Boot\BootGuard;
 use Rawphp\Capabilities\Boot\CapabilitiesConfig;
@@ -362,4 +363,47 @@ it('edge: env toggle for surface messaging respected at boot [SURF-005]', functi
     // Config array is the boot-time source of truth after env is resolved by Laravel.
     expect((bool) $on['messaging']['enabled'])->toBeTrue()
         ->and((bool) $off['messaging']['enabled'])->toBeFalse();
+});
+
+function surfaceRegistrarConfig(): array
+{
+    return [
+        SurfaceNames::AGENT => ['enabled' => true],
+        SurfaceNames::MCP => ['enabled' => false],
+        SurfaceNames::HTTP => ['enabled' => true, 'prefix' => 'capabilities'],
+        SurfaceNames::CLI => ['enabled' => true],
+        SurfaceNames::JOB => ['enabled' => true],
+        SurfaceNames::ARTISAN => ['enabled' => true],
+        SurfaceNames::MESSAGING => ['enabled' => false],
+    ];
+}
+
+it('SurfaceRegistrar artifacts are arrays for every configured surface', function () {
+    $probe = PeerVersionProbe::forMissingPeers();
+    $cfg = surfaceRegistrarConfig();
+
+    foreach (array_keys($cfg) as $surface) {
+        $arts = SurfaceRegistrar::artifacts($surface, $cfg, $probe);
+        expect(is_array($arts))->toBeTrue();
+        SurfaceRegistrar::isRegistered($surface, $cfg, $probe);
+        SurfaceRegistrar::isHalfRegistered($surface, $cfg, $probe);
+    }
+});
+
+it('SurfaceRegistrar yields no artifacts for unknown, disabled cli, or cli without http', function () {
+    $probe = PeerVersionProbe::forMissingPeers();
+    $cfg = surfaceRegistrarConfig();
+
+    // unknown surface
+    expect(SurfaceRegistrar::artifacts('nope', $cfg, $probe))->toBe([]);
+
+    // cli disabled
+    $cliOff = $cfg;
+    $cliOff[SurfaceNames::CLI]['enabled'] = false;
+    expect(SurfaceRegistrar::artifacts(SurfaceNames::CLI, $cliOff, $probe))->toBe([]);
+
+    // http disabled while cli on
+    $httpOff = $cfg;
+    $httpOff[SurfaceNames::HTTP]['enabled'] = false;
+    expect(SurfaceRegistrar::artifacts(SurfaceNames::CLI, $httpOff, $probe))->toBe([]);
 });

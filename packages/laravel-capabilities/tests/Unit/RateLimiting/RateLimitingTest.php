@@ -5,7 +5,15 @@
 declare(strict_types=1);
 
 use Rawphp\Capabilities\RateLimiting\RateLimitKey;
+use Rawphp\Capabilities\Registry\CapabilityDefinition;
+use Rawphp\Capabilities\Registry\CapabilityRegistry;
+use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\CapabilityScope;
 use Rawphp\Capabilities\Support\ErrorCodeMap;
+use Rawphp\Capabilities\Support\FixedClock;
+use Rawphp\Capabilities\Support\InMemoryRateLimiter;
+use Rawphp\Capabilities\Support\StubAuthorizer;
+use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\RateLimitHelpers;
 
 it('happy: under limit invoke succeeds [D-013]', function () {
@@ -137,4 +145,32 @@ it('fail: approval requests count toward the per_minute actor budget [D-013]', f
     $r = $h['registry']->invoke($h['name'], RateLimitHelpers::input(), RateLimitHelpers::options());
 
     expect($r->errorCode())->toBe('rate_limited')->and($h['runCount']->value)->toBe(0);
+});
+
+it('per-capability rateLimit override of zero is rate_limited on the first call [D-013]', function () {
+    $reg = (new CapabilityRegistry)
+        ->withAuthorizer(StubAuthorizer::allow())
+        ->withClock(new FixedClock(new DateTimeImmutable('2026-05-01T00:00:00Z')))
+        ->withRateLimiter(new InMemoryRateLimiter)
+        ->withRateLimitConfig([
+            'enabled' => true,
+            'defaults' => ['per_minute' => 60, 'per_capability_per_minute' => 30],
+            'agent_turn' => ['max_tool_calls' => 2],
+        ]);
+    $reg->register(new CapabilityDefinition(
+        name: 'zero-rl',
+        description: 'd',
+        readOnly: true,
+        allowSystemCallers: true,
+        rateLimit: ['max' => 0, 'per_capability_per_minute' => 0],
+        run: static fn () => CapabilityResult::ok([]),
+    ));
+
+    $z = $reg->invoke('zero-rl', [], [
+        'caller' => 'http',
+        'actor' => SystemActor::named('s'),
+        'scope' => new CapabilityScope(tenantId: 't'),
+    ]);
+
+    expect($z->errorCode())->toBe('rate_limited');
 });

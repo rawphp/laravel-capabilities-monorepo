@@ -127,3 +127,16 @@ foreach ($cases as [$kind, $badLabel, $bad, $good]) {
         expect($violations)->toBeEmpty();
     });
 }
+
+it('JsonSchemaValidator enforces minItems and maxItems on arrays', function () {
+    $v = new JsonSchemaValidator;
+    $schema = [
+        'type' => 'array',
+        'minItems' => 2,
+        'maxItems' => 3,
+        'items' => ['type' => 'integer'],
+    ];
+    expect($v->validate($schema, [1]))->not->toBeEmpty();
+    expect($v->validate($schema, [1, 2, 3, 4]))->not->toBeEmpty();
+    expect($v->validate($schema, [1, 2]))->toBeEmpty();
+});

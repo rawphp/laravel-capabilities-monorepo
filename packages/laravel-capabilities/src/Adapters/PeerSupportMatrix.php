@@ -67,27 +67,6 @@ final class PeerSupportMatrix
         return false;
     }
 
-    /**
-     * Whether the peer+version pair is within this matrix.
-     */
-    public static function supports(string $peer, ?string $version): bool
-    {
-        $allowed = self::for($peer);
-        if ($allowed === []) {
-            return false;
-        }
-
-        if ($version === null || $version === '') {
-            // Feature-detect without a version pin: presence only is not enough
-            // for a hard deny here — probe treats null version as compatible when
-            // installed; matrix support for an unknown version is false only when
-            // a concrete version fails constraints.
-            return true;
-        }
-
-        return self::versionSatisfies($version, $allowed);
-    }
-
     private static function matchesConstraint(string $version, string $constraint): bool
     {
         $constraint = trim($constraint);

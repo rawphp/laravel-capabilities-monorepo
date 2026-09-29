@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Http\CallerDeriver;
 use Rawphp\Capabilities\Support\CapabilityContext;
 use Rawphp\Capabilities\Tests\Fixtures\ScopeCallerJobHelpers as H;
 
@@ -440,4 +441,60 @@ it('happy: credential audit metadata records type client_id ability when present
 it('fail: null principal never accepted after context build [CTX-001]', function () {
     expect(fn () => CapabilityContext::make(['caller' => 'http', 'actor' => null]))
         ->toThrow(InvalidArgumentException::class);
+});
+
+it('CallerDeriver resolves every adapter, source, token, and oauth credential shape', function () {
+    $d = new CallerDeriver([
+        'token_abilities' => ['capabilities:cli' => 'cli', 'capabilities:agent' => 'agent'],
+        'oauth' => ['client-1' => 'cli'],
+        'privilege_order' => CallerDeriver::DEFAULT_PRIVILEGE_ORDER,
+        'reject_upgrade_attempts' => true,
+    ]);
+
+    foreach ([
+        ['adapter' => 'agent'],
+        ['adapter' => 'laravel/ai'],
+        ['adapter' => 'ai'],
+        ['adapter' => 'mcp'],
+        ['adapter' => 'laravel/mcp'],
+        ['adapter' => 'job'],
+        ['adapter' => 'scheduler'],
+        ['adapter' => 'queue'],
+        ['adapter' => 'cli'],
+        ['adapter' => 'http'],
+        ['adapter' => 'api'],
+        ['adapter' => 'artisan'],
+        ['adapter' => 'unknown-adapter'],
+        ['source' => 'cli'],
+        ['server_caller' => 'mcp'],
+        ['token_abilities' => ['capabilities:cli']],
+        ['token_abilities' => [123, 'capabilities:agent']],
+        ['token_abilities' => ['unmapped:ability']],
+        ['oauth_client_id' => 'client-1'],
+        ['oauth_client_type' => 'cli'],
+        ['oauth_client_type' => 'not-a-caller'],
+        [],
+    ] as $cred) {
+        $resolved = $d->resolve($cred, null);
+        expect($resolved)->toHaveKeys(['caller', 'derived', 'rejected', 'reason']);
+    }
+});
+
+it('CallerDeriver applyHeaderClaim handles absent, unknown, matching, and differing claims', function () {
+    $d = new CallerDeriver([
+        'token_abilities' => ['capabilities:cli' => 'cli', 'capabilities:agent' => 'agent'],
+        'oauth' => ['client-1' => 'cli'],
+        'privilege_order' => CallerDeriver::DEFAULT_PRIVILEGE_ORDER,
+        'reject_upgrade_attempts' => true,
+    ]);
+
+    $header = $d->applyHeaderClaim('http', null);
+    expect($header['rejected'])->toBeFalse();
+    $unknown = $d->applyHeaderClaim('http', 'not-real');
+    expect($unknown['reason'])->toBe('unknown_header_ignored');
+    $match = $d->applyHeaderClaim('http', 'http');
+    expect($match['caller'])->toBe('http');
+    $down = $d->applyHeaderClaim('http', 'cli');
+    // may be downgrade or upgrade depending on privilege order
+    expect($down)->toHaveKey('caller');
 });

@@ -66,13 +66,7 @@ class IntegrationHealthCommand extends Command
     private function aiConfig(): ?array
     {
         try {
-            $config = $this->laravel->make('config');
-            if (! method_exists($config, 'has') || ! $config->has('capabilities-ai')) {
-                // Fall back: get may still return a published array or empty default.
-                $cfg = $config->get('capabilities-ai', null);
-            } else {
-                $cfg = $config->get('capabilities-ai');
-            }
+            $cfg = $this->laravel->make('config')->get('capabilities-ai');
         } catch (Throwable) {
             return null;
         }

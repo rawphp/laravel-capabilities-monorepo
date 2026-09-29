@@ -2,6 +2,13 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Pipeline\PipelineStages;
+use Rawphp\Capabilities\Registry\CapabilityDefinition;
+use Rawphp\Capabilities\Registry\CapabilityRegistry;
+use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\CapabilityScope;
+use Rawphp\Capabilities\Support\StubAuthorizer;
+use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
 it('happy: stage json_schema_validate maps to validation_failed for agent [PIPE-002]', function () {
@@ -742,4 +749,37 @@ it('fail: stage rate_limit does not call run for job [PIPE-002]', function () {
     $extra = [];
     $result = $h['registry']->invoke($h['name'], $input, PipelineHelpers::options('job', $extra));
     expect($h['runCount']->value)->toBe(0)->and($result->isOk())->toBeFalse();
+});
+
+it('fail: forceFailStages maps each pre-run stage to its error code', function () {
+    $stages = [
+        PipelineStages::JSON_SCHEMA_VALIDATE => 'validation_failed',
+        PipelineStages::HYDRATE_DTO => 'validation_failed',
+        PipelineStages::SERVER_ONLY_VALIDATE => 'validation_failed',
+        PipelineStages::RESOLVE_ACTOR => 'unauthenticated',
+        PipelineStages::RESOLVE_SCOPE => 'forbidden',
+        PipelineStages::IDEMPOTENCY_LOOKUP => 'conflict',
+        PipelineStages::AUTHORIZE => 'forbidden',
+        PipelineStages::NEEDS_APPROVAL => 'approval_required',
+        PipelineStages::RATE_LIMIT => 'rate_limited',
+    ];
+
+    foreach ($stages as $stage => $code) {
+        // Explicit allow: production default denies without authorize (REQ-070).
+        $reg = (new CapabilityRegistry)->withAuthorizer(StubAuthorizer::allow());
+        $reg->register(new CapabilityDefinition(
+            name: 'ff-'.$stage,
+            description: 'force fail',
+            readOnly: true,
+            allowSystemCallers: true,
+            run: static fn () => CapabilityResult::ok(['ok' => true]),
+        ));
+        $reg->forceFailStages($stage);
+        $result = $reg->invoke('ff-'.$stage, [], [
+            'caller' => 'http',
+            'actor' => SystemActor::named('sys'),
+            'scope' => new CapabilityScope(tenantId: 't1'),
+        ]);
+        expect($result->isOk())->toBeFalse()->and($result->errorCode())->toBe($code);
+    }
 });

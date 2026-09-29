@@ -273,3 +273,24 @@ it('claimLease uses atomic updateWhereLeaseFree without prior find TOCTOU', func
         ->and($gateway->updateWhereCalls)->toBe(0)
         ->and($gateway->findCalls)->toBe($findAfterPut);
 });
+
+it('update merges attributes onto the stored row and stamps updated_at; a missing id is a no-op', function () {
+    $clock = new FixedClock(new DateTimeImmutable('2026-07-27T12:00:00Z'));
+    $store = new DatabaseApprovalStore(new ArrayTableGateway, $clock);
+    $row = $store->put(['id' => 'apr-fixed', 'capability_name' => 'x', 'status' => 'pending']);
+    $clock->advance(new DateInterval('PT5M'));
+
+    $updated = $store->update('apr-fixed', ['status' => 'approved', 'decided_by' => 'boss']);
+
+    expect($row['id'])->toBe('apr-fixed')
+        ->and($updated)->toMatchArray([
+            'id' => 'apr-fixed',
+            'capability_name' => 'x',
+            'status' => 'approved',
+            'decided_by' => 'boss',
+            'created_at' => '2026-07-27T12:00:00+00:00',
+            'updated_at' => '2026-07-27T12:05:00+00:00',
+        ])
+        ->and($store->find('apr-fixed'))->toBe($updated)
+        ->and($store->update('apr-missing', ['status' => 'approved']))->toBeNull();
+});

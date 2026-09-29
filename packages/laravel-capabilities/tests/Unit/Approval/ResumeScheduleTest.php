@@ -11,6 +11,7 @@ use Rawphp\Capabilities\Adapters\Artisan\ResumeApprovalsCommand;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Approval\ResumeSchedulePlan;
 use Rawphp\Capabilities\Tests\Fixtures\ApprovalHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\ArtisanCommandHarness;
 use Rawphp\Capabilities\Tests\Fixtures\BootHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\FakeProviderApp;
 
@@ -117,6 +118,32 @@ it('the command --force repairs one row inside grace (operator path) and reports
     expect($skipped)->toBe(['resumed' => 0, 'skipped' => 1, 'failed' => 0])
         ->and($forced)->toBe(['resumed' => 1, 'skipped' => 0, 'failed' => 0])
         ->and($h['runCount']->value)->toBe(1);
+});
+
+it('the command prints the sweep summary for one --id and exits 0', function () {
+    $h = ApprovalHelpers::withPending(['grace_seconds' => 30]);
+    $id = (string) $h['row']['id'];
+    $h['store']->update($id, ['status' => 'approved', 'approved_at' => $h['clock']->now()->format(DATE_ATOM), 'execution_lease_until' => null]);
+
+    $inGrace = ArtisanCommandHarness::run(new ResumeApprovalsCommand($h['manager']), ['--id' => $id]);
+    $forced = ArtisanCommandHarness::run(new ResumeApprovalsCommand($h['manager']), ['--id' => $id, '--force' => true]);
+
+    expect($inGrace)->toBe(['exit' => 0, 'output' => "resumed=0 skipped=1 failed=0\n"])
+        ->and($forced)->toBe(['exit' => 0, 'output' => "resumed=1 skipped=0 failed=0\n"])
+        ->and($h['store']->find($id)['status'])->toBe('executed');
+});
+
+it('the command resolves ApprovalManager from the container and fails closed when it cannot', function () {
+    $h = ApprovalHelpers::withPending();
+
+    $bound = ArtisanCommandHarness::run(new ResumeApprovalsCommand, [], [ApprovalManager::class => $h['manager']]);
+    $unbound = ArtisanCommandHarness::run(new ResumeApprovalsCommand, [], [
+        ApprovalManager::class => static fn () => throw new RuntimeException('no store'),
+    ]);
+
+    expect($bound)->toBe(['exit' => 0, 'output' => "resumed=0 skipped=0 failed=0\n"])
+        ->and($unbound['exit'])->toBe(1)
+        ->and($unbound['output'])->toContain('ApprovalManager is not bound.');
 });
 
 it('provider: boot registers the sweep on the console Schedule when deferred + enabled, nothing otherwise', function () {

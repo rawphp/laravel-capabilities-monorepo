@@ -121,3 +121,26 @@ it('fail: job payload missing actingAs not dispatchable [D-002]', function () {
     expect(fn () => RunCapabilityJob::assertDispatchable(['name' => 'x']))
         ->toThrow(MissingJobActorException::class);
 });
+
+it('happy: RunCapabilityJob::make builds a validated job without enqueuing', function () {
+    $job = RunCapabilityJob::make([
+        'name' => 'job.cap',
+        'input' => [],
+        'actingAs' => SystemActor::named('worker'),
+        'tenantId' => 't1',
+        'idempotencyKey' => 'k',
+    ]);
+
+    expect($job->name)->toBe('job.cap')
+        ->and($job->tenantId)->toBe('t1');
+});
+
+it('happy: fromPayload keeps a scalar actingAs id', function () {
+    $from = RunCapabilityJob::fromPayload([
+        'name' => 'job.cap',
+        'actingAs' => 5,
+        'tenantId' => 't2',
+    ]);
+
+    expect($from->actingAs)->toBe(5);
+});
