@@ -11,6 +11,36 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Security
+
+- **CallbackHandler approver binding** — a non-empty signed `approver_hint` now binds the
+  callback to that product principal id (the linked user's `id`, else `getAuthIdentifier()`).
+  A different linked Telegram user clicking a forwarded/leaked button gets
+  `status: forbidden`, `message: approver_mismatch` before the approval gateway is touched.
+  Empty hint keeps the old behaviour (approval policy decides). **Consumer impact:** hosts
+  that put a Telegram user id (or anything other than the product user id) in
+  `approver_hint` must switch to the product user id or send an empty hint.
+
+### Changed
+
+- **Core constraint is lockstep:** `require.rawphp/laravel-capabilities` is now `self.version` instead of `*`. This package at tag `v0.Y.Z` installs only with core `v0.Y.Z` (and `dev-main` with core `dev-main`). **Hosts:** require the same version of core and this package.
+
+### Added
+
+- **Audited tool profile** — Telegram tool calls pass the configured `agent_profile` as the
+  `tool_profile` invoke option, so core audit entries record which profile gated the call.
+- **Allowlist user check in setup validation** — `TelegramSetup::validate()` / `runOrFail()`
+  take an optional host user lookup `(laravelUserId, tenantId) => ?object`. Each
+  `identity.allowlist` entry whose `laravel_user_id` does not resolve fails setup loudly
+  (index, user id, telegram id in the message) instead of linking a user that does not exist.
+  Entries missing `telegram_user_id` or `laravel_user_id` (previously skipped silently at
+  runtime) now fail setup with or without a lookup.
+
+## [0.5.0] - 2026-08-07
+
+Cumulative: entries shipped in tags `v0.1.0` through `v0.5.0`. Those tags did not get
+per-tag sections; this file's git history shows the tag each entry first shipped in.
+
 ### Breaking
 
 - **CallbackHandler ApprovalGateway (consumer impact)** — constructor third arg type-hint
@@ -26,32 +56,13 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   `ApprovalManager is required…` → `ApprovalGateway is required…` (host tests asserting the
   old string break).
 
-### Security
-
-- **CallbackHandler approver binding** — a non-empty signed `approver_hint` now binds the
-  callback to that product principal id (the linked user's `id`, else `getAuthIdentifier()`).
-  A different linked Telegram user clicking a forwarded/leaked button gets
-  `status: forbidden`, `message: approver_mismatch` before the approval gateway is touched.
-  Empty hint keeps the old behaviour (approval policy decides). **Consumer impact:** hosts
-  that put a Telegram user id (or anything other than the product user id) in
-  `approver_hint` must switch to the product user id or send an empty hint.
-
 ### Changed
 
-- **Core constraint is lockstep:** `require.rawphp/laravel-capabilities` is now `self.version` instead of `*`. This package at tag `v0.Y.Z` installs only with core `v0.Y.Z` (and `dev-main` with core `dev-main`). **Hosts:** require the same version of core and this package.
 - **Internal extract** — `TelegramUpdateParser` peels pure Update field extraction from
   `ProcessTelegramUpdate` (pipeline behaviour unchanged; MSG-003 handler remains the public entry).
 
 ### Added
 
-- **Audited tool profile** — Telegram tool calls pass the configured `agent_profile` as the
-  `tool_profile` invoke option, so core audit entries record which profile gated the call.
-- **Allowlist user check in setup validation** — `TelegramSetup::validate()` / `runOrFail()`
-  take an optional host user lookup `(laravelUserId, tenantId) => ?object`. Each
-  `identity.allowlist` entry whose `laravel_user_id` does not resolve fails setup loudly
-  (index, user id, telegram id in the message) instead of linking a user that does not exist.
-  Entries missing `telegram_user_id` or `laravel_user_id` (previously skipped silently at
-  runtime) now fail setup with or without a lookup.
 - **Laravel 13 / illuminate 13 support** — all `illuminate/*` requirements allow `^11.0|^12.0|^13.0`.
 - Sibling conversation package for the capabilities bus (Telegram-first): webhooks, identity links,
   threads, and chat-side approval notification — implements **core contracts only** (D-007).
@@ -63,20 +74,11 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 - Messaging surfaces default **off** in core until this package is installed and configured.
 - This package tree is mirrored from the monorepo to `github.com/rawphp/laravel-capabilities-messaging` on push.
 
-<!--
-  First tagged 0.x.y scaffold (Keep a Changelog):
-  When cutting monorepo git tag v0.1.0 (mirrored to this package remote), promote Unreleased bullets into:
-
-  ## [0.1.0] - YYYY-MM-DD
-
-  Then leave [Unreleased] empty for the next cycle. Section title has no leading "v";
-  git tag keeps the "v" prefix.
--->
-
 ## [0.x] — pre-stable
 
 Pre-1.0 development line. APIs may change without a major version bump while on 0.x.
 This banner is **not** a substitute for a concrete dated `## [0.x.y]` section at first tag.
+Tags without their own section recorded no entries for this package.
 
 [Unreleased]: https://github.com/rawphp/laravel-capabilities-messaging
 [0.x]: https://github.com/rawphp/laravel-capabilities-messaging

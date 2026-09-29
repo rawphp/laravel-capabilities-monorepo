@@ -218,9 +218,14 @@ Per package `CHANGELOG.md`:
    ```
 
    (section title uses **no** leading `v`; the git tag keeps the `v` prefix.)
-3. Leave `## [Unreleased]` empty (or with only “Notes”) for the next cycle.
+   Every package gets the section, even with nothing to report: write `No changes.` under it. Tags are lockstep, so each package remote shows every tag.
+3. Leave `## [Unreleased]` empty (or with only “Notes”) for the next cycle. Keep exactly one `## [Unreleased]` per file.
 4. Keep the **`## [0.x] — pre-stable`** policy banner until `1.0.0` is intentional.
 5. Update footer compare/release links only after the tag exists on the **package** remote.
+
+`scripts/release.sh` checks the structure before tagging: a real release refuses when any `packages/*/CHANGELOG.md` does not have exactly one `## [Unreleased]` or has no `## [0.Y.Z]` section for the tag it is about to cut (`--dry-run` only warns). Commit and push the promotion first.
+
+**History:** tags `v0.1.0`–`v0.5.0` were cut before this rule, so their entries sit in one cumulative `[0.5.0]` section per package (`[0.5.1]` for AI). Tags with no section recorded no entries for that package.
 
 ## Packagist + git tag publish checklist (human steps)
 

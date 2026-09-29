@@ -35,16 +35,19 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 - **Chat `storeMessage` validates its body:** `POST messages` now requires `content` to be a non-empty string and an optional `conversation_ulid` to be a 26-character uppercase ULID. Invalid input returns **422** `{message, errors}` before any conversation, message, or turn row is created or a turn job is dispatched; a well-formed but unknown `conversation_ulid` returns **404** instead of a 500. Previously an empty body queued an empty-message turn.
 - **Redis progress indexes under concurrent appends:** `RedisProgressStore` now takes each event's `index` from its position in the Redis list instead of counting the list before `rPush`. Two appends for the same turn (retried job, live worker, reaper) could read the same count and store the same index, so an SSE client resuming with `since($cursor)` skipped or repeated events. `append()` no longer reads the list first.
-- **Redis progress under Laravel phpredis (coach turns):** `resolveRedisClientOrNull` now unwraps the Illuminate Redis connection to the native ext-redis/predis client (`connection()->client()`). `RedisProgressStore` also accepts Laravel connection wrappers that only expose `rpush`/`lrange` via `__call`. Without this, hosts with `CAPABILITIES_AI_PROGRESS_DRIVER=redis` failed every turn with `Redis client missing rPush` (SSE progress never appended; coach chat returned temporary-problem failures).
 - **Agent turn budget (D-013) now caps AI turns:** `TurnRunner` passes a 1-based per-turn `agent_turn_tool_calls` count on every bus invoke, so core `rate_limits.agent_turn.max_tool_calls` limits total tool calls per turn (the model gets a structured `rate_limited` result past the cap). Previously only `max_tool_rounds` bounded AI turns.
-- **Bus invoke principal (ORI-775):** `TurnRunner` tool invokes and `ProposalService` accept invokes now pass `caller=job` + conversation User as `actor` (legacy coach / `RunCoachCommandHandler` shape). Missing or unresolvable `conversation.user_id` fails closed (no `ResolveActor::defaultUser()` / silent id=1). Config: `capabilities-ai.user_model` (fallback `auth.providers.users.model`).
 - **Proposal accept with an unresolvable actor:** when the conversation owner is missing or deleted between proposal and accept, `ProposalService::accept` now marks the proposal `failed` and returns `AcceptOutcome::refuse` (HTTP 403, `forbidden`) instead of throwing after the pending→accepting claim (which left the proposal stuck in `accepting` and surfaced as a 500). Resolver misconfiguration (no usable user model) still throws and leaves the proposal `accepting`, so it can be re-driven after the config fix. New `UnresolvedConversationActorException` (extends `RuntimeException`) marks the principal-refusal case.
 
 ## [0.5.1] - 2026-08-09
 
+Also collects entries first shipped in earlier tags (`v0.2.0` through `v0.5.0`), which did not
+get per-tag sections; this file's git history shows the tag each entry first shipped in.
+
 ### Fixed
 
 - **Anthropic dotted tool names:** `AnthropicLlmClient` encodes package/capability ids for the Anthropic wire (`pane.list` → `pane__list`, matching `^[a-zA-Z0-9_-]{1,128}$`) and decodes on inbound `tool_use` so `TurnRunner` still invokes the bus by capability name. Without this, hosts that advertise dotted tools (LivePane Assistant) failed every turn with Anthropic 400 `tools.N.custom.name` pattern errors.
+- **Bus invoke principal (ORI-775):** `TurnRunner` tool invokes and `ProposalService` accept invokes now pass `caller=job` + conversation User as `actor` (legacy coach / `RunCoachCommandHandler` shape). Missing or unresolvable `conversation.user_id` fails closed (no `ResolveActor::defaultUser()` / silent id=1). Config: `capabilities-ai.user_model` (fallback `auth.providers.users.model`).
+- **Redis progress under Laravel phpredis (coach turns):** `resolveRedisClientOrNull` now unwraps the Illuminate Redis connection to the native ext-redis/predis client (`connection()->client()`). `RedisProgressStore` also accepts Laravel connection wrappers that only expose `rpush`/`lrange` via `__call`. Without this, hosts with `CAPABILITIES_AI_PROGRESS_DRIVER=redis` failed every turn with `Redis client missing rPush` (SSE progress never appended; coach chat returned temporary-problem failures).
 
 ### Added
 
@@ -214,19 +217,10 @@ Constructor and job-handle DI tightened for hosts that construct services outsid
 - Queue workers resolve `RunTurnJob::handle(TurnRunner $runner)` via the container (DI from UR-017).
 - This package tree is mirrored from the monorepo to `github.com/rawphp/laravel-capabilities-ai` on push.
 
-<!--
-  First tagged 0.x.y scaffold (Keep a Changelog):
-  When cutting monorepo git tag v0.1.0 (mirrored to this package remote), promote Unreleased bullets into:
-
-  ## [0.1.0] - YYYY-MM-DD
-
-  Then leave [Unreleased] empty for the next cycle. Section title has no leading "v";
-  git tag keeps the "v" prefix.
--->
-
 ## [0.x] — pre-stable
 
 Pre-1.0 development line. APIs may change without a major version bump while on 0.x.
 This banner is **not** a substitute for a concrete dated `## [0.x.y]` section at first tag.
+Tags without their own section recorded no entries for this package.
 
 [Unreleased]: https://github.com/rawphp/laravel-capabilities-ai/compare/HEAD...HEAD

@@ -324,6 +324,33 @@ assert_eq "squash fixture collapses to 1 commit since tag" "1" "$(cat "$_tmp_sq/
 assert_eq "squash fixture preserves tree" "$(cat "$_tmp_sq/tree_before")" "$(cat "$_tmp_sq/tree_after")"
 assert_eq "squash fixture clean message" "Release v0.2.0" "$(cat "$_tmp_sq/msg")"
 
+printf '\n-- CHANGELOG readiness (one [Unreleased] + section per tag) --\n'
+# shellcheck disable=SC1090
+eval "$(extract_fn changelog_problems)"
+_tmp_cl="$(mktemp -d "${TMPDIR:-/tmp}/test-release-changelog.XXXXXX")"
+cleanup_tmp_cl() { rm -rf "$_tmp_cl"; }
+trap 'cleanup_tmp; cleanup_tmp_sq; cleanup_tmp_cl' EXIT
+mkdir -p "$_tmp_cl/packages/a" "$_tmp_cl/packages/b"
+printf '## [Unreleased]\n\n## [0.6.0] - 2026-10-01\n\n- x\n' > "$_tmp_cl/packages/a/CHANGELOG.md"
+printf '## [Unreleased]\n\n## [0.6.0] - 2026-10-01\n\nNo changes.\n' > "$_tmp_cl/packages/b/CHANGELOG.md"
+assert_eq "changelog ready: every package has one [Unreleased] + [0.6.0]" "" "$(changelog_problems "$_tmp_cl" 0.6.0)"
+assert_eq "changelog refuse: missing tag section" \
+  "packages/a/CHANGELOG.md: no ## [0.6.1] section|packages/b/CHANGELOG.md: no ## [0.6.1] section" \
+  "$(changelog_problems "$_tmp_cl" 0.6.1 | paste -sd'|' -)"
+printf '## [Unreleased]\n\n## [0.6.0] - 2026-10-01\n\n## [Unreleased]\n' > "$_tmp_cl/packages/b/CHANGELOG.md"
+assert_eq "changelog refuse: duplicate [Unreleased]" \
+  "packages/b/CHANGELOG.md: 2 [Unreleased] sections (expected 1)" \
+  "$(changelog_problems "$_tmp_cl" 0.6.0)"
+assert_eq "changelog version dots are literal" \
+  "packages/a/CHANGELOG.md: no ## [0x6x0] section|packages/b/CHANGELOG.md: 2 [Unreleased] sections (expected 1)|packages/b/CHANGELOG.md: no ## [0x6x0] section" \
+  "$(changelog_problems "$_tmp_cl" 0x6x0 | paste -sd'|' -)"
+
+if grep -q 'changelog_problems "\$ROOT"' "$RELEASE_SH"; then
+  pass "release.sh checks CHANGELOG readiness for the new tag"
+else
+  fail_case "release.sh checks CHANGELOG readiness for the new tag" "changelog_problems not called on ROOT"
+fi
+
 printf '\n==> summary: %s passed, %s failed\n' "$PASS" "$FAIL"
 if [[ "$FAIL" -ne 0 ]]; then
   printf 'failed cases:\n' >&2

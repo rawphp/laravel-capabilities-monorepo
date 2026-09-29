@@ -23,6 +23,22 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 - `GET /{prefix}/health` now reports `api_version` (`RouteTable::API_VERSION`, currently `1`).
   The product CLI checks it before `run` and refuses a server that speaks another version.
   Bump it on any breaking change to route shapes or the invoke/error envelopes.
+- **`capabilities:integration-health` pings the AI progress store:** in AI-chat mode a new `ai_progress_ready` row resolves `Rawphp\CapabilitiesAi\Contracts\ProgressStoreReadiness` by class-string and fails when the store is unreachable (or cannot be resolved, e.g. `progress.driver=redis` with no Redis client); skips when the AI package does not bind it. `IntegrationHealthChecker::check()` takes an optional sixth `$progressStoreReady` callable.
+- **`capabilities:integration-health` warns on silent audit loss (D-010).** New
+  `audit_writer` check: when `audit.enabled` and any invoke surface is on but the live
+  registry has no `AuditWriter`, it reports `warn` (every audit record is otherwise a
+  silent no-op). It probes `CapabilityRegistry::audit()`, not a container binding — the
+  service provider does not inject a bound `AuditWriter`; wire one with
+  `CapabilityRegistry::withAuditWriter(...)`. Warn only; exit code unchanged.
+  `IntegrationHealthChecker::check()` takes an optional seventh `$auditWriterWired` probe.
+
+#### Audit entry `tool_profile` (D-008 / D-010)
+
+Every audit entry now carries `tool_profile`: the tool profile the surface gated the invoke under.
+`runCapabilityInProfile()` stamps the **enforced** profile (overwriting any caller-supplied
+`tool_profile` option), so agent and MCP adapter invokes record it; sibling surfaces that gate
+tools themselves (messaging) pass it as an invoke option. `null` for invokes outside a profile
+(HTTP, CLI, job).
 
 ### Changed (BREAKING)
 
@@ -57,17 +73,6 @@ profile — or no profile — returns `forbidden` with `normalized_code`
 **Upgrade:** add an `integration_profiles` entry for every client in
 `integration_actors`, or its tool calls will be refused.
 
-### Added
-
-- **`capabilities:integration-health` pings the AI progress store:** in AI-chat mode a new `ai_progress_ready` row resolves `Rawphp\CapabilitiesAi\Contracts\ProgressStoreReadiness` by class-string and fails when the store is unreachable (or cannot be resolved, e.g. `progress.driver=redis` with no Redis client); skips when the AI package does not bind it. `IntegrationHealthChecker::check()` takes an optional sixth `$progressStoreReady` callable.
-- **`capabilities:integration-health` warns on silent audit loss (D-010).** New
-  `audit_writer` check: when `audit.enabled` and any invoke surface is on but the live
-  registry has no `AuditWriter`, it reports `warn` (every audit record is otherwise a
-  silent no-op). It probes `CapabilityRegistry::audit()`, not a container binding — the
-  service provider does not inject a bound `AuditWriter`; wire one with
-  `CapabilityRegistry::withAuditWriter(...)`. Warn only; exit code unchanged.
-  `IntegrationHealthChecker::check()` takes an optional seventh `$auditWriterWired` probe.
-
 ### Changed
 
 - **Discovery fails closed on half-written capability classes (D-017).** A class carrying
@@ -83,6 +88,10 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   `AuditOutbox::requeueFailed($maxAttempts)` before draining, so a `failed` row goes back
   to `pending` until it has used `maxAttempts` (new constructor argument, default `3`).
   Before, one failed write left the row `failed` forever. Rows at the cap stay `failed`.
+
+### Fixed
+
+- **Agent turn budget (D-013) is no longer agent-caller only:** the pipeline enforces `rate_limits.agent_turn.max_tool_calls` whenever an in-process adapter supplies `agent_turn_tool_calls`, whatever the caller. AI turns (`caller=job` from `rawphp/laravel-capabilities-ai`) are now capped. The option is never read from HTTP or tool input, and it can only deny.
 
 ## [0.5.3] - 2026-09-29
 
@@ -143,11 +152,10 @@ Consumers: `composer update rawphp/laravel-capabilities && php artisan migrate`.
 - `ErrorCodeMap` admin-domain error codes: `self_delete` (403), `not_supported` (501),
   `confirmation_failed` (422), `last_super_admin` (409) for platform-admin AdminError mapping.
 
-## [Unreleased]
+## [0.5.0] - 2026-08-07
 
-### Fixed
-
-- **Agent turn budget (D-013) is no longer agent-caller only:** the pipeline enforces `rate_limits.agent_turn.max_tool_calls` whenever an in-process adapter supplies `agent_turn_tool_calls`, whatever the caller. AI turns (`caller=job` from `rawphp/laravel-capabilities-ai`) are now capped. The option is never read from HTTP or tool input, and it can only deny.
+Cumulative: entries shipped in tags `v0.1.0` through `v0.5.0`. Those tags did not get
+per-tag sections; this file's git history shows the tag each entry first shipped in.
 
 ### Breaking (0.x behavior change)
 
@@ -199,13 +207,21 @@ Documentation honesty (monorepo `docs/spec.md` + package user-guide alignment): 
 
 ### Added
 
-#### Audit entry `tool_profile` (D-008 / D-010)
-
-Every audit entry now carries `tool_profile`: the tool profile the surface gated the invoke under.
-`runCapabilityInProfile()` stamps the **enforced** profile (overwriting any caller-supplied
-`tool_profile` option), so agent and MCP adapter invokes record it; sibling surfaces that gate
-tools themselves (messaging) pass it as an invoke option. `null` for invokes outside a profile
-(HTTP, CLI, job).
+- Core product capability bus for Laravel apps: single registry choke point and invoke pipeline
+  (validate → hydrate → actor → scope → idempotency → authorize → approval → rate limit → run → output → audit).
+- Package-native DTOs / JSON Schema surface for catalog and wire edges.
+- Surface adapters as thin entry points: agent (`laravel/ai`), MCP (`laravel/mcp`), HTTP capability API,
+  product CLI (`caller: cli` via same HTTP API), jobs, optional Artisan ops — domain stays in app `run()`.
+- Governance built into every invoke: authorization, optional approval state machine, audit modes,
+  actor derivation, tenant/scope re-resolution, mutating idempotency keys.
+- Conversation **contracts** only in core (messaging Bot API lives in the sibling messaging package).
+- Unit-test contract scaffold aligned with monorepo `docs/spec.md` / requirements inventory (≥95% coverage target).
+- **Laravel 13 / illuminate 13 support** — all `illuminate/*` requirements allow `^11.0|^12.0|^13.0`
+  (PHP remains `^8.2`; Laravel 13 apps still need PHP `^8.3` per framework).
+- **Additive helpers (non-breaking)** on invoke results — existing callers are unaffected:
+  - `CapabilityResult::isRetryable()` — non-ok retry policy from wire `retryable` or `ErrorCodeMap` default; success is never retryable
+  - `CapabilityResult::isHardRefuse()` — terminal auth/profile/runnability refuse via `ErrorCodeMap`
+  - `ErrorCodeMap::isHardRefuse(string $code)` — hard refuse code set (`forbidden`, `capability_not_in_profile`, `not_runnable`, `unauthenticated`)
 
 #### Host integration diagnostics + MCP fail policy (UR-062 / D-024)
 
@@ -243,24 +259,6 @@ Phase-2/3 peeled focused collaborators out of larger types (additive public clas
 
 **Supported host surface is unchanged:** keep using `CapabilityRegistry`, `ApprovalManager`, and the `Capability` facade. New classes are additive for package internals / advanced wiring; they do not require host migration if you already use the registry/manager/facade path.
 
-### Added
-
-- Core product capability bus for Laravel apps: single registry choke point and invoke pipeline
-  (validate → hydrate → actor → scope → idempotency → authorize → approval → rate limit → run → output → audit).
-- Package-native DTOs / JSON Schema surface for catalog and wire edges.
-- Surface adapters as thin entry points: agent (`laravel/ai`), MCP (`laravel/mcp`), HTTP capability API,
-  product CLI (`caller: cli` via same HTTP API), jobs, optional Artisan ops — domain stays in app `run()`.
-- Governance built into every invoke: authorization, optional approval state machine, audit modes,
-  actor derivation, tenant/scope re-resolution, mutating idempotency keys.
-- Conversation **contracts** only in core (messaging Bot API lives in the sibling messaging package).
-- Unit-test contract scaffold aligned with monorepo `docs/spec.md` / requirements inventory (≥95% coverage target).
-- **Laravel 13 / illuminate 13 support** — all `illuminate/*` requirements allow `^11.0|^12.0|^13.0`
-  (PHP remains `^8.2`; Laravel 13 apps still need PHP `^8.3` per framework).
-- **Additive helpers (non-breaking)** on invoke results — existing callers are unaffected:
-  - `CapabilityResult::isRetryable()` — non-ok retry policy from wire `retryable` or `ErrorCodeMap` default; success is never retryable
-  - `CapabilityResult::isHardRefuse()` — terminal auth/profile/runnability refuse via `ErrorCodeMap`
-  - `ErrorCodeMap::isHardRefuse(string $code)` — hard refuse code set (`forbidden`, `capability_not_in_profile`, `not_runnable`, `unauthenticated`)
-
 ### Notes
 
 - **Not published on Packagist.** Install from package-repo VCS or monorepo path.
@@ -268,21 +266,12 @@ Phase-2/3 peeled focused collaborators out of larger types (additive public clas
   are not claimed until a deliberate release process lands.
 - This package tree is mirrored from the monorepo to `github.com/rawphp/laravel-capabilities` on push.
 
-<!--
-  First tagged 0.x.y scaffold (Keep a Changelog):
-  When cutting monorepo git tag v0.1.0 (mirrored to this package remote), promote Unreleased bullets into:
-
-  ## [0.1.0] - YYYY-MM-DD
-
-  Then leave [Unreleased] empty for the next cycle. Section title has no leading "v";
-  git tag keeps the "v" prefix.
--->
-
 ## [0.x] — pre-stable
 
 Pre-1.0 development line. APIs may change without a major version bump while on 0.x.
 Consumers should pin a VCS ref or path checkout and read this changelog before upgrading.
 This banner is **not** a substitute for a concrete dated `## [0.x.y]` section at first tag.
+Tags without their own section recorded no entries for this package.
 
 [Unreleased]: https://github.com/rawphp/laravel-capabilities
 [0.x]: https://github.com/rawphp/laravel-capabilities

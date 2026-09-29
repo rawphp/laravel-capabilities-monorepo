@@ -20,7 +20,8 @@
 #
 # Flow:
 #   preflight (main/master + clean + fetch tags/branch + HEAD/origin rules) →
-#   version resolve → plan (commits-since / empty-range refuse) →
+#   version resolve → CHANGELOG readiness (every package has ## [X.Y.Z]) →
+#   plan (commits-since / empty-range refuse) →
 #   (confirm if interactive) → optional --squash (soft-reset + force-with-lease) →
 #   gates → porcelain re-check → tag → push tag (and branch if not already equal)
 # Dry-run stops after gates (no squash rewrite, no tag/push). Confirm is never
@@ -283,6 +284,24 @@ version_strictly_greater() {
   [[ "$higher" == "$candidate" ]]
 }
 
+# Print one line per package CHANGELOG that is not ready for tag $2 (X.Y.Z, no "v"):
+# exactly one "## [Unreleased]" and a "## [X.Y.Z]" section (use "No changes." when
+# a package has none). Empty output means ready. Root is $1.
+changelog_problems() {
+  local root="$1" version="$2" file rel count
+  for file in "$root"/packages/*/CHANGELOG.md; do
+    [[ -f "$file" ]] || continue
+    rel="${file#"$root"/}"
+    count="$(grep -c '^## \[Unreleased\]' "$file" || true)"
+    if [[ "$count" -ne 1 ]]; then
+      printf '%s: %s [Unreleased] sections (expected 1)\n' "$rel" "$count"
+    fi
+    if ! awk -v h="## [${version}]" 'index($0, h) == 1 { found = 1 } END { exit !found }' "$file"; then
+      printf '%s: no ## [%s] section\n' "$rel" "$version"
+    fi
+  done
+}
+
 CURRENT_TAG="$(latest_tag)"
 if [[ -z "$CURRENT_TAG" ]]; then
   log "No existing v* tags — first release"
@@ -304,6 +323,17 @@ if git rev-parse -q --verify "refs/tags/$NEW_TAG" >/dev/null; then
 fi
 if git ls-remote --tags --refs origin "refs/tags/$NEW_TAG" 2>/dev/null | grep -q .; then
   fail "tag already exists on origin: $NEW_TAG"
+fi
+
+# Every package CHANGELOG must carry a dated section for this tag (docs/versioning.md
+# "CHANGELOG ↔ tag handoff"). Promote [Unreleased] and push before releasing.
+CHANGELOG_PROBLEMS="$(changelog_problems "$ROOT" "${NEW_TAG#v}")"
+if [[ -n "$CHANGELOG_PROBLEMS" ]]; then
+  printf '%s\n' "$CHANGELOG_PROBLEMS" | sed 's/^/  /' >&2
+  if [[ "$DRY_RUN" -eq 0 ]]; then
+    fail "package CHANGELOGs not ready for $NEW_TAG — add a ## [${NEW_TAG#v}] - YYYY-MM-DD section to each (promote [Unreleased], or \"No changes.\")"
+  fi
+  log "warning: package CHANGELOGs not ready for $NEW_TAG (a real release would refuse)"
 fi
 
 # --- plan (before confirm / gates) --------------------------------------------
