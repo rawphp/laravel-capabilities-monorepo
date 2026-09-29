@@ -631,3 +631,21 @@ it('register without registry skips allowlist validation (BC) [ORI-842]', functi
 
     expect($servers)->toHaveCount(1);
 });
+
+it('fail: later profile allowlist miss throws before any earlier profile mounts into the adapter [D-024]', function () {
+    $h = AdapterHelpers::harness();
+
+    expect(fn () => McpServerRegistrar::register(
+        mcpRegistrarConfig([
+            'profiles' => [
+                'billing' => ['create-invoice', 'void-invoice', 'list-invoices'],
+                'lab' => ['missing.cap'],
+            ],
+        ]),
+        $h['mcp'],
+        BootHelpers::probe(mcp: true),
+        $h['registry'],
+    ))->toThrow(InvalidArgumentException::class, 'unknown capability');
+
+    expect($h['mcp']->isRegistered())->toBeFalse();
+});

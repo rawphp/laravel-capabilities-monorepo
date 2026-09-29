@@ -435,7 +435,8 @@ return [
          * profile keys (or servers map) and may call McpToolAdapter::register per profile.
          * Production boot does not mount live laravel/mcp HTTP routes under path_prefix —
          * hosts still wire peer MCP servers (e.g. Mcp::web / peer docs). Multi-profile
-         * sequential register overwrites adapter tools (last profile wins).
+         * sequential register overwrites adapter tools (last profile wins); handle() without
+         * options['profile'] then refuses (profile_required) instead of guessing.
          * The product CLI does not speak MCP; agents connect to host-mounted MCP endpoints.
          */
         'mcp' => [
@@ -1059,7 +1060,7 @@ The adapter implements the AI SDK tool contract; `handle` validates and invokes 
 
 ### 2. MCP (`laravel/mcp`) — product MCP is server-side
 
-**Product MCP** is the app’s `laravel/mcp` surface, not the downloadable CLI. When `surfaces.mcp.enabled` is true and the peer is compatible, **`McpServerRegistrar`** (config `auto_register`, default true) builds a **server plan** from named profiles under `surfaces.mcp.profiles` (or an explicit `servers` map) and may call `McpToolAdapter::register` for each planned profile (loads profile tools on the adapter; returns planned name / profile / path / tools). Production `bootMcpServers()` does **not** push those definitions into `laravel/mcp` — there is no production peer sink analogous to HTTP `HttpRouteRegistrar::registerInto`. Hosts still **wire** peer MCP servers themselves (e.g. `Mcp::web` / peer docs) using the planned tools/profiles or manual `Capability::mcpTools`. Planned `path_prefix` (default `/mcp`) is **plan metadata only** (`/mcp/{profile}`), not a live package auto-mount. **Multi-profile residual:** sequential `adapter->register` overwrites the adapter’s active profile/tools (**last profile wins**); for multiple live MCP servers, wire each peer server with its own tool set rather than relying on a single shared adapter state after multi-profile boot.
+**Product MCP** is the app’s `laravel/mcp` surface, not the downloadable CLI. When `surfaces.mcp.enabled` is true and the peer is compatible, **`McpServerRegistrar`** (config `auto_register`, default true) builds a **server plan** from named profiles under `surfaces.mcp.profiles` (or an explicit `servers` map) and may call `McpToolAdapter::register` for each planned profile (loads profile tools on the adapter; returns planned name / profile / path / tools). Production `bootMcpServers()` does **not** push those definitions into `laravel/mcp` — there is no production peer sink analogous to HTTP `HttpRouteRegistrar::registerInto`. Hosts still **wire** peer MCP servers themselves (e.g. `Mcp::web` / peer docs) using the planned tools/profiles or manual `Capability::mcpTools`. Planned `path_prefix` (default `/mcp`) is **plan metadata only** (`/mcp/{profile}`), not a live package auto-mount. **Multi-profile residual:** sequential `adapter->register` overwrites the adapter’s active profile/tools (**last profile wins**). Once more than one distinct profile is registered, `handle()` without `options['profile']` fails closed (`not_runnable`, `normalized_code: profile_required`) instead of silently running under the last profile. For multiple live MCP servers, wire each peer server with its own tool set and pass its profile on every call.
 
 Same rule as agents: **do not mount the universe** on one MCP server by default. **Always** pass a named profile — MCP servers are **not** “all capabilities the authenticated user could do in the UI.”
 
@@ -3148,7 +3149,7 @@ CLI `--json` prints the same envelope; exit code maps from `error.code`.
 
 | Signal | What |
 |---|---|
-| **Metrics** | `capabilities_invoke_total{capability,caller,status}`, latency histogram, `approval_required_total`, `approvals_stuck_approved_total` (D-006 / P2-004), `approvals_resume_total{result}`, `authz_deny_total`, `rate_limited_total`, `idempotent_replay_total` |
+| **Metrics** | `capabilities_invoke_total{capability,caller,status}`, latency histogram, `approval_required_total`, `approvals_stuck_approved_total` (D-006 / P2-004), `approvals_resume_total{result}`, `authz_deny_total`, `http_unauthenticated_total{route,auth}` (HTTP 401 before the bus; no caller label because none is derived), `rate_limited_total`, `idempotent_replay_total` |
 | **OpenTelemetry** | Span `capabilities.invoke` attributes: `capability`, `caller`, `surface`, `tenant_id`, `actor_type`, `approval_id`, `idempotency_key` (hashed if needed) |
 | **Failed jobs** | `RunCapability` + messaging `ProcessTelegramUpdate` use Laravel failed-job hooks; tag with capability/channel |
 | **Driver** | Laravel Pulse / OTel exporter optional; package emits via contracts `Metrics` / `Tracer` with log fallback |
