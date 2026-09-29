@@ -618,18 +618,12 @@ class CapabilitiesServiceProvider extends ServiceProvider
             return [];
         }
 
-        try {
-            if ($sink !== null) {
-                return McpServerRegistrar::registerInto($mcpConfig, $adapter, $sink, $probe, $registry);
-            }
-
-            $servers = McpServerRegistrar::register($mcpConfig, $adapter, $probe, $registry);
-
-            return array_column($servers, 'name');
-        } catch (PeerIncompatibleException $e) {
-            // Fail-closed only when plan would register servers (empty plan never reaches peer eval).
-            throw $e;
+        // PeerIncompatibleException propagates (fail closed) only when the plan would register servers.
+        if ($sink !== null) {
+            return McpServerRegistrar::registerInto($mcpConfig, $adapter, $sink, $probe, $registry);
         }
+
+        return array_column(McpServerRegistrar::register($mcpConfig, $adapter, $probe, $registry), 'name');
     }
 
     /**
@@ -730,33 +724,11 @@ class CapabilitiesServiceProvider extends ServiceProvider
             return HttpRouteRegistrar::registeredKeys($config);
         }
 
-        if (! is_object($router) || ! method_exists($router, 'addRoute') && ! method_exists($router, 'match')) {
+        if (! is_object($router) || ! method_exists($router, 'addRoute')) {
             return HttpRouteRegistrar::registeredKeys($config);
         }
 
-        return HttpRouteRegistrar::registerInto($config, function (array $def) use ($router): void {
-            $method = $def['method'];
-            $uri = $def['uri'];
-            $action = [
-                'uses' => $def['uses'][0].'@'.$def['uses'][1],
-                'as' => $def['name'],
-                'middleware' => $def['middleware'],
-            ];
-
-            if (method_exists($router, 'addRoute')) {
-                $route = $router->addRoute($method, $uri, $action);
-                if (is_object($route) && method_exists($route, 'middleware')) {
-                    $route->middleware($def['middleware']);
-                }
-
-                return;
-            }
-
-            // Fallback: Router::match([$methods], $uri, $action)
-            if (method_exists($router, 'match')) {
-                $router->match([$method], $uri, $action);
-            }
-        });
+        return HttpRouteRegistrar::registerInto($config, $router);
     }
 
     /**

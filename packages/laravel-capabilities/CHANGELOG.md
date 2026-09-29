@@ -275,6 +275,13 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   exited 1. It now normalises the flags through `ArtisanCapabilityInvoker::parseFlags()`
   (numeric `--acting-as` becomes an int; `--acting-as` with `--system` is refused) and calls
   `run()`.
+- **HTTP routes register once, with their middleware once (REQ-021).** The provider now hands
+  the router straight to `HttpRouteRegistrar::registerInto()`, which calls `addRoute()` with a
+  `Controller@method` action. Before, the provider set `middleware` in the action and then
+  appended it again with `->middleware()`, so every route listed its middleware twice, and a
+  router passed directly to `registerInto()` got an array `uses` that Laravel read as a
+  closure. The `match()` fallback for routers without `addRoute()` is gone; every Illuminate
+  router has `addRoute()`.
 - **Agent turn budget (D-013) is no longer agent-caller only:** the pipeline enforces `rate_limits.agent_turn.max_tool_calls` whenever an in-process adapter supplies `agent_turn_tool_calls`, whatever the caller. AI turns (`caller=job` from `rawphp/laravel-capabilities-ai`) are now capped. The option is never read from HTTP or tool input, and it can only deny.
 
 ### Fixed (HTTP surface)

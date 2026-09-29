@@ -12,11 +12,14 @@ use Rawphp\Capabilities\Adapters\Http\CapabilityController;
 use Rawphp\Capabilities\Adapters\Http\IlluminateApprovalController;
 use Rawphp\Capabilities\Adapters\Http\IlluminateAuthController;
 use Rawphp\Capabilities\Adapters\Http\IlluminateCapabilityController;
+use Rawphp\Capabilities\Contracts\AuthTokenIssuer;
 use Rawphp\Capabilities\Http\HttpAuthGate;
 use Rawphp\Capabilities\Http\HttpRequestContext;
 use Rawphp\Capabilities\Http\HttpResponse;
 use Rawphp\Capabilities\Http\HttpRouteRegistrar;
 use Rawphp\Capabilities\Http\IlluminateHttpBridge;
+use Rawphp\Capabilities\Tests\Fixtures\BootHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\FakeProviderApp;
 use Rawphp\Capabilities\Tests\Fixtures\HttpHelpers;
 
 it('maps array fixture stand-in to HttpRequestContext with server-derived auth', function () {
@@ -380,4 +383,70 @@ it('forbids a CLI token from invoking an http-only capability', function () {
     expect($res->body['ok'])->toBeFalse()
         ->and($res->body['error']['code'])->toBe('forbidden')
         ->and($res->body['meta']['caller'])->toBe('cli');
+});
+
+function bridgeProviderApp(array $instances = []): FakeProviderApp
+{
+    return FakeProviderApp::registered(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+        'audit' => ['driver' => 'memory'],
+    ]), $instances);
+}
+
+/**
+ * @return array{status: int, code: ?string}
+ */
+function bridgeOutcome(JsonResponse $response): array
+{
+    return [
+        'status' => $response->getStatusCode(),
+        'code' => json_decode((string) $response->getContent(), true)['error']['code'] ?? null,
+    ];
+}
+
+it('provider-built Illuminate wrappers answer every route action closed for a guest request', function () {
+    $app = bridgeProviderApp();
+    $capabilities = $app->make(IlluminateCapabilityController::class);
+    $auth = $app->make(IlluminateAuthController::class);
+    $approvals = $app->make(IlluminateApprovalController::class);
+    $guest = Request::create('/capabilities', 'POST');
+    $unauthenticated = ['status' => 401, 'code' => 'unauthenticated'];
+    $noIssuer = ['status' => 501, 'code' => 'not_configured'];
+
+    expect(bridgeOutcome($capabilities->list($guest)))->toBe($unauthenticated)
+        ->and(bridgeOutcome($capabilities->describe($guest, 'create-invoice')))->toBe($unauthenticated)
+        ->and(bridgeOutcome($capabilities->invoke($guest, 'create-invoice')))->toBe($unauthenticated)
+        ->and(bridgeOutcome($capabilities->health($guest)))->toBe($unauthenticated)
+        ->and(bridgeOutcome($approvals->accept($guest, 'apr-1')))->toBe($unauthenticated)
+        ->and(bridgeOutcome($approvals->reject($guest, 'apr-1')))->toBe($unauthenticated)
+        ->and(bridgeOutcome($auth->token($guest)))->toBe($noIssuer)
+        ->and(bridgeOutcome($auth->device($guest)))->toBe($noIssuer)
+        ->and(bridgeOutcome($auth->oauthCallback($guest)))->toBe($noIssuer);
+});
+
+it('provider-built auth wrapper issues tokens and device codes through the host AuthTokenIssuer', function () {
+    $app = bridgeProviderApp([AuthTokenIssuer::class => HttpHelpers::fakeAuthTokenIssuer()]);
+    $auth = $app->make(IlluminateAuthController::class);
+    $json = static fn (string $path, array $body): Request => Request::create(
+        $path, 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], json_encode($body, JSON_THROW_ON_ERROR),
+    );
+
+    $token = $auth->token($json('/capabilities/auth/token', ['grant_type' => 'client_credentials']));
+    $device = $auth->device($json('/capabilities/auth/device', []));
+
+    expect($token->getStatusCode())->toBe(200)
+        ->and(json_decode((string) $token->getContent(), true)['data']['access_token'] ?? null)->toBe('host-issued-token')
+        ->and($device->getStatusCode())->toBe(200)
+        ->and(json_decode((string) $device->getContent(), true)['data']['user_code'] ?? null)->toBe('HOST-USER');
+});
+
+it('provider-built auth wrapper fails closed when the bound AuthTokenIssuer is the wrong type or throws', function () {
+    $wrongType = bridgeProviderApp([AuthTokenIssuer::class => new stdClass]);
+    $throws = bridgeProviderApp();
+    $throws->singleton(AuthTokenIssuer::class, static fn () => throw new RuntimeException('issuer misconfigured'));
+    $guest = Request::create('/capabilities/auth/token', 'POST');
+
+    expect(bridgeOutcome($wrongType->make(IlluminateAuthController::class)->token($guest)))->toBe(['status' => 501, 'code' => 'not_configured'])
+        ->and(bridgeOutcome($throws->make(IlluminateAuthController::class)->token($guest)))->toBe(['status' => 501, 'code' => 'not_configured']);
 });

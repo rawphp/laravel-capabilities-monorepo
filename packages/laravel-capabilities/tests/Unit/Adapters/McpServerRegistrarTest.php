@@ -9,11 +9,14 @@ use Rawphp\Capabilities\Adapters\Mcp\McpCredential;
 use Rawphp\Capabilities\Adapters\Mcp\McpServerRegistrar;
 use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapter;
 use Rawphp\Capabilities\Adapters\PeerIncompatibleException;
+use Rawphp\Capabilities\Adapters\PeerVersionProbe;
 use Rawphp\Capabilities\Adapters\ToolSelection;
 use Rawphp\Capabilities\CapabilitiesServiceProvider;
+use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Tests\Fixtures\AdapterHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\BootHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\FakeProviderApp;
 
 /**
  * @return array<string, mixed>
@@ -648,4 +651,73 @@ it('fail: later profile allowlist miss throws before any earlier profile mounts 
     ))->toThrow(InvalidArgumentException::class, 'unknown capability');
 
     expect($h['mcp']->isRegistered())->toBeFalse();
+});
+
+// --- Provider boot entry: resolves adapter, probe, and registry from the container ---
+
+/**
+ * @param  array<string, mixed>  $instances
+ */
+function mcpProviderApp(array $instances = [], array $mcp = []): FakeProviderApp
+{
+    $app = FakeProviderApp::registered(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+        'audit' => ['driver' => 'memory'],
+        'surfaces' => ['mcp' => $mcp],
+    ]));
+    // After register(): the provider's own singletons would replace earlier instances.
+    foreach ($instances as $abstract => $instance) {
+        $app->instance($abstract, $instance);
+    }
+
+    return $app;
+}
+
+it('provider bootMcpServers registers each configured profile on the container adapter', function () {
+    $h = AdapterHelpers::harness();
+    $app = mcpProviderApp([
+        McpToolAdapter::class => $h['mcp'],
+        PeerVersionProbe::class => BootHelpers::probe(mcp: true),
+        CapabilityRegistry::class => $h['registry'],
+    ], mcpRegistrarConfig());
+
+    expect($app->provider->bootMcpServers())->toBe(['billing', 'support'])
+        ->and($h['mcp']->isRegistered())->toBeTrue();
+});
+
+it('provider bootMcpServers validates the allowlist against the container registry', function () {
+    $h = AdapterHelpers::harness();
+    $app = mcpProviderApp([
+        McpToolAdapter::class => $h['mcp'],
+        PeerVersionProbe::class => BootHelpers::probe(mcp: true),
+        CapabilityRegistry::class => $h['registry'],
+    ]);
+
+    $app->provider->bootMcpServers(mcpRegistrarConfig(['profiles' => ['lab' => ['missing.cap']]]));
+})->throws(InvalidArgumentException::class, 'unknown capability');
+
+it('provider bootMcpServers fails closed when profiles are planned but the peer is missing', function () {
+    $h = AdapterHelpers::harness();
+    $app = mcpProviderApp([
+        McpToolAdapter::class => $h['mcp'],
+        PeerVersionProbe::class => BootHelpers::probe(mcp: false),
+        CapabilityRegistry::class => $h['registry'],
+    ]);
+
+    expect(fn () => $app->provider->bootMcpServers(mcpRegistrarConfig()))->toThrow(PeerIncompatibleException::class)
+        ->and($h['mcp']->isRegistered())->toBeFalse();
+});
+
+it('provider bootMcpServers registers nothing when disabled, unconfigured, or the adapter cannot be built', function () {
+    $h = AdapterHelpers::harness();
+    $unbuildable = mcpProviderApp();
+    $unbuildable->singleton(McpToolAdapter::class, static fn () => throw new RuntimeException('peer missing'));
+    $notAnArray = mcpProviderApp([McpToolAdapter::class => $h['mcp']]);
+    $notAnArray->config->set('capabilities', ['surfaces' => ['mcp' => 'on']]);
+
+    expect(mcpProviderApp([McpToolAdapter::class => $h['mcp']])->provider->bootMcpServers(mcpRegistrarConfig(['enabled' => false])))->toBe([])
+        ->and($unbuildable->provider->bootMcpServers(mcpRegistrarConfig()))->toBe([])
+        ->and($notAnArray->provider->bootMcpServers())->toBe([])
+        ->and($h['mcp']->isRegistered())->toBeFalse();
 });

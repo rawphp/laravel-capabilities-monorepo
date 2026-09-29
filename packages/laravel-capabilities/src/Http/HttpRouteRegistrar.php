@@ -10,7 +10,7 @@ use Rawphp\Capabilities\Adapters\Http\IlluminateCapabilityController;
 /**
  * Maps pure {@see RouteTable} definitions onto a Laravel-like router (REQ-021).
  *
- * Unit-testable: accepts any object with a {@see register()} method or array sink.
+ * Unit-testable: accepts a router with addRoute() or any callable sink.
  * Service provider calls {@see registerInto()} when surfaces.http.enabled.
  */
 final class HttpRouteRegistrar
@@ -63,10 +63,8 @@ final class HttpRouteRegistrar
     }
 
     /**
-     * Register routes into a sink. Sink may be:
-     * - callable(array $route): void
-     * - object with method addRoute(string $method, string $uri, array $action): void
-     * - list accumulator (array by reference via ArrayRouteSink)
+     * Register routes into a sink: a router exposing addRoute() (Illuminate Router),
+     * or any callable receiving each definition.
      *
      * @param  array{enabled?: bool, prefix?: string, middleware?: list<string>}  $httpConfig
      * @param  callable(array<string, mixed>): void|object  $sink
@@ -74,19 +72,15 @@ final class HttpRouteRegistrar
      */
     public static function registerInto(array $httpConfig, callable|object $sink): array
     {
-        $defs = self::definitions($httpConfig);
         $keys = [];
-        foreach ($defs as $def) {
-            if (is_callable($sink) && ! is_object($sink)) {
-                $sink($def);
-            } elseif (is_object($sink) && method_exists($sink, 'addRoute')) {
+        foreach (self::definitions($httpConfig) as $def) {
+            if (is_object($sink) && method_exists($sink, 'addRoute')) {
                 $sink->addRoute($def['method'], $def['uri'], [
-                    'uses' => $def['uses'],
+                    'uses' => $def['uses'][0].'@'.$def['uses'][1],
                     'as' => $def['name'],
                     'middleware' => $def['middleware'],
-                    'key' => $def['key'],
                 ]);
-            } elseif (is_object($sink) && method_exists($sink, '__invoke')) {
+            } elseif (is_callable($sink)) {
                 $sink($def);
             } else {
                 throw new \InvalidArgumentException('Route sink must be callable or expose addRoute().');
