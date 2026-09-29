@@ -199,3 +199,24 @@ it('happy: the provider wires the host cache as the pending-reply store [D-005]'
         ->and($turn->turns)->toBe(1)
         ->and($bot->sent[0]['text'])->toBe('hi');
 });
+
+it('fail: a split reply that fails transiently mid-way re-sends only the parts not yet delivered [M-204]', function () {
+    $bot = new FlakyBot([null, 429]);
+    $cache = new Repository(new ArrayStore);
+    $identity = H::identity();
+    $identity->link('42', 'u1');
+    $long = str_repeat('a', 4000)."\n\n".str_repeat('b', 4000)."\n\n".str_repeat('c', 4000);
+    $processor = H::processor([
+        'identity' => $identity,
+        'adapter' => new TelegramAdapter($bot, static fn (array $m): array => ['text' => $long]),
+        'pending_replies' => $cache,
+    ]);
+    $update = H::telegramUpdate(userId: 42, updateId: 83);
+
+    expect(fn () => $processor->handle($update))->toThrow(RetryableUpdateFailure::class);
+    $retry = $processor->handle($update);
+
+    expect($retry['ok'])->toBeTrue()
+        // a delivered, b failed with 429; the retry sends b and c, never a again.
+        ->and(array_map(fn (string $t) => $t[0].strlen($t), array_column($bot->sent, 'text')))->toBe(['a4000', 'b4000', 'c4000']);
+});

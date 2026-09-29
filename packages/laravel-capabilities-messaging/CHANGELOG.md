@@ -133,6 +133,15 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
+- **Long and empty agent replies reach the chat** — Telegram rejects text over 4096 characters
+  or empty text with a 400, which ended the update with no reply after the agent turn and its
+  tool calls had already run. `TelegramAdapter::reply()` now sends long text as consecutive
+  messages (split at paragraph, line, then word breaks; new `Support\TelegramText`), and sends
+  nothing for blank text. `ProcessTelegramUpdate` replaces an empty answer with `Done.` (or
+  `That did not go through (<code>).` after a failed tool call), and a pending reply records how
+  many parts were delivered so a retry never repeats earlier parts. The approval message is cut
+  with the same UTF-16-aware limit.
+
 - **The Telegram approval message shows what is being approved** — it used to read
   `Approval required: <capability>` and nothing else (no code sets `summary`), so an approver
   had only the agent's chat reply, which is LLM text, to go on. The message now lists the row's
