@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -142,19 +143,8 @@ func invokeCapability(
 		return api.ExitAuth
 	}
 	svc := &catalog.Service{Client: c, Cache: catalog.PrincipalCache(st.SchemaCacheDir(profile), c), NoCache: noCache}
-
-	// Load schema for flag merge (cache / describe).
-	var schemaJSON []byte
-	entry, _, derr := svc.Describe(context.Background(), name)
-	if derr == nil && entry != nil {
-		schemaJSON = entry.InputSchema
-	}
-
-	fs, ferr := flagschema.FromJSONSchema(schemaJSON)
-	if ferr != nil {
-		fmt.Fprintln(env.Stderr, ferr.Error())
-		return api.ExitValidation
-	}
+	// JSON field kept true for compatibility; Run always writes envelope to stdout.
+	_ = jsonOut
 
 	// Base JSON from --input / --input-file.
 	var baseJSON []byte
@@ -169,47 +159,49 @@ func invokeCapability(
 		baseJSON = []byte(input)
 	}
 
-	flagMap, rest, cerr := flagschema.CollectFlags(flagArgs)
-	if cerr != nil {
-		fmt.Fprintln(env.Stderr, cerr.Error())
-		return api.ExitValidation
-	}
-	if len(rest) > 0 {
-		fmt.Fprintf(env.Stderr, "unexpected arguments: %s (see --help)\n", strings.Join(rest, " "))
-		return api.ExitValidation
-	}
-
-	merged, merr := fs.MergeJSON(baseJSON, flagMap)
-	if merr != nil {
-		fmt.Fprintln(env.Stderr, merr.Error())
-		// Point agents at help for required / usage errors.
-		if strings.Contains(merr.Error(), "required") || strings.Contains(merr.Error(), "unknown flag") {
-			fmt.Fprintln(env.Stderr, "hint: capabilities run", name, "--help")
+	attempt := func(entry *catalog.CacheEntry) *run.Result {
+		var schemaJSON []byte
+		if entry != nil {
+			schemaJSON = entry.InputSchema
 		}
-		return api.ExitValidation
-	}
-	// No fresh input on --retry-last: let Run replay the stored body.
-	if retryLast && len(baseJSON) == 0 && len(flagMap) == 0 {
-		merged = nil
+		merged, flagCount, msg := mergeInput(name, schemaJSON, baseJSON, flagArgs)
+		if msg != "" {
+			return &run.Result{ExitCode: api.ExitValidation, Stderr: msg}
+		}
+		// No fresh input on --retry-last: let Run replay the stored body.
+		if retryLast && len(baseJSON) == 0 && flagCount == 0 {
+			merged = nil
+		}
+		return run.Run(context.Background(), run.Options{
+			Profile:        profile,
+			BaseURL:        base,
+			Capability:     name,
+			InputJSON:      merged,
+			IdempotencyKey: idem,
+			RetryLast:      retryLast,
+			NoCache:        noCache,
+			JSON:           true, // always machine envelope
+			Human:          human,
+			Store:          st,
+			Client:         c,
+			Catalog:        svc,
+			Entry:          entry,
+		})
 	}
 
-	opts := run.Options{
-		Profile:        profile,
-		BaseURL:        base,
-		Capability:     name,
-		InputJSON:      merged,
-		IdempotencyKey: idem,
-		RetryLast:      retryLast,
-		NoCache:        noCache,
-		JSON:           true, // always machine envelope
-		Human:          human,
-		Store:          st,
-		Client:         c,
-		Catalog:        svc,
+	entry, dres, derr := svc.Describe(context.Background(), name)
+	if derr != nil {
+		entry = nil
 	}
-	// JSON field kept true for compatibility; Run always writes envelope to stdout.
-	_ = jsonOut
-	result := run.Run(context.Background(), opts)
+	result := attempt(entry)
+	// A cached schema rejected the input before the network. The server's
+	// schema may have moved on, so check once against the live one.
+	if result.ExitCode == api.ExitValidation && !result.HTTPCalled && entry != nil && dres == nil {
+		if fresh, _, ferr := svc.ForceFetchDescribe(context.Background(), name); ferr == nil && !bytes.Equal(fresh.InputSchema, entry.InputSchema) {
+			result = attempt(fresh)
+		}
+	}
+
 	if result.Stderr != "" {
 		fmt.Fprint(env.Stderr, result.Stderr)
 		if !strings.HasSuffix(result.Stderr, "\n") {
@@ -225,4 +217,30 @@ func invokeCapability(
 		fmt.Fprintln(env.Stdout, string(result.Envelope))
 	}
 	return result.ExitCode
+}
+
+// mergeInput merges schema flags into the base JSON. On failure it returns the
+// stderr text (with a --help hint for usage errors) instead of merged input.
+func mergeInput(name string, schemaJSON, baseJSON []byte, flagArgs []string) ([]byte, int, string) {
+	fs, err := flagschema.FromJSONSchema(schemaJSON)
+	if err != nil {
+		return nil, 0, err.Error()
+	}
+	flagMap, rest, err := flagschema.CollectFlags(flagArgs)
+	if err != nil {
+		return nil, 0, err.Error()
+	}
+	if len(rest) > 0 {
+		return nil, 0, fmt.Sprintf("unexpected arguments: %s (see --help)", strings.Join(rest, " "))
+	}
+	merged, err := fs.MergeJSON(baseJSON, flagMap)
+	if err != nil {
+		msg := err.Error()
+		// Point agents at help for required / usage errors.
+		if strings.Contains(msg, "required") || strings.Contains(msg, "unknown flag") {
+			msg += "\nhint: capabilities run " + name + " --help"
+		}
+		return nil, 0, msg
+	}
+	return merged, len(flagMap), ""
 }

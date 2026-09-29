@@ -388,6 +388,11 @@ capabilities run <name> \
   [--profile=NAME] [--base-url=URL]
 ```
 
+Local checks use the cached schema. When the cached schema rejects the input,
+the CLI fetches the live schema once and re-checks before exiting **2**, so a
+server-side schema change never blocks valid input. A server `validation_failed`
+drops the cached schema so the next run fetches it fresh.
+
 ### Input merge rules
 
 1. Base body = `--input` / `--input-file` (or `{}`).
@@ -467,7 +472,7 @@ These codes are part of the CLI contract (stable for automation).
 | `auth login requires --base-url` | Pass `--base-url` |
 | Missing base URL on later commands | Re-login or pass `--base-url` |
 | Exit 3 | Wrong/missing token or profile; re-login |
-| Exit 2 before network | Local schema validation — fix JSON or refresh catalog (`--no-cache`) |
+| Exit 2 before network | Local schema validation against the live schema — fix the JSON (a stale cached schema is re-checked automatically) |
 | Exit 4 | Approval required — `approvals accept/reject` |
 | Wrong product’s data | You used the wrong `--profile` |
 | `command not found: capabilities` | Install path not on `PATH` (`~/.local/bin`) |

@@ -178,6 +178,13 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   --base-url=B <domain> <verb>` built its domain/verb index from the profile's
   stored host and then invoked the resolved name on `B` (sending the token to
   both). The catalog lookup now uses `B` as well.
+- **Stale cached schemas no longer reject valid input** — cached describe
+  schemas never expired, so after a server schema change `run` and domain/verb
+  commands failed locally (exit **2**, `unknown flag`, missing required field)
+  on input the server accepts. A local rejection from a cached schema now
+  refetches the live schema once and re-checks; a server `validation_failed`
+  after a local pass drops the cached entry. `run` also describes once instead
+  of twice per invoke.
 
 ## [0.x] — pre-stable
 
