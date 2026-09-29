@@ -24,3 +24,12 @@ it('documents supportsToolRounds host upgrade callouts', function () {
         ->and($changelog)->toMatch('/Breaking \(upgrade for hosts\)/i')
         ->and($readme)->toContain('upgrade-for-hosts-llmclient-tool-rounds');
 });
+
+it('ships LICENSE and SECURITY.md at the package root for the split remote', function () {
+    $root = dirname(__DIR__, 3);
+
+    expect(is_file($root.'/LICENSE'))->toBeTrue()
+        ->and(file_get_contents($root.'/LICENSE') ?: '')->toContain('MIT License')
+        ->and(is_file($root.'/SECURITY.md'))->toBeTrue()
+        ->and(file_get_contents($root.'/SECURITY.md') ?: '')->toContain('rawphp/laravel-capabilities-ai');
+});
