@@ -36,8 +36,10 @@
 # unpushed-stack squash). Never force-pushes tags.
 #
 # Quality gates (when not skipped; skip flags are dry-run only):
-#   1. composer test          (Pest core + messaging)
-#   2. composer test:cli      (go test ./... under packages/capabilities-cli)
+#   1. composer format:test   (Pint)
+#   2. composer analyse       (PHPStan, phpstan.neon)
+#   3. composer test          (Pest core + messaging + AI)
+#   4. composer test:cli      (go test ./... under packages/capabilities-cli)
 #
 # Matches CI: .github/workflows/tests.yml (split is blocked until these are green).
 
@@ -65,7 +67,7 @@ Options:
   --dry-run            Run preflight + gates; print the tag that would be created
                        (no squash rewrite, no tag, no push, no confirm prompt)
   --yes                Skip the interactive confirmation prompt (agent / CI path)
-  --skip-php           Skip composer test (core + messaging) — ONLY with --dry-run
+  --skip-php           Skip PHP gates (Pint, PHPStan, Pest) — ONLY with --dry-run
   --skip-cli           Skip composer test:cli — ONLY with --dry-run
   --allow-empty-range  Allow release when a prior tag exists and HEAD has zero
                        commits since that tag (default: hard refuse empty range)
@@ -340,7 +342,7 @@ if [[ "$SQUASH" -eq 1 ]]; then
 fi
 printf '  gates:\n'
 if [[ "$SKIP_PHP" -eq 0 ]]; then
-  printf '    - php: composer test (core + messaging Pest)\n'
+  printf '    - php: composer format:test + analyse + test (Pint, PHPStan, Pest core + messaging + AI)\n'
 else
   printf '    - php: SKIPPED (--skip-php, dry-run only)\n'
 fi
@@ -465,7 +467,7 @@ fi
 # --- quality gates ------------------------------------------------------------
 
 run_php_gates() {
-  log "PHP: composer test (core + messaging)"
+  log "PHP: composer format:test + analyse + test (Pint, PHPStan, Pest core + messaging + AI)"
   if ! command -v composer >/dev/null; then
     fail "composer not found on PATH"
   fi
@@ -474,6 +476,8 @@ run_php_gates() {
   fi
   (
     cd "$ROOT"
+    composer format:test
+    composer analyse
     composer test
   )
 }
@@ -551,7 +555,7 @@ fi
 MESSAGE="Release $NEW_TAG
 
 Quality gates:
-  - php: composer test (core + messaging Pest)
+  - php: composer format:test + analyse + test (Pint, PHPStan, Pest core + messaging + AI)
   - cli: composer test:cli (go test ./...)
 Commit: $HEAD_SHA
 

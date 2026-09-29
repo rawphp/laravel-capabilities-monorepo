@@ -182,6 +182,12 @@ else
   fail_case "gates reference composer test + test:cli" "missing monorepo gate commands"
 fi
 
+if grep -q 'composer format:test' "$RELEASE_SH" && grep -q 'composer analyse' "$RELEASE_SH"; then
+  pass "gates reference composer format:test + analyse (Pint + PHPStan, same as CI)"
+else
+  fail_case "gates reference composer format:test + analyse (Pint + PHPStan, same as CI)" "missing static gate commands"
+fi
+
 printf '\n-- empty-range / origin-missing contracts --\n'
 
 if grep -q 'allow-empty-range' "$RELEASE_SH" \

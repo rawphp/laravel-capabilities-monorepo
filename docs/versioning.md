@@ -35,6 +35,15 @@ Split / package-remote publish is **gated on green monorepo unit tests**. The sp
 | Split (`main`, `v*` tags, `workflow_dispatch`) | Same suites via `workflow_call` before any rsync / tag force-push |
 | Coverage floor / Packagist API | **Not** enforced here (unit exit codes only; Packagist remains human checklist) |
 
+The PHP job also runs two static gates before the suites, and `scripts/release.sh` runs the same commands:
+
+| Gate | Command | Config |
+|---|---|---|
+| Pint | `composer format:test` | `pint.json` |
+| PHPStan | `composer analyse` | `phpstan.neon`: package `src/` of core, messaging, AI at **level 1**, no baseline |
+
+Level 1 is the highest level that passes today without a baseline. Level 2 mostly reports Eloquent magic attributes on package models. The intent is to raise the level one step at a time as those are typed, toward the `max` target in `AGENTS.md`. Each raise must pass cleanly; do not add a baseline to climb.
+
 Tag concurrency uses `cancel-in-progress: false` for tags so a release mirror is not aborted mid-matrix (partial package remotes). Branch runs may still cancel superseded work.
 
 **Implications:**

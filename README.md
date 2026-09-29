@@ -158,6 +158,8 @@ composer test:core
 composer test:messaging
 composer test:ai
 composer test:cli          # requires Go
+composer format:test       # Pint (CI gate)
+composer analyse           # PHPStan, phpstan.neon (CI gate)
 ```
 
 See **Package layout** and **Roadmap (indicative)** in `docs/spec.md` for the full `src/` map and phase vs residual status.

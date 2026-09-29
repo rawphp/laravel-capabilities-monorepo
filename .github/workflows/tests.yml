@@ -32,6 +32,12 @@ jobs:
       - name: Install Composer dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
 
+      - name: Pint (composer format:test)
+        run: composer format:test
+
+      - name: PHPStan (composer analyse)
+        run: composer analyse
+
       - name: Pest unit suites (composer test)
         run: composer test
 
