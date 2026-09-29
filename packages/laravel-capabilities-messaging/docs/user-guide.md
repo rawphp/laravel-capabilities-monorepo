@@ -125,6 +125,21 @@ TelegramSetup::runOrFail(app(MessagingConfig::class), fn (string $id) => User::f
 
 `runOrFail` throws naming each bad entry (`identity.allowlist[1]: laravel_user_id "999" …`). Entries missing either id fail even without a lookup.
 
+## Agent turn (required for replies)
+
+Messaging does not build the agent. Bind `Rawphp\CapabilitiesMessaging\Contracts\AgentTurn` in your app, usually around a `laravel/ai` agent:
+
+```php
+use Rawphp\CapabilitiesMessaging\Contracts\AgentTurn;
+
+$this->app->singleton(AgentTurn::class, SupportChatAgentTurn::class);
+```
+
+- `toolNames(string $profile): list<string>` — capability names the profile exposes (e.g. the names from `Capability::aiTools($profile)`). Tool calls outside this list are refused.
+- `respond(array $message): array{text, tool_calls?}` — run one turn. `$message` carries `text`, the linked `user`, `thread_id`, `profile`, `tools` and `messaging` metadata. Return tool calls as `['name' => …, 'input' => […]]`; messaging invokes each one through the capability bus as `caller: agent`, with per-update idempotency keys, then sends `text` as the reply.
+
+With no `AgentTurn` bound, a linked user's message gets **no reply** and an `agent_turn_unbound` error is logged; the profile exposes no tools.
+
 ## Agent profile
 
 Set `agent_profile` to a profile name that exists in core agent surface config (or is otherwise resolvable by the profile selector). Default config value is `support`.
@@ -153,6 +168,7 @@ Button `callback_data` is a compact token that fits Telegram's 64-byte limit: `{
 - Provider boots; webhook route present when Telegram is enabled.
 - First authorized webhook with valid secrets returns an `ok` JSON response shape from the route (`ok` / `error` / HTTP status from the controller result).
 - Unlinked users cannot exercise mutating tools until identity bind succeeds.
+- A linked user's message gets your `AgentTurn` reply (not an echo of their text).
 - Bot tool list matches the configured agent profile, not the entire registry.
 
 ## If something goes wrong

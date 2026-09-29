@@ -16,6 +16,7 @@ use Rawphp\Capabilities\Contracts\Metrics;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\CapabilitiesMessaging\Boot\MessagingBindings;
 use Rawphp\CapabilitiesMessaging\Boot\MessagingRegistration;
+use Rawphp\CapabilitiesMessaging\Contracts\AgentTurn;
 use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
 use Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier;
 use Rawphp\CapabilitiesMessaging\Support\FakeQueue;
@@ -116,8 +117,14 @@ class MessagingServiceProvider extends ServiceProvider
             return new TelegramCallbackSigner($cfg->callbackSecret(), $cfg->callbackTtlSeconds());
         });
 
+        // Agent turn is a host binding (D-007): unbound ⇒ adapter fails closed, profile has no tools.
         $this->app->singleton(TelegramAdapter::class, function ($app) {
-            return new TelegramAdapter($app->make(TelegramBotClient::class));
+            $turn = self::agentTurn($app);
+
+            return new TelegramAdapter(
+                $app->make(TelegramBotClient::class),
+                $turn === null ? null : static fn (array $message): array => $turn->respond($message),
+            );
         });
         $this->app->alias(TelegramAdapter::class, ConversationIngress::class);
         $this->app->alias(TelegramAdapter::class, ConversationReply::class);
@@ -151,6 +158,7 @@ class MessagingServiceProvider extends ServiceProvider
                 $app->make(TelegramAdapter::class),
                 $registry,
                 $app->make(TelegramBotClient::class),
+                self::toolNamesResolver($app),
                 turnLimiter: $app->bound(RateLimiter::class) ? $app->make(RateLimiter::class) : null,
                 logger: self::logger($app),
             );
@@ -173,6 +181,21 @@ class MessagingServiceProvider extends ServiceProvider
         if ((bool) $this->app['config']->get('capabilities-messaging.telegram.enabled', false)) {
             $this->loadRoutesFrom(__DIR__.'/../routes/messaging.php');
         }
+    }
+
+    private static function agentTurn(Container $app): ?AgentTurn
+    {
+        return $app->bound(AgentTurn::class) ? $app->make(AgentTurn::class) : null;
+    }
+
+    /**
+     * @return (callable(string): list<string>)|null
+     */
+    private static function toolNamesResolver(Container $app): ?callable
+    {
+        $turn = self::agentTurn($app);
+
+        return $turn === null ? null : static fn (string $profile): array => $turn->toolNames($profile);
     }
 
     /**

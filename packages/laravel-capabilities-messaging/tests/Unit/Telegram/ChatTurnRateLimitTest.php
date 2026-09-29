@@ -18,7 +18,7 @@ function turnLimitedProcessor(array $configOverrides = []): array
     $config = H::config($configOverrides);
     $identity = H::identity($configOverrides);
     $identity->link('42', 'u1');
-    $adapter = new TelegramAdapter(H::bot());
+    $adapter = new TelegramAdapter(H::bot(), H::echoAgent());
     $limiter = new InMemoryRateLimiter;
 
     $p = new ProcessTelegramUpdate(

@@ -48,11 +48,8 @@ final class ProcessTelegramUpdate
     /** @var array<string, mixed>|null */
     private ?array $lastTags = null;
 
-    /** @var callable|null (profile, tools) => list of tool names available */
+    /** @var callable|null (profile) => list of tool names the profile exposes; none = no tools */
     private $profileResolver;
-
-    /** @var callable|null agent turn: (message, context) => array{text: string, tool_calls?: list} */
-    private $agentRunner;
 
     private bool $domainBypassAttempted = false;
 
@@ -64,12 +61,10 @@ final class ProcessTelegramUpdate
         private readonly ?CapabilityBus $registry = null,
         private readonly ?TelegramBotClient $bot = null,
         ?callable $profileResolver = null,
-        ?callable $agentRunner = null,
         private readonly ?RateLimiter $turnLimiter = null,
         private readonly ?LoggerInterface $logger = null,
     ) {
         $this->profileResolver = $profileResolver;
-        $this->agentRunner = $agentRunner;
     }
 
     /**
@@ -396,7 +391,7 @@ final class ProcessTelegramUpdate
             return $tools;
         }
 
-        // Default: profile name is non-empty ⇒ empty tool list unless resolver provided.
+        // Fail closed: no resolver (no AgentTurn bound) ⇒ no tools.
         return [];
     }
 

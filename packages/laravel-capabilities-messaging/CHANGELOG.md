@@ -13,6 +13,14 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Breaking
 
+- **Agent turn is a host binding; no echo default** — chat messages now reach the agent through
+  `Contracts\AgentTurn` (`toolNames($profile)` + `respond($message)`), which the host binds (for
+  example around a `laravel/ai` agent). The provider wires it into `TelegramAdapter` (ingress) and
+  `ProcessTelegramUpdate` (profile tools). With nothing bound, `TelegramAdapter::handle()` throws
+  `agent_turn_unbound`: no reply is sent and the failure is logged, where it used to echo the
+  user's text back with no tools. The unused `$agentRunner` constructor argument of
+  `ProcessTelegramUpdate` is removed. **Consumer impact:** bind `AgentTurn` to get replies.
+
 - **CallbackHandler ApprovalGateway (consumer impact)** — constructor third arg type-hint
   is now `?ApprovalGateway` (was `?ApprovalManager`). Runtime still accepts `ApprovalManager`
   because it implements the gateway, but static analysis / manual constructors hard-coding

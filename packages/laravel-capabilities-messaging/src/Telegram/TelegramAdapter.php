@@ -4,6 +4,7 @@ namespace Rawphp\CapabilitiesMessaging\Telegram;
 
 use Rawphp\Capabilities\Contracts\ConversationIngress;
 use Rawphp\Capabilities\Contracts\ConversationReply;
+use Rawphp\CapabilitiesMessaging\Contracts\AgentTurn;
 use Rawphp\CapabilitiesMessaging\Support\TelegramBotClient;
 use RuntimeException;
 
@@ -11,7 +12,8 @@ use RuntimeException;
  * Telegram conversation adapter — feeds the agent, not a parallel run() path.
  *
  * Implements core ConversationIngress + ConversationReply (D-007).
- * Never calls Eloquent domain services; never owns a second run().
+ * Ingress delegates to the agent turn handler (the provider wires the host {@see AgentTurn});
+ * with none it throws `agent_turn_unbound`. Never calls Eloquent domain services; never owns a second run().
  */
 final class TelegramAdapter implements ConversationIngress, ConversationReply
 {
@@ -21,7 +23,7 @@ final class TelegramAdapter implements ConversationIngress, ConversationReply
     /** @var list<array<string, mixed>> */
     private array $replies = [];
 
-    /** @var callable|null (message) => array result with optional tool_calls */
+    /** @var callable|null agent turn: (message) => array{text: string, tool_calls?: list} */
     private $ingressHandler;
 
     private bool $failIngress = false;
@@ -62,19 +64,14 @@ final class TelegramAdapter implements ConversationIngress, ConversationReply
         $data = is_array($message) ? $message : (array) $message;
         $this->handled[] = $data;
 
-        if ($this->ingressHandler !== null) {
-            return ($this->ingressHandler)($data);
+        // Fail closed: without an agent there is no answer (never echo the user's text back).
+        if ($this->ingressHandler === null) {
+            throw new RuntimeException(
+                'agent_turn_unbound: bind '.AgentTurn::class.' to answer chat messages (D-007).'
+            );
         }
 
-        // Default echo ingress — tools only when caller provided tool_calls on the message.
-        return [
-            'text' => (string) ($data['text'] ?? ''),
-            'tool_calls' => $data['tool_calls'] ?? [],
-            'profile' => $data['profile'] ?? null,
-            'thread_id' => $data['thread_id'] ?? null,
-            'messaging' => $data['messaging'] ?? null,
-            'caller' => 'agent',
-        ];
+        return ($this->ingressHandler)($data);
     }
 
     /**

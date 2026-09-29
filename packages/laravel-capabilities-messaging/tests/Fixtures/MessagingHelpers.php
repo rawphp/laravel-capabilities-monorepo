@@ -98,6 +98,16 @@ final class MessagingHelpers
     }
 
     /**
+     * Test agent turn: replies with the user's text, no tool calls.
+     *
+     * @return callable(array<string, mixed>): array{text: string, tool_calls: list<mixed>}
+     */
+    public static function echoAgent(): callable
+    {
+        return static fn (array $message): array => ['text' => (string) ($message['text'] ?? ''), 'tool_calls' => []];
+    }
+
+    /**
      * @param  array{
      *   config?: MessagingConfig,
      *   identity?: IdentityLinker,
@@ -114,7 +124,7 @@ final class MessagingHelpers
         $identity = $parts['identity'] ?? new IdentityLinker($config);
         $threads = $parts['threads'] ?? new ThreadStore;
         $bot = $parts['bot'] ?? new FakeTelegramBotClient;
-        $adapter = $parts['adapter'] ?? new TelegramAdapter($bot);
+        $adapter = $parts['adapter'] ?? new TelegramAdapter($bot, self::echoAgent());
         $registry = $parts['registry'] ?? new FakeCapabilityBus;
         $tools = $parts['profile_tools'] ?? ['support.ping'];
 

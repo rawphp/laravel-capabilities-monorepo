@@ -44,7 +44,7 @@ it('happy: ConversationReply sends response via Bot API mock [MSG-003]', functio
     $bot = H::bot();
     $identity = H::identity();
     $identity->link('42', 'u1');
-    $adapter = new TelegramAdapter($bot);
+    $adapter = new TelegramAdapter($bot, H::echoAgent());
     $p = H::processor(['identity' => $identity, 'adapter' => $adapter, 'bot' => $bot]);
     $p->handle(H::telegramUpdate(userId: 42, chatId: 77));
     expect($bot->calls())->not->toBeEmpty();
