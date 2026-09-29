@@ -30,9 +30,9 @@ use RuntimeException;
  * Run a claimed turn: LLM loop + bus-only tool invokes.
  *
  * Turn budget: the whole turn runs in one job whose timeout is claim_ttl ($turnBudgetSeconds).
- * With a {@see DeadlineAwareLlmClient}, a round starts only while one full request timeout
- * still ends before that deadline, and the client's retries are held to it too; otherwise
- * the turn fails as retryable instead of the worker being killed mid-request.
+ * A {@see DeadlineAwareLlmClient} gets that deadline and caps each request (and retry) to the
+ * time left, so the worker is never killed mid-request. A round is refused, failing the turn
+ * as retryable, only when less than {@see DeadlineAwareLlmClient::MIN_REQUEST_SECONDS} remain.
  */
 final class TurnRunner
 {
@@ -95,9 +95,10 @@ final class TurnRunner
                     return $this->stopped($turn, $usage);
                 }
                 if ($llm instanceof DeadlineAwareLlmClient
-                    && $this->now() + $llm->requestTimeoutSeconds() * 1_000_000_000 >= $deadlineNs) {
+                    && $deadlineNs - $this->now() < DeadlineAwareLlmClient::MIN_REQUEST_SECONDS * 1_000_000_000) {
                     throw new RetryableLlmException(
-                        "Turn time budget (claim_ttl {$this->turnBudgetSeconds}s) cannot fit another LLM round"
+                        "Turn time budget (claim_ttl {$this->turnBudgetSeconds}s) has under "
+                        .DeadlineAwareLlmClient::MIN_REQUEST_SECONDS.'s left for another LLM round'
                     );
                 }
                 $rounds++;

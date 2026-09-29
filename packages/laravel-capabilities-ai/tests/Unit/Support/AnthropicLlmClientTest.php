@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 use Rawphp\Capabilities\Observability\InMemoryMetrics;
 use Rawphp\Capabilities\Observability\InMemoryTracer;
+use Rawphp\CapabilitiesAi\Contracts\DeadlineAwareLlmClient;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Package;
 use Rawphp\CapabilitiesAi\Support\AnthropicLlmClient;
@@ -176,7 +177,83 @@ it('caps a long Retry-After so one 429 cannot stall the turn', function () {
     Sleep::assertSequence([Sleep::for(60)->seconds()]);
 });
 
-it('stops retrying a 429 when the wait plus one more request would outlast the turn job', function () {
+/**
+ * Http::fake that records each attempt's transport timeout, answering from $responses in order.
+ *
+ * @param  list<array{0: array<string, mixed>, 1: int, 2?: array<string, string>}>  $responses
+ * @return ArrayObject<int, int|float>
+ */
+function fakeAnthropicRecordingTimeouts(array $responses): ArrayObject
+{
+    $timeouts = new ArrayObject;
+    Http::fake(function ($request, array $options) use (&$responses, $timeouts) {
+        $timeouts[] = $options['timeout'];
+        [$body, $status, $headers] = array_pad(array_shift($responses), 3, []);
+
+        return Http::response($body, $status, $headers);
+    });
+
+    return $timeouts;
+}
+
+it('sends the full configured timeout while the turn has room for it', function () {
+    bootAnthropicHttp();
+    $timeouts = fakeAnthropicRecordingTimeouts([[['content' => [['type' => 'text', 'text' => 'ok']]], 200]]);
+
+    (new AnthropicLlmClient('test-key'))
+        ->withDeadline(hrtime(true) + Package::DEFAULT_CLAIM_TTL * 1_000_000_000)
+        ->complete([['role' => 'user', 'content' => 'hi']]);
+
+    expect($timeouts->getArrayCopy())->toBe([AnthropicLlmClient::DEFAULT_TIMEOUT_SECONDS]);
+});
+
+it('caps a later round\'s request timeout at what is left of the turn minus a margin', function () {
+    bootAnthropicHttp();
+    $timeouts = fakeAnthropicRecordingTimeouts([[['content' => [['type' => 'text', 'text' => 'ok']]], 200]]);
+
+    // Default 110s timeout, but only 30s of the turn left: the request must end before the job.
+    $content = (new AnthropicLlmClient('test-key'))
+        ->withDeadline(hrtime(true) + 30_000_000_000)
+        ->complete([['role' => 'user', 'content' => 'hi']])['content'];
+
+    expect($content)->toBe('ok')
+        ->and($timeouts)->toHaveCount(1)
+        ->and($timeouts[0])->toBeLessThanOrEqual(28)
+        ->and($timeouts[0])->toBeGreaterThan(25);
+});
+
+it('refuses to send when under the minimum request time is left of the turn', function () {
+    bootAnthropicHttp();
+    Http::fake();
+
+    $client = (new AnthropicLlmClient('test-key'))
+        ->withDeadline(hrtime(true) + (DeadlineAwareLlmClient::MIN_REQUEST_SECONDS - 1) * 1_000_000_000);
+
+    expect(fn () => $client->complete([['role' => 'user', 'content' => 'hi']]))
+        ->toThrow(RetryableLlmException::class, 'turn deadline');
+    Http::assertNothingSent();
+});
+
+it('retries a 429 with a shorter timeout when the full one no longer fits the turn job', function () {
+    bootAnthropicHttp();
+    Sleep::fake();
+    $timeouts = fakeAnthropicRecordingTimeouts([
+        [['error' => ['message' => 'rate limited']], 429, ['retry-after' => '30']],
+        [['content' => [['type' => 'text', 'text' => 'ok']]], 200],
+    ]);
+
+    // Default pairing: 30s wait + a full 110s request would outlast the 120s job; ~88s still fits.
+    $content = (new AnthropicLlmClient('test-key', timeoutSeconds: 110, deadlineSeconds: 120))
+        ->complete([['role' => 'user', 'content' => 'hi']])['content'];
+
+    expect($content)->toBe('ok')
+        ->and($timeouts[0])->toBe(110)
+        ->and($timeouts[1])->toBeLessThanOrEqual(88)
+        ->and($timeouts[1])->toBeGreaterThan(85);
+    Sleep::assertSequence([Sleep::for(30)->seconds()]);
+});
+
+it('stops retrying a 429 when the wait would leave under the minimum request time', function () {
     bootAnthropicHttp();
     Sleep::fake();
 
@@ -187,7 +264,7 @@ it('stops retrying a 429 when the wait plus one more request would outlast the t
     ]);
 
     try {
-        (new AnthropicLlmClient('test-key', timeoutSeconds: 110, deadlineSeconds: 120))
+        (new AnthropicLlmClient('test-key', timeoutSeconds: 10, deadlineSeconds: 35))
             ->complete([['role' => 'user', 'content' => 'hi']]);
         $this->fail('expected RetryableLlmException');
     } catch (RetryableLlmException $e) {
@@ -210,7 +287,7 @@ it('counts the exponential backoff against the turn job deadline too', function 
             ->push(['content' => [['type' => 'text', 'text' => 'too late']]], 200),
     ]);
 
-    // 1s + 10s fits 12s; the second wait (2s) + 10s does not.
+    // 12s deadline: after the 1s wait ~11s are left (retry); after the 2s wait under 10s (stop).
     expect(fn () => (new AnthropicLlmClient('test-key', timeoutSeconds: 10, deadlineSeconds: 12))
         ->complete([['role' => 'user', 'content' => 'hi']]))
         ->toThrow(RetryableLlmException::class, 'Anthropic API error: 429');
@@ -229,7 +306,7 @@ it('stops retrying a 429 that fits the request deadline but not the turn deadlin
             ->push(['content' => [['type' => 'text', 'text' => 'too late']]], 200),
     ]);
 
-    // 5s + 10s fits the 120s per-call deadline, but a later round has only 12s of turn left.
+    // A 5s wait fits the 120s per-call deadline, but a later round has only 12s of turn left.
     $client = (new AnthropicLlmClient('test-key', timeoutSeconds: 10, deadlineSeconds: 120))
         ->withDeadline(hrtime(true) + 12_000_000_000);
 
@@ -253,7 +330,6 @@ it('withDeadline returns a copy and leaves the original client unbounded by the 
     $bounded = $client->withDeadline(hrtime(true));
 
     expect($bounded)->not->toBe($client)
-        ->and($client->requestTimeoutSeconds())->toBe(10)
         ->and($client->complete([['role' => 'user', 'content' => 'hi']])['content'])->toBe('ok');
     Sleep::assertSequence([Sleep::for(5)->seconds()]);
 });
