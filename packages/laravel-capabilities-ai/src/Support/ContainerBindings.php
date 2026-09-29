@@ -10,6 +10,7 @@ use Rawphp\Capabilities\Contracts\Metrics;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
+use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
@@ -258,6 +259,7 @@ final class ContainerBindings
         int $claimTtl = Package::DEFAULT_CLAIM_TTL,
         array $config = [],
         ?RateLimiter $turnLimiter = null,
+        ConversationStore $store = new EloquentConversationStore,
     ): ConversationService {
         return new ConversationService(
             $dispatch,
@@ -267,6 +269,7 @@ final class ContainerBindings
             maxConcurrentTurns: self::maxConcurrentTurnsFromConfig($config),
             turnLimiter: $turnLimiter,
             turnsPerMinute: self::turnsPerMinuteFromConfig($config),
+            store: $store,
         );
     }
 

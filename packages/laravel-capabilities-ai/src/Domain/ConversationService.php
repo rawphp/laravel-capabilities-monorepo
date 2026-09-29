@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rawphp\CapabilitiesAi\Domain;
 
 use Rawphp\Capabilities\Contracts\RateLimiter;
+use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Jobs\RunTurnJob;
 use Rawphp\CapabilitiesAi\Models\Conversation;
@@ -12,6 +13,7 @@ use Rawphp\CapabilitiesAi\Models\Message;
 use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Package;
+use Rawphp\CapabilitiesAi\Support\EloquentConversationStore;
 
 /**
  * Cheap message create — never calls LlmClient.
@@ -25,6 +27,7 @@ final class ConversationService
      * @param  int  $maxConcurrentTurns  Ceiling on queued + running turns across all conversations; 0 = unlimited
      * @param  RateLimiter|null  $turnLimiter  Core D-013 limiter; null = no per-user limit
      * @param  int  $turnsPerMinute  Accepted messages (turns) per user per minute; 0 = unlimited
+     * @param  ConversationStore  $store  Row persistence (Eloquent in production, in-memory in unit tests)
      */
     public function __construct(
         private readonly mixed $dispatch,
@@ -34,6 +37,7 @@ final class ConversationService
         private readonly int $maxConcurrentTurns = 0,
         private readonly ?RateLimiter $turnLimiter = null,
         private readonly int $turnsPerMinute = 0,
+        private readonly ConversationStore $store = new EloquentConversationStore,
     ) {
         if (! is_callable($this->dispatch)) {
             throw new \InvalidArgumentException('dispatch must be callable');
@@ -67,34 +71,15 @@ final class ConversationService
 
         // A given $userId must own an existing conversation: the owner is the turn's bus actor.
         $conversation = $conversationUlid
-            ? Conversation::query()->where('ulid', $conversationUlid)->where('user_id', $userId)->firstOrFail()
-            : Conversation::query()->create([
-                'ulid' => $this->ulid(),
-                'app_id' => $appId,
-                'user_id' => $userId,
-                'status' => 'open',
-                'meta' => null,
-            ]);
+            ? $this->store->ownedConversation($conversationUlid, $userId)
+            : $this->store->createConversation($this->ulid(), $appId, $userId);
 
         if ($conversation->status === 'closed') {
             throw new ConversationClosedException($conversation->ulid);
         }
 
-        $message = Message::query()->create([
-            'conversation_id' => $conversation->id,
-            'ulid' => $this->ulid(),
-            'role' => 'user',
-            'content' => $content,
-            'meta' => null,
-        ]);
-
-        $turn = Turn::query()->create([
-            'conversation_id' => $conversation->id,
-            'ulid' => $this->ulid(),
-            'status' => Turn::STATUS_QUEUED,
-            'idempotency_key' => null,
-            'request_hash' => null,
-        ]);
+        $message = $this->store->createMessage($conversation, $this->ulid(), 'user', $content);
+        $turn = $this->store->createQueuedTurn($conversation, $this->ulid());
 
         // Queued first: a sync driver or fast worker appends running/terminal inside dispatch.
         $this->progress->append($turn->ulid, [
@@ -126,18 +111,12 @@ final class ConversationService
     {
         $conversation = $this->owned($conversationUlid, $ownerId);
 
-        $messages = Message::query()
-            ->where('conversation_id', $conversation->id)
-            ->orderBy('created_at')
-            ->orderBy('id')
-            ->get()
-            ->map(static fn (Message $m): array => [
-                'ulid' => $m->ulid,
-                'role' => (string) $m->role,
-                'content' => $m->content,
-                'created_at' => $m->created_at?->toIso8601String(),
-            ])
-            ->all();
+        $messages = array_map(static fn (Message $m): array => [
+            'ulid' => $m->ulid,
+            'role' => (string) $m->role,
+            'content' => $m->content,
+            'created_at' => $m->created_at?->toIso8601String(),
+        ], $this->store->messages($conversation));
 
         $payload = [
             'conversation_ulid' => $conversation->ulid,
@@ -146,17 +125,12 @@ final class ConversationService
         ];
 
         if ($this->proposalsEnabled) {
-            $payload['proposals'] = Proposal::query()
-                ->where('conversation_id', $conversation->id)
-                ->orderBy('id')
-                ->get()
-                ->map(static fn (Proposal $p): array => [
-                    'ulid' => $p->ulid,
-                    'status' => (string) $p->status,
-                    'type' => (string) $p->type,
-                    'target_capability' => $p->target_capability,
-                ])
-                ->all();
+            $payload['proposals'] = array_map(static fn (Proposal $p): array => [
+                'ulid' => $p->ulid,
+                'status' => (string) $p->status,
+                'type' => (string) $p->type,
+                'target_capability' => $p->target_capability,
+            ], $this->store->proposals($conversation));
         }
 
         return $payload;
@@ -172,18 +146,12 @@ final class ConversationService
     {
         $conversation = $this->owned($conversationUlid, $ownerId);
 
-        $active = Turn::query()
-            ->where('conversation_id', $conversation->id)
-            ->whereIn('status', [Turn::STATUS_QUEUED, Turn::STATUS_RUNNING])
-            ->exists();
-
-        if ($active) {
+        if ($this->store->hasActiveTurns($conversation)) {
             throw new \RuntimeException("Conversation {$conversationUlid} has queued or running turns");
         }
 
         if ($conversation->status !== 'closed') {
-            $conversation->status = 'closed';
-            $conversation->save();
+            $this->store->close($conversation);
         }
 
         return [
@@ -219,21 +187,14 @@ final class ConversationService
             return;
         }
 
-        $active = Turn::query()
-            ->whereIn('status', [Turn::STATUS_QUEUED, Turn::STATUS_RUNNING])
-            ->count();
-
-        if ($active >= $this->maxConcurrentTurns) {
+        if ($this->store->activeTurnCount() >= $this->maxConcurrentTurns) {
             throw new TurnCapacityExceededException($this->maxConcurrentTurns);
         }
     }
 
     private function owned(string $conversationUlid, string $ownerId): Conversation
     {
-        return Conversation::query()
-            ->where('ulid', $conversationUlid)
-            ->where('user_id', $ownerId)
-            ->firstOrFail();
+        return $this->store->ownedConversation($conversationUlid, $ownerId);
     }
 
     private function ulid(): string

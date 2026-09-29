@@ -39,7 +39,7 @@ Hosts that construct AI runtime services with `new` (or jobs without container m
 | Site | Required now | Notes |
 |------|--------------|--------|
 | `TurnRunner` | `ProgressStore $progress` | Required 3rd ctor arg (`TurnClaim`, `LlmClient`, **`ProgressStore`**, then optional context/tools/bus…). Was optional `?ProgressStore = null`. |
-| `ConversationService` | `ProgressStore $progress` | Required 2nd ctor arg after `$dispatch`. **No** silent `ArrayProgressStore` default in ctor. |
+| `ConversationService` | `ProgressStore $progress` | Required 2nd ctor arg after `$dispatch`. **No** silent `ArrayProgressStore` default in ctor. Optional last arg `ConversationStore $store` (default `EloquentConversationStore`) is the row-persistence seam; unit tests pass an in-memory store. |
 | `RunTurnJob::handle` | `handle(TurnRunner $runner)` | Workers resolve `TurnRunner` via **container method injection**. Empty `handle()` is invalid. |
 | `ProposalService` | `IdempotencyReadiness $idempotency` | Required 2nd ctor arg after `CapabilityBus`. SP default **`StoreBoundIdempotencyReadiness`** (live core store ping; fail closed when unbound). **`AlwaysReadyIdempotency` is unit-tests only** — do not bind in production. |
 
