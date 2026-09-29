@@ -95,3 +95,18 @@ func TestRetrylastexplicitinputwinsoverlastinput(t *testing.T) {
 		t.Fatal(string(rec.Body))
 	}
 }
+
+func TestRetrylastdoesnotrestoreotherCapabilityinput(t *testing.T) {
+	opts, rec := harness(t, nil)
+	_ = Run(context.Background(), opts)
+	n := rec.N
+
+	opts.Capability = "x"
+	opts.RetryLast = true
+	opts.InputJSON = nil
+	res := Run(context.Background(), opts)
+	// "x" requires customer_id; the create-invoice body must not leak in.
+	if res.ExitCode != ExitValidation || rec.N != n {
+		t.Fatal(res.ExitCode, res.Stderr, rec.N)
+	}
+}

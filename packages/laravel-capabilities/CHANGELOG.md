@@ -20,6 +20,9 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   `result_status` on every terminal path (ok, domain failure, stale, original actor
   forbidden): the deciding user on accept, the `SystemActor` on resume (D-002).
   Custom `ApprovalStore` / `TableGateway` implementations must persist the two new keys.
+- `GET /{prefix}/health` now reports `api_version` (`RouteTable::API_VERSION`, currently `1`).
+  The product CLI checks it before `run` and refuses a server that speaks another version.
+  Bump it on any breaking change to route shapes or the invoke/error envelopes.
 
 ### Changed (BREAKING)
 

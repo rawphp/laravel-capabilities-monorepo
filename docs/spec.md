@@ -1671,7 +1671,7 @@ ValidateSchema
 - Fails closed if resolver throws or returns unusable scope when the app marked tenancy as required  
 - Passes **actor + job/context attributes** into the resolver; does **not** promote raw input keys into scope for system actors  
 
-Optional: header `X-Tenant-Id` / CLI `--tenant=` **only** as a hint that the resolver may accept after verifying membership — **never** as the sole authority without membership check. Same rule for any client-supplied tenant claim.
+Optional: header `X-Tenant-Id` **only** as a hint that the resolver may accept after verifying membership — **never** as the sole authority without membership check. Same rule for any client-supplied tenant claim. The product CLI sends no tenant claim (no `--tenant` flag): scope comes from the token's membership.
 
 ### Tenant source for system actors (P2-005)
 
@@ -3334,7 +3334,7 @@ capabilities.surface.disabled peer=laravel/ai reason=incompatible
   installed=0.12.0 supported=^0.10 || ^0.11 adapter_api=1
 ```
 
-Health endpoint (optional): `GET /capabilities/health` reports surface status (`up` / `disabled_incompatible` / `disabled_config`) for ops.
+Health endpoint (optional): `GET /capabilities/health` reports surface status (`up` / `disabled_incompatible` / `disabled_config`) for ops, plus `api_version` (HTTP wire version, `RouteTable::API_VERSION`). The product CLI probes it before `run` and refuses a mismatched server with an upgrade hint; an unknown version does not block. This is the HTTP API version, not `AdapterApi` (which versions the laravel/ai / laravel/mcp bridge).
 
 ### Contract tests (CI)
 

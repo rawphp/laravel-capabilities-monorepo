@@ -115,7 +115,6 @@ FLAGS:
   --no-cache              re-fetch schema
   --json                  print D-018 envelope (stdout always envelope; flag kept for agents)
   --human                 short ok/fail summary on stderr (stdout stays the envelope)
-  --tenant=ID             tenant hint only (not authoritative scope)
   --profile=NAME
   --base-url=URL
 

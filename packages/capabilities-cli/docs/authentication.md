@@ -18,7 +18,7 @@ Default config root:
       token          # mode 0600 — never printed by auth status
       config.json    # { "base_url": "https://..." }
       schemas/<key>/ # catalog JSON Schema cache, one dir per base URL + token (hashed)
-      last_run.json  # last Idempotency-Key (for --retry-last)
+      last_run.json  # last Idempotency-Key + input (for --retry-last)
 ```
 
 | Item | Purpose |

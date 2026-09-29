@@ -58,12 +58,11 @@ func cmdDomainOrUnknown(env Env, domain string, args []string) int {
 	input, rest := flagValue(rest, "--input")
 	inputFile, rest := flagValue(rest, "--input-file")
 	idem, rest := flagValue(rest, "--idempotency-key")
-	tenant, rest := flagValue(rest, "--tenant")
 	human, rest := flagBool(rest, "--human")
 	retryLast, rest := flagBool(rest, "--retry-last")
 	// jsonOut/noCache/profile/base already peeled above
 	st := store(env)
-	return invokeCapability(env, st, profile, base, canonical, input, inputFile, idem, tenant, jsonOut, human, noCache, retryLast, rest)
+	return invokeCapability(env, st, profile, base, canonical, input, inputFile, idem, jsonOut, human, noCache, retryLast, rest)
 }
 
 // loadSynthIndex returns the synthesis index and optional summaries.

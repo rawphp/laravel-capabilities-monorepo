@@ -384,7 +384,7 @@ via `run` / `describe` only.
 capabilities run <name> \
   [--input=JSON | --input-file=PATH | scalar flags] \
   [--idempotency-key=KEY] [--retry-last] \
-  [--no-cache] [--human] [--tenant=ID] \
+  [--no-cache] [--human] \
   [--profile=NAME] [--base-url=URL]
 ```
 
@@ -420,9 +420,10 @@ capabilities run <name> --retry-last   # after a network failure: same key, same
 ```
 
 `--retry-last` reuses the last `Idempotency-Key`. With no `--input`, `--input-file`, or field
-flags it also resends the last input, so the server replays instead of returning a conflict.
+flags it also resends the last input when that run was the same capability, so the server
+replays instead of returning a conflict.
 
-`--tenant=ID` is a **hint only** — not authoritative scope (server decides).
+There is no tenant flag: the server derives tenant scope from your token (D-003).
 
 `--human` writes a **short one-line** summary to **stderr** (e.g. `ok get_today_meals date=…`);
 stdout remains the machine envelope. Do not parse `--human` stderr for full payload data.
