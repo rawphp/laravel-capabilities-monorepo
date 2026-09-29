@@ -15,9 +15,9 @@ use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
+use Rawphp\CapabilitiesAi\Contracts\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
-use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
 use Rawphp\CapabilitiesAi\Package;
@@ -228,6 +228,7 @@ final class ContainerBindings
         ?ConversationContextProvider $context = null,
         ?ToolCatalog $tools = null,
         ?CapabilityBus $bus = null,
+        ConversationStore $store = new EloquentConversationStore,
     ): TurnRunner {
         $maxRounds = (int) ($config['max_tool_rounds'] ?? 8);
         $userModel = $config['user_model'] ?? null;
@@ -245,6 +246,7 @@ final class ContainerBindings
             maxToolRounds: $maxRounds > 0 ? $maxRounds : 8,
             actors: $actors,
             proposalsEnabled: (bool) ($config['proposals']['enabled'] ?? true),
+            store: $store,
         );
     }
 
@@ -291,6 +293,7 @@ final class ContainerBindings
         IdempotencyReadiness $idempotency,
         ?string $userModel = null,
         ?ToolCatalog $tools = null,
+        ConversationStore $store = new EloquentConversationStore,
     ): ProposalService {
         return new ProposalService(
             $bus,
@@ -299,12 +302,16 @@ final class ContainerBindings
                 is_string($userModel) && $userModel !== '' ? $userModel : null,
             ),
             $tools,
+            $store,
         );
     }
 
-    public static function makeTurnService(ProgressStore $progress): TurnService
-    {
-        return new TurnService($progress);
+    public static function makeTurnService(
+        ProgressStore $progress,
+        ConversationStore $store = new EloquentConversationStore,
+        TurnClaim $claim = new EloquentTurnClaim,
+    ): TurnService {
+        return new TurnService($progress, $store, $claim);
     }
 
     /**

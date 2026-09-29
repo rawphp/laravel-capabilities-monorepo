@@ -2,12 +2,7 @@
 
 declare(strict_types=1);
 
-use Illuminate\Container\Container;
-use Illuminate\Database\Capsule\Manager as Capsule;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Events\Dispatcher as EventDispatcher;
-use Illuminate\Support\Facades\Facade;
-use Illuminate\Support\Facades\Schema;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Support\CapabilityResult;
@@ -16,51 +11,51 @@ use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
 use Rawphp\CapabilitiesAi\Domain\AcceptOutcome;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
-use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Proposal;
-use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\AlwaysReadyIdempotency;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
 use Rawphp\CapabilitiesAi\Support\ToolSchemaHash;
+use Rawphp\CapabilitiesAi\Tests\Fakes\InMemoryActorLookup;
+use Rawphp\CapabilitiesAi\Tests\Fakes\InMemoryConversationStore;
 
 /**
- * Minimal user model for ProposalService principal resolution unit tests.
+ * Minimal user model for ProposalService principal resolution unit tests (never persisted).
  */
 class ProposalServiceTestUser extends Model
 {
-    protected $table = 'users';
-
     public $timestamps = false;
 
     protected $guarded = [];
 }
 
-function bootProposalSqlite(): void
+/**
+ * Per-test in-memory rows and host users (no database).
+ *
+ * @return object{store: InMemoryConversationStore, users: InMemoryActorLookup}
+ */
+function proposalWorld(bool $reset = false): object
 {
-    $capsule = new Capsule;
-    $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
-    $capsule->setEventDispatcher(new EventDispatcher(new Container));
-    $capsule->setAsGlobal();
-    $capsule->bootEloquent();
-    $app = new Container;
-    $app->instance('db', $capsule->getDatabaseManager());
-    Facade::setFacadeApplication($app);
-    Schema::swap($capsule->getConnection()->getSchemaBuilder());
-    $files = glob(dirname(__DIR__, 3).'/database/migrations/*.php') ?: [];
-    sort($files);
-    foreach ($files as $file) {
-        (require $file)->up();
+    static $world = null;
+    if ($reset || $world === null) {
+        $world = (object) ['store' => new InMemoryConversationStore, 'users' => new InMemoryActorLookup];
     }
-    Schema::create('users', function ($table): void {
-        $table->increments('id');
-        $table->string('name')->nullable();
-    });
+
+    return $world;
 }
+
+function proposalStore(): InMemoryConversationStore
+{
+    return proposalWorld()->store;
+}
+
+beforeEach(function () {
+    proposalWorld(reset: true);
+});
 
 function proposalActors(): ResolveConversationActor
 {
-    return new ResolveConversationActor(ProposalServiceTestUser::class);
+    return new ResolveConversationActor(lookup: proposalWorld()->users);
 }
 
 /**
@@ -97,6 +92,7 @@ function makeProposalService(
         $idempotency ?? new AlwaysReadyIdempotency,
         proposalActors(),
         $tools ?? proposalTools(),
+        proposalStore(),
     );
 }
 
@@ -104,24 +100,21 @@ function seedPendingProposal(?string $target = 'demo.cap', array $payload = ['a'
 {
     $userId = null;
     if ($withUser) {
-        $user = ProposalServiceTestUser::query()->create(['name' => 'proposal-user']);
+        $user = proposalWorld()->users->add(new ProposalServiceTestUser(['name' => 'proposal-user']));
         $userId = (string) $user->id;
     }
 
-    $svc = new ConversationService(static fn ($j) => null, new ArrayProgressStore);
+    $svc = new ConversationService(static fn ($j) => null, new ArrayProgressStore, store: proposalStore());
     $ids = $svc->createUserMessage('seed', userId: $userId);
-    $turn = Turn::query()->where('ulid', $ids['turn_ulid'])->firstOrFail();
 
-    return Proposal::query()->create([
-        'turn_id' => $turn->id,
-        'conversation_id' => $turn->conversation_id,
-        'ulid' => strtoupper(bin2hex(random_bytes(13))),
-        'type' => 'action',
-        'payload' => $payload,
-        'target_capability' => $target,
-        'schema_hash' => $schemaHash,
-        'status' => Proposal::STATUS_PENDING,
-    ]);
+    return proposalStore()->createProposal(
+        proposalStore()->turn($ids['turn_ulid']),
+        strtoupper(bin2hex(random_bytes(13))),
+        'action',
+        $payload,
+        $target,
+        $schemaHash,
+    );
 }
 
 /**
@@ -177,7 +170,6 @@ function readiness(bool $ready): IdempotencyReadiness
 }
 
 it('accept invokes bus and returns accepted outcome', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     $bus = proposalBus();
     $service = makeProposalService($bus);
@@ -194,14 +186,13 @@ it('accept invokes bus and returns accepted outcome', function () {
 });
 
 it('accept refuses a target narrowed out of the tool profile after propose-time without invoking the bus', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     $tools = proposalTools(['demo.cap', 'demo.other']);
     $tools->names = ['demo.other'];
     $bus = proposalBus();
     $out = makeProposalService($bus, tools: $tools)->accept($proposal->ulid);
-    $turn = Turn::query()->findOrFail($proposal->turn_id);
-    $conversation = Conversation::query()->findOrFail($proposal->conversation_id);
+    $turn = proposalStore()->proposal($proposal->ulid)->turn;
+    $conversation = proposalStore()->proposal($proposal->ulid)->conversation;
 
     expect($out->kind)->toBe(AcceptOutcome::KIND_REFUSE)
         ->and($out->httpStatus)->toBe(403)
@@ -213,7 +204,6 @@ it('accept refuses a target narrowed out of the tool profile after propose-time 
 });
 
 it('accept refuses a proposal whose target input schema changed since creation without invoking the bus', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal(schemaHash: ToolSchemaHash::of(['parameters' => ['type' => 'object']]));
     $bus = proposalBus();
     $out = makeProposalService($bus)->accept($proposal->ulid);
@@ -230,7 +220,6 @@ it('accept refuses a proposal whose target input schema changed since creation w
 });
 
 it('accept invokes when the stamped schema hash still matches the live tool schema', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal(schemaHash: ToolSchemaHash::of(['name' => 'demo.cap']));
     $bus = proposalBus();
     $out = makeProposalService($bus)->accept($proposal->ulid);
@@ -240,10 +229,9 @@ it('accept invokes when the stamped schema hash still matches the live tool sche
 });
 
 it('accept fails closed with not_in_profile when no ToolCatalog is bound', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     $bus = proposalBus();
-    $service = new ProposalService($bus, new AlwaysReadyIdempotency, proposalActors());
+    $service = new ProposalService($bus, new AlwaysReadyIdempotency, proposalActors(), store: proposalStore());
     $out = $service->accept($proposal->ulid);
 
     expect($out->kind)->toBe(AcceptOutcome::KIND_REFUSE)
@@ -252,9 +240,8 @@ it('accept fails closed with not_in_profile when no ToolCatalog is bound', funct
 });
 
 it('accept fails closed with not_in_profile when the proposal turn row is gone', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
-    Proposal::query()->whereKey($proposal->id)->update(['turn_id' => 999999]);
+    $proposal->turn_id = 999999;
     $tools = proposalTools();
     $bus = proposalBus();
     $out = makeProposalService($bus, tools: $tools)->accept($proposal->ulid);
@@ -266,7 +253,6 @@ it('accept fails closed with not_in_profile when the proposal turn row is gone',
 });
 
 it('accept fails closed when conversation has no user_id', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal(withUser: false);
     $bus = proposalBus();
     $service = makeProposalService($bus);
@@ -280,9 +266,8 @@ it('accept fails closed when conversation has no user_id', function () {
 });
 
 it('accept marks failed (not stuck accepting) when conversation user was deleted after proposal', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
-    ProposalServiceTestUser::query()->delete();
+    proposalWorld()->users->users = [];
     $bus = proposalBus();
     $service = makeProposalService($bus);
 
@@ -299,14 +284,13 @@ it('accept marks failed (not stuck accepting) when conversation user was deleted
 });
 
 it('actor resolver misconfiguration leaves proposal accepting for re-drive after config fix', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     $bus = proposalBus();
-    $service = new ProposalService($bus, new AlwaysReadyIdempotency, new ResolveConversationActor('NoSuchUserModel'), proposalTools());
+    $service = new ProposalService($bus, new AlwaysReadyIdempotency, new ResolveConversationActor('NoSuchUserModel'), proposalTools(), proposalStore());
 
     expect(fn () => $service->accept($proposal->ulid))
         ->toThrow(RuntimeException::class, 'does not exist');
-    expect(Proposal::query()->where('ulid', $proposal->ulid)->value('status'))->toBe(Proposal::STATUS_ACCEPTING)
+    expect(proposalStore()->proposal($proposal->ulid)->status)->toBe(Proposal::STATUS_ACCEPTING)
         ->and($bus->invokes)->toBe(0);
 
     $fixed = makeProposalService($bus)->accept($proposal->ulid);
@@ -315,7 +299,6 @@ it('actor resolver misconfiguration leaves proposal accepting for re-drive after
 });
 
 it('re-accept is idempotent without second bus invoke', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     $bus = proposalBus();
     $service = makeProposalService($bus);
@@ -326,7 +309,6 @@ it('re-accept is idempotent without second bus invoke', function () {
 });
 
 it('approval_required stays accepting and returns typed outcome', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     $bus = proposalBus(static fn () => CapabilityResult::approvalRequired('apr_1', 'need human'));
     $service = makeProposalService($bus);
@@ -338,7 +320,6 @@ it('approval_required stays accepting and returns typed outcome', function () {
 });
 
 it('retryable stays accepting', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     $bus = proposalBus(static fn () => CapabilityResult::failure(
         'rate_limited',
@@ -353,7 +334,6 @@ it('retryable stays accepting', function () {
 });
 
 it('terminal failed marks proposal failed', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     $bus = proposalBus(static fn () => CapabilityResult::failure('domain_error', 'nope'));
     $service = makeProposalService($bus);
@@ -363,7 +343,6 @@ it('terminal failed marks proposal failed', function () {
 });
 
 it('hard refuse marks proposal failed with refuse outcome', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     $bus = proposalBus(static fn () => CapabilityResult::failure('forbidden', 'no access'));
     $service = makeProposalService($bus);
@@ -374,7 +353,6 @@ it('hard refuse marks proposal failed with refuse outcome', function () {
 });
 
 it('fail-closed when idempotency not ready without invoking bus', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     $bus = proposalBus();
     $service = makeProposalService($bus, readiness(false));
@@ -385,7 +363,6 @@ it('fail-closed when idempotency not ready without invoking bus', function () {
 });
 
 it('readiness is evaluated live at accept time', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     $bus = proposalBus();
     $flip = new class implements IdempotencyReadiness
@@ -407,7 +384,6 @@ it('readiness is evaluated live at accept time', function () {
 });
 
 it('missing target_capability is refuse after claim', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal(target: '');
     $bus = proposalBus();
     $service = makeProposalService($bus);
@@ -418,7 +394,6 @@ it('missing target_capability is refuse after claim', function () {
 });
 
 it('reject sets rejected without bus invoke', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     $bus = proposalBus();
     $service = makeProposalService($bus);
@@ -428,7 +403,6 @@ it('reject sets rejected without bus invoke', function () {
 });
 
 it('reject is idempotent when already rejected', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     $service = makeProposalService(proposalBus());
     $service->reject($proposal->ulid);
@@ -437,10 +411,8 @@ it('reject is idempotent when already rejected', function () {
 });
 
 it('reject refuses accepting accepted failed expired', function (string $status) {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     $proposal->status = $status;
-    $proposal->save();
     $service = makeProposalService(proposalBus());
     expect(fn () => $service->reject($proposal->ulid))
         ->toThrow(RuntimeException::class, "cannot be rejected (status={$status})");
@@ -452,7 +424,6 @@ it('reject refuses accepting accepted failed expired', function (string $status)
 ]);
 
 it('accept passes D-005 idempotency_key proposal:{ulid}', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     $bus = proposalBus();
     $service = makeProposalService($bus);
@@ -462,10 +433,8 @@ it('accept passes D-005 idempotency_key proposal:{ulid}', function () {
 });
 
 it('resume from accepting re-drive still passes D-005 proposal:{ulid} key', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     $proposal->status = Proposal::STATUS_ACCEPTING;
-    $proposal->save();
 
     $bus = proposalBus();
     $service = makeProposalService($bus);
@@ -478,7 +447,6 @@ it('resume from accepting re-drive still passes D-005 proposal:{ulid} key', func
 });
 
 it('terminal failed sets last_error', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     $bus = proposalBus(static fn () => CapabilityResult::failure('domain_error', 'nope'));
     $service = makeProposalService($bus);
@@ -490,7 +458,6 @@ it('terminal failed sets last_error', function () {
 });
 
 it('isRetryable without explicit error retryable flag stays accepting', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     // rate_limited defaults retryable via ErrorCodeMap / isRetryable(); do not pass retryable key
     $bus = proposalBus(static fn () => CapabilityResult::failure('rate_limited', 'slow'));
@@ -502,11 +469,9 @@ it('isRetryable without explicit error retryable flag stays accepting', function
 });
 
 it('success clears last_error on accepted', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     $proposal->status = Proposal::STATUS_ACCEPTING;
     $proposal->last_error = 'stale: leftover';
-    $proposal->save();
 
     $bus = proposalBus();
     $service = makeProposalService($bus);
@@ -517,7 +482,6 @@ it('success clears last_error on accepted', function () {
 });
 
 it('CAS claim: concurrent second accept after peer accepted is idempotent (no double invoke)', function () {
-    bootProposalSqlite();
     $p2 = seedPendingProposal();
     $bus2 = proposalBus();
     $svc = makeProposalService($bus2);
@@ -528,10 +492,8 @@ it('CAS claim: concurrent second accept after peer accepted is idempotent (no do
 });
 
 it('accept rejected returns refuse outcome without throw', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     $proposal->status = Proposal::STATUS_REJECTED;
-    $proposal->save();
     $bus = proposalBus();
     $out = (makeProposalService($bus))->accept($proposal->ulid);
     expect($out->kind)->toBe(AcceptOutcome::KIND_REFUSE)
@@ -540,10 +502,8 @@ it('accept rejected returns refuse outcome without throw', function () {
 });
 
 it('accept expired returns refuse outcome without throw', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
     $proposal->status = Proposal::STATUS_EXPIRED;
-    $proposal->save();
     $bus = proposalBus();
     $out = (makeProposalService($bus))->accept($proposal->ulid);
     expect($out->kind)->toBe(AcceptOutcome::KIND_REFUSE)
@@ -552,9 +512,8 @@ it('accept expired returns refuse outcome without throw', function () {
 });
 
 it('ownedBy is true only for the owner of the proposal conversation', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal();
-    $ownerId = (string) Conversation::query()->whereKey($proposal->conversation_id)->value('user_id');
+    $ownerId = (string) proposalStore()->proposal($proposal->ulid)->conversation?->user_id;
     $service = makeProposalService(proposalBus());
 
     expect($service->ownedBy($proposal->ulid, $ownerId))->toBeTrue()
@@ -563,7 +522,6 @@ it('ownedBy is true only for the owner of the proposal conversation', function (
 });
 
 it('ownedBy is false for a proposal whose conversation has no owner', function () {
-    bootProposalSqlite();
     $proposal = seedPendingProposal(withUser: false);
 
     expect(makeProposalService(proposalBus())->ownedBy($proposal->ulid, ''))->toBeFalse();

@@ -19,13 +19,13 @@ use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
-use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
 use Rawphp\CapabilitiesAi\Package;
 use Rawphp\CapabilitiesAi\Support\AlwaysReadyIdempotency;
 use Rawphp\CapabilitiesAi\Support\AnthropicLlmClient;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\ContainerBindings;
+use Rawphp\CapabilitiesAi\Support\EloquentTurnClaim;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 use Rawphp\CapabilitiesAi\Support\RedisProgressStore;
 
@@ -239,7 +239,7 @@ it('makeProgressStore redis with client builds RedisProgressStore', function () 
 
 it('makeTurnRunner builds without host ContextProvider/ToolCatalog', function () {
     $runner = ContainerBindings::makeTurnRunner(
-        claim: new TurnClaim,
+        claim: new EloquentTurnClaim,
         llm: new FakeLlmClient,
         progress: new ArrayProgressStore,
         config: aiConfig(['max_tool_rounds' => 3]),

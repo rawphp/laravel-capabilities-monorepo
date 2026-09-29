@@ -3,15 +3,13 @@
 declare(strict_types=1);
 
 use Illuminate\Container\Container;
-use Illuminate\Database\Capsule\Manager as Capsule;
-use Illuminate\Events\Dispatcher as EventDispatcher;
-use Illuminate\Support\Facades\Facade;
-use Illuminate\Support\Facades\Schema;
 use Rawphp\CapabilitiesAi\CapabilitiesAiServiceProvider;
+use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Jobs\RunTurnJob;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
+use Rawphp\CapabilitiesAi\Tests\Fakes\InMemoryConversationStore;
 
 /**
  * Minimal config repo (same shape as ServiceProviderBindingsTest).
@@ -84,28 +82,12 @@ function bootDispatchQueueContainer(array $aiOverrides = []): array
 
     // Host-prebound ProgressStore so singleton factory is not required (cleaner harness).
     $app->instance(ProgressStore::class, new ArrayProgressStore);
+    // Host-prebound row store: the provider keeps it, so dispatch runs without a database.
+    $app->instance(ConversationStore::class, new InMemoryConversationStore);
 
     (new CapabilitiesAiServiceProvider($app))->register();
 
     return [$app, $bag];
-}
-
-function bootDispatchQueueSqlite(Container $app): void
-{
-    $capsule = new Capsule;
-    $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
-    $capsule->setEventDispatcher(new EventDispatcher(new Container));
-    $capsule->setAsGlobal();
-    $capsule->bootEloquent();
-    $app->instance('db', $capsule->getDatabaseManager());
-    Facade::setFacadeApplication($app);
-    Schema::swap($capsule->getConnection()->getSchemaBuilder());
-    $dir = dirname(__DIR__, 3).'/database/migrations';
-    $files = glob($dir.'/*.php') ?: [];
-    sort($files);
-    foreach ($files as $file) {
-        (require $file)->up();
-    }
 }
 
 it('default dispatch sets RunTurnJob queue and connection from config', function () {
@@ -115,8 +97,6 @@ it('default dispatch sets RunTurnJob queue and connection from config', function
             'connection' => 'redis',
         ],
     ]);
-
-    bootDispatchQueueSqlite($app);
 
     $svc = $app->make(ConversationService::class);
     $svc->createUserMessage('queued');
@@ -134,8 +114,6 @@ it('default dispatch leaves queue/connection null when config empty', function (
             'connection' => null,
         ],
     ]);
-
-    bootDispatchQueueSqlite($app);
 
     $svc = $app->make(ConversationService::class);
     $svc->createUserMessage('no queue');

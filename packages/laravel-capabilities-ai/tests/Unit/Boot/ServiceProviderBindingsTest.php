@@ -23,21 +23,27 @@ use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\InMemoryRateLimiter;
 use Rawphp\CapabilitiesAi\CapabilitiesAiServiceProvider;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
+use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStoreReadiness;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
+use Rawphp\CapabilitiesAi\Contracts\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
-use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRateLimitedException;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
+use Rawphp\CapabilitiesAi\Domain\TurnService;
 use Rawphp\CapabilitiesAi\Support\AnthropicLlmClient;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
+use Rawphp\CapabilitiesAi\Support\EloquentConversationStore;
+use Rawphp\CapabilitiesAi\Support\EloquentTurnClaim;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 use Rawphp\CapabilitiesAi\Support\StoreBoundIdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Support\StoreBoundProgressStoreReadiness;
+use Rawphp\CapabilitiesAi\Tests\Fakes\InMemoryConversationStore;
+use Rawphp\CapabilitiesAi\Tests\Fakes\InMemoryTurnClaim;
 
 function aiFakeBus(): CapabilityBus
 {
@@ -91,7 +97,7 @@ function aiConfigRepo(array $items): object
 /**
  * Minimal Application stand-in that satisfies ServiceProvider constructor + register().
  */
-function bootAiProviderContainer(array $configOverrides = []): Container
+function bootAiProviderContainer(array $configOverrides = [], ?Closure $prebind = null): Container
 {
     $app = new class extends Container
     {
@@ -108,6 +114,9 @@ function bootAiProviderContainer(array $configOverrides = []): Container
     ]));
 
     $app->instance(CapabilityBus::class, aiFakeBus());
+    if ($prebind !== null) {
+        $prebind($app);
+    }
 
     $provider = new CapabilitiesAiServiceProvider($app);
     $provider->register();
@@ -124,6 +133,37 @@ it('resolves TurnRunner from container with fake driver', function () {
         ->and($app->make(LlmClient::class))->toBeInstanceOf(FakeLlmClient::class)
         ->and($app->make(ProgressStore::class))->toBeInstanceOf(ArrayProgressStore::class)
         ->and($app->make(TurnClaim::class))->toBeInstanceOf(TurnClaim::class);
+});
+
+it('binds the Eloquent ConversationStore and TurnClaim by default', function () {
+    $app = bootAiProviderContainer();
+
+    expect($app->make(ConversationStore::class))->toBeInstanceOf(EloquentConversationStore::class)
+        ->and($app->make(TurnClaim::class))->toBeInstanceOf(EloquentTurnClaim::class);
+});
+
+it('keeps a host-prebound ConversationStore and TurnClaim and shares them with the services', function () {
+    $store = new InMemoryConversationStore;
+    $claim = new InMemoryTurnClaim($store);
+    $app = bootAiProviderContainer(prebind: static function (Container $app) use ($store, $claim): void {
+        $app->instance(ConversationStore::class, $store);
+        $app->instance(TurnClaim::class, $claim);
+        $app->instance('Illuminate\Contracts\Bus\Dispatcher', new class
+        {
+            public function dispatch(object $job): mixed
+            {
+                return null;
+            }
+        });
+    });
+
+    $ids = $app->make(ConversationService::class)->createUserMessage('hi', userId: 'u1');
+    $cancelled = $app->make(TurnService::class)->cancel($ids['turn_ulid'], 'u1');
+
+    expect($app->make(ConversationStore::class))->toBe($store)
+        ->and($app->make(TurnClaim::class))->toBe($claim)
+        ->and($cancelled['status'])->toBe('cancelled')
+        ->and($store->turn($ids['turn_ulid'])->status)->toBe('cancelled');
 });
 
 it('resolves ConversationService with callable dispatch', function () {

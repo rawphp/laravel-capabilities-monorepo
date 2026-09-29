@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Support;
 
+use Rawphp\CapabilitiesAi\Contracts\ActorLookup;
 use RuntimeException;
 
 /**
@@ -21,10 +22,12 @@ final class ResolveConversationActor
     public const CALLER_JOB = 'job';
 
     /**
-     * @param  class-string|null  $userModel  Explicit model override (tests / hosts)
+     * @param  class-string|null  $userModel  Explicit model override (hosts)
+     * @param  ActorLookup|null  $lookup  User lookup; null = {@see EloquentActorLookup} over the configured model
      */
     public function __construct(
         private readonly ?string $userModel = null,
+        private readonly ?ActorLookup $lookup = null,
     ) {}
 
     /**
@@ -51,14 +54,10 @@ final class ResolveConversationActor
             );
         }
 
-        $modelClass = self::assertQueryableModel($this->userModelClass());
+        $lookup = $this->lookup ?? new EloquentActorLookup(self::assertQueryableModel($this->userModelClass()));
 
-        $user = $modelClass::query()->find($id);
-        if ($user === null && ctype_digit($id)) {
-            $user = $modelClass::query()->find((int) $id);
-        }
-
-        if ($user === null || ! is_object($user)) {
+        $user = $lookup->find($id);
+        if ($user === null) {
             throw new UnresolvedConversationActorException(
                 "Conversation user_id [{$id}] does not resolve to a user; refusing bus invoke"
             );

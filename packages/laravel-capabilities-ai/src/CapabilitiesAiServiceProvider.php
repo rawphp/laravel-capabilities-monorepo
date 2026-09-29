@@ -14,18 +14,21 @@ use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\CapabilitiesAi\Console\ReapStaleTurnsCommand;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
+use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStoreReadiness;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
+use Rawphp\CapabilitiesAi\Contracts\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\StaleTurnReaper;
-use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
 use Rawphp\CapabilitiesAi\Support\ContainerBindings;
+use Rawphp\CapabilitiesAi\Support\EloquentConversationStore;
+use Rawphp\CapabilitiesAi\Support\EloquentTurnClaim;
 use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
 use Rawphp\CapabilitiesAi\Support\StoreBoundIdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Support\StoreBoundProgressStoreReadiness;
@@ -35,7 +38,7 @@ use RuntimeException;
  * AI package service provider — config + migrations publish tags + optional routes + DI.
  *
  * Host seams (ConversationContextProvider, ToolCatalog) are intentionally unbound.
- * Host-prebound LlmClient / ProgressStore are preserved (bound() guard).
+ * Host-prebound LlmClient / ProgressStore / ConversationStore / TurnClaim are preserved (bound() guard).
  */
 final class CapabilitiesAiServiceProvider extends ServiceProvider
 {
@@ -102,14 +105,26 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
             });
         }
 
-        $this->app->singleton(TurnClaim::class, static fn () => new TurnClaim);
+        // Package-table persistence: Eloquent by default; one store + claim shared by every service.
+        if (! $this->app->bound(ConversationStore::class)) {
+            $this->app->singleton(ConversationStore::class, static fn () => new EloquentConversationStore);
+        }
+
+        if (! $this->app->bound(TurnClaim::class)) {
+            $this->app->singleton(TurnClaim::class, static fn () => new EloquentTurnClaim);
+        }
 
         $this->app->singleton(StaleTurnReaper::class, static fn (Container $app) => new StaleTurnReaper(
             $app->make(ProgressStore::class),
+            $app->make(TurnClaim::class),
         ));
 
         $this->app->singleton(TurnService::class, function (Container $app) {
-            return ContainerBindings::makeTurnService($app->make(ProgressStore::class));
+            return ContainerBindings::makeTurnService(
+                $app->make(ProgressStore::class),
+                $app->make(ConversationStore::class),
+                $app->make(TurnClaim::class),
+            );
         });
 
         $this->app->singleton(TurnRunner::class, function (Container $app) {
@@ -123,6 +138,7 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
                 context: self::optional($app, ConversationContextProvider::class),
                 tools: self::optional($app, ToolCatalog::class),
                 bus: self::optional($app, CapabilityBus::class),
+                store: $app->make(ConversationStore::class),
             );
         });
 
@@ -158,6 +174,7 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
                 ContainerBindings::claimTtlFromConfig($config),
                 $config,
                 self::optional($app, RateLimiter::class),
+                $app->make(ConversationStore::class),
             );
         });
 
@@ -176,6 +193,7 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
                 $app->make(IdempotencyReadiness::class),
                 is_string($userModel) && $userModel !== '' ? $userModel : null,
                 self::optional($app, ToolCatalog::class),
+                $app->make(ConversationStore::class),
             );
         });
     }

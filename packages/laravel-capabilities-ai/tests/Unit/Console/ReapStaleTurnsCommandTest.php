@@ -5,35 +5,40 @@ declare(strict_types=1);
 use Illuminate\Console\Command;
 use Illuminate\Console\OutputStyle;
 use Illuminate\Container\Container;
-use Illuminate\Database\Capsule\Manager as Capsule;
-use Illuminate\Events\Dispatcher as EventDispatcher;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Facade;
-use Illuminate\Support\Facades\Schema;
 use Rawphp\Capabilities\Observability\InMemoryMetrics;
 use Rawphp\CapabilitiesAi\Console\ReapStaleTurnsCommand;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\StaleTurnReaper;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
+use Rawphp\CapabilitiesAi\Tests\Fakes\InMemoryConversationStore;
+use Rawphp\CapabilitiesAi\Tests\Fakes\InMemoryTurnClaim;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 
+function reapCommandStore(bool $reset = false): InMemoryConversationStore
+{
+    static $store = null;
+    if ($reset || $store === null) {
+        $store = new InMemoryConversationStore;
+    }
+
+    return $store;
+}
+
+beforeEach(function () {
+    reapCommandStore(reset: true);
+});
+
 /**
- * In-memory sqlite + minimal config container (same pattern as StaleTurnReaperTest).
+ * Minimal config container; turn rows live in the in-memory store (no database).
  *
  * @param  array<string, mixed>  $aiConfig
  */
 function bootReapCommandApp(array $aiConfig): Container
 {
-    $capsule = new Capsule;
-    $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
-    $capsule->setEventDispatcher(new EventDispatcher(new Container));
-    $capsule->setAsGlobal();
-    $capsule->bootEloquent();
-
     $app = new Container;
-    $app->instance('db', $capsule->getDatabaseManager());
     $app->instance('config', new class(['capabilities-ai' => $aiConfig])
     {
         /** @param  array<string, mixed>  $items */
@@ -44,24 +49,17 @@ function bootReapCommandApp(array $aiConfig): Container
             return $this->items[$key] ?? $default;
         }
     });
-    Facade::setFacadeApplication($app);
-    Schema::swap($capsule->getConnection()->getSchemaBuilder());
-
-    $files = glob(dirname(__DIR__, 3).'/database/migrations/*.php') ?: [];
-    sort($files);
-    foreach ($files as $file) {
-        (require $file)->up();
-    }
 
     return $app;
 }
 
 function seedReapCommandTurn(Carbon $now, string $status, int $ageSeconds): void
 {
-    $ids = (new ConversationService(static fn ($j) => null, new ArrayProgressStore))->createUserMessage('reap cmd');
+    $ids = (new ConversationService(static fn ($j) => null, new ArrayProgressStore, store: reapCommandStore()))
+        ->createUserMessage('reap cmd');
     $stamp = $now->copy()->subSeconds($ageSeconds);
 
-    Turn::query()->where('ulid', $ids['turn_ulid'])->update($status === Turn::STATUS_RUNNING
+    reapCommandStore()->turn($ids['turn_ulid'])->forceFill($status === Turn::STATUS_RUNNING
         ? ['status' => Turn::STATUS_RUNNING, 'claimed_at' => $stamp, 'started_at' => $stamp, 'updated_at' => $stamp]
         : ['created_at' => $stamp, 'updated_at' => $stamp]);
 }
@@ -98,7 +96,7 @@ it('emits reaped turn counts per status to the Metrics contract', function () {
     $metrics = new InMemoryMetrics;
     [$command, $buffer] = makeReapCommand($app);
 
-    $exit = $command->handle(new StaleTurnReaper(new ArrayProgressStore), $metrics);
+    $exit = $command->handle(new StaleTurnReaper(new ArrayProgressStore, new InMemoryTurnClaim(reapCommandStore())), $metrics);
 
     expect($exit)->toBe(Command::SUCCESS)
         ->and($metrics->get(ReapStaleTurnsCommand::METRIC_REAPED, ['status' => 'queued']))->toBe(2)
@@ -114,7 +112,7 @@ it('emits zero-valued series when nothing is stale so dashboards see the run', f
     $metrics = new InMemoryMetrics;
     [$command, $buffer] = makeReapCommand($app);
 
-    $command->handle(new StaleTurnReaper(new ArrayProgressStore), $metrics);
+    $command->handle(new StaleTurnReaper(new ArrayProgressStore, new InMemoryTurnClaim(reapCommandStore())), $metrics);
 
     expect($metrics->emissions())->toBe([
         ['name' => 'capabilities_ai_reaped_turns_total', 'labels' => ['status' => 'queued'], 'by' => 0],

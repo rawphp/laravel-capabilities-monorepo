@@ -121,3 +121,64 @@ it('close persists status=closed', function () {
 
     expect(Conversation::query()->where('ulid', 'C1')->value('status'))->toBe('closed');
 });
+
+it('reads a turn with its conversation, and an owned turn only for its owner', function () {
+    $store = bootConversationStoreSqlite();
+    $owned = $store->createConversation('C1', null, 'u1');
+    $ownerless = $store->createConversation('C2', null, null);
+    $store->createQueuedTurn($owned, 'T1');
+    $store->createQueuedTurn($ownerless, 'T2');
+
+    expect($store->turn('T1')->conversation?->ulid)->toBe('C1')
+        ->and($store->turn('T1')->relationLoaded('conversation'))->toBeTrue()
+        ->and($store->ownedTurn('T1', 'u1')->conversation?->ulid)->toBe('C1')
+        ->and(fn () => $store->turn('MISSING'))->toThrow(ModelNotFoundException::class)
+        ->and(fn () => $store->ownedTurn('T1', 'u2'))->toThrow(ModelNotFoundException::class)
+        ->and(fn () => $store->ownedTurn('T2', 'u1'))->toThrow(ModelNotFoundException::class)
+        ->and(fn () => $store->ownedTurn('MISSING', 'u1'))->toThrow(ModelNotFoundException::class);
+});
+
+it('creates a pending proposal and reads it with its conversation and turn', function () {
+    $store = bootConversationStoreSqlite();
+    $conversation = $store->createConversation('C1', null, 'u1');
+    $turn = $store->createQueuedTurn($conversation, 'T1');
+
+    $store->createProposal($turn, 'P1', 'action', ['a' => 1], 'demo.cap', 'hash-1');
+    $proposal = $store->proposal('P1');
+
+    expect($proposal->only(['turn_id', 'conversation_id', 'type', 'payload', 'target_capability', 'schema_hash', 'status']))
+        ->toBe([
+            'turn_id' => $turn->id,
+            'conversation_id' => $conversation->id,
+            'type' => 'action',
+            'payload' => ['a' => 1],
+            'target_capability' => 'demo.cap',
+            'schema_hash' => 'hash-1',
+            'status' => Proposal::STATUS_PENDING,
+        ])
+        ->and($proposal->conversation?->ulid)->toBe('C1')
+        ->and($proposal->turn?->ulid)->toBe('T1')
+        ->and(fn () => $store->proposal('MISSING'))->toThrow(ModelNotFoundException::class);
+});
+
+it('reports proposal ownership only for the conversation owner', function () {
+    $store = bootConversationStoreSqlite();
+    $store->createProposal($store->createQueuedTurn($store->createConversation('C1', null, 'u1'), 'T1'), 'P1', 'action', [], null, null);
+    $store->createProposal($store->createQueuedTurn($store->createConversation('C2', null, null), 'T2'), 'P2', 'action', [], null, null);
+
+    expect($store->proposalOwnedBy('P1', 'u1'))->toBeTrue()
+        ->and($store->proposalOwnedBy('P1', 'u2'))->toBeFalse()
+        ->and($store->proposalOwnedBy('P2', ''))->toBeFalse()
+        ->and($store->proposalOwnedBy('MISSING', 'u1'))->toBeFalse();
+});
+
+it('transitions a proposal only from the expected status', function () {
+    $store = bootConversationStoreSqlite();
+    $store->createProposal($store->createQueuedTurn($store->createConversation('C1', null, 'u1'), 'T1'), 'P1', 'action', [], 'demo.cap', null);
+
+    expect($store->transitionProposal('P1', Proposal::STATUS_PENDING, ['status' => Proposal::STATUS_ACCEPTING]))->toBeTrue()
+        ->and($store->transitionProposal('P1', Proposal::STATUS_PENDING, ['status' => Proposal::STATUS_REJECTED]))->toBeFalse()
+        ->and($store->transitionProposal('P1', Proposal::STATUS_ACCEPTING, ['status' => Proposal::STATUS_FAILED, 'last_error' => 'x: y']))->toBeTrue()
+        ->and($store->transitionProposal('MISSING', Proposal::STATUS_PENDING, ['status' => Proposal::STATUS_ACCEPTING]))->toBeFalse()
+        ->and($store->proposal('P1')->only(['status', 'last_error']))->toBe(['status' => Proposal::STATUS_FAILED, 'last_error' => 'x: y']);
+});

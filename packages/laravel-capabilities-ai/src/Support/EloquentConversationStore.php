@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Support;
 
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
 use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Message;
@@ -94,5 +96,60 @@ final class EloquentConversationStore implements ConversationStore
     {
         $conversation->status = 'closed';
         $conversation->save();
+    }
+
+    public function turn(string $turnUlid): Turn
+    {
+        return Turn::query()->with('conversation')->where('ulid', $turnUlid)->firstOrFail();
+    }
+
+    public function ownedTurn(string $turnUlid, string $ownerId): Turn
+    {
+        return Turn::query()
+            ->with('conversation')
+            ->where('ulid', $turnUlid)
+            ->whereHas('conversation', static fn (Builder $q) => $q->where('user_id', $ownerId))
+            ->firstOrFail();
+    }
+
+    public function createProposal(
+        Turn $turn,
+        string $ulid,
+        string $type,
+        mixed $payload,
+        ?string $targetCapability,
+        ?string $schemaHash,
+    ): Proposal {
+        return Proposal::query()->create([
+            'turn_id' => $turn->id,
+            'conversation_id' => $turn->conversation_id,
+            'ulid' => $ulid,
+            'type' => $type,
+            'payload' => $payload,
+            'target_capability' => $targetCapability,
+            'schema_hash' => $schemaHash,
+            'status' => Proposal::STATUS_PENDING,
+        ]);
+    }
+
+    public function proposal(string $proposalUlid): Proposal
+    {
+        return Proposal::query()->with(['conversation', 'turn'])->where('ulid', $proposalUlid)->firstOrFail();
+    }
+
+    public function proposalOwnedBy(string $proposalUlid, string $ownerId): bool
+    {
+        return Proposal::query()
+            ->where('ulid', $proposalUlid)
+            ->whereHas('conversation', static fn (Builder $q) => $q->where('user_id', $ownerId))
+            ->exists();
+    }
+
+    public function transitionProposal(string $proposalUlid, string $fromStatus, array $attributes): bool
+    {
+        return Proposal::query()->toBase()
+            ->where('ulid', $proposalUlid)
+            ->where('status', $fromStatus)
+            ->update($attributes + ['updated_at' => Carbon::now()->toDateTimeString()]) === 1;
     }
 }

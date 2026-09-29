@@ -6,6 +6,7 @@ namespace Rawphp\CapabilitiesAi\Tests\Fakes;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Carbon;
 use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
 use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Message;
@@ -16,8 +17,10 @@ use Rawphp\CapabilitiesAi\Models\Turn;
  * In-memory ConversationStore: unsaved model instances in arrays, no database.
  *
  * Rows are held by reference, so tests move a turn along with `turn($ulid)->status = …`.
+ * Reads load relations from the arrays at read time, like Eloquent `with()`.
+ * Not final: a test may override one read to simulate a concurrent host write.
  */
-final class InMemoryConversationStore implements ConversationStore
+class InMemoryConversationStore implements ConversationStore
 {
     /** @var list<Conversation> */
     public array $conversations = [];
@@ -112,15 +115,87 @@ final class InMemoryConversationStore implements ConversationStore
         $conversation->status = 'closed';
     }
 
-    public function turn(string $ulid): Turn
+    public function turn(string $turnUlid): Turn
     {
         foreach ($this->turns as $turn) {
-            if ($turn->ulid === $ulid) {
-                return $turn;
+            if ($turn->ulid === $turnUlid) {
+                return $turn->setRelation('conversation', $this->conversationById($turn->conversation_id));
             }
         }
 
-        throw (new ModelNotFoundException)->setModel(Turn::class, [$ulid]);
+        throw (new ModelNotFoundException)->setModel(Turn::class, [$turnUlid]);
+    }
+
+    public function ownedTurn(string $turnUlid, string $ownerId): Turn
+    {
+        $turn = $this->turn($turnUlid);
+        if ($turn->conversation?->user_id !== $ownerId) {
+            throw (new ModelNotFoundException)->setModel(Turn::class, [$turnUlid]);
+        }
+
+        return $turn;
+    }
+
+    public function createProposal(
+        Turn $turn,
+        string $ulid,
+        string $type,
+        mixed $payload,
+        ?string $targetCapability,
+        ?string $schemaHash,
+    ): Proposal {
+        return $this->proposals[] = $this->row(new Proposal, [
+            'turn_id' => $turn->id,
+            'conversation_id' => $turn->conversation_id,
+            'ulid' => $ulid,
+            'type' => $type,
+            'payload' => $payload,
+            'target_capability' => $targetCapability,
+            'schema_hash' => $schemaHash,
+            'status' => Proposal::STATUS_PENDING,
+        ]);
+    }
+
+    public function proposal(string $proposalUlid): Proposal
+    {
+        foreach ($this->proposals as $proposal) {
+            if ($proposal->ulid === $proposalUlid) {
+                $turn = null;
+                foreach ($this->turns as $candidate) {
+                    if ($candidate->id === $proposal->turn_id) {
+                        $turn = $candidate;
+                    }
+                }
+
+                return $proposal
+                    ->setRelation('conversation', $this->conversationById($proposal->conversation_id))
+                    ->setRelation('turn', $turn);
+            }
+        }
+
+        throw (new ModelNotFoundException)->setModel(Proposal::class, [$proposalUlid]);
+    }
+
+    public function proposalOwnedBy(string $proposalUlid, string $ownerId): bool
+    {
+        try {
+            return $this->proposal($proposalUlid)->conversation?->user_id === $ownerId;
+        } catch (ModelNotFoundException) {
+            return false;
+        }
+    }
+
+    public function transitionProposal(string $proposalUlid, string $fromStatus, array $attributes): bool
+    {
+        foreach ($this->proposals as $proposal) {
+            if ($proposal->ulid === $proposalUlid && $proposal->status === $fromStatus) {
+                $proposal->forceFill($attributes + ['updated_at' => Carbon::now()->toDateTimeString()]);
+
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function conversation(string $ulid): Conversation
@@ -135,13 +210,24 @@ final class InMemoryConversationStore implements ConversationStore
     }
 
     /**
-     * Seed a proposal row for history tests (proposals are created by TurnRunner, not this port).
+     * Seed a proposal row directly (history tests: any status, no turn needed).
      *
      * @param  array<string, mixed>  $attributes
      */
     public function addProposal(Conversation $conversation, array $attributes): Proposal
     {
         return $this->proposals[] = $this->row(new Proposal, $attributes + ['conversation_id' => $conversation->id]);
+    }
+
+    private function conversationById(mixed $id): ?Conversation
+    {
+        foreach ($this->conversations as $conversation) {
+            if ($conversation->id === $id) {
+                return $conversation;
+            }
+        }
+
+        return null;
     }
 
     /**
