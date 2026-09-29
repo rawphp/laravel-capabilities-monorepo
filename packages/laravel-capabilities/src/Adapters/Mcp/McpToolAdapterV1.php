@@ -155,13 +155,33 @@ final class McpToolAdapterV1 implements McpToolAdapter
             );
         }
 
+        $profile = $options['profile'] ?? $this->activeProfile;
+
+        // Integration clients run only inside their configured named profiles (D-023 / D-008).
+        $namedProfile = is_string($profile) ? $profile : null;
+        if ($resolved['mcp']['auth_profile'] === 'integration'
+            && ! $this->authResolver->integrationAllowsProfile((string) $credential->clientId, $namedProfile)) {
+            return CapabilityResult::failure(
+                code: 'forbidden',
+                message: sprintf('MCP integration client is not allowed to use profile "%s" (D-023).', $namedProfile ?? ''),
+                extra: ['normalized_code' => 'integration_profile_forbidden'],
+            );
+        }
+
         // Caller always mcp; actor and mcp meta from credential resolver only (D-023).
         unset($options['caller'], $options['actor']);
+
+        $profile = $options['profile'] ?? $this->activeProfile;
+        $mcp = $resolved['mcp'];
+        // Audit which D-008 tool profile gated the call, beside the D-023 auth profile.
+        if (is_string($profile)) {
+            $mcp['tool_profile'] = $profile;
+        }
 
         $invokeOptions = array_merge($options, [
             'caller' => 'mcp',
             'actor' => $resolved['actor'],
-            'mcp' => $resolved['mcp'],
+            'mcp' => $mcp,
         ]);
 
         if (isset($resolved['tenant_id'])) {
@@ -175,7 +195,6 @@ final class McpToolAdapterV1 implements McpToolAdapter
             unset($clean['idempotency_key']);
         }
 
-        $profile = $options['profile'] ?? $this->activeProfile;
         if ($profile !== null) {
             return $this->registry->runCapabilityInProfile(
                 'mcp',

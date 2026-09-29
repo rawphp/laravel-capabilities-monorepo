@@ -521,3 +521,21 @@ it('accept expired returns refuse outcome without throw', function () {
         ->and($out->httpStatus)->toBe(410)
         ->and($bus->invokes)->toBe(0);
 });
+
+it('ownedBy is true only for the owner of the proposal conversation', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal();
+    $ownerId = (string) Conversation::query()->whereKey($proposal->conversation_id)->value('user_id');
+    $service = makeProposalService(proposalBus());
+
+    expect($service->ownedBy($proposal->ulid, $ownerId))->toBeTrue()
+        ->and($service->ownedBy($proposal->ulid, $ownerId.'9'))->toBeFalse()
+        ->and($service->ownedBy('PROPDOESNOTEXIST0001', $ownerId))->toBeFalse();
+});
+
+it('ownedBy is false for a proposal whose conversation has no owner', function () {
+    bootProposalSqlite();
+    $proposal = seedPendingProposal(withUser: false);
+
+    expect(makeProposalService(proposalBus())->ownedBy($proposal->ulid, ''))->toBeFalse();
+});

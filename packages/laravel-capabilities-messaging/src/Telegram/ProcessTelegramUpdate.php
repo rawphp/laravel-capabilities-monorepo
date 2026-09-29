@@ -297,6 +297,7 @@ final class ProcessTelegramUpdate
                 'context' => $ctx,
                 'caller' => 'agent',
                 'actor' => $user,
+                'tool_profile' => $profile,
                 // Core pipeline enforces the per-turn tool budget from this count (D-013).
                 'agent_turn_tool_calls' => ++$turnToolCalls,
             ];

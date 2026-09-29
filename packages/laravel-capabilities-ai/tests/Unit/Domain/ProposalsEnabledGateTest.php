@@ -127,8 +127,8 @@ it('history returns empty proposals when service constructed with proposals disa
         claimTtl: 120,
         proposalsEnabled: false,
     );
-    $ids = $svc->createUserMessage('hi');
-    $h = $svc->history($ids['conversation_ulid']);
+    $ids = $svc->createUserMessage('hi', userId: 'u1');
+    $h = $svc->history($ids['conversation_ulid'], 'u1');
     expect($h)->toHaveKey('proposals')
         ->and($h['proposals'])->toBe([]);
 });
@@ -141,7 +141,7 @@ it('history loads proposals when proposals enabled', function () {
         claimTtl: 120,
         proposalsEnabled: true,
     );
-    $ids = $svc->createUserMessage('hi');
+    $ids = $svc->createUserMessage('hi', userId: 'u1');
     $turn = Turn::query()->where('ulid', $ids['turn_ulid'])->firstOrFail();
     $conversation = Conversation::query()->where('ulid', $ids['conversation_ulid'])->firstOrFail();
     Proposal::query()->create([
@@ -154,7 +154,7 @@ it('history loads proposals when proposals enabled', function () {
         'status' => Proposal::STATUS_PENDING,
     ]);
 
-    $h = $svc->history($ids['conversation_ulid']);
+    $h = $svc->history($ids['conversation_ulid'], 'u1');
     expect($h['proposals'])->toHaveCount(1)
         ->and($h['proposals'][0]['target_capability'])->toBe('demo.cap')
         ->and($h['proposals'][0]['status'])->toBe(Proposal::STATUS_PENDING);

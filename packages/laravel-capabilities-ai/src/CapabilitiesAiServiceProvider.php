@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
+use Rawphp\Capabilities\Contracts\Metrics;
+use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\CapabilitiesAi\Console\ReapStaleTurnsCommand;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
@@ -74,7 +76,11 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
                     self::allowUnsafeDrivers($config),
                 );
 
-                return ContainerBindings::makeLlmClient($config);
+                return ContainerBindings::makeLlmClient(
+                    $config,
+                    $app->bound(Metrics::class) ? $app->make(Metrics::class) : null,
+                    $app->bound(Tracer::class) ? $app->make(Tracer::class) : null,
+                );
             });
         }
 

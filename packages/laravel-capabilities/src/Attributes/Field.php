@@ -10,6 +10,7 @@ use Rawphp\Capabilities\Support\CapabilityData;
  *
  * Portable constraints (min/max/enum/format/…) appear in {@see CapabilityData::jsonSchema()}.
  * Server-only rules stay on {@see CapabilityData::rules()}.
+ * `sensitive: true` emits `writeOnly: true`; the audit log redacts that field (D-010).
  */
 #[Attribute(Attribute::TARGET_PROPERTY | Attribute::TARGET_PARAMETER)]
 final class Field
@@ -31,5 +32,6 @@ final class Field
         public ?string $format = null,
         public ?string $items = null,
         public ?string $of = null,
+        public bool $sensitive = false,
     ) {}
 }
