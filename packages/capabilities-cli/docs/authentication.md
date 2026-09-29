@@ -24,7 +24,7 @@ Default config root:
 | Item | Purpose |
 |------|---------|
 | **Profile name** | Isolates credentials per product/deployment (`default` if omitted). Letters, digits, `-` and `_` only; other names are rejected, never rewritten, so two names can't share one token |
-| **Base URL** | Deployment root used by the HTTP client |
+| **Base URL** | Everything before `/capabilities` in the API URL (see below) |
 | **Token** | Bearer credential; server derives `caller: cli` and authorization |
 
 The CLI never embeds product domain logic. Authorization always happens on the
@@ -139,6 +139,18 @@ capabilities jobs schedule --profile=yardpilot --flag=value
 The same flag works on:
 
 `auth` · `catalog` · `describe` · `run` · synthesized `<domain> <verb>` · `approvals`
+
+### What the base URL must be
+
+The CLI always appends `/capabilities/…` to the base URL. The server's route
+prefix (`surfaces.http.prefix`, default `capabilities`) must therefore end in
+the segment `capabilities`, and `--base-url` is everything before it:
+
+| Server prefix | `--base-url` |
+|---------------|--------------|
+| `capabilities` (default) | `https://app.example.com` |
+| `api/capabilities` | `https://app.example.com/api` |
+| `caps`, `v1/tools`, … | Not reachable from the CLI; every call returns `not_found` (exit 5) |
 
 ### Base URL override
 

@@ -205,6 +205,12 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   (the meta-command wins). It is now reported as `reserved_domain`, matching
   the server, which rejects that domain at definition time.
 
+### Documentation
+
+- `docs/authentication.md` states the base-URL rule: the CLI appends
+  `/capabilities/…`, so the server's `surfaces.http.prefix` must end in
+  `capabilities` and `--base-url` is everything before it.
+
 ## [0.x] — pre-stable
 
 Pre-1.0 development line. CLI flags and wire assumptions may change without a major bump while on 0.x.
