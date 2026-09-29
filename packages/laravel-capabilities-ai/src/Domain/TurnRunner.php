@@ -4,18 +4,21 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Domain;
 
+use Closure;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\Redactor;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
 use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
+use Rawphp\CapabilitiesAi\Contracts\DeadlineAwareLlmClient;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
 use Rawphp\CapabilitiesAi\Contracts\TurnClaim;
 use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Turn;
+use Rawphp\CapabilitiesAi\Package;
 use Rawphp\CapabilitiesAi\Support\EloquentConversationStore;
 use Rawphp\CapabilitiesAi\Support\ProposalFenceExtractor;
 use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
@@ -25,6 +28,11 @@ use RuntimeException;
 
 /**
  * Run a claimed turn: LLM loop + bus-only tool invokes.
+ *
+ * Turn budget: the whole turn runs in one job whose timeout is claim_ttl ($turnBudgetSeconds).
+ * With a {@see DeadlineAwareLlmClient}, a round starts only while one full request timeout
+ * still ends before that deadline, and the client's retries are held to it too; otherwise
+ * the turn fails as retryable instead of the worker being killed mid-request.
  */
 final class TurnRunner
 {
@@ -41,6 +49,9 @@ final class TurnRunner
         private readonly ResolveConversationActor $actors = new ResolveConversationActor,
         private readonly bool $proposalsEnabled = true,
         private readonly ConversationStore $store = new EloquentConversationStore,
+        private readonly int $turnBudgetSeconds = Package::DEFAULT_CLAIM_TTL,
+        /** @var (Closure(): int)|null Monotonic nanoseconds; null = hrtime(true). Tests inject a fake clock. */
+        private readonly ?Closure $clock = null,
     ) {}
 
     public function run(string $turnUlid): Turn
@@ -48,6 +59,10 @@ final class TurnRunner
         if ($this->context === null || $this->tools === null) {
             throw new RuntimeException('ConversationContextProvider and ToolCatalog must be bound before running a turn');
         }
+
+        // The job (and its claim_ttl timeout) started just before this.
+        $deadlineNs = $this->now() + $this->turnBudgetSeconds * 1_000_000_000;
+        $llm = $this->llm instanceof DeadlineAwareLlmClient ? $this->llm->withDeadline($deadlineNs) : $this->llm;
 
         if (! $this->claim->claim($turnUlid, $this->claimOwner)) {
             throw new RuntimeException("Failed to claim turn {$turnUlid}");
@@ -64,7 +79,7 @@ final class TurnRunner
             }
             $messages = $this->context->messagesForTurn($conversation->ulid, $turnUlid);
             // Do not advertise tools to clients that cannot continue after tool results.
-            $toolDefs = $this->llm->supportsToolRounds()
+            $toolDefs = $llm->supportsToolRounds()
                 ? $this->tools->toolsForTurn($conversation->ulid, $turnUlid)
                 : [];
             // Snapshot of what the model was shown; tool_calls outside it never reach the bus.
@@ -79,9 +94,15 @@ final class TurnRunner
                 if ($this->claim->isCancelled($turnUlid)) {
                     return $this->stopped($turn, $usage);
                 }
+                if ($llm instanceof DeadlineAwareLlmClient
+                    && $this->now() + $llm->requestTimeoutSeconds() * 1_000_000_000 >= $deadlineNs) {
+                    throw new RetryableLlmException(
+                        "Turn time budget (claim_ttl {$this->turnBudgetSeconds}s) cannot fit another LLM round"
+                    );
+                }
                 $rounds++;
-                $startedAt = hrtime(true);
-                $response = $this->llm->complete($messages, $toolDefs);
+                $startedAt = $this->now();
+                $response = $llm->complete($messages, $toolDefs);
                 $usage[] = $this->roundUsage($response, $startedAt);
                 $toolCalls = $response['tool_calls'] ?? [];
 
@@ -98,7 +119,7 @@ final class TurnRunner
                 }
 
                 // Fail closed before any bus mutation when the client cannot continue after tool results.
-                if (! $this->llm->supportsToolRounds()) {
+                if (! $llm->supportsToolRounds()) {
                     throw new RuntimeException(
                         'Bound LlmClient does not support multi-round tool results; refusing tool invokes (fail closed)'
                     );
@@ -250,7 +271,7 @@ final class TurnRunner
      */
     private function roundUsage(array $response, int $startedAt): array
     {
-        $round = ['latency_ms' => intdiv(hrtime(true) - $startedAt, 1_000_000)];
+        $round = ['latency_ms' => intdiv($this->now() - $startedAt, 1_000_000)];
         $reported = is_array($response['usage'] ?? null) ? $response['usage'] : [];
         foreach (['input_tokens', 'output_tokens'] as $key) {
             if (is_int($reported[$key] ?? null) && $reported[$key] >= 0) {
@@ -259,6 +280,11 @@ final class TurnRunner
         }
 
         return $round;
+    }
+
+    private function now(): int
+    {
+        return $this->clock !== null ? ($this->clock)() : hrtime(true);
     }
 
     private function encodeToolResult(string $name, CapabilityResult $result): string
