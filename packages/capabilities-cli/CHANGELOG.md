@@ -57,8 +57,9 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   sends them on describe, but the CLI's schema cache dropped them, so
   `describe --json`, `run <name> --help` and `<domain> <verb> --help` showed no
   description and no retry-safety flags. They are now kept, cached, printed by
-  `describe --json`, and the description appears in capability help. Entries
-  cached by an older CLI lack them until the next live describe (`--no-cache`).
+  `describe --json`, and the description appears in capability help. The schema
+  cache key is versioned, so entries cached by an older CLI are ignored and the
+  first `describe` after upgrading refetches them; no action needed.
 - **HTTP redirects are never followed** — against a `--base-url` that 301s
   (e.g. `http://` to an HTTPS-only host), Go replayed the `run` POST as a GET,
   which hit the describe route and returned an ok envelope: the CLI exited
