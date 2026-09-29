@@ -9,6 +9,30 @@ with **0.x pre-stable** expectations (breaking changes allowed without a major b
 Monorepo packaging policy (install paths, tags, Packagist checklist):  
 https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versioning.md
 
+## [0.5.3] - 2026-09-29
+
+### Changed
+
+#### InvokePipeline run stage — bug-class errors no longer look like domain errors
+
+Before this release every throwable from a capability's run stage became 422
+`domain_error` (cli_exit 5, retryable false) with the exception message passed
+through, so PHP bugs and SQL errors reached callers as "domain" failures and
+leaked SQL text and model class names. The run-stage catch now maps:
+
+- **`\Error` (incl. `TypeError`) and `PDOException` (incl. `QueryException`)** →
+  `internal`, HTTP 500, cli_exit 1, retryable true, message `Internal error.`.
+  The exception is reported through the bound `ExceptionHandler`.
+- **`ModelNotFoundException`** → `not_found`, HTTP 404, cli_exit 5, retryable false,
+  message `Not found.`. Not reported.
+- **Everything else** (other `RuntimeException` / `Exception` throws) → unchanged:
+  422 `domain_error` with its message.
+
+The `capabilities_invoke_total` status label follows the new codes.
+
+Consumers: clients or middleware that matched 422 plus "No query results for model"
+or SQL text must switch to 404/`not_found` and 500/`internal`.
+
 ## [0.5.2] - 2026-08-27
 
 ### Fixed
