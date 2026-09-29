@@ -219,6 +219,21 @@ These shipped in 0.5.3 and had no callers inside the package:
 - `Support\SchemaSnapshot::document()`
 - `Adapters\PeerSupportMatrix::supports()`: use
   `PeerSupportMatrix::versionSatisfies($version, PeerSupportMatrix::for($peer))`.
+- `Approval\ApprovalExecutor::withStore()` and `ApprovalExecutor::withMetrics()`: pass the
+  store and metrics to the constructor.
+
+#### `Contracts\RateLimiter` gains `availableIn()` (D-013, C-007)
+
+`Contracts\RateLimiter` has a new method, `availableIn(string $key): int` — seconds until
+the key's window frees, `0` when unknown. The pipeline reads it for the `rate_limited`
+`error.retry_after` hint (see Changed). `InMemoryRateLimiter` and `LaravelCacheRateLimiter`
+implement it. **Upgrade:** host `RateLimiter` implementations must add it.
+
+#### `CapabilityController::lastInvokeOptions()` removed
+
+The test hook on `Adapters\Http\CapabilityController` kept the last request's invoke
+options, actor included, on the container singleton (see Fixed (HTTP surface)).
+**Upgrade:** assert invoke options through a recording `CapabilityBus` instead.
 
 ### Changed
 
@@ -272,9 +287,7 @@ These shipped in 0.5.3 and had no callers inside the package:
   `error.retry_after` (seconds until the tripped per-minute / per-capability window frees)
   and `HttpResponse::fromResult` adds `Retry-After` on 429 when it is present (an explicit
   header passed by the caller wins). The zero-limit edge and the agent turn budget send none.
-  **Contract change:** `Contracts\RateLimiter` gains `availableIn(string $key): int`;
-  `InMemoryRateLimiter` and `LaravelCacheRateLimiter` implement it — host implementations
-  must add it (return `0` when unknown).
+  Host `RateLimiter` implementations must add `availableIn()` (see Changed (BREAKING)).
 - **`transactions.wrap_run = true` now really wraps `run()` (D-010, L-010).** The flag only
   set a test-visible marker; `run()` was called exactly as with the flag off, so an app that
   opted in for atomicity got none. The pipeline now executes `run()` inside
@@ -523,9 +536,8 @@ These shipped in 0.5.3 and had no callers inside the package:
   `not_found`, matching list.
 - **`CapabilityController` no longer keeps the last request's actor.** The container
   singleton stored every invoke's options (including the authenticated user) for a test
-  hook, which leaked across requests on Octane / long-lived workers. The
-  `lastInvokeOptions()` method is removed; assert invoke options through a recording
-  `CapabilityBus` instead.
+  hook, which leaked across requests on Octane / long-lived workers. The hook,
+  `lastInvokeOptions()`, is removed (see Changed (BREAKING)).
 
 ## [0.5.3] - 2026-09-29
 
