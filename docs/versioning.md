@@ -27,12 +27,13 @@ Source of truth for day-to-day development is this monorepo. Publication of pack
 
 ### Test gate (split blocked until green)
 
-Split / package-remote publish is **gated on green monorepo unit tests**. The split workflow’s `split` job `needs:` a reusable call to [`.github/workflows/tests.yml`](../.github/workflows/tests.yml) (PHP 8.2 Pest via root `composer test` = core + messaging + AI, and `go test ./...` for the CLI). If any unit suite fails, package trees and tags are **not** mirrored.
+Split / package-remote publish is **gated on green monorepo unit tests**. The split workflow’s `split` job `needs:` a reusable call to [`.github/workflows/tests.yml`](../.github/workflows/tests.yml) (PHP 8.2 Pest via root `composer test` = core + messaging + AI on the committed lock, and `go test ./...` for the CLI). If any unit suite fails, package trees and tags are **not** mirrored.
 
 | Surface | CI |
 |---|---|
 | PR + push to `main` | `tests.yml` runs unit suites standalone |
 | Split (`main`, `v*` tags, `workflow_dispatch`) | Same suites via `workflow_call` before any rsync / tag force-push |
+| Declared PHP / Laravel range | `php-compat` cells re-resolve without the lock: PHP 8.2 + illuminate `^11.0` (`prefer-lowest`) and PHP 8.5 + illuminate `^13.0` (`prefer-stable`). The lock job covers PHP 8.2 + Laravel 12 |
 | Coverage floor / Packagist API | **Not** enforced here (unit exit codes only; Packagist remains human checklist) |
 
 The PHP job also runs two static gates before the suites, and `scripts/release.sh` runs the same commands:

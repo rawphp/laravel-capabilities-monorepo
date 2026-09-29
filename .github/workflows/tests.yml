@@ -41,6 +41,42 @@ jobs:
       - name: Pest unit suites (composer test)
         run: composer test
 
+  # Declared support is illuminate/* ^11|^12|^13 on PHP ^8.2 (Laravel 13 needs
+  # PHP ^8.3). The lockfile job above covers PHP 8.2 + Laravel 12; these cells
+  # cover the lowest and highest ends of the range without the lock.
+  php-compat:
+    name: PHP ${{ matrix.php }} / illuminate ${{ matrix.illuminate }} (${{ matrix.stability }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - php: '8.2'
+            illuminate: '^11.0'
+            stability: prefer-lowest
+          - php: '8.5'
+            illuminate: '^13.0'
+            stability: prefer-stable
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, xml, dom, tokenizer
+          coverage: none
+          tools: composer:v2
+
+      - name: Resolve illuminate ${{ matrix.illuminate }} (${{ matrix.stability }})
+        run: |
+          composer require "illuminate/support:${{ matrix.illuminate }}" --no-update --no-interaction
+          composer update --${{ matrix.stability }} --with-all-dependencies --no-interaction --prefer-dist --no-progress
+
+      - name: Pest unit suites (composer test)
+        run: composer test
+
   go:
     name: Go unit (capabilities-cli)
     runs-on: ubuntu-latest
