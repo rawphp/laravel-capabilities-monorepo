@@ -162,10 +162,7 @@ func classify(prop map[string]any) (string, PassMode) {
 		if isPlainScalarType(t) {
 			return t, PassFlag
 		}
-		if t == "object" || t == "array" {
-			return t, PassJSONOnly
-		}
-		return t, PassJSONOnly
+		return t, PassJSONOnly // object, array, null, …
 	case []any:
 		// type union: string|null remains flag; multi non-null types → json-only
 		plain, hasNull := plainTypesFromUnion(t)
@@ -217,23 +214,13 @@ func plainTypesFromUnion(types []any) (plain []string, hasNull bool) {
 			hasNull = true
 			continue
 		}
-		if isPlainScalarType(ts) && !seen[ts] {
+		if !isPlainScalarType(ts) {
+			// object/array in union forces non-plain
+			return nil, hasNull
+		}
+		if !seen[ts] {
 			seen[ts] = true
 			plain = append(plain, ts)
-		} else if !isPlainScalarType(ts) {
-			// object/array in union forces non-plain
-			return []string{}, hasNull
-		}
-	}
-	// if any non-plain non-null was present we returned early empty
-	// re-scan for non-plain:
-	for _, raw := range types {
-		ts, _ := raw.(string)
-		if ts == "" || ts == "null" {
-			continue
-		}
-		if !isPlainScalarType(ts) {
-			return nil, hasNull
 		}
 	}
 	// integer ⊂ number in JSON Schema: PHP int|float exports ["integer","number"].
@@ -311,9 +298,6 @@ func (s *Schema) LookupName(propertyName string) (*Field, bool) {
 func (s *Schema) Merge(baseJSON []byte, flags map[string]string) (map[string]any, error) {
 	out := map[string]any{}
 	if len(baseJSON) > 0 {
-		if !json.Valid(baseJSON) {
-			return nil, fmt.Errorf("%w: not valid JSON", ErrInvalidBaseJSON)
-		}
 		var base any
 		if err := json.Unmarshal(baseJSON, &base); err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrInvalidBaseJSON, err)
@@ -366,8 +350,6 @@ func parseScalar(f *Field, raw string) (any, error) {
 		return parseEnum(f, raw)
 	}
 	switch f.Type {
-	case "string":
-		return raw, nil
 	case "integer":
 		n, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil {
@@ -391,7 +373,7 @@ func parseScalar(f *Field, raw string) (any, error) {
 			return nil, fmt.Errorf("%w: --%s expects true|false, got %q", ErrInvalidScalar, f.FlagName, raw)
 		}
 	default:
-		// unknown typed flag — treat as string
+		// "string" — classify only flags plain scalar types
 		return raw, nil
 	}
 }
@@ -442,11 +424,7 @@ func CollectFlags(args []string) (flags map[string]string, rest []string, err er
 			rest = append(rest, a)
 			continue
 		}
-		body := strings.TrimPrefix(a, "--")
-		if body == "" {
-			return nil, nil, fmt.Errorf("%w: empty flag", ErrUnknownFlag)
-		}
-		name, val, hasEq := strings.Cut(body, "=")
+		name, val, hasEq := strings.Cut(strings.TrimPrefix(a, "--"), "=")
 		if name == "" {
 			return nil, nil, fmt.Errorf("%w: empty flag", ErrUnknownFlag)
 		}

@@ -405,3 +405,130 @@ func TestFromJSONSchema_kebabCollisionIsAmbiguous(t *testing.T) {
 		}
 	}
 }
+
+func TestFromJSONSchema_emptyAndInvalidInput(t *testing.T) {
+	s, err := FromJSONSchema(nil)
+	if err != nil || len(s.Fields) != 0 {
+		t.Fatalf("empty schema: %+v %v", s, err)
+	}
+	if _, ok := s.LookupFlag("anything"); ok {
+		t.Fatal("empty schema must know no flags")
+	}
+	if _, err := FromJSONSchema([]byte(`{`)); !errors.Is(err, ErrInvalidSchema) {
+		t.Fatalf("want ErrInvalidSchema, got %v", err)
+	}
+	s, err = FromSchemaMap(nil)
+	if err != nil || len(s.Fields) != 0 {
+		t.Fatalf("nil map: %+v %v", s, err)
+	}
+}
+
+func TestFromJSONSchema_classifiesCompositesEnumsAndUnions(t *testing.T) {
+	s, err := FromJSONSchema([]byte(`{
+		"type": "object",
+		"properties": {
+			"choice":   {"type": "string", "oneOf": [{"const": "a"}]},
+			"shape":    {"enum": [{"x": 1}, "flat"]},
+			"nullable": {"enum": ["a", null], "type": ["string", "null"]},
+			"flag":     {"enum": [true, false]},
+			"ratio":    {"enum": [0.5, 1.5]},
+			"blank":    {"enum": [null, "x"]},
+			"nothing":  {"type": ["null"]},
+			"loose":    {"description": "no type"},
+			"dup":      {"type": ["string", "string", 7]},
+			"bad":      "not-a-schema"
+		}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]struct {
+		typ  string
+		pass PassMode
+	}{
+		"choice":   {"oneOf", PassJSONOnly},
+		"shape":    {"enum", PassJSONOnly},
+		"nullable": {"string", PassFlag},
+		"flag":     {"boolean", PassFlag},
+		"ratio":    {"number", PassFlag},
+		"blank":    {"enum", PassFlag},
+		"nothing":  {"null", PassJSONOnly},
+		"loose":    {"unknown", PassJSONOnly},
+		"dup":      {"string", PassFlag},
+	}
+	for name, w := range want {
+		f, ok := s.LookupName(name)
+		if !ok || f.Type != w.typ || f.Pass != w.pass {
+			t.Fatalf("%s: want %s/%s, got %+v", name, w.typ, w.pass, f)
+		}
+	}
+	if _, ok := s.LookupName("bad"); ok {
+		t.Fatal("non-object property schema must be skipped")
+	}
+}
+
+func TestSchema_nilReceiverLookupsAndMerge(t *testing.T) {
+	var s *Schema
+	if _, ok := s.LookupFlag("x"); ok {
+		t.Fatal("nil LookupFlag")
+	}
+	if _, ok := s.LookupName("x"); ok {
+		t.Fatal("nil LookupName")
+	}
+	got, err := s.Merge([]byte(`{"a":1}`), nil)
+	if err != nil || !reflect.DeepEqual(got, map[string]any{"a": float64(1)}) {
+		t.Fatalf("nil schema keeps base: %v %v", got, err)
+	}
+	if _, err := s.Merge(nil, map[string]string{"a": "1"}); !errors.Is(err, ErrUnknownFlag) {
+		t.Fatalf("nil schema knows no flags: %v", err)
+	}
+}
+
+func TestMerge_baseMustBeAJSONObject(t *testing.T) {
+	s, _ := FromJSONSchema([]byte(fixtureSchema))
+	for _, base := range []string{`[1,2]`, `"text"`, `{`} {
+		if _, err := s.Merge([]byte(base), nil); !errors.Is(err, ErrInvalidBaseJSON) {
+			t.Fatalf("base %s: want ErrInvalidBaseJSON, got %v", base, err)
+		}
+	}
+}
+
+func TestMerge_enumFlagsParseToTheMatchingEnumValue(t *testing.T) {
+	s, err := FromJSONSchema([]byte(`{
+		"type": "object",
+		"properties": {
+			"on":    {"enum": [true]},
+			"off":   {"enum": [false]},
+			"ratio": {"enum": [0.5, 2]},
+			"maybe": {"enum": ["x", null]}
+		}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		flag, raw string
+		want      any
+	}{
+		{"on", "", true},
+		{"on", "true", true},
+		{"off", "false", false},
+		{"ratio", "0.5", 0.5},
+		{"ratio", "2", int64(2)},
+		{"maybe", "null", nil},
+	}
+	for _, tc := range cases {
+		got, err := s.Merge(nil, map[string]string{tc.flag: tc.raw})
+		if err != nil {
+			t.Fatalf("--%s=%s: %v", tc.flag, tc.raw, err)
+		}
+		if v, ok := got[tc.flag]; !ok || v != tc.want {
+			t.Fatalf("--%s=%s: got %#v want %#v", tc.flag, tc.raw, got[tc.flag], tc.want)
+		}
+	}
+	for _, bad := range []map[string]string{{"on": "false"}, {"ratio": "3"}, {"maybe": "y"}} {
+		if _, err := s.Merge(nil, bad); !errors.Is(err, ErrInvalidScalar) {
+			t.Fatalf("%v: want ErrInvalidScalar, got %v", bad, err)
+		}
+	}
+}
