@@ -54,6 +54,11 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   **0** without running the capability, and `auth login --token` stored the
   redirecting URL. Any 3xx from the capability API is now an `internal` error
   (exit **1**) naming the redirect target; login stores nothing.
+- **Device-code and OAuth login reject an unsafe `--profile` up front** — only
+  `--token` login checked the name before calling the server, so device login
+  with `--profile='my prod'` ran the whole browser approval, then failed and
+  left the issued token live on the server. All login modes now fail before
+  any request.
 - **Capability help advertises the flags invoke accepts** — help derived flag
   names and pass modes with its own rules, so it showed `--amount-cents` for a
   camelCase `amountCents` property (invoke only accepts `--amountCents`) and
