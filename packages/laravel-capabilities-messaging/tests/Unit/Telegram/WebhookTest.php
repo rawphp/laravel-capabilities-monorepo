@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\CapabilitiesMessaging\MessagingServiceProvider;
 use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdate;
 use Rawphp\CapabilitiesMessaging\Telegram\TelegramWebhookController;
@@ -46,7 +47,8 @@ it('edge: queues ProcessTelegramUpdate async not sync domain mutation [MSG-003]'
     $ctrl = H::webhook([], $q);
     $ctrl->handle(['X-Telegram-Bot-Api-Secret-Token' => 'test-webhook-secret'], H::telegramUpdate());
     expect($q->count())->toBe(1);
-    expect($ctrl->registryInvokeCount())->toBe(0);
+    // The webhook has no bus to call: it can only verify and enqueue.
+    expect(H::constructorTypes(TelegramWebhookController::class))->not->toContain(CapabilityBus::class);
 });
 
 it('fail: forged webhook body rejected before queue [MSG-003]', function () {
@@ -59,5 +61,6 @@ it('fail: forged webhook body rejected before queue [MSG-003]', function () {
 it('fail: webhook does not invoke capability registry directly [D-007]', function () {
     $ctrl = H::webhook();
     $ctrl->handle(['X-Telegram-Bot-Api-Secret-Token' => 'test-webhook-secret'], H::telegramUpdate());
-    expect($ctrl->registryInvokeCount())->toBe(0);
+    // The webhook has no bus to call: it can only verify and enqueue.
+    expect(H::constructorTypes(TelegramWebhookController::class))->not->toContain(CapabilityBus::class);
 });

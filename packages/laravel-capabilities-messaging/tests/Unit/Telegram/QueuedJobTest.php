@@ -32,11 +32,6 @@ function botFailingWith(int $telegramCode): TelegramBotClient
         {
             return ['ok' => true];
         }
-
-        public function calls(): array
-        {
-            return [];
-        }
     };
 }
 

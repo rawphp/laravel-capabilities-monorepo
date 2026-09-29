@@ -73,6 +73,9 @@ final class FakeTelegramBotClient implements TelegramBotClient
         }
     }
 
+    /**
+     * @return list<array{method: string, args: array<string, mixed>}>
+     */
     public function calls(): array
     {
         return $this->calls;

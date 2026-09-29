@@ -126,26 +126,23 @@ it('covers TelegramCallbackSigner encode decode and empty secret', function () {
 
 it('covers TelegramAdapter fail modes and handlers', function () {
     $bot = H::bot();
-    $a = new TelegramAdapter($bot, static fn (array $m) => ['text' => 'custom', 'tool_calls' => []]);
-    $a->failIngress(true);
-    expect(fn () => $a->handle(['text' => 'x']))->toThrow(RuntimeException::class);
-    $a->failIngress(false);
-    expect($a->handle((object) ['text' => 'obj']))->toBeArray();
-    $a->failReply(true);
+    $a = new TelegramAdapter($bot, static fn (array $m) => ['text' => 'custom: '.$m['text'], 'tool_calls' => []]);
+    expect($a->handle((object) ['text' => 'obj']))->toBe(['text' => 'custom: obj', 'tool_calls' => []]);
+
+    $bot->failNextSend();
     expect(fn () => $a->reply(['chat_id' => '1', 'text' => 't']))->toThrow(RuntimeException::class);
-    $a->failReply(false);
     $a->reply((object) ['chat_id' => '1', 'text' => 't']);
-    expect($a->handled())->not->toBeEmpty();
-    expect($a->replies())->not->toBeEmpty();
+    $a->reply(['chat_id' => '', 'text' => 'no chat, not sent']);
+    expect($bot->calls())->toHaveCount(1)
+        ->and($bot->calls()[0]['args']['text'])->toBe('t');
 });
 
 it('covers ThreadStore failures and unknown thread', function () {
     $s = new ThreadStore;
     expect(fn () => $s->appendHistory('missing', []))->toThrow(RuntimeException::class);
-    $s->failNext(true);
-    expect(fn () => $s->getOrCreate('c'))->toThrow(RuntimeException::class);
-    $t = $s->getOrCreate('c');
-    expect($s->historyForChat('c', null, true))->toBeArray();
+    $s->getOrCreate('c');
+    expect($s->historyForChat('c', null, true))->toBe([])
+        ->and($s->historyForChat('other'))->toBe([]);
 });
 
 it('covers CallbackHandler edges', function () {
@@ -190,7 +187,6 @@ it('covers ProcessTelegramUpdate logs tags and profile resolver', function () {
     $r = $p->handle(H::telegramUpdate(userId: 42));
     expect($r['ok'])->toBeTrue();
     expect($p->completedSteps())->toContain('conversation_reply');
-    expect($p->domainBypassAttempted())->toBeFalse();
     expect($p->failedJobTags())->toHaveKey('channel');
 
     // registry unavailable
@@ -213,8 +209,9 @@ it('covers ProcessTelegramUpdate logs tags and profile resolver', function () {
 it('covers notifier missing chat and edit without message', function () {
     $n = H::notifier();
     expect(fn () => $n->notifyPending(['id' => 'a1']))->toThrow(RuntimeException::class);
-    $n->editMessage(['id' => 'a'], 'expired');
-    expect($n->edits())->not->toBeEmpty();
+    $bot = H::bot();
+    H::notifier(null, $bot)->editMessage(['id' => 'a'], 'expired');
+    expect($bot->calls())->toBe([]); // no chat/message id: nothing to edit
 });
 
 it('covers webhook logs and secret header case', function () {

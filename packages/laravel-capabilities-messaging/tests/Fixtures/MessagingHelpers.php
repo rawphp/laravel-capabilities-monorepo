@@ -265,6 +265,19 @@ final class MessagingHelpers
     }
 
     /**
+     * Constructor dependency types of a class — structural proof of what it can call.
+     *
+     * @param  class-string  $class
+     * @return list<string>
+     */
+    public static function constructorTypes(string $class): array
+    {
+        $params = (new \ReflectionClass($class))->getConstructor()?->getParameters() ?? [];
+
+        return array_map(static fn (\ReflectionParameter $p): string => (string) $p->getType()?->getName(), $params);
+    }
+
+    /**
      * Scan messaging package source for forbidden patterns (D-007).
      *
      * @return list<string>

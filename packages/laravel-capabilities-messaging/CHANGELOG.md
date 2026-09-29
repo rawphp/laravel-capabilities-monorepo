@@ -13,6 +13,16 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Breaking
 
+- **Test scaffolding removed from production classes** — gone: `ProcessTelegramUpdate::runPipeline()`
+  (and its `fail_at` injection), `domainBypassAttempted()` and the constant `domain_bypass` /
+  `observable` result keys; `TelegramWebhookController::registryInvokeCount()`;
+  `TelegramApprovalNotifier::notified()`, `edits()`, `capabilityExecuteCount()`,
+  `domainServiceCalls()`; `TelegramAdapter::handled()`, `replies()`, `failIngress()`,
+  `failReply()`; `ThreadStore::failNext()`; `TelegramBotClient::calls()` and
+  `HttpTelegramBotClient::calls()` (the recorder stays on `FakeTelegramBotClient`). The recorder
+  arrays grew for the life of a queue worker on container singletons. `ThreadStore` is no longer
+  `final`. **Consumer impact:** custom `TelegramBotClient` implementations no longer need `calls()`.
+
 - **Chat identities resolve to the host user model** — new `user_model` config key
   (`CAPABILITIES_MESSAGING_USER_MODEL`, falling back to `auth.providers.users.model`). The
   container-bound `IdentityLinker` now uses `Identity\ModelUserFactory`, which loads the linked

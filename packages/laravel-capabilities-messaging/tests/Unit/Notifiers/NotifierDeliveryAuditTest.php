@@ -51,8 +51,7 @@ it('fail: sendMessage Bot API failure is audited as approval.notify_failed and r
             'error_code' => 'forbidden',
             'retryable' => false,
             'error' => 'Telegram Bot API error on sendMessage: bot was blocked',
-        ])
-        ->and($n->notified())->toBe([]);
+        ]);
 });
 
 it('fail: editMessageText failure is audited and rethrown [D-010]', function () {
@@ -72,8 +71,7 @@ it('fail: editMessageText failure is audited and rethrown [D-010]', function () 
             'method' => 'editMessageText',
             'error_code' => 'rate_limited',
             'retryable' => true,
-        ])
-        ->and($n->edits())->toBe([]);
+        ]);
 });
 
 it('edge: non Bot API delivery failure is audited as internal, not retryable [D-010]', function () {

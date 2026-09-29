@@ -176,7 +176,7 @@ it('HttpTelegramBotClient uses transport only — no network [L-004]', function 
 
     $bot->editMessageText('42', 3, 'edited');
     expect($calls[1]['method'])->toBe('editMessageText');
-    expect($bot->calls())->toHaveCount(2);
+    expect($calls)->toHaveCount(2);
 });
 
 it('HttpTelegramBotClient fails closed without bot token [L-004]', function () {

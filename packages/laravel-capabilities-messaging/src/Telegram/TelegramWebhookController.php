@@ -19,8 +19,6 @@ final class TelegramWebhookController
 {
     public const SECRET_HEADER = 'X-Telegram-Bot-Api-Secret-Token';
 
-    private int $registryInvokeCount = 0;
-
     public function __construct(
         private readonly MessagingConfig $config,
         private readonly UpdateQueue $queue,
@@ -70,14 +68,6 @@ final class TelegramWebhookController
         return ['ok' => true, 'status' => 200, 'queued' => true];
     }
 
-    /**
-     * Intentionally never call the registry from the webhook (guard for tests).
-     */
-    public function registryInvokeCount(): int
-    {
-        return $this->registryInvokeCount;
-    }
-
     public function queue(): UpdateQueue
     {
         return $this->queue;
@@ -90,9 +80,6 @@ final class TelegramWebhookController
     {
         foreach ($headers as $key => $value) {
             if (strcasecmp((string) $key, self::SECRET_HEADER) === 0) {
-                return (string) $value;
-            }
-            if (strcasecmp((string) $key, 'x-telegram-bot-api-secret-token') === 0) {
                 return (string) $value;
             }
         }
