@@ -57,11 +57,13 @@ Key defaults (`config/capabilities-ai.php`):
 |-----|---------|
 | `table_prefix` | `capabilities_ai_` |
 | `progress.driver` | `array` (or `redis`) — prod: **`redis`**; `array` outside testing throws unless `CAPABILITIES_AI_ALLOW_UNSAFE=1` |
+| `progress.ttl_seconds` | `86400` (`CAPABILITIES_AI_PROGRESS_TTL`) — Redis progress key lifetime after a turn's last event |
 | `llm.driver` | `fake` (set `CAPABILITIES_AI_LLM_DRIVER=anthropic` or bind `LlmClient` for production) — `fake` outside testing throws unless `CAPABILITIES_AI_ALLOW_UNSAFE=1` |
 | `llm.anthropic.model` | `claude-sonnet-4-6` (`CAPABILITIES_AI_ANTHROPIC_MODEL`) |
 | `llm.anthropic.max_tokens` | `64000` (`CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS`) |
 | `llm.anthropic.max_retries` | `2` (`CAPABILITIES_AI_ANTHROPIC_MAX_RETRIES`) — Anthropic 429 retries per request; waits `Retry-After` seconds (capped at 60) or 1s, 2s, 4s…; `0` disables |
 | `user_model` | null → falls back to `auth.providers.users.model` (`CAPABILITIES_AI_USER_MODEL`) |
+| `llm.anthropic.timeout` | `110` (`CAPABILITIES_AI_ANTHROPIC_TIMEOUT`) — seconds per Anthropic request (Laravel's HTTP default is 30s). Keep it below `claim_ttl`; a turn with several tool rounds makes several requests inside one job timeout, so raise `claim_ttl` for long multi-round turns |
 | `claim_ttl` | **`120`** (seconds; worker heartbeat / job timeout window) |
 | `queue.connection` | null (`CAPABILITIES_AI_QUEUE_CONNECTION`) — applied to default `RunTurnJob` dispatch when set |
 | `queue.name` | null (`CAPABILITIES_AI_QUEUE_NAME`) — applied to default dispatch; also marks **AI-chat** for core `capabilities:integration-health` when non-empty |
@@ -69,13 +71,14 @@ Key defaults (`config/capabilities-ai.php`):
 | `reaper.stale_queued_minutes` | `30` (`CAPABILITIES_AI_REAPER_STALE_QUEUED`) |
 | `reaper.stale_running_grace_seconds` | `60` (`CAPABILITIES_AI_REAPER_RUNNING_GRACE`) |
 | `allow_unsafe` | `false` (`CAPABILITIES_AI_ALLOW_UNSAFE`) — local demos only |
-| `max_concurrent_turns` | `0` = unlimited (`CAPABILITIES_AI_MAX_CONCURRENT_TURNS`) — at the ceiling of queued + running turns, message create returns **429** `outcome: retryable` and persists/dispatches nothing |
+| `turns_per_minute` | `20` (`CAPABILITIES_AI_TURNS_PER_MINUTE`) — D-013 per-user message (turn) budget via core `RateLimiter`; over it, message create returns **429** `rate_limited` and persists/dispatches nothing; `0` disables |
+| `max_concurrent_turns` | `0` = unlimited (`CAPABILITIES_AI_MAX_CONCURRENT_TURNS`) — at the ceiling of queued + running turns, message create returns **429** `rate_limited` (D-018 envelope, `retryable: true`) and persists/dispatches nothing |
 | `max_tool_rounds` | `8` |
 | `routes.enabled` | `false` |
 
 Progress events live in array/Redis — **not** MySQL product tables.
 
-**Bus principal (tool + accept invokes):** `TurnRunner` and `ProposalService` resolve the conversation’s Laravel user via `user_model` / auth provider and pass `caller=job` plus that user as `actor` on `CapabilityBus::invoke`. Missing/unresolvable `conversation.user_id` fails closed (no silent default user). When `CapabilityBus` is bound, provider boot also fails closed if the user model is unset, missing, or has no `query()` (class check only, no DB). Tool invokes pass `idempotency_key` only when the model supplies it as a tool argument (D-005; stripped from capability input) — otherwise they carry no key.
+**Bus principal (tool + accept invokes):** `TurnRunner` and `ProposalService` resolve the conversation’s Laravel user via `user_model` / auth provider and pass that user as `actor` on `CapabilityBus::invoke`. Turn tool calls use `caller=agent` (D-022), so the agent surface flag, per-capability `surfaces` narrowing and agent approval rules apply; proposal accept uses `caller=job`. Missing/unresolvable `conversation.user_id` fails closed (no silent default user). When `CapabilityBus` is bound, provider boot also fails closed if the user model is unset, missing, or has no `query()` (class check only, no DB). Tool invokes pass `idempotency_key` only when the model supplies it as a tool argument (D-005; stripped from capability input) — otherwise they carry no key.
 
 ### Host integration (D-024 seams)
 

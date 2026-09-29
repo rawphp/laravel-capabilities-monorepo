@@ -14,11 +14,13 @@ use Illuminate\Support\Facades\Http;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\Metrics;
+use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\Capabilities\Observability\InMemoryMetrics;
 use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\InMemoryRateLimiter;
 use Rawphp\CapabilitiesAi\CapabilitiesAiServiceProvider;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
@@ -29,6 +31,7 @@ use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
+use Rawphp\CapabilitiesAi\Domain\TurnRateLimitedException;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
 use Rawphp\CapabilitiesAi\Support\AnthropicLlmClient;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
@@ -129,6 +132,18 @@ it('resolves ConversationService with callable dispatch', function () {
     $service = $app->make(ConversationService::class);
 
     expect($service)->toBeInstanceOf(ConversationService::class);
+});
+
+it('wires a container-bound core RateLimiter into ConversationService (D-013 turns_per_minute)', function () {
+    $app = bootAiProviderContainer(['turns_per_minute' => 1]);
+    $limiter = new InMemoryRateLimiter;
+    $limiter->hit('rl:ai:user:u1', 60);
+    $app->instance(RateLimiter::class, $limiter);
+
+    $service = $app->make(ConversationService::class);
+
+    expect(fn () => $service->createUserMessage('hi', userId: 'u1'))
+        ->toThrow(TurnRateLimitedException::class);
 });
 
 it('resolves ProposalService with CapabilityBus', function () {

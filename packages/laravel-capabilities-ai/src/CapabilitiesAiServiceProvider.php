@@ -10,6 +10,7 @@ use Illuminate\Support\ServiceProvider;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\Metrics;
+use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\CapabilitiesAi\Console\ReapStaleTurnsCommand;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
@@ -156,6 +157,7 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
                 $app->make(ProgressStore::class),
                 ContainerBindings::claimTtlFromConfig($config),
                 $config,
+                self::optional($app, RateLimiter::class),
             );
         });
 

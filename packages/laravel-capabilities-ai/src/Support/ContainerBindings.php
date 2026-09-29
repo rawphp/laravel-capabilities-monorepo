@@ -7,8 +7,10 @@ namespace Rawphp\CapabilitiesAi\Support;
 use InvalidArgumentException;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\Metrics;
+use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
+use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
@@ -129,13 +131,14 @@ final class ContainerBindings
                 metrics: $metrics,
                 tracer: $tracer,
                 maxRetries: (int) ($config['llm']['anthropic']['max_retries'] ?? 2),
+                timeoutSeconds: (int) ($config['llm']['anthropic']['timeout'] ?? AnthropicLlmClient::DEFAULT_TIMEOUT_SECONDS),
             ),
         };
     }
 
     /**
      * @param  array<string, mixed>  $config
-     * @param  object|null  $redis  Redis client with rPush/lRange (ext-redis or predis-like)
+     * @param  object|null  $redis  Redis client with rPush/lRange/expire (ext-redis or predis-like)
      */
     public static function makeProgressStore(array $config, ?object $redis = null): ProgressStore
     {
@@ -161,7 +164,9 @@ final class ContainerBindings
 
         $prefix = (string) ($config['progress']['redis_key_prefix'] ?? 'capabilities_ai:progress:');
 
-        return new RedisProgressStore($redis, $prefix);
+        $ttl = (int) ($config['progress']['ttl_seconds'] ?? RedisProgressStore::DEFAULT_TTL_SECONDS);
+
+        return new RedisProgressStore($redis, $prefix, $ttl);
     }
 
     /**
@@ -245,13 +250,16 @@ final class ContainerBindings
 
     /**
      * @param  callable(object): mixed  $dispatch
-     * @param  array<string, mixed>  $config  capabilities-ai config slice (optional proposals.enabled, max_concurrent_turns)
+     * @param  array<string, mixed>  $config  capabilities-ai config slice (optional proposals.enabled, max_concurrent_turns, turns_per_minute)
+     * @param  RateLimiter|null  $turnLimiter  core D-013 limiter (host-bound); null = no per-user turn limit
      */
     public static function makeConversationService(
         callable $dispatch,
         ProgressStore $progress,
         int $claimTtl = Package::DEFAULT_CLAIM_TTL,
         array $config = [],
+        ?RateLimiter $turnLimiter = null,
+        ConversationStore $store = new EloquentConversationStore,
     ): ConversationService {
         return new ConversationService(
             $dispatch,
@@ -259,7 +267,23 @@ final class ContainerBindings
             $claimTtl,
             proposalsEnabled: (bool) ($config['proposals']['enabled'] ?? true),
             maxConcurrentTurns: self::maxConcurrentTurnsFromConfig($config),
+            turnLimiter: $turnLimiter,
+            turnsPerMinute: self::turnsPerMinuteFromConfig($config),
+            store: $store,
         );
+    }
+
+    /**
+     * Per-user turns per minute; package default when missing or non-numeric, 0 (off) when negative.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    public static function turnsPerMinuteFromConfig(array $config): int
+    {
+        $raw = $config['turns_per_minute'] ?? ConversationService::DEFAULT_TURNS_PER_MINUTE;
+        $max = is_numeric($raw) ? (int) $raw : ConversationService::DEFAULT_TURNS_PER_MINUTE;
+
+        return max($max, 0);
     }
 
     public static function makeProposalService(

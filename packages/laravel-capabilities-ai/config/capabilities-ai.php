@@ -45,6 +45,8 @@ return [
         'driver' => $env('CAPABILITIES_AI_PROGRESS_DRIVER', 'array'),
         'redis_connection' => $env('CAPABILITIES_AI_PROGRESS_REDIS', 'default'),
         'redis_key_prefix' => $env('CAPABILITIES_AI_PROGRESS_PREFIX', 'capabilities_ai:progress:'),
+        /** Redis key lifetime (seconds) after a turn's last event; progress is transient. */
+        'ttl_seconds' => (int) $env('CAPABILITIES_AI_PROGRESS_TTL', 86400),
     ],
 
     /**
@@ -63,6 +65,11 @@ return [
             'max_tokens' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS', 64000),
             /** 429 retries per request (honours Retry-After, capped at 60s); 0 disables. */
             'max_retries' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_RETRIES', 2),
+            /**
+             * Per-request HTTP timeout in seconds (Laravel's client default is 30s, too short for
+             * long replies). Keep it below claim_ttl: one turn job may make several requests.
+             */
+            'timeout' => (int) $env('CAPABILITIES_AI_ANTHROPIC_TIMEOUT', 110),
         ],
     ],
 
@@ -104,10 +111,17 @@ return [
 
     /**
      * Pressure valve: ceiling on queued + running turns across all conversations.
-     * At the ceiling, new messages are refused (HTTP 429, outcome=retryable) with
+     * At the ceiling, new messages are refused (HTTP 429 rate_limited) with
      * nothing persisted or dispatched. 0 = unlimited (default).
      */
     'max_concurrent_turns' => (int) $env('CAPABILITIES_AI_MAX_CONCURRENT_TURNS', 0),
+
+    /**
+     * D-013: accepted chat messages (each starts an LLM turn) per authenticated user per
+     * minute, via core's RateLimiter. Over the limit → HTTP 429 rate_limited, nothing
+     * persisted or dispatched. 0 disables.
+     */
+    'turns_per_minute' => (int) $env('CAPABILITIES_AI_TURNS_PER_MINUTE', 20),
 
     /** Max tool-call rounds per turn before force-complete/fail. */
     'max_tool_rounds' => (int) $env('CAPABILITIES_AI_MAX_TOOL_ROUNDS', 8),

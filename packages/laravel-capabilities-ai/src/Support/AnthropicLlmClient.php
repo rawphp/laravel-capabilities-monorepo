@@ -43,6 +43,9 @@ final class AnthropicLlmClient implements LlmClient
 
     private const MAX_RETRY_AFTER_SECONDS = 60;
 
+    /** Per-request transport timeout; below the default claim_ttl (120s) so one call fits a turn job. */
+    public const DEFAULT_TIMEOUT_SECONDS = 110;
+
     public function __construct(
         private readonly string $apiKey,
         private readonly string $model = 'claude-sonnet-4-6',
@@ -51,7 +54,12 @@ final class AnthropicLlmClient implements LlmClient
         private readonly ?Metrics $metrics = null,
         private readonly ?Tracer $tracer = null,
         private readonly int $maxRetries = 2,
-    ) {}
+        private readonly int $timeoutSeconds = self::DEFAULT_TIMEOUT_SECONDS,
+    ) {
+        if ($this->timeoutSeconds <= 0) {
+            throw new InvalidArgumentException('Anthropic timeout must be a positive number of seconds');
+        }
+    }
 
     public function supportsToolRounds(): bool
     {
@@ -213,7 +221,7 @@ final class AnthropicLlmClient implements LlmClient
                 'x-api-key' => $this->apiKey,
                 'anthropic-version' => '2023-06-01',
                 'content-type' => 'application/json',
-            ])->retry(
+            ])->timeout($this->timeoutSeconds)->retry(
                 max(0, $this->maxRetries) + 1,
                 fn (int $attempt, Throwable $e): int => $this->retryDelayMs($attempt, $e),
                 fn (Throwable $e): bool => $e instanceof RequestException && $e->response->status() === 429,

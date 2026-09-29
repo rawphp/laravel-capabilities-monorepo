@@ -30,7 +30,7 @@ The ALTER is idempotent (no-op if the column already exists). Greenfield install
 
 ### Bus principal (job + conversation user)
 
-`TurnRunner` (tool invokes) and `ProposalService` (accept) resolve the conversation’s Laravel user and pass **`caller=job`** plus that user as **`actor`** on every `CapabilityBus::invoke`. Missing or unresolvable `conversation.user_id` fails closed. Tool invokes carry `idempotency_key` only when the model passes it as a tool argument (D-005); the key is stripped from capability input. Proposal accept always sets `proposal:{ulid}`.
+`TurnRunner` (tool invokes) and `ProposalService` (accept) resolve the conversation’s Laravel user and pass that user as **`actor`** on every `CapabilityBus::invoke`. Tool invokes use **`caller=agent`** (D-022): `CAPABILITIES_SURFACE_AGENT=false` stops them, and a capability whose `surfaces` omit `agent` is refused. Proposal accept uses **`caller=job`**. Missing or unresolvable `conversation.user_id` fails closed. Tool invokes carry `idempotency_key` only when the model passes it as a tool argument (D-005); the key is stripped from capability input. Proposal accept always sets `proposal:{ulid}`.
 
 ### Upgrade for hosts (manual DI / constructor / job handle)
 
@@ -39,7 +39,7 @@ Hosts that construct AI runtime services with `new` (or jobs without container m
 | Site | Required now | Notes |
 |------|--------------|--------|
 | `TurnRunner` | `ProgressStore $progress` | Required 3rd ctor arg (`TurnClaim`, `LlmClient`, **`ProgressStore`**, then optional context/tools/bus…). Was optional `?ProgressStore = null`. |
-| `ConversationService` | `ProgressStore $progress` | Required 2nd ctor arg after `$dispatch`. **No** silent `ArrayProgressStore` default in ctor. |
+| `ConversationService` | `ProgressStore $progress` | Required 2nd ctor arg after `$dispatch`. **No** silent `ArrayProgressStore` default in ctor. Optional last arg `ConversationStore $store` (default `EloquentConversationStore`) is the row-persistence seam; unit tests pass an in-memory store. |
 | `RunTurnJob::handle` | `handle(TurnRunner $runner)` | Workers resolve `TurnRunner` via **container method injection**. Empty `handle()` is invalid. |
 | `ProposalService` | `IdempotencyReadiness $idempotency` | Required 2nd ctor arg after `CapabilityBus`. SP default **`StoreBoundIdempotencyReadiness`** (live core store ping; fail closed when unbound). **`AlwaysReadyIdempotency` is unit-tests only** — do not bind in production. |
 
@@ -166,21 +166,23 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 | **cancelTurn** | Always **200** cancelled stub | Real cancel; missing → **HTTP 404**; conflict (not cancellable) → **HTTP 409** `conflict` |
 | **turnEvents** | Empty events | Real progress events; query `cursor` (default **0**); JSON body `{turn_ulid, events}`; missing turn → **HTTP 404** |
 | **destroyConversation** | Always **200** deleted stub | Real destroy; missing → **HTTP 404**; conflict (e.g. active turns) → **HTTP 409** `conflict` |
-| **storeMessage** | Any body accepted; unknown `conversation_ulid` → **500** | `content` must be a non-empty string and `conversation_ulid` (optional) a 26-char uppercase ULID, else **HTTP 422** + `{message, errors}` with no rows or turn job; well-formed but unknown `conversation_ulid` → **HTTP 404** `not_found` |
+| **storeMessage** | Any body accepted; unknown `conversation_ulid` → **500** | `content` must be a non-empty string and `conversation_ulid` (optional) a 26-char uppercase ULID, else **HTTP 422** `validation_failed` (field errors in `error.violations`) with no rows or turn job; well-formed but unknown `conversation_ulid` → **HTTP 404** `not_found` |
 
 **Status mapping (controller):**
 
 | Exception / case | HTTP | Typical routes |
 |------------------|------|----------------|
-| No authenticated user (`$request->user()`) | **401** | every chat route above + message create |
-| Invalid message body | **422** + `{message, errors}` | storeMessage |
+| No authenticated user (`$request->user()`) | **401** `unauthenticated` | every chat route above + message create |
+| Invalid message body | **422** `validation_failed` + `error.violations[{field, message}]` | storeMessage |
 | Another user's (or ownerless) conversation/turn | **404** `not_found` (same as missing) | history, message append, showTurn, cancelTurn, turnEvents, destroyConversation |
 | `ModelNotFoundException` | **404** `not_found` | history, message create (unknown `conversation_ulid`), showTurn, cancelTurn, turnEvents, destroyConversation, proposal accept/reject |
 | `RuntimeException` (domain conflict) | **409** `conflict` | cancelTurn, destroyConversation, proposal reject |
-| `TurnCapacityExceededException` (`max_concurrent_turns` reached) | **429** + `message`, `outcome: retryable` | storeMessage — nothing persisted or dispatched; resend later |
+| `ConversationClosedException` (message to a closed conversation) | **409** `conflict` | storeMessage — nothing persisted or dispatched |
+| `TurnRateLimitedException` (user over `turns_per_minute`, D-013) | **429** `rate_limited` (`retryable: true`) | storeMessage — checked before any query; nothing persisted or dispatched |
+| `TurnCapacityExceededException` (`max_concurrent_turns` reached) | **429** `rate_limited` (`retryable: true`) | storeMessage — nothing persisted or dispatched; resend later |
 | Success | **200** (message create **201**) | real service payload — not an empty stub |
 
-**Error body (breaking vs `{message}`):** 404 / 409 bodies use the same D-018 envelope as core capability invoke — `{ "ok": false, "error": { "code", "message", "violations", "approval_id", "request_id", "retryable", "http_status", "cli_exit" }, "meta": {} }`. The old top-level `message` key is gone; read `error.code` / `error.message`. Accept outcome bodies (`ulid` / `status` / `outcome`) are unchanged.
+**Error body (breaking vs `{message}`):** every error branch (401 / 404 / 409 / 422 / 429) uses the same D-018 envelope as core capability invoke — `{ "ok": false, "error": { "code", "message", "violations", "approval_id", "request_id", "retryable", "http_status", "cli_exit" }, "meta": {} }`. The old top-level `message` key is gone; read `error.code` / `error.message`. Accept outcome bodies (`ulid` / `status` / `outcome`) are unchanged.
 
 **turnEvents shape (high level):**
 
@@ -191,7 +193,7 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 
 **Host action:** if you enable routes, stop assuming always-**200** empty bodies. Handle **404** for missing conversation/turn and **409** for cancel/destroy conflicts. Leave `routes.enabled` false until clients are ready.
 
-**Cooperative cancel (mid-run):** `TurnService::cancel` CAS-marks the turn cancelled and emits a terminal progress event. If `TurnRunner` observes `cancelled` mid-loop, it does **not** overwrite status with completed/failed and does **not** emit a failed terminal progress event — the cancelled terminal stands.
+**Cooperative cancel (mid-run):** `TurnService::cancel` CAS-marks the turn cancelled and emits a terminal progress event. `TurnRunner` re-checks the turn before every LLM round and before every tool call, and stops as soon as it is `cancelled`: no further LLM call, no further bus invoke. Its completed/failed writes are compare-and-set on `status=running`, so a cancel that lands at any point is never overwritten and no completed/failed terminal event follows it — the cancelled terminal stands. A tool call already in flight when the cancel lands still finishes (it cannot be recalled) and reports its `tool` event.
 
 Authoritative: `ChatController` + conversation/turn services (see package unit tests). CHANGELOG: [Unreleased Breaking — Chat HTTP non-proposal routes](../CHANGELOG.md).
 

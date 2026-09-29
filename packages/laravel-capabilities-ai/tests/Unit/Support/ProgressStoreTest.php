@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
+use Rawphp\CapabilitiesAi\Support\ContainerBindings;
 use Rawphp\CapabilitiesAi\Support\RedisProgressStore;
 
 it('ArrayProgressStore implements ProgressStore', function () {
@@ -56,7 +57,12 @@ it('RedisProgressStore is optional and works with a fake redis client', function
         /** @return list<string> */
         public function lRange(string $key, int $start, int $end): array
         {
-            return $this->lists[$key] ?? [];
+            return array_slice($this->lists[$key] ?? [], $start);
+        }
+
+        public function expire(string $key, int $seconds): bool
+        {
+            return true;
         }
     };
 
@@ -84,7 +90,12 @@ it('RedisProgressStore accepts Laravel-style connection wrappers that only expos
         /** @return list<string> */
         public function lRange(string $key, int $start, int $end): array
         {
-            return $this->lists[$key] ?? [];
+            return array_slice($this->lists[$key] ?? [], $start);
+        }
+
+        public function expire(string $key, int $seconds): bool
+        {
+            return true;
         }
     };
 
@@ -138,7 +149,12 @@ it('RedisProgressStore gives concurrent appends for one turn distinct indexes', 
         /** @return list<string> */
         public function lRange(string $key, int $start, int $end): array
         {
-            return $this->lists[$key] ?? [];
+            return array_slice($this->lists[$key] ?? [], $start);
+        }
+
+        public function expire(string $key, int $seconds): bool
+        {
+            return true;
         }
     };
 
@@ -162,4 +178,105 @@ it('RedisProgressStore rejects events without a kind and clients without rpush',
         ->toThrow(InvalidArgumentException::class, 'Progress event requires kind')
         ->and(fn () => $store->append('turn-x', ['kind' => 'status']))
         ->toThrow(RuntimeException::class, 'Redis client missing rPush');
+});
+
+/**
+ * Redis fake with real LRANGE start/stop semantics and an EXPIRE log.
+ */
+function ttlRedisFake(): object
+{
+    return new class
+    {
+        /** @var array<string, list<string>> */
+        public array $lists = [];
+
+        /** @var list<array{0: string, 1: int}> */
+        public array $expires = [];
+
+        /** @var list<array{0: int, 1: int}> */
+        public array $ranges = [];
+
+        public function rPush(string $key, string $value): int
+        {
+            $this->lists[$key][] = $value;
+
+            return count($this->lists[$key]);
+        }
+
+        public function expire(string $key, int $seconds): bool
+        {
+            $this->expires[] = [$key, $seconds];
+
+            return true;
+        }
+
+        /** @return list<string> */
+        public function lRange(string $key, int $start, int $end): array
+        {
+            $this->ranges[] = [$start, $end];
+            $list = $this->lists[$key] ?? [];
+
+            return array_slice($list, $start, $end === -1 ? null : $end - $start + 1);
+        }
+    };
+}
+
+it('RedisProgressStore expires each turn key after append (transient progress)', function () {
+    $redis = ttlRedisFake();
+    $store = new RedisProgressStore($redis, 'p:', ttlSeconds: 3600);
+
+    $store->append('turn-ttl', ['kind' => 'status']);
+    $store->append('turn-ttl', ['kind' => 'terminal']);
+
+    expect($redis->expires)->toBe([['p:turn-ttl', 3600], ['p:turn-ttl', 3600]]);
+});
+
+it('RedisProgressStore defaults the key TTL to one day', function () {
+    $redis = ttlRedisFake();
+    (new RedisProgressStore($redis))->append('turn-d', ['kind' => 'status']);
+
+    expect($redis->expires)->toBe([['capabilities_ai:progress:turn-d', RedisProgressStore::DEFAULT_TTL_SECONDS]])
+        ->and(RedisProgressStore::DEFAULT_TTL_SECONDS)->toBe(86400);
+});
+
+it('RedisProgressStore since() reads from the cursor instead of the whole list', function () {
+    $redis = ttlRedisFake();
+    $store = new RedisProgressStore($redis);
+    foreach (['a', 'b', 'c', 'd'] as $kind) {
+        $store->append('turn-c', ['kind' => $kind]);
+    }
+
+    $events = $store->since('turn-c', 2);
+
+    expect($redis->ranges)->toBe([[2, -1]])
+        ->and(array_column($events, 'kind'))->toBe(['c', 'd'])
+        ->and(array_column($events, 'index'))->toBe([2, 3])
+        ->and(array_column($store->since('turn-c', -5), 'index'))->toBe([0, 1, 2, 3]);
+});
+
+it('RedisProgressStore rejects a non-positive TTL and clients without expire', function () {
+    expect(fn () => new RedisProgressStore(ttlRedisFake(), ttlSeconds: 0))
+        ->toThrow(InvalidArgumentException::class, 'ttl');
+
+    $noExpire = new class
+    {
+        public function rPush(string $key, string $value): int
+        {
+            return 1;
+        }
+    };
+
+    expect(fn () => (new RedisProgressStore($noExpire))->append('t', ['kind' => 'status']))
+        ->toThrow(RuntimeException::class, 'Redis client missing expire');
+});
+
+it('makeProgressStore passes progress.ttl_seconds to the redis store', function () {
+    $redis = ttlRedisFake();
+    $store = ContainerBindings::makeProgressStore(
+        ['progress' => ['driver' => 'redis', 'redis_key_prefix' => 't:', 'ttl_seconds' => 60]],
+        $redis,
+    );
+    $store->append('turn-cfg', ['kind' => 'status']);
+
+    expect($redis->expires)->toBe([['t:turn-cfg', 60]]);
 });

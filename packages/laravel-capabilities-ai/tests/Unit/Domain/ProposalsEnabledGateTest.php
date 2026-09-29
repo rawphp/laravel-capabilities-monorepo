@@ -13,12 +13,12 @@ use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
-use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 use Rawphp\CapabilitiesAi\Support\ToolSchemaHash;
+use Rawphp\CapabilitiesAi\Tests\Fakes\InMemoryConversationStore;
 
 function bootProposalsGateSqlite(): void
 {
@@ -164,46 +164,33 @@ it('leaves schema_hash null when the fenced target is not in the turn tool profi
         ->and(Proposal::query()->first()?->schema_hash)->toBeNull();
 });
 
-it('history returns empty proposals when service constructed with proposals disabled', function () {
-    bootProposalsGateSqlite();
+it('history returns proposals only when proposals are enabled', function (bool $enabled) {
+    $store = new InMemoryConversationStore;
     $svc = new ConversationService(
         static fn ($j) => null,
         new ArrayProgressStore,
         claimTtl: 120,
-        proposalsEnabled: false,
+        proposalsEnabled: $enabled,
+        store: $store,
     );
     $ids = $svc->createUserMessage('hi', userId: 'u1');
-    $h = $svc->history($ids['conversation_ulid'], 'u1');
-    expect($h)->toHaveKey('proposals')
-        ->and($h['proposals'])->toBe([]);
-});
-
-it('history loads proposals when proposals enabled', function () {
-    bootProposalsGateSqlite();
-    $svc = new ConversationService(
-        static fn ($j) => null,
-        new ArrayProgressStore,
-        claimTtl: 120,
-        proposalsEnabled: true,
-    );
-    $ids = $svc->createUserMessage('hi', userId: 'u1');
-    $turn = Turn::query()->where('ulid', $ids['turn_ulid'])->firstOrFail();
-    $conversation = Conversation::query()->where('ulid', $ids['conversation_ulid'])->firstOrFail();
-    Proposal::query()->create([
-        'turn_id' => $turn->id,
-        'conversation_id' => $conversation->id,
-        'ulid' => strtoupper(bin2hex(random_bytes(13))),
+    $store->addProposal($store->conversation($ids['conversation_ulid']), [
+        'ulid' => 'PROP1',
         'type' => 'action',
-        'payload' => [],
         'target_capability' => 'demo.cap',
         'status' => Proposal::STATUS_PENDING,
     ]);
 
     $h = $svc->history($ids['conversation_ulid'], 'u1');
-    expect($h['proposals'])->toHaveCount(1)
-        ->and($h['proposals'][0]['target_capability'])->toBe('demo.cap')
-        ->and($h['proposals'][0]['status'])->toBe(Proposal::STATUS_PENDING);
-});
+
+    expect($h)->toHaveKey('proposals')
+        ->and($h['proposals'])->toBe($enabled ? [[
+            'ulid' => 'PROP1',
+            'status' => Proposal::STATUS_PENDING,
+            'type' => 'action',
+            'target_capability' => 'demo.cap',
+        ]] : []);
+})->with(['enabled' => [true], 'disabled' => [false]]);
 
 it('proposalsEnabled defaults true and respects config', function () {
     expect(CapabilitiesAiServiceProvider::proposalsEnabled([]))->toBeTrue()

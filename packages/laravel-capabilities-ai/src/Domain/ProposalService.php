@@ -227,7 +227,7 @@ final class ProposalService
 
         $payload = is_array($proposal->payload) ? $proposal->payload : [];
         $conversation = Conversation::query()->findOrFail($proposal->conversation_id);
-        // Same principal shape as TurnRunner tool invokes (caller=job + conversation user).
+        // Conversation user as actor; caller=job (legacy accept shape — TurnRunner tool calls use agent).
         try {
             $actor = $this->actors->resolve($conversation->user_id);
         } catch (UnresolvedConversationActorException $e) {
@@ -247,7 +247,7 @@ final class ProposalService
         $result = $this->bus->invoke(
             $target,
             $payload,
-            $this->actors->invokeOptions($actor, [
+            $this->actors->invokeOptions($actor, ResolveConversationActor::CALLER_JOB, [
                 'idempotency_key' => 'proposal:'.$proposal->ulid,
             ]),
         );

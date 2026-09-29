@@ -11,7 +11,9 @@ use Illuminate\Support\Sleep;
 use Rawphp\Capabilities\Observability\InMemoryMetrics;
 use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
+use Rawphp\CapabilitiesAi\Package;
 use Rawphp\CapabilitiesAi\Support\AnthropicLlmClient;
+use Rawphp\CapabilitiesAi\Support\ContainerBindings;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 use Rawphp\CapabilitiesAi\Support\LlmClientDefaults;
 use Rawphp\CapabilitiesAi\Support\RetryableLlmException;
@@ -820,4 +822,42 @@ it('does not record a failure for the empty API key guard (no outbound call)', f
 
     expect($metrics->emissions())->toBe([])
         ->and($tracer->spans())->toBe([]);
+});
+
+it('sends each request with the configured timeout instead of the 30s HTTP client default', function () {
+    bootAnthropicHttp();
+    $seen = [];
+    Http::fake(function ($request, array $options) use (&$seen) {
+        $seen[] = $options['timeout'] ?? null;
+
+        return Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200);
+    });
+
+    (new AnthropicLlmClient('test-key', timeoutSeconds: 95))->complete([['role' => 'user', 'content' => 'hi']]);
+    (new AnthropicLlmClient('test-key'))->complete([['role' => 'user', 'content' => 'hi']]);
+
+    expect($seen)->toBe([95, AnthropicLlmClient::DEFAULT_TIMEOUT_SECONDS])
+        ->and(AnthropicLlmClient::DEFAULT_TIMEOUT_SECONDS)->toBeLessThan(Package::DEFAULT_CLAIM_TTL);
+});
+
+it('makeLlmClient passes llm.anthropic.timeout through to the request', function () {
+    bootAnthropicHttp();
+    $seen = [];
+    Http::fake(function ($request, array $options) use (&$seen) {
+        $seen[] = $options['timeout'] ?? null;
+
+        return Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200);
+    });
+
+    $client = ContainerBindings::makeLlmClient([
+        'llm' => ['driver' => 'anthropic', 'anthropic' => ['api_key' => 'k', 'timeout' => 42]],
+    ]);
+    $client->complete([['role' => 'user', 'content' => 'hi']]);
+
+    expect($seen)->toBe([42]);
+});
+
+it('rejects a non-positive timeout', function () {
+    expect(fn () => new AnthropicLlmClient('test-key', timeoutSeconds: 0))
+        ->toThrow(InvalidArgumentException::class, 'timeout');
 });
