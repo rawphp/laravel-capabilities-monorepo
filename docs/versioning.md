@@ -22,8 +22,8 @@ Source of truth for day-to-day development is this monorepo. Publication of pack
 | Trigger | What happens |
 |---|---|
 | Push to monorepo `main` | [`.github/workflows/split-packages.yml`](../.github/workflows/split-packages.yml) rsyncs each `packages/<name>/` tree into the matching public repo’s `main` (package root becomes repo root). PHP package-root `tests/` and `phpunit.xml` are excluded: the unit suite only runs in the monorepo |
-| Push monorepo tag `v*` | Same workflow force-updates that tag on **each** package remote (for Packagist / releases) |
-| Manual | `workflow_dispatch` on the same workflow |
+| Push monorepo tag `v*` | Same workflow force-updates that tag on **each** package remote (for Packagist / releases). The tag points at a sync commit built off to the side of package-remote `main` (parent: that `main`); a tag run **never** moves package `main`, so a tag cut off monorepo `main` (hotfix) cannot roll `dev-main` back |
+| Manual | `workflow_dispatch` on the same workflow — only from `main` (syncs `main`) or a `v*` tag (re-publishes that tag); any other ref is a no-op |
 
 ### Test gate (split blocked until green)
 
