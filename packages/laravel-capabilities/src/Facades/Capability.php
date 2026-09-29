@@ -44,6 +44,5 @@ final class Capability extends Facade
     public static function swapRegistry(CapabilityRegistry $registry): void
     {
         self::swap($registry);
-        self::resolved(static fn () => null);
     }
 }

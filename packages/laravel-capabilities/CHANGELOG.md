@@ -286,6 +286,9 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   outcome to `approvals_resume_total{result=stale}` on every path, on top of the per-path
   metric: a stale resume counted twice and a stale accept also counted as a resume. It now
   increments `approvals_accept_total` or `approvals_resume_total` once, by path.
+- **`Capability::swapRegistry()` works without a container (D-020).** It registered a no-op
+  `resolved()` callback, which dereferences the facade application, so the helper documented
+  for container-free unit tests threw unless an app was bound. It now only swaps the root.
 - **Agent turn budget (D-013) is no longer agent-caller only:** the pipeline enforces `rate_limits.agent_turn.max_tool_calls` whenever an in-process adapter supplies `agent_turn_tool_calls`, whatever the caller. AI turns (`caller=job` from `rawphp/laravel-capabilities-ai`) are now capped. The option is never read from HTTP or tool input, and it can only deny.
 
 ### Fixed (HTTP surface)

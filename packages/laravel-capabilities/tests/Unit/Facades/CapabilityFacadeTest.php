@@ -63,3 +63,20 @@ it('fail: Capability invoke does not call domain action directly [PIPE-008]', fu
     CapabilityFacade::invoke('no-direct', PipelineHelpers::validInput(), PipelineHelpers::options('http'));
     expect($h['runCount']->value)->toBe(1); // only via registry pipeline
 });
+
+it('happy: swapRegistry binds a registry behind the facade without a container [D-020]', function () {
+    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'name' => 'facade-swapped']);
+    $app = Facade::getFacadeApplication();
+    Facade::clearResolvedInstances();
+    Facade::setFacadeApplication(null);
+
+    try {
+        CapabilityFacade::swapRegistry($h['registry']);
+
+        expect(CapabilityFacade::getFacadeRoot())->toBe($h['registry'])
+            ->and(CapabilityFacade::invoke('facade-swapped', PipelineHelpers::validInput(), PipelineHelpers::options('http'))->isOk())->toBeTrue()
+            ->and($h['runCount']->value)->toBe(1);
+    } finally {
+        Facade::setFacadeApplication($app);
+    }
+});
