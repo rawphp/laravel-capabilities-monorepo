@@ -697,6 +697,20 @@ final class CapabilityRegistry implements CapabilityBus
         return $this;
     }
 
+    public function hasRequesterResolver(): bool
+    {
+        return $this->requesterResolver !== null;
+    }
+
+    /**
+     * Rehydrate a principal by type + id through the wired requester resolver (null when
+     * none is wired or the principal does not exist). Shared by approvals and the job surface.
+     */
+    public function resolveRequester(string $actorType, string $actorId): ?object
+    {
+        return $this->requesterResolver === null ? null : ($this->requesterResolver)($actorType, $actorId);
+    }
+
     /**
      * Default approval executor (D-006): re-run the stored invoke through this pipeline
      * as the original requester — re-validate, re-scope, authorize, run once, check output.

@@ -292,7 +292,8 @@ it('covers ApprovalPolicy role/staff/requester and default multi-tenant safety',
 it('covers RunCapabilityJob construction guards when present', function () {
     expect(fn () => RunCapabilityJob::assertDispatchable(['name' => 'x']))->toThrow(MissingJobActorException::class);
 
-    $job = RunCapabilityJob::dispatch([
+    // dispatch() now enqueues (L-016); make() is the pure validated builder.
+    $job = RunCapabilityJob::make([
         'name' => 'job.cap',
         'input' => [],
         'actingAs' => SystemActor::named('worker'),

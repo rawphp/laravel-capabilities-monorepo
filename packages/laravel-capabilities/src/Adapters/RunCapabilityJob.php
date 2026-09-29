@@ -2,20 +2,34 @@
 
 namespace Rawphp\Capabilities\Adapters;
 
+use Illuminate\Bus\Queueable;
+use Illuminate\Container\Container;
+use Illuminate\Contracts\Bus\Dispatcher;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use LogicException;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\MissingJobActorException;
 use Rawphp\Capabilities\Support\MissingJobTenantException;
 use Rawphp\Capabilities\Support\SystemActor;
+use Throwable;
 
 /**
- * Queue / scheduler invoke surface — requires explicit actor (D-002 / P2-005).
+ * Queue / scheduler invoke surface — a real queueable job (D-002 / P2-005 / L-016).
  *
- * Unit tests call {@see dispatchSync()} without a real queue worker.
- * Production may wrap this in a Laravel Job that calls the same prepare/run path.
+ * `RunCapabilityJob::dispatch($payload)` validates the actor and pushes the job onto the
+ * bus; a worker then calls {@see handle()} with the container's {@see CapabilityRegistry}.
+ * User ids resolve through the registry's requester resolver (the host auth provider the
+ * service provider wires — the same lookup approvals use); unresolvable → fail closed.
+ * {@see make()} builds without enqueuing; {@see dispatchSync()} runs inline (unit tests).
  */
-final class RunCapabilityJob
+final class RunCapabilityJob implements ShouldQueue
 {
+    use Queueable;
+
+    /** @var array<string, mixed>|null */
+    private ?array $lastFailure = null;
+
     /**
      * @param  array<string, mixed>  $input
      * @param  array<string, mixed>  $meta  teamId, organizationId, idempotencyKey, user_resolver, etc.
@@ -68,6 +82,8 @@ final class RunCapabilityJob
     }
 
     /**
+     * Build the validated job without enqueuing it (never a null-user job — D-002).
+     *
      * @param  array{
      *     name: string,
      *     input?: array<string, mixed>,
@@ -75,16 +91,47 @@ final class RunCapabilityJob
      *     tenantId?: string|null,
      *     teamId?: string|null,
      *     organizationId?: string|null,
-     *     idempotencyKey?: string|null,
-     *     tenancy_required?: bool,
-     *     globalSystem?: bool
+     *     idempotencyKey?: string|null
      * }  $payload
      */
-    public static function dispatch(array $payload): self
+    public static function make(array $payload): self
     {
         self::assertDispatchable($payload);
 
         return self::fromPayload($payload);
+    }
+
+    /**
+     * Validate, build and push onto the bus. Uses $bus when given, otherwise the container's
+     * {@see Dispatcher}; with neither this fails closed instead of silently building an object.
+     *
+     * @param  array{
+     *     name: string,
+     *     input?: array<string, mixed>,
+     *     actingAs?: int|string|SystemActor|null,
+     *     tenantId?: string|null,
+     *     teamId?: string|null,
+     *     organizationId?: string|null,
+     *     idempotencyKey?: string|null
+     * }  $payload
+     */
+    public static function dispatch(array $payload, ?Dispatcher $bus = null): self
+    {
+        $job = self::make($payload);
+
+        if ($bus === null) {
+            $container = Container::getInstance();
+            if (! $container->bound(Dispatcher::class)) {
+                throw new LogicException(
+                    'RunCapabilityJob::dispatch() needs an Illuminate\\Contracts\\Bus\\Dispatcher: pass one, or dispatch inside a booted Laravel app.'
+                );
+            }
+            $bus = $container->make(Dispatcher::class);
+        }
+
+        $bus->dispatch($job);
+
+        return $job;
     }
 
     /**
@@ -110,6 +157,9 @@ final class RunCapabilityJob
     }
 
     /**
+     * Queue worker entry (container injects the registry singleton). $options is the
+     * inline / unit path (`user_resolver`, `scope_resolver`, tenancy overrides).
+     *
      * @param  array<string, mixed>  $options
      */
     public function handle(CapabilityRegistry $registry, array $options = []): CapabilityResult
@@ -118,7 +168,7 @@ final class RunCapabilityJob
             throw MissingJobActorException::missing();
         }
 
-        $actor = $this->resolveActor($options);
+        $actor = $this->resolveActor($registry, $options);
         $definition = $registry->has($this->name) ? $registry->get($this->name) : null;
 
         $globalSystem = (bool) ($options['globalSystem'] ?? $definition?->globalSystem ?? false);
@@ -193,9 +243,41 @@ final class RunCapabilityJob
     }
 
     /**
+     * Laravel failed-job hook (D-019): keep the tags for the failed_jobs consumer and log
+     * them through the app logger when one is bound. Never throws.
+     */
+    public function failed(?Throwable $exception = null): void
+    {
+        $this->lastFailure = $this->failureTags() + [
+            'exception' => $exception === null ? null : $exception::class,
+            'message' => $exception?->getMessage(),
+        ];
+
+        try {
+            $container = Container::getInstance();
+            if ($container->bound('log')) {
+                $logger = $container->make('log');
+                if (is_object($logger) && method_exists($logger, 'error')) {
+                    $logger->error('capability.job.failed', $this->lastFailure);
+                }
+            }
+        } catch (Throwable) {
+            // logging is best effort; the failed_jobs row still carries the payload
+        }
+    }
+
+    /**
+     * @return array<string, mixed>|null tags + exception recorded by {@see failed()}
+     */
+    public function lastFailure(): ?array
+    {
+        return $this->lastFailure;
+    }
+
+    /**
      * @param  array<string, mixed>  $options
      */
-    private function resolveActor(array $options): object
+    private function resolveActor(CapabilityRegistry $registry, array $options): object
     {
         if ($this->actingAs instanceof SystemActor) {
             return $this->actingAs;
@@ -204,7 +286,10 @@ final class RunCapabilityJob
         if (is_int($this->actingAs) || is_string($this->actingAs)) {
             $resolver = $options['user_resolver'] ?? null;
             if (! is_callable($resolver)) {
-                throw MissingJobActorException::unresolvableUser($this->actingAs);
+                if (! $registry->hasRequesterResolver()) {
+                    throw MissingJobActorException::unresolvableUser($this->actingAs);
+                }
+                $resolver = static fn (int|string $id): ?object => $registry->resolveRequester('user', (string) $id);
             }
 
             $user = $resolver($this->actingAs);

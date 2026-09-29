@@ -144,7 +144,7 @@ Global switches live in published `config/capabilities.php` under `surfaces.*`:
 | MCP | `surfaces.mcp` | **Product MCP (server):** needs `laravel/mcp`; named profiles; optional `auto_register` (default true) via `McpServerRegistrar`; auth under `surfaces.mcp.auth` |
 | HTTP | `surfaces.http` | Default prefix `capabilities`; middleware `api`, `auth:sanctum` — also the transport the product CLI uses |
 | CLI | `surfaces.cli` | Marks capabilities available to product CLI **HTTP** callers (not an MCP bridge) |
-| Job | `surfaces.job` | Queue/job invokes need an explicit actor (not “null user = allow”) |
+| Job | `surfaces.job` | `RunCapabilityJob::dispatch(['name' => …, 'input' => …, 'actingAs' => $userId \| SystemActor::named('scheduler'), 'tenantId' => …])` queues a real `ShouldQueue` job; the worker runs it through the registry. An explicit actor is required (not “null user = allow”); user ids resolve through the default auth provider |
 | Artisan | `surfaces.artisan` | Optional **in-server** ops — not the downloadable product CLI |
 | Messaging | `surfaces.messaging` | Conversation channel flag; implementation is the **sibling** package. Invokes carrying messaging metadata stay `caller: agent` but are refused while this is off |
 

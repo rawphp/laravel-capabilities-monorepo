@@ -74,7 +74,26 @@ tools themselves (messaging) pass it as an invoke option. `null` for invokes out
 
 ### Changed (BREAKING)
 
-#### Invokes without an actor are refused on every surface (D-002, L-004)
+#### `RunCapabilityJob` really queues (D-002 / D-019, L-016)
+
+`RunCapabilityJob` was a plain object whose static `dispatch()` only built an instance —
+nothing was ever enqueued, and a job pushed onto the bus by hand threw `unresolvableUser`
+for every user id because `handle()` received no `user_resolver`. It now implements
+`ShouldQueue` with `Illuminate\Bus\Queueable` (`onQueue`, `onConnection`, `delay`, …):
+
+- `dispatch(array $payload, ?Dispatcher $bus = null)` validates the actor (D-002), then
+  pushes the job through the given bus or the container's `Illuminate\Contracts\Bus\Dispatcher`;
+  with neither it throws `LogicException` instead of silently doing nothing. Code that used the
+  old return value as a pure builder should call the new `make(array $payload)`.
+- `handle(CapabilityRegistry $registry, array $options = [])` resolves `actingAs` user ids
+  through the registry's requester resolver (the host auth provider the service provider
+  wires — the same lookup approvals use; new `CapabilityRegistry::hasRequesterResolver()` /
+  `resolveRequester()`) when no `user_resolver` option is passed. No resolver anywhere still
+  fails closed.
+- `failed(?Throwable $e)` records the D-019 tags plus the exception (`lastFailure()`) and logs
+  `capability.job.failed` through the bound `log` service when there is one.
+
+
 
 `ResolveActor` used to hand any non-job invoke that omitted `options['actor']` a
 fabricated user (`stdClass`, `id = 1`, `name = default-user`). That principal drove
