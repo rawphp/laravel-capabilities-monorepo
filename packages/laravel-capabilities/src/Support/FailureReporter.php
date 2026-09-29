@@ -23,6 +23,9 @@ final class FailureReporter
 
     public const APPROVAL_NOTIFY_FAILED = 'approval_notify_failed_total';
 
+    /** A host ScopeResolver threw while placing an approver / resuming user (L-402). */
+    public const APPROVER_SCOPE_FAILED = 'approver_scope_failed_total';
+
     public static function report(Throwable $e): void
     {
         $container = Container::getInstance();

@@ -6,6 +6,7 @@ use Rawphp\Capabilities\Contracts\ScopeResolver;
 use Rawphp\Capabilities\Support\CapabilityContext;
 use Rawphp\Capabilities\Support\CapabilityScope;
 use Rawphp\Capabilities\Support\DefaultScopeResolver;
+use Rawphp\Capabilities\Support\FailureReporter;
 use Rawphp\Capabilities\Support\MissingJobTenantException;
 use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Support\UnresolvedScopeException;
@@ -82,7 +83,10 @@ final class ResolveTenantFromCaller
      * exactly when the ScopeResolver places them in the row's tenant. `$trustedTenantId` is a
      * server-side option handled like an invoke's `tenant_id` option: it fills in when the
      * principal has no membership tenant and never overrides one. A resolver that cannot
-     * place the principal yields null, which the approval policy treats as out of scope.
+     * place the principal yields null, which the approval policy treats as out of scope —
+     * whatever it throws (L-402): package scope exceptions are the expected "no tenant"
+     * answer; anything else is a host bug, reported through the ExceptionHandler and still
+     * fail-closed, the same as the invoke pipeline's resolve_scope stage.
      */
     public function tenantOfPrincipal(object $principal, ?string $trustedTenantId = null, string $caller = 'http'): ?string
     {
@@ -96,6 +100,14 @@ final class ResolveTenantFromCaller
                 ['tenant_id' => $trustedTenantId],
             )->tenantId;
         } catch (MissingJobTenantException|UnresolvedScopeException) {
+            return null;
+        } catch (\Throwable $e) {
+            FailureReporter::reportAndCount(
+                $e->getPrevious() ?? $e,
+                FailureReporter::APPROVER_SCOPE_FAILED,
+                ['caller' => $caller],
+            );
+
             return null;
         }
     }
