@@ -122,6 +122,8 @@ final class ApprovalManager implements ApprovalGateway
         if (isset($merged['execution'])) {
             $merged['execution'] = ApprovalStateMachine::normalizeExecution((string) $merged['execution']);
         }
+        // A misspelt global policy must fail boot, not deny (or allow) every approver at runtime (L-106).
+        ApprovalPolicy::assertKnown((string) $merged['default_policy'], 'approval.default_policy');
 
         return $merged;
     }

@@ -394,7 +394,7 @@ it('needs_approval option with an approval policy returns approval_required with
         readOnly: false,
         allowSystemCallers: true,
         idempotent: CapabilityDefinition::IDEMPOTENT_OPTIONAL,
-        approvalPolicy: 'manager',
+        approvalPolicy: 'role:manager',
         run: static fn () => CapabilityResult::ok(['never' => true]),
     ));
 
@@ -423,7 +423,7 @@ it('require_approval option with an approval policy returns approval_required [D
         readOnly: false,
         allowSystemCallers: true,
         idempotent: CapabilityDefinition::IDEMPOTENT_OPTIONAL,
-        approvalPolicy: 'manager',
+        approvalPolicy: 'role:manager',
         run: static fn () => CapabilityResult::ok(['never' => true]),
     ));
 

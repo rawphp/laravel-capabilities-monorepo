@@ -6,6 +6,7 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Approval\ApprovalPolicy;
 use Rawphp\Capabilities\Approval\ApprovalStateMachine;
 use Rawphp\Capabilities\Capability;
@@ -196,4 +197,53 @@ it('happy: in-memory and database approval stores persist approval_policy [L-002
     expect($memory['approval_policy'])->toBe('role:finance-approver')
         ->and($database['approval_policy'])->toBe('role:finance-approver')
         ->and(MigrationCatalog::columns(MigrationCatalog::TABLE_APPROVALS))->toContain('approval_policy');
+});
+
+// --- L-106: the declared approvalPolicy is validated; unknown strings never fall open ---
+
+it('fail: an unknown approvalPolicy string is rejected when the definition is built [L-106]', function (string $typo) {
+    expect(fn () => Capability::define('typo-cap')
+        ->description('typo')
+        ->input(CreateInvoiceInput::class)
+        ->approvalPolicy($typo)
+        ->run(fn () => null)
+        ->toDefinition())->toThrow(InvalidArgumentException::class, $typo);
+})->with([
+    'hyphen instead of colon' => ['role-finance'],
+    'capitalised keyword' => ['Role:finance'],
+    'hyphenated any_staff' => ['any-staff'],
+    'bare role name' => ['manager'],
+    'role with no name' => ['role:'],
+]);
+
+it('happy: every documented policy string is accepted on a definition [L-106]', function (string $policy) {
+    $definition = Capability::define('known-cap')
+        ->description('known')
+        ->input(CreateInvoiceInput::class)
+        ->approvalPolicy($policy)
+        ->run(fn () => null)
+        ->toDefinition();
+
+    expect($definition->approvalPolicy)->toBe($policy)
+        ->and(ApprovalPolicy::isKnown($policy))->toBeTrue();
+})->with([
+    ApprovalPolicy::REQUESTER,
+    ApprovalPolicy::REQUESTER_OR_ROLE,
+    ApprovalPolicy::ANY_STAFF,
+    ApprovalPolicy::CUSTOM,
+    'role:finance-approver',
+]);
+
+it('fail: a row carrying an unknown policy denies the requester and role holders alike [L-106]', function () {
+    $policy = ApprovalPolicy::fromString(ApprovalPolicy::REQUESTER_OR_ROLE)->forRow(['approval_policy' => 'bogus']);
+    $row = ['tenant_id' => 't-1', 'requester_actor_type' => 'user', 'requester_actor_id' => '7'];
+
+    expect($policy->policy())->toBe('bogus')
+        ->and($policy->allows($row, defApprovalUser(7), 't-1'))->toBeFalse()
+        ->and($policy->allows($row, defApprovalUser(8, ['approver']), 't-1'))->toBeFalse();
+});
+
+it('fail: an unknown approval.default_policy is rejected at config validation [L-106]', function () {
+    expect(fn () => ApprovalManager::validateConfig(['default_policy' => 'any-staff']))
+        ->toThrow(InvalidArgumentException::class, 'any-staff');
 });

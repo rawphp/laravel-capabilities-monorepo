@@ -288,6 +288,14 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   `idempotency_key`), so the key moves to `completed` / `failed` and later retries replay the
   executed outcome. `IdempotencyGuard::lookup()` gains an optional `executingApprovalId` that
   lets only that approval's own execution continue past its pending row.
+- **Unknown `approvalPolicy` strings fail at definition time and never fall open (D-006, L-106).**
+  `ApprovalPolicy::isKnown()` / `assertKnown()` accept only `requester`, `requester_or_role`,
+  `any_staff`, `custom` and `role:<name>`. `CapabilityDefinition` rejects anything else
+  (attribute, fluent builder and discovery all pass through it) with `InvalidArgumentException`,
+  and `approval.default_policy` is checked the same way when the manager config is merged. A
+  row that still carries an unrecognised policy now denies every approver instead of
+  behaving like `requester_or_role` — before, a typo such as `role-finance` let the requester
+  approve their own request.
 - **`capability:run` works (D-016 / REQ-024).** `RunCapabilityCommand` called a non-existent
   `ArtisanCapabilityInvoker::invoke()`, so every run printed an "undefined method" error and
   exited 1. It now normalises the flags through `ArtisanCapabilityInvoker::parseFlags()`
