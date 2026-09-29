@@ -35,7 +35,7 @@ The CLI never embeds product domain logic. Authorization always happens on the
 ## Commands
 
 ```bash
-capabilities auth login --base-url=URL [--token=PAT] [--code=OAUTH] [--profile=NAME]
+capabilities auth login --base-url=URL [--token=PAT] [--code=OAUTH] [--profile=NAME] [--json]
 capabilities auth logout [--profile=NAME]
 capabilities auth status [--profile=NAME]
 ```
@@ -50,6 +50,11 @@ capabilities auth status [--profile=NAME]
 
 `login` **requires** `--base-url`. Successful login best-effort prefetches the
 catalog into that profile’s schema cache.
+
+A failed login exits with the D-018 code's CLI exit (server `unauthenticated` →
+**3**; local/transport failures → **1**). With `--json`, stdout carries the
+envelope: `{"ok":true,"data":{"profile","base_url","logged_in"}}` on success,
+`{"ok":false,"error":{"code","message",…}}` on failure. Tokens are never printed.
 
 ### Status & logout
 
