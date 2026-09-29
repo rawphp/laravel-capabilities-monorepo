@@ -50,8 +50,7 @@ capabilities auth status [--profile=NAME]
 
 `login` **requires** `--base-url`. The CLI never follows HTTP redirects: a
 3xx (for example `http://` redirected to `https://`) fails login with the
-redirect target in the message, so pass the final URL. Successful login best-effort prefetches the
-catalog into that profile’s schema cache.
+redirect target in the message, so pass the final URL.
 
 ### Tokens must carry the `cli` ability
 

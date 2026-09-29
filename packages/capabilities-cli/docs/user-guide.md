@@ -199,8 +199,7 @@ capabilities auth profiles [--json]
 | OAuth code | `--code=...` |
 | Device code | omit token and code (API-driven device flow) |
 
-`login` always requires `--base-url`. Successful login best-effort prefetches
-catalog schemas into that profile’s cache.
+`login` always requires `--base-url`.
 
 Full detail: **[authentication.md](authentication.md)**.
 

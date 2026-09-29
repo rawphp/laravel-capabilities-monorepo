@@ -59,6 +59,11 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   with `--profile='my prod'` ran the whole browser approval, then failed and
   left the issued token live on the server. All login modes now fail before
   any request.
+- **`auth login` no longer claims to prefetch schemas** — the post-login
+  "prefetch" re-listed the catalog (a second `GET /capabilities` after token
+  login) and cached nothing, since the list carries no schemas. It is removed
+  along with the doc claim; a new credential already starts with an empty
+  schema cache (keyed by base URL + token).
 - **Capability help advertises the flags invoke accepts** — help derived flag
   names and pass modes with its own rules, so it showed `--amount-cents` for a
   camelCase `amountCents` property (invoke only accepts `--amountCents`) and
