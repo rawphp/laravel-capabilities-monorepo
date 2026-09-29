@@ -72,9 +72,9 @@ it('happy: middleware stack from config applied [HTTP-001]', function () {
         'middleware' => $mw,
     ]);
     foreach ($routes as $route) {
-        // Auth issuance strips auth:* (L-002); capability routes keep full stack.
+        // Auth issuance strips auth:* (L-002) and adds the default throttle (L-018).
         if (RouteTable::isAuthIssuanceRoute($route['key'])) {
-            expect($route['middleware'])->toBe(RouteTable::withoutAuthMiddleware($mw));
+            expect($route['middleware'])->toBe([...RouteTable::withoutAuthMiddleware($mw), RouteTable::DEFAULT_AUTH_THROTTLE]);
         } else {
             expect($route['middleware'])->toBe($mw);
         }

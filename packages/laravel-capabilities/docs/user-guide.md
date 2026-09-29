@@ -224,6 +224,8 @@ When `surfaces.http.enabled` is true, routes come from `RouteTable` (default pre
 | `GET` | `/capabilities/{name}` | Describe one capability |
 | `POST` | `/capabilities/{name}` | **Invoke** |
 
+The three `auth/*` routes issue credentials, so they skip `auth:*` middleware and are throttled per client IP (`throttle:6,1,capabilities-auth`). Set `surfaces.http.auth_middleware` to a middleware list to replace that stack, for example to allow faster device-code polling.
+
 Product CLI is a remote client of **this** API. Do not add a second invoke controller tree.
 
 Example invoke:
@@ -251,7 +253,7 @@ Publish: `php artisan vendor:publish --tag=capabilities-config`
 | Agent/MCP profiles | `surfaces.*.profiles`, `require_profile`, tool count limits | Never dump full catalog by default (`name => list<string>` for MCP) |
 | Peer mismatch | `on_incompatible` → `fail` \| `disable` | Boot fail vs soft-disable |
 | MCP register errors | `surfaces.mcp.on_register_error` → `throw` (default) \| `disable` | Mid-mount adapter failure policy for non-empty plans |
-| HTTP | `prefix`, `middleware` | Route mount and auth |
+| HTTP | `prefix`, `middleware`, `auth_middleware` | Route mount and auth. The unauthenticated `auth/*` routes drop `auth:*` and get `throttle:6,1,capabilities-auth` unless `auth_middleware` replaces that stack |
 | Approval | `store`, `ttl_hours`, `execution`, `resume.*` | Human-in-the-loop |
 | Idempotency | `enabled`, `driver` (default `database`; use `memory` only for single-process tests), `header` (`Idempotency-Key`) | Safe retries; AI proposal accept readiness pings this store |
 | Audit | `enabled`, `mode` (`best_effort`), `driver` | Observability of invokes. A single capability can force strict with `->audit(['mode' => 'strict'])` (or `audit: ['mode' => 'strict']` on the attribute); it can only tighten the global mode, never loosen it |

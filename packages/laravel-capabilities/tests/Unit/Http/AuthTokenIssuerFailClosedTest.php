@@ -110,10 +110,12 @@ it('routes: auth endpoints strip auth:sanctum so issuance is not behind sanctum 
     $oauth = RouteTable::find($routes, RouteTable::ROUTE_AUTH_OAUTH_CALLBACK);
     $invoke = RouteTable::find($routes, RouteTable::ROUTE_INVOKE);
 
-    expect($token['middleware'])->toBe(['api'])
+    $throttled = ['api', RouteTable::DEFAULT_AUTH_THROTTLE]; // L-018
+
+    expect($token['middleware'])->toBe($throttled)
         ->and($token['middleware'])->not->toContain('auth:sanctum')
-        ->and($device['middleware'])->toBe(['api'])
-        ->and($oauth['middleware'])->toBe(['api'])
+        ->and($device['middleware'])->toBe($throttled)
+        ->and($oauth['middleware'])->toBe($throttled)
         ->and($invoke['middleware'])->toBe(['api', 'auth:sanctum']);
 });
 

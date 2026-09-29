@@ -36,6 +36,13 @@ final class RouteTable
     public const ROUTE_AUTH_OAUTH_CALLBACK = 'oauth_callback';
 
     /**
+     * Default throttle on the unauthenticated credential-issuing routes (L-018):
+     * 6 attempts / minute per client IP, in its own `capabilities-auth` bucket.
+     * Override the whole stack with `surfaces.http.auth_middleware`.
+     */
+    public const DEFAULT_AUTH_THROTTLE = 'throttle:6,1,capabilities-auth';
+
+    /**
      * Canonical action keys for the single CapabilityController tree.
      *
      * @return list<string>
@@ -59,7 +66,8 @@ final class RouteTable
      * @param  array{
      *     enabled?: bool,
      *     prefix?: string,
-     *     middleware?: list<string>
+     *     middleware?: list<string>,
+     *     auth_middleware?: list<string>|null
      * }  $httpConfig  config('capabilities.surfaces.http')
      * @return list<array{
      *     key: string,
@@ -81,10 +89,13 @@ final class RouteTable
             $prefix = 'capabilities';
         }
 
-        $middleware = array_values(array_filter(
-            (array) ($httpConfig['middleware'] ?? ['api']),
-            static fn ($m) => is_string($m) && $m !== '',
-        ));
+        $middleware = self::middlewareList($httpConfig['middleware'] ?? ['api']);
+
+        // Auth issuance must not sit behind auth:sanctum (chicken-egg for CLI login) (L-002),
+        // but it issues credentials, so it is throttled unless the host replaces the stack (L-018).
+        $authMiddleware = isset($httpConfig['auth_middleware'])
+            ? self::middlewareList($httpConfig['auth_middleware'])
+            : [...self::withoutAuthMiddleware($middleware), self::DEFAULT_AUTH_THROTTLE];
 
         $defs = [
             [self::ROUTE_LIST, 'GET', $prefix, 'capabilities.list', 'CapabilityController@list'],
@@ -100,10 +111,7 @@ final class RouteTable
 
         $routes = [];
         foreach ($defs as [$key, $method, $uri, $name, $action]) {
-            // Auth issuance must not sit behind auth:sanctum (chicken-egg for CLI login) (L-002).
-            $routeMiddleware = self::isAuthIssuanceRoute($key)
-                ? self::withoutAuthMiddleware($middleware)
-                : $middleware;
+            $routeMiddleware = self::isAuthIssuanceRoute($key) ? $authMiddleware : $middleware;
 
             $routes[] = [
                 'key' => $key,
@@ -116,6 +124,17 @@ final class RouteTable
         }
 
         return $routes;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function middlewareList(mixed $middleware): array
+    {
+        return array_values(array_filter(
+            (array) $middleware,
+            static fn ($m) => is_string($m) && $m !== '',
+        ));
     }
 
     /**

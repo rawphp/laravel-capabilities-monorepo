@@ -23,9 +23,12 @@ foreach ($stacks as $label => $middleware) {
         ]);
         expect($routes)->not->toBeEmpty();
         foreach ($routes as $route) {
-            // Auth issuance strips auth:* (L-002); other routes keep full stack.
+            // Auth issuance strips auth:* (L-002) and adds the default throttle (L-018).
             if (RouteTable::isAuthIssuanceRoute($route['key'])) {
-                expect($route['middleware'])->toBe(RouteTable::withoutAuthMiddleware($middleware));
+                expect($route['middleware'])->toBe([
+                    ...RouteTable::withoutAuthMiddleware($middleware),
+                    RouteTable::DEFAULT_AUTH_THROTTLE,
+                ]);
             } else {
                 expect($route['middleware'])->toBe($middleware);
             }
@@ -46,4 +49,27 @@ it('fail: unauthenticated request blocked when auth middleware on [HTTP-001]', f
         'jsonBody' => ['customer_id' => 1],
     ]), $h['name']);
     expect($res->errorCode())->toBe('unauthenticated')->and($res->status)->toBe(401);
+});
+
+// L-018: credential-issuing routes are unauthenticated, so they must be throttled by default.
+it('throttles auth issuance routes by default while list/invoke keep auth:sanctum [L-018]', function () {
+    $routes = HttpHelpers::routes();
+
+    foreach ([RouteTable::ROUTE_AUTH_TOKEN, RouteTable::ROUTE_AUTH_DEVICE, RouteTable::ROUTE_AUTH_OAUTH_CALLBACK] as $key) {
+        expect(RouteTable::find($routes, $key)['middleware'])->toBe(['api', 'throttle:6,1,capabilities-auth']);
+    }
+    foreach ([RouteTable::ROUTE_LIST, RouteTable::ROUTE_INVOKE] as $key) {
+        expect(RouteTable::find($routes, $key)['middleware'])->toBe(['api', 'auth:sanctum']);
+    }
+});
+
+it('surfaces.http.auth_middleware replaces the auth issuance stack verbatim [L-018]', function () {
+    $routes = HttpHelpers::routes([
+        'enabled' => true,
+        'middleware' => ['api', 'auth:sanctum'],
+        'auth_middleware' => ['api', 'throttle:12,1'],
+    ]);
+
+    expect(RouteTable::find($routes, RouteTable::ROUTE_AUTH_DEVICE)['middleware'])->toBe(['api', 'throttle:12,1'])
+        ->and(RouteTable::find($routes, RouteTable::ROUTE_INVOKE)['middleware'])->toBe(['api', 'auth:sanctum']);
 });

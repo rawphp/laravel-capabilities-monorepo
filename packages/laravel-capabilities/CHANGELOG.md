@@ -93,6 +93,11 @@ profile — or no profile — returns `forbidden` with `normalized_code`
   only for a session user with no token abilities or OAuth client. CLI tokens are now
   subject to `surfaces.cli.enabled` and per-capability `surfaces` (a CLI token against an
   `http`-only capability gets `forbidden`). Unmapped abilities still derive `http`.
+- **Auth issuance routes are throttled by default.** `POST auth/token`, `POST auth/device`
+  and `GET auth/callback` accept no credentials, and Laravel 11+ `api` has no throttle, so
+  they took unlimited attempts. They now get `throttle:6,1,capabilities-auth` (6 per
+  minute per client IP) after `auth:*` is stripped. New `surfaces.http.auth_middleware`
+  (default `null`) replaces that whole stack when set, e.g. for device-code polling.
 
 ## [0.5.3] - 2026-09-29
 
