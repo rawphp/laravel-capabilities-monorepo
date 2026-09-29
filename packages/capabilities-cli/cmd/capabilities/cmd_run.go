@@ -190,6 +190,10 @@ func invokeCapability(
 		}
 		return api.ExitValidation
 	}
+	// No fresh input on --retry-last: let Run replay the stored body.
+	if retryLast && len(baseJSON) == 0 && len(flagMap) == 0 {
+		merged = nil
+	}
 
 	opts := run.Options{
 		Profile:        profile,
