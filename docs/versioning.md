@@ -106,11 +106,17 @@ Root `composer.json` path-requires the PHP packages for local work. In an app ne
       "type": "path",
       "url": "../laravel-capabilities-monorepo/packages/laravel-capabilities-messaging",
       "options": { "symlink": true }
+    },
+    {
+      "type": "path",
+      "url": "../laravel-capabilities-monorepo/packages/laravel-capabilities-ai",
+      "options": { "symlink": true }
     }
   ],
   "require": {
     "rawphp/laravel-capabilities": "*@dev",
-    "rawphp/laravel-capabilities-messaging": "*@dev"
+    "rawphp/laravel-capabilities-messaging": "*@dev",
+    "rawphp/laravel-capabilities-ai": "*@dev"
   }
 }
 ```
@@ -131,11 +137,16 @@ Point Composer at the **split package repos** (updated on monorepo push):
     {
       "type": "vcs",
       "url": "https://github.com/rawphp/laravel-capabilities-messaging"
+    },
+    {
+      "type": "vcs",
+      "url": "https://github.com/rawphp/laravel-capabilities-ai"
     }
   ],
   "require": {
     "rawphp/laravel-capabilities": "dev-main",
-    "rawphp/laravel-capabilities-messaging": "dev-main"
+    "rawphp/laravel-capabilities-messaging": "dev-main",
+    "rawphp/laravel-capabilities-ai": "dev-main"
   }
 }
 ```
@@ -159,7 +170,7 @@ Install from module path / built binary — not Composer. See the CLI package RE
 | Mechanism | Policy |
 |---|---|
 | `"version"` in package `composer.json` | **Not set.** Tags (when created) define versions for VCS/Packagist. |
-| `extra.branch-alias` | **Set** on both PHP packages: `dev-main` → `0.x-dev`. |
+| `extra.branch-alias` | **Set** on all three PHP packages: `dev-main` → `0.x-dev`. |
 | Git tags | Human-gated on the monorepo; mirrored to package remotes by the split workflow. |
 | Packagist | **Not claimed** until human submit + first tag. Root README install snippets are the intended end-state. |
 
@@ -167,7 +178,7 @@ Messaging and AI require core as `"rawphp/laravel-capabilities": "self.version"`
 
 ### Branch-alias consistency (0.x-dev policy)
 
-Both Composer packages **must** keep:
+All three Composer packages **must** keep:
 
 ```json
 "extra": {
@@ -181,6 +192,7 @@ Both Composer packages **must** keep:
 |---|---|---|
 | Core | `packages/laravel-capabilities/composer.json` | `dev-main` → `0.x-dev` |
 | Messaging | `packages/laravel-capabilities-messaging/composer.json` | `dev-main` → `0.x-dev` |
+| AI | `packages/laravel-capabilities-ai/composer.json` | `dev-main` → `0.x-dev` |
 
 - Do **not** set a top-level `"version"` field in package `composer.json`.
 - Do **not** alias `dev-main` to a concrete `0.Y.Z`.
@@ -251,7 +263,7 @@ Automated package CI stays **unit-only** and must **not** call Packagist, create
 ### Human checklist (maintainer)
 
 1. **Prep**
-   - [ ] `branch-alias` remains `dev-main` → `0.x-dev` on both PHP packages (no top-level `"version"`).
+   - [ ] `branch-alias` remains `dev-main` → `0.x-dev` on all three PHP packages (no top-level `"version"`).
    - [ ] CHANGELOGs: move `[Unreleased]` into a dated `## [0.Y.Z]` section before the tag.
    - [ ] Confirm monorepo unit suites green (`composer test:core`, messaging as needed).
    - [ ] Confirm split workflow has mirrored `main` to package remotes (and `SPLIT_GITHUB_TOKEN` is set).
