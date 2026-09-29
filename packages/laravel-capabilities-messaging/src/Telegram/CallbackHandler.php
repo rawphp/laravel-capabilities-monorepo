@@ -128,6 +128,12 @@ final class CallbackHandler
             ? $this->approvals->accept($approvalId, $user, $options)
             : $this->approvals->reject($approvalId, $user, null, $options);
 
+        if (! $this->decisionApplied($action, $result)) {
+            $code = $result->errorCode() ?? 'failed';
+
+            return ['status' => $this->failureStatus($code, $approvalId), 'result' => $result, 'message' => $code];
+        }
+
         return [
             'status' => 'ok',
             'result' => $result,
@@ -136,6 +142,29 @@ final class CallbackHandler
             'callback_had_input' => array_key_exists('input', $callbackPayload)
                 || array_key_exists('input_json', $callbackPayload),
         ];
+    }
+
+    /**
+     * Core reports a completed reject as the `rejected` failure; anything else not ok means the
+     * tap did not do what its button says (M-202).
+     */
+    private function decisionApplied(string $action, CapabilityResult $result): bool
+    {
+        return $result->isOk() || ($action === 'reject' && $result->errorCode() === 'rejected');
+    }
+
+    /**
+     * `forbidden` before the decision (approval policy) leaves the row pending; `forbidden` after
+     * it (original actor no longer authorized at execution) is a failed run, not the tapper's fault.
+     */
+    private function failureStatus(string $code, string $approvalId): string
+    {
+        return match ($code) {
+            'forbidden' => ($this->approvals?->find($approvalId)['status'] ?? null) === 'pending' ? 'forbidden' : 'failed',
+            'conflict', 'expired' => 'already_handled',
+            'not_found' => 'not_found',
+            default => 'failed',
+        };
     }
 
     /**

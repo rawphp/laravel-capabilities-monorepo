@@ -63,7 +63,7 @@ it('happy: CallbackHandler accepts a decoded bound token for the hinted approver
     $approvals = H::approvals();
     $approvals->request([
         'id' => 'ap-tok', 'capability_name' => 'x', 'requester_actor_type' => 'user',
-        'requester_actor_id' => 'u9', 'original_caller' => 'http', 'input_json' => [],
+        'requester_actor_id' => 'u1', 'original_caller' => 'http', 'input_json' => [],
     ]);
     $identity = H::identity();
     $identity->link('42', 'u1');
@@ -81,7 +81,7 @@ it('happy: CallbackHandler accepts a decoded unbound token from any linked appro
     $approvals = H::approvals();
     $approvals->request([
         'id' => 'ap-unb', 'capability_name' => 'x', 'requester_actor_type' => 'user',
-        'requester_actor_id' => 'u9', 'original_caller' => 'http', 'input_json' => [],
+        'requester_actor_id' => 'u1', 'original_caller' => 'http', 'input_json' => [],
     ]);
     $identity = H::identity();
     $identity->link('42', 'u1');

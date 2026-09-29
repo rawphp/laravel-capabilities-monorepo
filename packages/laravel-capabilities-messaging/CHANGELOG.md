@@ -133,6 +133,13 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
+- **A Telegram approval tap reports what core actually did** — `CallbackHandler` returned
+  `ok` whatever `ApprovalGateway::accept()` / `reject()` answered, so a linked member the approval
+  policy refuses, a lost double-tap race, an expired row, or a failed run all showed `Approved.`.
+  Non-ok results now map to `forbidden` (the approval stays pending), `already_handled`
+  (`conflict` / `expired`), `not_found`, or the new `failed` status (toast `Approved, but the
+  action did not complete.`), and the update ends `ok=false` with the core error code.
+
 - **Telegram misconfiguration no longer breaks HTTP / CLI approvals** — `TelegramApprovalNotifier`
   checked the bot token and webhook secret before looking for a chat target, so with
   `telegram.enabled=true` and a secret missing every approval threw, including ones requested

@@ -362,6 +362,7 @@ final class ProcessTelegramUpdate
             'already_handled' => 'This approval was already decided.',
             'not_found' => 'Unknown approval.',
             'forbidden' => 'You are not allowed to decide this approval.',
+            'failed' => 'Approved, but the action did not complete.',
             default => 'This button is no longer valid.',
         };
     }
