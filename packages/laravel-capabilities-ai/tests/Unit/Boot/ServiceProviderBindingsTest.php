@@ -168,6 +168,11 @@ it('defaults IdempotencyReadiness ready when core IdempotencyStore is bound', fu
             return $record;
         }
 
+        public function claim(array $record): bool
+        {
+            return true;
+        }
+
         public function update(?string $tenantId, string $actorType, string $actorId, string $capabilityName, string $key, array $attributes): ?array
         {
             return null;
