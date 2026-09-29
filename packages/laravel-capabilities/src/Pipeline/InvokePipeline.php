@@ -737,6 +737,9 @@ final class InvokePipeline
             'capability_name' => $state->definition->name,
             'status' => 'pending',
             'tenant_id' => $ctx->tenantId(),
+            // The whole resolved scope travels with the row so the accept re-check and the
+            // approved run see exactly what was requested (D-006 step 5, L-501).
+            'scope' => $ctx->scope()?->toRow(),
             'requester_actor_type' => ResolveActor::actorType($ctx->actor()),
             'requester_actor_id' => ResolveActor::actorId($ctx->actor()),
             'original_caller' => $state->caller,

@@ -280,3 +280,97 @@ it('a host resolver that throws while placing the resuming user fails resume clo
         ->and($handler->reported[0])->toBeInstanceOf(ErrorException::class);
     RecordingExceptionHandler::unbind();
 });
+
+// L-501: an approved execution runs under the scope the request was stamped with — tenant,
+// team, organization and scalar attributes — not a tenant-only scope. What the approver saw
+// on the row is what runs; the row never mixes a tenant from one resolution with team/org
+// from another. Legacy rows (string scope) stay tenant-only.
+
+/**
+ * @return array{registry: CapabilityRegistry, name: string, seen: ArrayObject}
+ */
+function l501Harness(?ScopeResolver $resolver = null): array
+{
+    $seen = new ArrayObject;
+    $h = IdempotencyHelpers::harness([
+        'approvalPolicy' => ApprovalPolicy::REQUESTER,
+        'run' => function ($in, CapabilityContext $ctx) use ($seen) {
+            $seen[] = [$ctx->tenantId(), $ctx->teamId(), $ctx->organizationId(), $ctx->scope()?->attributes];
+
+            return new CreateInvoiceResult(invoice_id: 42);
+        },
+    ]);
+    if ($resolver !== null) {
+        $h['registry']->withScopeResolver($resolver);
+    }
+
+    return ['registry' => $h['registry'], 'name' => $h['name'], 'seen' => $seen];
+}
+
+function l501Requester(): object
+{
+    return m301Actor(['current_tenant_id' => 't1', 'current_team_id' => 'team-9', 'current_organization_id' => 'org-3']);
+}
+
+it('an approved run sees the same tenant, team and organization as a direct invoke (accept and resume)', function (string $path) {
+    $direct = l501Harness();
+    $direct['registry']->invoke($direct['name'], IdempotencyHelpers::inputA(), ['caller' => 'http', 'actor' => l501Requester()]);
+
+    $h = l501Harness();
+    $requested = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), ['caller' => 'http', 'actor' => l501Requester(), 'needs_approval' => true]);
+    $id = (string) $requested->approvalId();
+
+    if ($path === 'resume') {
+        $h['registry']->approvals()->store()->update($id, ['status' => ApprovalStateMachine::STATUS_APPROVED, 'approved_at' => '2026-01-15T12:00:00+00:00', 'decided_by' => '7']);
+        $result = $h['registry']->approvals()->resume($id, l501Requester(), force: true)[0];
+    } else {
+        $result = $h['registry']->approvals()->accept($id, l501Requester());
+    }
+
+    expect($result->isOk())->toBeTrue()
+        ->and((array) $direct['seen'])->toBe([['t1', 'team-9', 'org-3', []]])
+        ->and((array) $h['seen'])->toBe((array) $direct['seen'])
+        ->and($h['registry']->approvals()->find($id)['scope'])->toBe(['tenant_id' => 't1', 'team_id' => 'team-9', 'organization_id' => 'org-3', 'attributes' => []]);
+})->with(['accept', 'resume']);
+
+it('a requester who switched tenant and team still runs under the row scope, never the new one', function () {
+    $h = l501Harness();
+    $h['registry']->withRequesterResolver(fn (string $type, string $id) => m301Actor(['current_tenant_id' => 't2', 'current_team_id' => 'team-77'], $id));
+    $requested = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), ['caller' => 'http', 'actor' => l501Requester(), 'needs_approval' => true]);
+    $id = (string) $requested->approvalId();
+
+    $accepted = $h['registry']->approvals()->accept($id, l501Requester());
+
+    expect($accepted->isOk())->toBeTrue()
+        ->and((array) $h['seen'])->toBe([['t1', 'team-9', 'org-3', []]]);
+});
+
+it('scalar scope attributes from a host resolver travel with the row; non-scalar ones do not', function () {
+    $resolver = new class implements ScopeResolver
+    {
+        public function resolve(CapabilityContext $partial): CapabilityScope
+        {
+            return new CapabilityScope(tenantId: 't1', teamId: 'team-9', attributes: ['region' => 'au', 'flags' => ['beta']]);
+        }
+    };
+    $h = l501Harness($resolver);
+    $requested = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), ['caller' => 'http', 'actor' => l501Requester(), 'needs_approval' => true]);
+    $id = (string) $requested->approvalId();
+
+    $accepted = $h['registry']->approvals()->accept($id, l501Requester());
+
+    expect($accepted->isOk())->toBeTrue()
+        ->and((array) $h['seen'])->toBe([['t1', 'team-9', null, ['region' => 'au']]]);
+});
+
+it('a legacy row whose scope is the bare tenant string runs tenant-only in the row tenant', function () {
+    $h = l501Harness();
+    $requested = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), ['caller' => 'http', 'actor' => l501Requester(), 'needs_approval' => true]);
+    $id = (string) $requested->approvalId();
+    $h['registry']->approvals()->store()->update($id, ['scope' => 't1']);
+
+    $accepted = $h['registry']->approvals()->accept($id, l501Requester());
+
+    expect($accepted->isOk())->toBeTrue()
+        ->and((array) $h['seen'])->toBe([['t1', null, null, []]]);
+});
