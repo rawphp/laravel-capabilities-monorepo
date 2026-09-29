@@ -123,3 +123,41 @@ func TestRunUnknownFlagExit2(t *testing.T) {
 		t.Fatalf("stderr=%s", stderr)
 	}
 }
+
+func TestRunRetryLastWithoutInputResendsPriorBody(t *testing.T) {
+	var gotBody []byte
+	var gotKey string
+	schema := invoiceSchemaJSON()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/capabilities/"):
+			gotBody, _ = io.ReadAll(r.Body)
+			gotKey = r.Header.Get("Idempotency-Key")
+			_, _ = w.Write([]byte(`{"ok":true,"data":{"invoice_id":1}}`))
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/capabilities/"):
+			_, _ = w.Write([]byte(`{"ok":true,"data":{"name":"create-invoice","schema_version":"1","input_schema":` + schema + `,"output_schema":{},"surfaces":["cli"]}}`))
+		default:
+			_, _ = w.Write([]byte(`{"ok":true,"data":{"capabilities":[{"name":"create-invoice","surfaces":["cli"]}]}}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	root := t.TempDir()
+	factory := newClientFactory(srv)
+	if code, _, errb := CaptureExecute([]string{"auth", "login", "--base-url", srv.URL, "--token", "tok"}, root, factory); code != 0 {
+		t.Fatalf("login %d %s", code, errb)
+	}
+	if code, _, errb := CaptureExecute([]string{"run", "create-invoice", "--customer-id=42", "--currency=USD", "--idempotency-key=k1"}, root, factory); code != 0 {
+		t.Fatalf("first run %d %s", code, errb)
+	}
+	first := string(gotBody)
+
+	code, _, errb := CaptureExecute([]string{"run", "create-invoice", "--retry-last"}, root, factory)
+	if code != 0 {
+		t.Fatalf("retry %d %s", code, errb)
+	}
+	if gotKey != "k1" || string(gotBody) != first {
+		t.Fatalf("retry-last must resend prior invoke: key=%s body=%s want=%s", gotKey, gotBody, first)
+	}
+}

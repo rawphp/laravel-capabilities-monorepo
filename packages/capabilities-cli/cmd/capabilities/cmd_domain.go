@@ -58,12 +58,11 @@ func cmdDomainOrUnknown(env Env, domain string, args []string) int {
 	input, rest := flagValue(rest, "--input")
 	inputFile, rest := flagValue(rest, "--input-file")
 	idem, rest := flagValue(rest, "--idempotency-key")
-	tenant, rest := flagValue(rest, "--tenant")
 	human, rest := flagBool(rest, "--human")
 	retryLast, rest := flagBool(rest, "--retry-last")
 	// jsonOut/noCache/profile/base already peeled above
 	st := store(env)
-	return invokeCapability(env, st, profile, base, canonical, input, inputFile, idem, tenant, jsonOut, human, noCache, retryLast, rest)
+	return invokeCapability(env, st, profile, base, canonical, input, inputFile, idem, jsonOut, human, noCache, retryLast, rest)
 }
 
 // loadSynthIndex returns the synthesis index and optional summaries.
@@ -86,7 +85,7 @@ func loadSynthIndex(env Env, profile string) (*synth.Index, []catalog.Capability
 		fmt.Fprintln(env.Stderr, err.Error())
 		return nil, nil, api.ExitAuth
 	}
-	svc := &catalog.Service{Client: c, Cache: catalog.NewCache(st.SchemaCacheDir(profile))}
+	svc := &catalog.Service{Client: c, Cache: catalog.PrincipalCache(st.SchemaCacheDir(profile), c)}
 	list, _, err := svc.List(context.Background())
 	if err != nil {
 		if se, ok := err.(*api.StructuredError); ok {
@@ -231,7 +230,7 @@ func writeCapabilityHelp(env Env, domain, verb, canonical string, jsonOut bool, 
 			fmt.Fprintln(env.Stderr, err.Error())
 			return api.ExitAuth
 		}
-		svc := &catalog.Service{Client: c, Cache: catalog.NewCache(st.SchemaCacheDir(profile)), NoCache: noCache}
+		svc := &catalog.Service{Client: c, Cache: catalog.PrincipalCache(st.SchemaCacheDir(profile), c), NoCache: noCache}
 		entry, _, err := svc.Describe(context.Background(), canonical)
 		if err != nil {
 			if se, ok := err.(*api.StructuredError); ok {

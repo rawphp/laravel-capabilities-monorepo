@@ -67,7 +67,7 @@ Config file: `config/capabilities-messaging.php` (merged from the package).
 | `telegram.callback_ttl_seconds` | Callback freshness | `TELEGRAM_CALLBACK_TTL_SECONDS` (900) |
 | `telegram.turns_per_minute` | D-013 agent turns per chat per minute (core `RateLimiter`; `0` disables). Over the cap → `rate_limited`, no reply | `CAPABILITIES_MESSAGING_TURNS_PER_MINUTE` (20) |
 | `agent_profile` | D-008 profile for bot tool list — **never full catalog** | `CAPABILITIES_MESSAGING_AGENT_PROFILE` (default `support`) |
-| `identity.mode` | `code_link` or `allowlist` | `CAPABILITIES_MESSAGING_IDENTITY_MODE` |
+| `identity.mode` | `code_link` or `allowlist`; any other value fails `messaging:telegram-setup` validation | `CAPABILITIES_MESSAGING_IDENTITY_MODE` |
 | `identity.code_ttl_seconds` | Link code lifetime | `CAPABILITIES_MESSAGING_LINK_CODE_TTL` (600) |
 | `identity.allowlist` | Static telegram ↔ Laravel user maps | `[]` |
 | `skip_boot_checks` | Skip deferred secret checks in **non-production CI only** | `CAPABILITIES_SKIP_BOOT_CHECKS` — ignored / fails closed in production |
@@ -100,6 +100,8 @@ Codes expire per `identity.code_ttl_seconds`. Client-forged `laravel_user_id` va
 
 ### `allowlist`
 
+Only static entries may bind. `bindWithCode` returns `null` in this mode (and under any unrecognized mode), so a code issued elsewhere cannot bypass the allowlist.
+
 Static entries:
 
 ```php
@@ -111,6 +113,17 @@ Static entries:
     ],
 ],
 ```
+
+Allowlist ids are not checked at boot. Check them in your deploy or setup step with a lookup against your user model, so a stale or mistyped `laravel_user_id` fails before a chat message arrives:
+
+```php
+use Rawphp\CapabilitiesMessaging\Boot\TelegramSetup;
+use Rawphp\CapabilitiesMessaging\MessagingConfig;
+
+TelegramSetup::runOrFail(app(MessagingConfig::class), fn (string $id) => User::find($id));
+```
+
+`runOrFail` throws naming each bad entry (`identity.allowlist[1]: laravel_user_id "999" …`). Entries missing either id fail even without a lookup.
 
 ## Agent profile
 

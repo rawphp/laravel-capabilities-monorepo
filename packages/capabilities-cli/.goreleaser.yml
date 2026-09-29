@@ -37,8 +37,11 @@ builds:
       - arm64
     # Strip symbols; inject version matching REQ-060 / dist/README.md.
     # {{.Version}} is the git tag with leading "v" stripped (v1.2.3 → 1.2.3).
+    # ReleasePublicKey pins the ed25519 key self-update requires on checksums.txt.sig
+    # (empty when no release signing key is configured → checksum-only).
     ldflags:
       - -s -w -X main.Version={{.Version}}
+      - -X github.com/rawphp/capabilities-cli/internal/selfupdate.ReleasePublicKey={{ envOrDefault "CAPABILITIES_RELEASE_PUBLIC_KEY" "" }}
     flags:
       - -trimpath
     mod_timestamp: "{{ .CommitTimestamp }}"
@@ -71,6 +74,7 @@ checksum:
 
 # Cosign/GPG artifact signatures are out of scope for the soft-path scaffold.
 # Platform Authenticode/codesign runs via hooks above when secrets exist.
+# checksums.txt.sig (ed25519) is added by the release workflow's sign-checksums job.
 # signs: []
 
 changelog:

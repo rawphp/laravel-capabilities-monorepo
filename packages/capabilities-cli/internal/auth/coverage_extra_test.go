@@ -13,10 +13,7 @@ import (
 
 func TestSanitizeProfileAndLastRunPath(t *testing.T) {
 	st := tempStore(t)
-	if sanitizeProfile("") != "default" {
-		t.Fatal()
-	}
-	if sanitizeProfile("a/b c!") != "a_b_c_" && sanitizeProfile("a/b c!") == "" {
+	if sanitizeProfile("a/b c!") != "a_b_c_" {
 		t.Fatal(sanitizeProfile("a/b c!"))
 	}
 	p := st.LastRunPath("default")
@@ -24,7 +21,7 @@ func TestSanitizeProfileAndLastRunPath(t *testing.T) {
 		t.Fatal()
 	}
 	// corrupt config
-	dir := st.profileDir("bad")
+	dir, _ := st.profileDir("bad")
 	_ = os.MkdirAll(dir, 0o700)
 	_ = os.WriteFile(filepath.Join(dir, "config.json"), []byte("{"), 0o600)
 	if _, err := st.GetBaseURL("bad"); err == nil {

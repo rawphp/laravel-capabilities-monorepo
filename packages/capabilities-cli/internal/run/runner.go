@@ -24,9 +24,8 @@ type Options struct {
 	IdempotencyKey string
 	RetryLast      bool
 	NoCache        bool
-	JSON           bool   // legacy: stdout is always machine envelope; kept for call-site compat
-	Human          bool   // human summary on stderr only; never replaces stdout envelope
-	TenantHint     string // hint only — not authoritative scope (D-003)
+	JSON           bool // legacy: stdout is always machine envelope; kept for call-site compat
+	Human          bool // human summary on stderr only; never replaces stdout envelope
 	Store          *auth.Store
 	Client         *api.Client
 	Catalog        *catalog.Service
@@ -61,7 +60,7 @@ func EnsureIdempotencyKey(manual string) string {
 	return uuid.NewString()
 }
 
-// Run executes: load input → local schema validate → ensure key → POST invoke.
+// Run executes: load input → local schema validate → ensure key → API version probe → POST invoke.
 // No domain logic. Does not skip server re-validation.
 func Run(ctx context.Context, opts Options) *Result {
 	res := &Result{ExitCode: ExitInternal}
@@ -70,6 +69,23 @@ func Run(ctx context.Context, opts Options) *Result {
 		res.Stderr = "capability name required"
 		res.Envelope = localFailEnvelope(api.CodeValidationFailed, res.Stderr, nil)
 		return res
+	}
+
+	// --retry-last reuses the stored key; with no fresh input it also replays the
+	// stored body, so the server sees the same request hash and replays (no 409).
+	var last *LastRun
+	if opts.RetryLast {
+		l, lerr := loadLastRun(opts)
+		if lerr != nil || l == nil || l.IdempotencyKey == "" {
+			res.ExitCode = ExitValidation
+			res.Stderr = "no previous run to retry"
+			res.Envelope = localFailEnvelope(api.CodeValidationFailed, res.Stderr, nil)
+			return res
+		}
+		last = l
+		if len(opts.InputJSON) == 0 && opts.InputFile == "" && l.InputJSON != "" && l.Capability == opts.Capability {
+			opts.InputJSON = []byte(l.InputJSON)
+		}
 	}
 
 	input, err := loadInput(opts)
@@ -127,18 +143,8 @@ func Run(ctx context.Context, opts Options) *Result {
 
 	// Idempotency key
 	key := opts.IdempotencyKey
-	if opts.RetryLast {
-		last, lerr := loadLastRun(opts)
-		if lerr != nil || last == nil || last.IdempotencyKey == "" {
-			res.ExitCode = ExitValidation
-			res.Stderr = "no previous run to retry"
-			res.Envelope = localFailEnvelope(api.CodeValidationFailed, res.Stderr, nil)
-			return res
-		}
+	if last != nil {
 		key = last.IdempotencyKey
-		if opts.Capability == "" {
-			opts.Capability = last.Capability
-		}
 	}
 	key = EnsureIdempotencyKey(key)
 	res.IdempotencyKey = key
@@ -149,24 +155,23 @@ func Run(ctx context.Context, opts Options) *Result {
 		return res
 	}
 
-	// Tenant hint is optional body metadata only when explicitly set — never authority.
-	// We do not send X-Capabilities-Caller. Server derives caller from Bearer token.
+	// Body is the capability input only. We do not send X-Capabilities-Caller or a
+	// tenant claim: the server derives caller and scope from the Bearer token (D-022, D-003).
 	body := opts.InputJSON
-	if opts.TenantHint != "" {
-		// Attach as non-authoritative request field only if body is object.
-		var m map[string]any
-		if json.Unmarshal(body, &m) == nil {
-			// Hint lives under a namespaced key so it cannot forge scope.
-			m["_tenant_hint"] = opts.TenantHint
-			body, _ = json.Marshal(m)
-		}
+
+	// Wire-version preflight: refuse before POST when the server speaks another API version.
+	if verr := opts.Client.CheckAPIVersion(ctx); verr != nil {
+		res.ExitCode = ExitInternal
+		res.Stderr = verr.Error()
+		res.Envelope = localFailEnvelope(api.CodeInternal, verr.Error(), nil)
+		return res
 	}
 
 	res.HTTPCalled = true
 	apiRes, err := opts.Client.InvokeCapability(ctx, opts.Capability, body, key)
 	if err != nil {
 		res.ExitCode = ExitInternal
-		res.Stderr = err.Error()
+		appendStderr(res, err.Error())
 		res.Envelope = localFailEnvelope(api.CodeInternal, err.Error(), nil)
 		// Persist key so --retry-last reuses it after network failure.
 		_ = saveLastRun(opts, opts.Capability, key, opts.InputJSON)
@@ -177,19 +182,23 @@ func Run(ctx context.Context, opts Options) *Result {
 	res.Envelope = apiRes.Body
 	if apiRes.Err != nil {
 		res.ExitCode = apiRes.Err.ExitCode
-		res.Stderr = apiRes.Err.Error()
+		appendStderr(res, apiRes.Err.Error())
 		// Machine envelope on stdout for structured server errors.
 		if len(apiRes.Body) > 0 {
 			res.Stdout = string(apiRes.Body)
 		}
+		if apiRes.Err.Code == api.CodeRateLimited && apiRes.Err.RetryAfter > 0 {
+			// Give scripted callers a concrete backoff on stdout, not just exit 6.
+			res.Stdout = string(withRetryAfter(apiRes.Body, apiRes.Err))
+			res.Stderr += fmt.Sprintf(" (retry after %ds)", apiRes.Err.RetryAfter)
+		}
 		return res
 	}
 	if apiRes.StatusCode >= 400 {
-		code := api.CodeInternal
-		if apiRes.Err != nil {
-			code = apiRes.Err.Code
-		}
-		res.ExitCode = ExitCodeFor(code)
+		// Only reachable when the body claims ok:true yet carries an error object
+		// (the API client builds a StructuredError for every other >=400 shape).
+		// Its self-declared code is not trusted: always CodeInternal.
+		res.ExitCode = ExitCodeFor(api.CodeInternal)
 		res.Stderr = string(apiRes.Body)
 		return res
 	}
@@ -199,13 +208,17 @@ func Run(ctx context.Context, opts Options) *Result {
 	res.Stdout = string(apiRes.Body)
 	if opts.Human {
 		// Short human summary on stderr only — never dumps full payload (that is stdout).
-		summary := humanSuccessSummary(opts.Capability, apiRes.Body)
-		if res.Stderr != "" && !strings.HasSuffix(res.Stderr, "\n") {
-			res.Stderr += "\n"
-		}
-		res.Stderr += summary + "\n"
+		appendStderr(res, humanSuccessSummary(opts.Capability, apiRes.Body)+"\n")
 	}
 	return res
+}
+
+// appendStderr adds msg after any earlier stderr (the D-012 deprecation warning) instead of replacing it.
+func appendStderr(res *Result, msg string) {
+	if res.Stderr != "" && !strings.HasSuffix(res.Stderr, "\n") {
+		res.Stderr += "\n"
+	}
+	res.Stderr += msg
 }
 
 // humanSuccessSummary is a one-line stderr cue for --human (stdout keeps the envelope).
@@ -255,6 +268,33 @@ func loadInput(opts Options) ([]byte, error) {
 		return nil, fmt.Errorf("invalid JSON input")
 	}
 	return opts.InputJSON, nil
+}
+
+// withRetryAfter sets error.retry_after on a D-018 envelope, keeping every server
+// field as sent. A non-envelope body (e.g. proxy throttle page) is replaced by a
+// D-018 envelope built from the mapped error so stdout stays machine-readable.
+func withRetryAfter(body []byte, se *api.StructuredError) []byte {
+	var env map[string]json.RawMessage
+	var errObj map[string]json.RawMessage
+	if json.Unmarshal(body, &env) == nil && json.Unmarshal(env["error"], &errObj) == nil && errObj != nil {
+		errObj["retry_after"], _ = json.Marshal(se.RetryAfter)
+		env["error"], _ = json.Marshal(errObj)
+		b, _ := json.Marshal(env)
+		return b
+	}
+	b, _ := json.Marshal(api.ErrorEnvelope{
+		OK: false,
+		Error: &api.ErrorBody{
+			Code:       se.Code,
+			Message:    se.Message,
+			Violations: se.Violations,
+			ApprovalID: se.ApprovalID,
+			RequestID:  se.RequestID,
+			Retryable:  se.Retryable,
+			RetryAfter: se.RetryAfter,
+		},
+	})
+	return b
 }
 
 func localFailEnvelope(code, message string, viol []api.Violation) []byte {

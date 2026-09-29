@@ -63,48 +63,25 @@ func (s *Service) ListWithSchemas(ctx context.Context) ([]CapabilitySummary, *ap
 	return parseCapabilityList(res)
 }
 
+// parseCapabilityList decodes the one list envelope the server sends:
+// {"ok":true,"data":{"capabilities":[...]}}. An empty array is a valid empty catalog;
+// any other shape (or a row that does not decode) is a parse error.
 func parseCapabilityList(res *api.Response) ([]CapabilitySummary, *api.Response, error) {
 	if res.Err != nil {
 		return nil, res, res.Err
 	}
 	var payload struct {
-		OK   bool `json:"ok"`
 		Data struct {
 			Capabilities []CapabilitySummary `json:"capabilities"`
 		} `json:"data"`
 	}
-	// Also accept bare array or data as array. Empty list is valid.
-	if err := json.Unmarshal(res.Body, &payload); err == nil && payload.Data.Capabilities != nil {
-		return payload.Data.Capabilities, res, nil
+	if err := json.Unmarshal(res.Body, &payload); err != nil {
+		return nil, res, fmt.Errorf("unexpected catalog list shape: %w", err)
 	}
-	// Detect object shape with capabilities key even when empty via raw map.
-	var raw map[string]any
-	if err := json.Unmarshal(res.Body, &raw); err == nil {
-		if data, ok := raw["data"].(map[string]any); ok {
-			if caps, ok := data["capabilities"].([]any); ok {
-				out := make([]CapabilitySummary, 0, len(caps))
-				for _, c := range caps {
-					if m, ok := c.(map[string]any); ok {
-						name, _ := m["name"].(string)
-						out = append(out, CapabilitySummary{Name: name})
-					}
-				}
-				return out, res, nil
-			}
-		}
+	if payload.Data.Capabilities == nil {
+		return nil, res, fmt.Errorf(`unexpected catalog list shape: want {"ok":true,"data":{"capabilities":[...]}}`)
 	}
-	var alt struct {
-		OK   bool                `json:"ok"`
-		Data []CapabilitySummary `json:"data"`
-	}
-	if err := json.Unmarshal(res.Body, &alt); err == nil && alt.Data != nil {
-		return alt.Data, res, nil
-	}
-	var bare []CapabilitySummary
-	if err := json.Unmarshal(res.Body, &bare); err == nil {
-		return bare, res, nil
-	}
-	return nil, res, fmt.Errorf("unexpected catalog list shape")
+	return payload.Data.Capabilities, res, nil
 }
 
 // Describe returns schema for name (cache-aware).

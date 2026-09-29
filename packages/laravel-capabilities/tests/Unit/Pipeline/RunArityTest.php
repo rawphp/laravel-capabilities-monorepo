@@ -67,7 +67,7 @@ it('fail: ArgumentCountError thrown inside a run closure does not re-run it [ONE
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options());
 
     expect($result->isOk())->toBeFalse()
-        ->and($result->error['code'])->toBe('domain_error')
+        ->and($result->error['code'])->toBe('internal')
         ->and($calls)->toBe(1);
 });
 
@@ -80,7 +80,7 @@ it('fail: ArgumentCountError thrown inside an input-only run closure does not re
 
     $result = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options());
 
-    expect($result->error['code'])->toBe('domain_error')->and($calls)->toBe(1);
+    expect($result->error['code'])->toBe('internal')->and($calls)->toBe(1);
 });
 
 it('fail: ArgumentCountError thrown inside a handler run() does not re-run it [ONE-RUN]', function () {
@@ -89,7 +89,7 @@ it('fail: ArgumentCountError thrown inside a handler run() does not re-run it [O
 
     $result = $h['registry']->invoke('arity-handler', PipelineHelpers::validInput(), PipelineHelpers::options());
 
-    expect($result->error['code'])->toBe('domain_error')
+    expect($result->error['code'])->toBe('internal')
         ->and(RunArityThrowingHandler::$calls)->toBe(1);
 });
 

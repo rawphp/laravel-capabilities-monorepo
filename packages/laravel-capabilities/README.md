@@ -8,6 +8,34 @@ Core product capability bus for Laravel.
 
 Define a capability once (schema, authorization, `run`, approval, audit) and expose it via agent, MCP, HTTP, product CLI, and jobs — same rules, one `run()`.
 
+```php
+use Rawphp\Capabilities\Capability;
+use Rawphp\Capabilities\Registry\CapabilityRegistry;
+use Rawphp\Capabilities\Support\CapabilityContext;
+
+/** @var CapabilityRegistry $registry */
+$registry = app(CapabilityRegistry::class);
+
+Capability::define('create-invoice')
+    ->description('Create an invoice for a customer.')
+    ->surfaces(['agent', 'mcp', 'http', 'cli', 'job'])
+    ->input(CreateInvoiceInput::class)
+    ->output(CreateInvoiceResult::class)
+    ->groups(['billing'])
+    ->idempotent('optional')
+    ->authorize(function (CreateInvoiceInput $input, CapabilityContext $ctx): bool {
+        // Re-resolve resources under scope; never trust client ids alone
+        return $ctx->user() !== null;
+    })
+    ->run(function (CreateInvoiceInput $input, CapabilityContext $ctx): CreateInvoiceResult {
+        // Single domain write path
+        return new CreateInvoiceResult(invoice_id: 1);
+    })
+    ->register($registry);
+```
+
+More builder options, attribute discovery, and surface wiring: [user guide](docs/user-guide.md#define-a-capability).
+
 ## Scope (this package)
 
 | | |
@@ -96,7 +124,7 @@ Full monorepo install policy, branch-alias, and Packagist checklist: monorepo [`
 
 ## Peer support / D-011 release gate
 
-This package composes `laravel/ai` and `laravel/mcp` as optional peers. **Product MCP** is the server surface: with `surfaces.mcp` enabled and `auto_register` true (default), **`McpServerRegistrar`** builds a **server plan** from profiles/servers and may call `McpToolAdapter::register` for planned profiles. Production boot does **not** mount live `laravel/mcp` HTTP servers under `path_prefix` — hosts still wire peer MCP routes (e.g. `Mcp::web` / peer docs). Multi-profile sequential register **overwrites** adapter active tools (last profile wins). The downloadable CLI is a separate HTTP client only — not an MCP stdio host. Release honesty is **matrix + unit contract fixtures**, not live SDKs in default package CI.
+This package composes `laravel/ai` and `laravel/mcp` as optional peers. **Product MCP** is the server surface: with `surfaces.mcp` enabled and `auto_register` true (default), **`McpServerRegistrar`** builds a **server plan** from profiles/servers and may call `McpToolAdapter::register` for planned profiles. Production boot does **not** mount live `laravel/mcp` HTTP servers under `path_prefix` — hosts still wire peer MCP routes (e.g. `Mcp::web` / peer docs). Multi-profile sequential register **overwrites** adapter active tools (last profile wins); after that, `handle()` without `options['profile']` refuses with `profile_required` instead of guessing. The downloadable CLI is a separate HTTP client only — not an MCP stdio host. Release honesty is **matrix + unit contract fixtures**, not live SDKs in default package CI.
 
 ### Matrix location (source of truth)
 
@@ -167,7 +195,7 @@ Env: `CAPABILITIES_MCP_ON_REGISTER_ERROR=throw|disable`.
 php artisan capabilities:integration-health
 ```
 
-Diagnoses **host product readiness** (bindings, AI-chat mode, MCP tools, AI proposals/AlwaysReady safety when `capabilities-ai` config is present). Distinct from **HTTP** `GET …/capabilities/health` (surface catalog / peer status for clients).
+Diagnoses **host product readiness** (bindings, audit writer wired into the registry, AI-chat mode, MCP tools, AI proposals/AlwaysReady safety when `capabilities-ai` config is present). Distinct from **HTTP** `GET …/capabilities/health` (surface catalog / peer status for clients).
 
 AI-chat mode for this command: `capabilities-ai.routes.enabled` **OR** non-empty `capabilities-ai.queue.name`. Details: [docs/user-guide.md](docs/user-guide.md#integration-health-vs-http-health).
 
