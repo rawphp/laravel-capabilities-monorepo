@@ -54,6 +54,7 @@ final class CapabilityController
 
         $envelope = $this->registry->catalog()->listEnvelope($includeSchemas, [
             'caller' => $caller['caller'],
+            'actor' => $request->user,
         ]);
 
         return HttpResponse::ok($envelope, [
@@ -71,7 +72,7 @@ final class CapabilityController
         $caller = $this->resolveCaller($request);
 
         try {
-            $detail = $this->registry->catalog()->describe($name);
+            $detail = $this->registry->catalog()->describe($name, $request->user);
         } catch (Throwable) {
             return HttpResponse::failure(
                 'not_found',
