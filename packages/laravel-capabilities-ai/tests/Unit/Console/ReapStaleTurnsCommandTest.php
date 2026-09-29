@@ -98,7 +98,7 @@ it('emits reaped turn counts per status to the Metrics contract', function () {
     $metrics = new InMemoryMetrics;
     [$command, $buffer] = makeReapCommand($app);
 
-    $exit = $command->handle(new StaleTurnReaper, $metrics);
+    $exit = $command->handle(new StaleTurnReaper(new ArrayProgressStore), $metrics);
 
     expect($exit)->toBe(Command::SUCCESS)
         ->and($metrics->get(ReapStaleTurnsCommand::METRIC_REAPED, ['status' => 'queued']))->toBe(2)
@@ -114,7 +114,7 @@ it('emits zero-valued series when nothing is stale so dashboards see the run', f
     $metrics = new InMemoryMetrics;
     [$command, $buffer] = makeReapCommand($app);
 
-    $command->handle(new StaleTurnReaper, $metrics);
+    $command->handle(new StaleTurnReaper(new ArrayProgressStore), $metrics);
 
     expect($metrics->emissions())->toBe([
         ['name' => 'capabilities_ai_reaped_turns_total', 'labels' => ['status' => 'queued'], 'by' => 0],
