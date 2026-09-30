@@ -25,6 +25,10 @@ The ALTER is idempotent (no-op if the column already exists). Greenfield install
 
 `2026_09_30_000001_widen_capabilities_ai_messages_content` changes `capabilities_ai_messages.content` from `text` to `longText`. On MySQL, `TEXT` holds 65,535 bytes (about 16k tokens), so a longer assistant reply failed the insert after the model call and its tool invokes had run. Run **`php artisan migrate`**; the migration skips when the table or column is missing.
 
+### Upgrade: turns `usage` and proposals `schema_hash` columns
+
+`2026_09_24_000001_add_usage_to_capabilities_ai_turns_table` adds a nullable JSON `usage` column (per-round LLM usage, see [Progress](#progress)); `2026_09_25_000001_add_schema_hash_to_capabilities_ai_proposals_table` adds a nullable `schema_hash` column (accept refuses on tool schema drift, see [Accept](#accept)). `TurnRunner` writes both, so run **`php artisan migrate`** before upgrading workers. Both migrations are idempotent (`hasColumn` guards).
+
 ## Host bindings
 
 - `ConversationContextProvider` — messages for the model (`content` may be a **string** or a **list of provider content blocks** for multimodal / vision; hosts hydrate attachment bytes — this package does not store or fetch files)
@@ -43,15 +47,15 @@ Hosts that construct AI runtime services with `new` (or jobs without container m
 
 | Site | Required now | Notes |
 |------|--------------|--------|
-| `TurnRunner` | `ProgressStore $progress` | Required 3rd ctor arg (`TurnClaim`, `LlmClient`, **`ProgressStore`**, then optional context/tools/bus…). Was optional `?ProgressStore = null`. `TurnClaim` is an interface: pass `new EloquentTurnClaim` (was `new TurnClaim`). Optional `ConversationStore $store`, followed by optional `int $turnBudgetSeconds` (default `claim_ttl`) and `?Closure $clock`. |
+| `TurnRunner` | `ProgressStore $progress` | Required 3rd ctor arg (`TurnClaim`, `LlmClient`, **`ProgressStore`**, then optional context/tools/bus…). Was optional `?ProgressStore = null`. `TurnClaim` is an interface: pass `new EloquentTurnClaim` (was `new TurnClaim`). Optional `ConversationStore $store`, followed by optional `int $turnBudgetSeconds` (constructor default `Package::DEFAULT_CLAIM_TTL` = 120; the provider passes config `claim_ttl`) and `?Closure $clock`. |
 | `ConversationService` | `ProgressStore $progress` | Required 2nd ctor arg after `$dispatch`. **No** silent `ArrayProgressStore` default in ctor. Optional last arg `ConversationStore $store` (default `EloquentConversationStore`) is the row-persistence seam; unit tests pass an in-memory store. |
 | `TurnService` / `StaleTurnReaper` / `ProposalService` | — | Optional trailing `ConversationStore` / `TurnClaim` args, defaulting to the Eloquent implementations. `ResolveConversationActor` takes an optional `ActorLookup` (default `EloquentActorLookup` over the configured user model). |
-| `RunTurnJob::handle` | `handle(TurnRunner $runner)` | Workers resolve `TurnRunner` via **container method injection**. Empty `handle()` is invalid. |
+| `RunTurnJob::handle` | `handle(TurnRunner $runner, TurnClaim $claim, ProgressStore $progress)` | Workers resolve all three via **container method injection**. Empty `handle()` is invalid. If `run()` throws before the turn is claimed (e.g. host seams unbound), the job fails the still-queued turn at once (`TurnClaim::failUnclaimed()` + `error` / `terminal` `failed` progress events) and rethrows, instead of leaving it to the stale-queued reaper. |
 | `ProposalService` | `IdempotencyReadiness $idempotency` | Required 2nd ctor arg after `CapabilityBus`. SP default **`StoreBoundIdempotencyReadiness`** (live core store ping; fail closed when unbound). **`AlwaysReadyIdempotency` is unit-tests only** — do not bind in production. |
 
 **Host impact:** constructing outside SP without these deps, or dispatching `RunTurnJob` without container injection, breaks at construct / handle time.
 
-Authoritative matrix: [CHANGELOG Unreleased → Breaking → Manual DI / constructor / job handle](../CHANGELOG.md#manual-di--constructor--job-handle).
+Original matrix: [CHANGELOG 0.5.1 → Breaking → Manual DI / constructor / job handle](../CHANGELOG.md#manual-di--constructor--job-handle). The table above is current: `RunTurnJob::handle` and the trailing `TurnRunner` args changed after 0.5.1.
 
 ### Upgrade for hosts (LlmClient / tool rounds)
 
@@ -83,7 +87,7 @@ Authoritative behaviour: `TurnRunner` + `LlmClient` interface / `LlmClientDefaul
 
 ### Upgrade for hosts (Anthropic default model ID)
 
-Package default Anthropic model ID is now **`claude-sonnet-4-6`** (was `claude-sonnet-4-20250514`) in `config/capabilities-ai.php` (`CAPABILITIES_AI_ANTHROPIC_MODEL`) and the `AnthropicLlmClient` constructor. Hosts on package defaults hit a different model at runtime. Pin the previous ID via env or constructor `model` if you need the old default. See [CHANGELOG Unreleased Breaking](../CHANGELOG.md).
+Package default Anthropic model ID is now **`claude-sonnet-4-6`** (was `claude-sonnet-4-20250514`) in `config/capabilities-ai.php` (`CAPABILITIES_AI_ANTHROPIC_MODEL`) and the `AnthropicLlmClient` constructor. Hosts on package defaults hit a different model at runtime. Pin the previous ID via env or constructor `model` if you need the old default. See [CHANGELOG 0.5.1 Breaking](../CHANGELOG.md#anthropic-default-model-id).
 
 ## Progress
 
@@ -119,6 +123,10 @@ Each tool invoke appends a progress event:
 | `tool_call_id` | string | Correlates to the model `tool_calls[].id` for this round (multi-round tools) |
 
 **Host action:** branch on `data.ok` / `data.error_code`. Do not treat every `kind=tool` event as success.
+
+#### Progress `kind=error` events
+
+When `TurnRunner` fails a turn it appends `{ "kind": "error", "data": { "message": "…", "retryable": false } }` then `terminal` (`status: failed`). (Reaper and never-claimed failures carry only `message`.) `retryable` is `true` when the cause was a `RetryableLlmException` (Anthropic 408 / 409 / 429 / 5xx, connection errors, or a turn out of `claim_ttl` time), and `retry_after_seconds` is added when the provider sent `Retry-After`. The turn stays `failed` either way; `retryable: true` means a client may send the message again. Custom `LlmClient`s should throw `RetryableLlmException` for transient provider errors.
 
 #### Progress `kind=proposal_invalid` events
 
@@ -162,7 +170,7 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 
 ### Upgrade for hosts (chat HTTP non-proposal routes)
 
-**Non-proposal** routes moved from stub / always-**200** behaviour to real service payloads and fail-closed status codes (0.x pre-stable). Proposal accept/reject are documented separately: [Upgrade for hosts (accept/reject wire)](#upgrade-for-hosts-acceptreject-wire) · [CHANGELOG Unreleased Breaking](../CHANGELOG.md).
+**Non-proposal** routes moved from stub / always-**200** behaviour to real service payloads and fail-closed status codes (0.x pre-stable). Proposal accept/reject are documented separately: [Upgrade for hosts (accept/reject wire)](#upgrade-for-hosts-acceptreject-wire) · [CHANGELOG 0.5.1 Breaking](../CHANGELOG.md#chat-http-non-proposal-routes-stub--real).
 
 | Route action | Old expectation | Current wire |
 |--------------|-----------------|--------------|
@@ -201,7 +209,7 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 
 **Cooperative cancel (mid-run):** `TurnService::cancel` CAS-marks the turn cancelled and emits a terminal progress event. `TurnRunner` re-checks the turn before every LLM round and before every tool call, and stops as soon as it is `cancelled`: no further LLM call, no further bus invoke. Its completed/failed writes are compare-and-set on `status=running`, so a cancel that lands at any point is never overwritten and no completed/failed terminal event follows it — the cancelled terminal stands. A tool call already in flight when the cancel lands still finishes (it cannot be recalled) and reports its `tool` event.
 
-Authoritative: `ChatController` + conversation/turn services (see package unit tests). CHANGELOG: [Unreleased Breaking — Chat HTTP non-proposal routes](../CHANGELOG.md).
+Authoritative: `ChatController` + conversation/turn services (see package unit tests). CHANGELOG: [0.5.1 Breaking — Chat HTTP non-proposal routes](../CHANGELOG.md#chat-http-non-proposal-routes-stub--real); owner scoping (401 / 404) and the D-018 envelope are under Unreleased → Changed.
 
 ## Proposals gate (`proposals.enabled`)
 
@@ -245,6 +253,8 @@ JSON body always includes `ulid`, `status`, `outcome` when the proposal exists. 
 | `retryable` | **429** or **409** | Re-drive when ready (`httpStatus` from result; rate_limited → 429) |
 | `failed` | **422** or **503** | Terminal failure, or idempotency store not ready (503) — do not treat as success |
 | `refuse` (bus hard) | **403** | Terminal — do not re-drive as success |
+| `refuse` (target outside the turn's tool profile, or conversation owner gone) | **403** | Terminal — `capability_not_in_profile` / `forbidden`, no invoke |
+| `refuse` (target tool schema changed since the proposal) | **409** | Terminal — `conflict`, `reason: schema_changed`, no invoke |
 | `refuse` (already rejected) | **409** | Do not re-drive |
 | `refuse` (expired) | **410** | Do not re-drive |
 | (missing, another user's, or ownerless proposal) | **404** | — |
@@ -259,7 +269,7 @@ Authoritative mapping: `ProposalService` + `ChatController::jsonFromAcceptOutcom
 | Accept bus options | Bare invoke or optional key | **Always** `idempotency_key=proposal:{ulid}` |
 | Double-accept / re-drive from `accepting` | May re-run domain twice | Same stable key; host core **`IdempotencyStore`** must be wired so the bus can dedupe |
 | Store not ready | Silent / still invoke | Live `IdempotencyReadiness` → `failed` (**HTTP 503**), **no** bus invoke |
-| Conversation tool bus invokes | Confused with accept | Remain **bare** (`idempotency_key` null) — only proposal **accept** uses `proposal:{ulid}` |
+| Conversation tool bus invokes | Confused with accept | Carry `idempotency_key` only when the model passes one as a tool argument (D-005); otherwise none. Only proposal **accept** always uses `proposal:{ulid}` |
 
 Hosts own core `IdempotencyStore` configuration. This package does **not** ship a second store; readiness alone is not enough for real dedupe.
 
@@ -267,8 +277,13 @@ Hosts own core `IdempotencyStore` configuration. This package does **not** ship 
 
 1. Live `IdempotencyReadiness` — not ready → `failed` (503), no bus invoke.
 2. Atomic CAS `pending → accepting` (lost race re-enters accept).
-3. Bus `invoke(..., ['idempotency_key' => 'proposal:{ulid}'])`.
-4. Map result:
+3. Checks, each marking the proposal `failed` + `last_error` with no bus invoke:
+   - `target_capability` missing → `refuse` **422** `validation_failed`
+   - `target_capability` not in the host `ToolCatalog` list for the proposal's turn (D-008; re-checked on every accept; no `ToolCatalog` bound → refuse) → `refuse` **403** `capability_not_in_profile`
+   - stamped `schema_hash` (sha256 of the target tool's `parameters` at proposal creation) no longer matches the live tool → `refuse` **409** `conflict` (`reason: schema_changed`); a null hash on legacy rows skips this check
+   - conversation owner missing or deleted → `refuse` **403** `forbidden`
+4. Bus `invoke(..., ['idempotency_key' => 'proposal:{ulid}'])` as `caller=job` with the conversation user as `actor`.
+5. Map result:
 
 | AcceptOutcome | Proposal status | Host action |
 |---------------|-----------------|-------------|

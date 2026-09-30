@@ -11,7 +11,7 @@ How Laravel Capabilities packages are versioned and how consumers install them *
 | AI turns | `packages/laravel-capabilities-ai` | [rawphp/laravel-capabilities-ai](https://github.com/rawphp/laravel-capabilities-ai) | Composer `rawphp/laravel-capabilities-ai` | [CHANGELOG](../packages/laravel-capabilities-ai/CHANGELOG.md) |
 | Product CLI | `packages/capabilities-cli` | [rawphp/capabilities-cli](https://github.com/rawphp/capabilities-cli) | Go module + binary `capabilities` | [CHANGELOG](../packages/capabilities-cli/CHANGELOG.md) |
 
-Release notes live **per package**, Keep a Changelog style, with an `[Unreleased]` section and a pre-stable `0.x` note until the first tagged release.
+Release notes live **per package**, Keep a Changelog style, with an `[Unreleased]` section and a pre-stable `0.x` note until `1.0.0`.
 
 **Umbrella:** this monorepo is not an install target. Product boundaries per package: root [README — Scope](../README.md#scope-product-boundary).
 
@@ -218,7 +218,7 @@ Examples: `v0.1.0`, `v0.1.1`, `v0.2.0`.
 | **SemVer body** | `0.Y.Z` only while pre-stable (major stays `0`). |
 | **Scope** | One coordinated monorepo tag. The split workflow mirrors the same tag name onto each package remote. |
 | **Not used (v0.x)** | Package-scoped tags such as `laravel-capabilities/v0.1.0`. |
-| **Current line** | Monorepo already has coordinated `v*` tags (through at least `v0.4.0`); next cut is the next SemVer step, not a first-ever tag. |
+| **Current line** | Monorepo already has coordinated `v*` tags (through `v0.5.3`, a hotfix tag; `v0.5.2` is the latest on `main`); next cut is the next SemVer step, not a first-ever tag. |
 | **Annotated preferred** | `git tag -a v0.Y.Z -m "…"` on the monorepo. |
 | **Push** | Tag create/push on the monorepo are human-gated; package remotes receive the tag via CI. |
 
@@ -329,7 +329,7 @@ Durable approval / idempotency in a host app is a **config + migrations** path �
 | Default gateway for database drivers | `Rawphp\Capabilities\Persistence\QueryTableGateway` (Illuminate query builder) |
 | Config | `approval.store`, `approval.connection`, `idempotency.driver`, `idempotency.connection` in published `config/capabilities.php` |
 | Migrations tag | `php artisan vendor:publish --tag=capabilities-migrations` |
-| Tables | `capabilities_approvals`, `capabilities_idempotency` (`MigrationCatalog`) |
+| Tables | `capabilities_approvals`, `capabilities_idempotency`, `capabilities_audit_outbox` (`MigrationCatalog`; the outbox holds audit records when `audit.driver` = `database`, the default) |
 | Host override | Bind `TableGateway` in `AppServiceProvider` (see [first-capability tutorial](tutorials/first-capability.md#durable-stores-approvals--idempotency)) |
 
 Package defaults: `approval.store` = `database`; `idempotency.driver` = `database` (aligned with approval for multi-worker durability). Set either to `memory` only for single-process tests. Missing connection on a database driver fails closed (no silent `ArrayTableGateway`). Full host walkthrough: [first-capability tutorial](tutorials/first-capability.md). Package notes: [core package README](../packages/laravel-capabilities/README.md#durable-persistence-querytablegateway).

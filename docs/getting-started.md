@@ -15,7 +15,7 @@ Install core into a Laravel app, define one capability, invoke it through the re
 - Access to packages via either:
   - a monorepo clone (path install), or
   - the public package repos (VCS install) — see [versioning.md](versioning.md)
-- Optional later: Go **1.22+** (CLI), `laravel/ai` / `laravel/mcp` (agent/MCP surfaces), Telegram bot credentials (messaging)
+- Optional later: Go **1.24+** (CLI), `laravel/ai` / `laravel/mcp` (agent/MCP surfaces), Telegram bot credentials (messaging)
 
 Related: [Concepts](concepts.md) · [versioning.md](versioning.md) · [First capability tutorial](tutorials/first-capability.md)
 
@@ -137,7 +137,7 @@ composer update rawphp/laravel-capabilities-messaging
 php artisan vendor:publish --tag=capabilities-messaging-config
 ```
 
-Messaging implements conversation ingress and approval notify contracts. Chat does **not** call domain `run()` itself — tools go through the capability registry. Configure Telegram secrets and an **agent profile** before first bot traffic.
+Messaging implements conversation ingress and approval notify contracts. Chat does **not** call domain `run()` itself — tools go through the capability registry. Configure Telegram secrets and an **agent profile** before first bot traffic, and bind `Rawphp\CapabilitiesMessaging\Contracts\AgentTurn` (your agent: `toolNames`, `respond`, `respondWithResults`). With nothing bound, chat messages get no reply and `agent_turn_unbound` is logged.
 
 → [Messaging package guide](../packages/laravel-capabilities-messaging/docs/user-guide.md)
 

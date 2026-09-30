@@ -75,7 +75,7 @@ Root `composer.json` path-requires the PHP packages for local work. CLI is Go (`
 | **No database required** | Tests must pass with **no MySQL/Postgres/SQLite**, no migrations run, no schema. Do not configure a test DB for this monorepo. |
 | **Mock external boundaries** | Mock/fake: Eloquent/query builders, stores (approval, idempotency, audit), HTTP clients, `laravel/ai`, `laravel/mcp`, queue/bus, filesystem, clock, config where needed. |
 | **No live peers in CI for package truth** | Adapter “contract” behaviour is still **unit-tested** against mocks or narrow in-memory fakes of peer interfaces — not against a full installed peer + DB app unless explicitly revised in this file. |
-| **≥95% coverage** | Line (and preferably branch) coverage for each PHP package under `packages/*/src` must be **95% or higher**. Same bar for Go CLI packages under test when CI lands. Below 95% is a **failed** task — not a warning. |
+| **≥95% coverage** | Line (and preferably branch) coverage for each PHP package under `packages/*/src` must be **95% or higher**. Same bar for the Go CLI (module total, CI Go job). Below 95% is a **failed** task — not a warning. |
 
 ### Coverage floor (blocking)
 
@@ -144,6 +144,7 @@ Do **not** put package behaviour tests under monorepo-root `tests/`. Each Compos
 
 - New behaviour ships with unit tests in the **same** change.
 - Package coverage stays **≥95%** after every change (blocking).
+- Static gates (CI and `scripts/release.sh`): `composer format:test` (Pint, `pint.json`) and `composer analyse` (PHPStan); Go: `gofmt -l` under `packages/capabilities-cli`.
 - Do not skip, disable, or comment out failing tests.
 - Prefer TDD: failing unit test → implement → green.
 - If a design seems to “need” a feature test or DB, redesign for injectability (interfaces + fakes) rather than weakening this policy.
@@ -167,7 +168,7 @@ Do **not** put package behaviour tests under monorepo-root `tests/`. Each Compos
 - Prefer **typed package-native DTOs** (`CapabilityData`) on authorize/run/output; `array` only at wire edges.
 - Catalog and tools share the **same JSON Schema** derived from DTOs — no hand-copied second schema.
 - Fail **closed and obvious**: disabled surfaces register nothing; clear boot errors when peers missing while surface enabled.
-- PHP: Laravel 11 / 12 / 13 (`illuminate/*` ^11|^12|^13), PHP ^8.2 (Laravel 13 needs PHP ^8.3); **Pest unit tests only** (no feature suite); PHPStan max on package code when CI lands.
+- PHP: Laravel 11 / 12 / 13 (`illuminate/*` ^11|^12|^13), PHP ^8.2 (Laravel 13 needs PHP ^8.3); **Pest unit tests only** (no feature suite); PHPStan on package `src/` in CI (`composer analyse`, `phpstan.neon` level 1 today, no baseline; target max, raised one level at a time).
 - Design for testability: depend on interfaces; production may bind DB drivers, tests bind in-memory fakes — same code paths.
 - Go CLI: validate schema locally → ensure Idempotency-Key → POST single HTTP API; never embed domain logic; unit-test with mocked HTTP.
 - When in doubt, re-read the matching **D-0xx** section in `docs/spec.md` rather than inventing behaviour.

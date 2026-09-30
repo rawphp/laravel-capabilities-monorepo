@@ -22,7 +22,7 @@ On push to monorepo `main` / tags `v*`, each `packages/*` tree is mirrored to it
 
 | Page | Job |
 |---|---|
-| [Getting started](getting-started.md) | Install (path or package VCS) → first capability → optional messaging → optional CLI |
+| [Getting started](getting-started.md) | Install (path or package VCS) → first capability → optional peers, messaging, AI turns, CLI |
 | [Concepts](concepts.md) | Mental model: bus, surfaces, `run()`, profiles, approval, idempotency, messaging, CLI |
 | [Core package](../packages/laravel-capabilities/docs/user-guide.md) | Define, invoke, surfaces, config, peers, D-020 helpers |
 | [Messaging package](../packages/laravel-capabilities-messaging/docs/user-guide.md) | Telegram sibling: webhooks, identity, agent profile |

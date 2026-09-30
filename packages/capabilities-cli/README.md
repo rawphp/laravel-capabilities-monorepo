@@ -147,10 +147,14 @@ Cross-compile / local matrix notes: [`docs/build-matrix.md`](docs/build-matrix.m
 ```text
 cmd/capabilities/   # main
 internal/
-  auth/             # keychain / config-dir token store
+  auth/             # profile token store (0600 files under ~/.config/capabilities)
   catalog/          # fetch + cache JSON Schema
   run/              # validate locally → POST invoke
   api/              # HTTP client
+  flagschema/       # schema → CLI flags (pass modes, merge)
+  helpfmt/          # capability / domain help
+  synth/            # domain/verb index from the catalog
+  selfupdate/       # self-update (checksums + optional signature)
 docs/build-matrix.md # cross-compile / ldflags; CI uses GoReleaser (see Releases)
 ```
 

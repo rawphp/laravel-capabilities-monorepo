@@ -31,7 +31,7 @@ Common boot, peer, auth, CLI, and messaging failures for Laravel Capabilities co
 ### Messaging cannot resolve core
 
 **Cause:** Messaging requires `rawphp/laravel-capabilities`.  
-**Fix:** Require **both** packages (path both monorepo dirs, or VCS both package remotes). Messaging’s constraint is `*` for monorepo path resolution — pin when you leave path install.
+**Fix:** Require **both** packages (path both monorepo dirs, or VCS both package remotes). Messaging and AI require core as `self.version`: tag `v0.Y.Z` installs only with core `v0.Y.Z`, and `dev-main` with core `dev-main`. Pin all packages to the same tag or branch ([versioning.md](versioning.md#composer-version-field-and-branch-alias)).
 
 ## Boot and peers
 
@@ -78,12 +78,13 @@ Matrix source: `packages/laravel-capabilities/src/Adapters/PeerSupportMatrix.php
 | `progress.driver=array` under AI-chat | `CAPABILITIES_AI_PROGRESS_DRIVER=redis` (do not set `CAPABILITIES_AI_ALLOW_UNSAFE` in production) |
 | AI-chat via routes only, empty `queue.name` | Set `CAPABILITIES_AI_QUEUE_NAME` for workers |
 | `claim_ttl` ≤ 0 | Restore default **120** (`CAPABILITIES_AI_CLAIM_TTL`) |
+| `ai_progress_ready`: progress store not reachable (readiness ping failed) | Check the Redis connection behind `CAPABILITIES_AI_PROGRESS_REDIS`; the row is skipped when `ProgressStoreReadiness` is not bound |
 
 AI-chat mode for this command: `capabilities-ai.routes.enabled` **OR** non-empty `capabilities-ai.queue.name`.
 
 ### AI progress / LLM throws outside testing
 
-**Cause:** Phase-3 guards — `progress.driver=array` or `llm.driver=fake` outside `APP_ENV=testing` without escape hatch.  
+**Cause:** Phase-3 guards — `progress.driver=array` or `llm.driver=fake` outside `APP_ENV=testing` without escape hatch (`progress.driver=array is not allowed outside testing…` / `llm.driver=fake is not allowed outside testing…`).  
 **Fix:** Production: redis progress + real `LlmClient` / `CAPABILITIES_AI_LLM_DRIVER=anthropic` (or host bind). Local demos only: `CAPABILITIES_AI_ALLOW_UNSAFE=1`.
 
 ### Host rebind broke queue or progress
@@ -102,11 +103,17 @@ AI-chat mode for this command: `capabilities-ai.routes.enabled` **OR** non-empty
 - Fluent path must `->register($registry)` from a provider `boot`.
 - Check capability `surfaces` and global `surfaces.*` flags.
 - Do not register the same name twice with two styles.
+- A discovery cache from `php artisan capabilities:cache` (or `optimize` on Laravel 11.27+) hides classes added after it was built: run `php artisan capabilities:clear` or re-cache.
+
+### `has #[Capability] but does not implement DefinesCapability`
+
+**Cause:** Boot discovery fails closed on a class that carries the attribute without the contract (`BootException`).  
+**Fix:** Add `implements DefinesCapability`, or remove the attribute.
 
 ### Authorize always denies
 
-**Cause:** Null user on job/HTTP; scope re-resolve failed; policy deny.  
-**Fix:** Jobs need an explicit actor (system actor or real user) — null user must not mean allow. Re-resolve resource ids under tenant scope. Confirm Sanctum/auth middleware for HTTP.
+**Cause:** Null user on job/HTTP; scope re-resolve failed; policy deny; a `#[Capability]` class with no `authorize()` method falls through to the host `Authorizer` (deny by default).  
+**Fix:** Add `authorize()` to the class or bind core `Authorizer`. Jobs need an explicit actor (system actor or real user) — null user must not mean allow. Re-resolve resource ids under tenant scope. Confirm Sanctum/auth middleware for HTTP.
 
 ### `run()` never called but no exception
 
@@ -153,6 +160,16 @@ AI-chat mode for this command: `capabilities-ai.routes.enabled` **OR** non-empty
 **Cause:** Profile has token/context without base, or wrong profile.  
 **Fix:** Re-login with `--base-url` or pass `--base-url` on the command; check `--profile`.
 
+### `invalid profile name "…": use letters, digits, '-' or '_'`
+
+**Cause:** `--profile` accepts only filesystem-safe names (e.g. `prod.eu` is rejected).  
+**Fix:** Use the suggested name from the error (e.g. `prod_eu`) and log in again under it.
+
+### `server speaks capability API vN but this CLI speaks vM`
+
+**Cause:** `run` checks `data.api_version` from `GET /capabilities/health` before the invoke POST and refuses (exit 1, no POST) on a mismatch.  
+**Fix:** Server newer → `capabilities self-update`. CLI newer → upgrade `rawphp/laravel-capabilities` on the server or install an older CLI.
+
 ### Exit code 2 with no HTTP call
 
 **Cause:** Local JSON Schema validation failed (or capability name / input flags missing).  
@@ -171,11 +188,11 @@ AI-chat mode for this command: `capabilities-ai.routes.enabled` **OR** non-empty
 ### Exit code 6
 
 **Cause:** Rate limited.  
-**Fix:** Back off; review `rate_limits` config on the server.
+**Fix:** Back off for `error.retry_after` seconds when present (from the server's `Retry-After`); review `rate_limits` config on the server.
 
 ### `unknown command`
 
-**Fix:** Use `capabilities help`. Runnable commands: `auth`, `catalog`, `describe`, `run`, `approvals`, `version`, `help` (plus domain/verb synthesis). Token `mcp` is **reserved forever** as a domain name but is **not** a runnable command (CLI MCP stdio was removed).
+**Fix:** Use `capabilities help`. Runnable commands: `auth`, `catalog`, `describe`, `run`, `approvals`, `self-update`, `version`, `help` (plus domain/verb synthesis). Token `mcp` is **reserved forever** as a domain name but is **not** a runnable command (CLI MCP stdio was removed).
 
 ### Built binary works but MCP client sees no tools
 
@@ -192,12 +209,17 @@ AI-chat mode for this command: `capabilities-ai.routes.enabled` **OR** non-empty
 ### Webhook fails only on first real traffic / notify
 
 **Cause:** By design, secrets are validated on first use (D-021), not boot.  
-**Fix:** Set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, and callback secret env vars; retry. Do not set `skip_boot_checks` in production (fails closed / ignored there).
+**Fix:** Set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, and `TELEGRAM_CALLBACK_SECRET` (defaults to the webhook secret); retry. Do not set `skip_boot_checks` in production (fails closed / ignored there).
+
+### Bot never replies; log shows `agent_turn_unbound`
+
+**Cause:** No `Rawphp\CapabilitiesMessaging\Contracts\AgentTurn` binding. Messaging has no echo fallback.  
+**Fix:** Bind `AgentTurn` in the host (e.g. around a `laravel/ai` agent), implementing `toolNames()`, `respond()` and `respondWithResults()`.
 
 ### User cannot run tools in chat
 
 **Cause:** Identity not linked; allowlist miss; agent profile empty or too tight; authorize deny.  
-**Fix:** Complete `code_link` bind or fix allowlist; set `agent_profile` to a profile that includes the needed capabilities; fix authorize/scope on core capabilities.
+**Fix:** Complete `code_link` bind or fix allowlist; set `agent_profile` to a profile that includes the needed capabilities; fix authorize/scope on core capabilities. In `allowlist` mode only `identity.allowlist` entries resolve; users linked earlier via `/start <code>` do not.
 
 ### Bot appears to “do work” without registry
 
@@ -224,7 +246,7 @@ AI-chat mode for this command: `capabilities-ai.routes.enabled` **OR** non-empty
 ## Still stuck
 
 1. [Concepts](concepts.md) — confirm the model  
-2. Package guides under each package `docs/` (see [docs/README.md](README.md#package-local-docs))  
+2. Package guides under each package `docs/` (see [docs/README.md](README.md#packages-code--package-shipped-docs))  
 3. [spec.md](spec.md) — design oracle when behaviour is ambiguous  
 4. Package unit tests under `packages/*/tests` — behavioural contract for the monorepo design  
 

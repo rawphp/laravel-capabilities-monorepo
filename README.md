@@ -147,7 +147,9 @@ docs/                             # monorepo-only: design, install, tutorials, i
   tutorials/first-capability.md
   spec.md
   requirements-inventory.md
+.github/workflows/tests.yml       # unit suites, Pint, PHPStan, coverage floor, compat cells
 .github/workflows/split-packages.yml
+scripts/release.sh                # gates → annotated v* tag → push (see docs/versioning.md)
 tools/                            # inventory + stub generators
 ```
 

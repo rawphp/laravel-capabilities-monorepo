@@ -15,9 +15,19 @@ Implements core `ConversationIngress` / `ApprovalNotifier` contracts. **Never** 
 
 Requires [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities). Developed in the monorepo; consumers install **this package repo**.
 
-### Upgrade note (0.x) — CallbackHandler approvals
+### Upgrade notes (0.x)
 
-`Telegram\CallbackHandler` third constructor argument is `?ApprovalGateway` (was `?ApprovalManager`). Runtime still accepts `ApprovalManager` because it implements the gateway; update static analysis / manual type-hints. Pre-accept/reject lookup uses gateway `find()` (lazy pending TTL expiry, aligned with HTTP accept) — not `store()->find()`. Missing gateway throws `ApprovalGateway is required…`. Full consumer impact: [CHANGELOG.md](CHANGELOG.md) Unreleased **Breaking**.
+Unreleased, after 0.5.0 (full list: [CHANGELOG.md](CHANGELOG.md) Unreleased):
+
+- **Bind `Contracts\AgentTurn`** (`toolNames()`, `respond()`, `respondWithResults()`) to get replies. There is no echo default: unbound, a linked user's message gets no reply and `agent_turn_unbound` is logged.
+- **Chat users resolve to your user model** (`user_model`, else `auth.providers.users.model`), not a `LinkedUser` DTO.
+- **Custom `TelegramBotClient`** implementations must add `answerCallbackQuery()`; `calls()` is no longer part of the interface.
+- **Custom `Identity\LinkStore`** implementations must add `forgetLink()` and `findTelegramUserId()`, and `putLink()` must keep the reverse index.
+- **`allowlist` mode ignores code-bound links**: list every chat user in `identity.allowlist`.
+- **Core is lockstep**: require the same version of `rawphp/laravel-capabilities` as this package.
+- **Production needs a queue worker**: updates run on `ProcessTelegramUpdateJob`.
+
+0.5.0: `Telegram\CallbackHandler` third constructor argument is `?ApprovalGateway` (was `?ApprovalManager`). Runtime still accepts `ApprovalManager` because it implements the gateway; update static analysis / manual type-hints. Pre-accept/reject lookup uses gateway `find()` (lazy pending TTL expiry, aligned with HTTP accept) — not `store()->find()`. Missing gateway throws `ApprovalGateway is required…`. Full consumer impact: [CHANGELOG.md](CHANGELOG.md) `[0.5.0]` **Breaking**.
 
 | Doc | Where |
 |---|---|
@@ -29,7 +39,7 @@ Requires [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabil
 
 ## Install
 
-Requires `rawphp/laravel-capabilities`.
+Requires `rawphp/laravel-capabilities` at the **same version** (`self.version`): tag `v0.Y.Z` installs only with core `v0.Y.Z`, and `dev-main` with core `dev-main`.
 
 ### VCS (package remotes)
 
@@ -85,8 +95,8 @@ Install policy: monorepo [`docs/versioning.md`](https://github.com/rawphp/larave
 
 Drivers (`config/capabilities-messaging.php`):
 
-- `queue_driver`: `auto` \| `laravel` \| `fake` — `auto` → fake when `APP_ENV=testing`, otherwise Laravel bus
-- `bot_driver`: `auto` \| `http` \| `fake` — `auto` → fake when testing, otherwise HTTP
+- `queue_driver` (`CAPABILITIES_MESSAGING_QUEUE_DRIVER`, default `auto`): `auto` \| `laravel` \| `fake` — `auto` → fake when `APP_ENV=testing`, otherwise Laravel bus
+- `bot_driver` (`CAPABILITIES_MESSAGING_BOT_DRIVER`, default `auto`): `auto` \| `http` \| `fake` — `auto` → fake when testing, otherwise HTTP
 
 `ProcessTelegramUpdateJob` implements `ShouldQueue`: the webhook answers Telegram once the update is queued, and a queue worker runs the agent turn (3 tries, backoff 10s/60s). Transient Bot API failures sending the reply (429/5xx) keep the reply in your cache and throw `RetryableUpdateFailure`, so the job retries and lands in `failed_jobs`; a retry only re-sends that reply (no second agent turn or tool invoke). Everything else returns without retrying. Capability results (output, `approval_required`, refusals, retryable failures) go back to the agent through `AgentTurn::respondWithResults()`, whose text is the reply.
 

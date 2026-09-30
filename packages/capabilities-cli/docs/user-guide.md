@@ -176,7 +176,7 @@ Default config root: **`~/.config/capabilities`**.
       token                  # 0600
       config.json            # { "base_url": "https://..." }
       schemas/               # cached catalog schemas
-      last_run.json          # last Idempotency-Key
+      last_run.json          # last Idempotency-Key + input (for --retry-last)
 ```
 
 Tokens are **not** printed by `auth status`.
@@ -186,7 +186,7 @@ Tokens are **not** printed by `auth status`.
 ## Authentication
 
 ```bash
-capabilities auth login --base-url=URL [--token=PAT] [--code=OAUTH] [--profile=NAME]
+capabilities auth login --base-url=URL [--token=PAT] [--code=OAUTH] [--profile=NAME] [--json]
 capabilities auth logout [--profile=NAME]
 capabilities auth status [--json] [--profile=NAME]
 capabilities auth list [--json]
@@ -237,7 +237,9 @@ capabilities <domain> <verb> --profile=yardpilot --flag=value
 ```
 
 `--profile` works on auth, catalog, describe, run, domain/verb invoke, and
-approvals. Default when omitted: **`default`**.
+approvals. Default when omitted: **`default`**. Names may use letters, digits,
+`-` and `_` only; anything else (e.g. `prod.eu`) is rejected with a suggested
+safe name, never rewritten.
 
 ### Shell aliases
 
@@ -282,7 +284,7 @@ Leading globals: `--profile`, `--base-url`, and presentation flags (`--json`, `-
 ### `auth`
 
 ```bash
-capabilities auth login --base-url=URL (--token=TOKEN | device/browser flow) [--profile=NAME]
+capabilities auth login --base-url=URL (--token=TOKEN | device/browser flow) [--profile=NAME] [--json]
 capabilities auth logout [--profile=NAME]
 capabilities auth status [--json] [--profile=NAME]
 capabilities auth list [--json]
@@ -315,6 +317,10 @@ capabilities describe <name> [--json] [--no-cache] [--profile=NAME]
 JSON Schema, description, and `readOnly` / `idempotent` flags for one
 capability. `readOnly` / `idempotent` appear in `--json` only when true.
 
+`describe`, `run` and domain/verb invokes print a one-line **stderr** warning when
+the capability is deprecated (`capability "x" is deprecated; successor: y`) or
+past its `sunset_at` date; stdout is unchanged.
+
 ### `run` and `<domain> <verb>`
 
 ```bash
@@ -333,6 +339,8 @@ capabilities approvals reject <id> [--profile=NAME]
 ```
 
 Missing `<id>` on accept/reject → exit **2** with a short usage line (not full help dump).
+An `<id>` that is not one URL path segment (see [Capability names](#capability-names))
+→ exit **2** with a `validation_failed` envelope and no HTTP call.
 
 ### `version` / `self-update` / `help`
 
@@ -411,11 +419,26 @@ drops the cached schema so the next run fetches it fresh.
    Unknown formats are not enforced locally. The local subset may reject values
    the server would accept; the server still re-validates (D-004).
 
+### Capability names
+
+A capability name (for `run`, `describe`, `run <name> --help`, and domain/verb
+dispatch) must be one URL path segment: not empty, `.` or `..`, and no `/`,
+`\`, `%`, `?`, `#`, whitespace or control characters. Anything else exits **2**
+with a `validation_failed` envelope and no HTTP call. Dotted and kebab names
+(`billing.create-invoice`) are fine.
+
 ### Flow (single path)
 
 merge → load schema → local JSON Schema validate (type / required / structure /
-string formats) → ensure Idempotency-Key → `POST /capabilities/{canonicalName}`.
+string formats) → ensure Idempotency-Key → API version check
+(`GET /capabilities/health`) → `POST /capabilities/{canonicalName}`.
 Local validation failures exit **2** with no network call.
+
+The version check refuses the invoke (exit **1**, no POST) when the server's
+`data.api_version` differs from the version this CLI speaks; the message says
+whether to run `capabilities self-update` or upgrade the server package. An
+unknown version (older server, gated health, transport error) does not block
+the run.
 
 ### Examples (placeholders)
 
@@ -475,6 +498,9 @@ These codes are part of the CLI contract (stable for automation).
 | `auth login requires --base-url` | Pass `--base-url` |
 | Missing base URL on later commands | Re-login or pass `--base-url` |
 | Exit 3 | Wrong/missing token or profile; re-login |
+| `invalid profile name "…"` | Use letters, digits, `-`, `_` (the error suggests a safe name) |
+| `capability API redirected to …; redirects are not followed` (exit 1) | Re-login with `--base-url` set to the redirect's scheme and host |
+| `server speaks capability API vN but this CLI speaks vM` (exit 1) | `capabilities self-update`, or upgrade `rawphp/laravel-capabilities` on the server |
 | Exit 2 before network | Local schema validation against the live schema — fix the JSON (a stale cached schema is re-checked automatically) |
 | Exit 4 | Approval required — `approvals accept/reject` |
 | Capability missing from `catalog`, or `run` says `not_found` | Token lacks the `capabilities:cli` ability, so the server treats you as an `http` caller — see [authentication.md](authentication.md#tokens-must-carry-the-cli-ability) |
