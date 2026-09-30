@@ -103,7 +103,7 @@ Schemas diverge. One path checks a policy; another forgets. Approvals apply only
 
 14. **The framework does not reintroduce dual paths.** One HTTP invoke API; the product CLI is a client (`caller: cli`), not a second controller tree. See [D-009](#d-009--one-http-capability-api-not-cli-vs-http-controllers).
 
-15. **Domain success is not held hostage by audit failure** (unless `audit.strict`). Transactions and side effects are defined — see [D-010](#d-010--transaction--side-effect-consistency).
+15. **Domain success is not held hostage by audit failure** (unless `audit.mode = strict`). Transactions and side effects are defined — see [D-010](#d-010--transaction--side-effect-consistency).
 
 16. **Peer packages are pinned by matrix and contract tests**, not hope. Incompatible `laravel/ai` / `laravel/mcp` fail boot or soft-disable loudly — see [D-011](#d-011--peer-package-churn-laravelai--laravelmcp).
 
@@ -489,7 +489,7 @@ return [
         ],
 
         /*
-         * Queue / scheduler invocations (RunCapability job).
+         * Queue / scheduler invocations (RunCapabilityJob).
          */
         'job' => [
             'enabled' => env('CAPABILITIES_SURFACE_JOB', true),
@@ -622,7 +622,7 @@ When `rawphp/laravel-capabilities-messaging` is installed it publishes e.g. `con
 | `mcp` | No MCP tools / catalog wiring from this package |
 | `http` | No capability HTTP routes (and product CLI cannot call the app) |
 | `cli` | Device-code / CLI client auth helpers off; do not advertise product CLI (HTTP invoke may remain) |
-| `job` | `RunCapability` job / scheduler helpers not registered |
+| `job` | `RunCapabilityJob` / scheduler helpers not registered |
 | `artisan` | No `php artisan capability:*` commands |
 | `messaging` | Core does not register chat routes; if messaging package absent, surface stays off |
 
@@ -811,7 +811,7 @@ class CreateInvoice implements DefinesCapability
 
 `run` receives a **validated, typed** DTO — never a raw untrusted array (arrays are only the wire format at the edge).
 
-Optional Spatie bridge (D-015): apps may use Spatie Laravel Data classes if they implement `SchemaProvider` / are registered via `CapabilityData::usingSpatie()` — **not** required for v1.
+Optional Spatie bridge (D-015): apps may use Spatie Laravel Data classes if they implement `SchemaProvider` directly — **not** required for v1.
 
 Fluent alternate (same registry entry):
 
@@ -1117,7 +1117,7 @@ $result = Capability::invoke('create-invoice', [
     'customer_id' => 42,
     'amount_cents' => 2500,
     'currency' => 'USD',
-], caller: 'http', idempotencyKey: '01J8Z…');
+], ['caller' => 'http', 'idempotency_key' => '01J8Z…']);
 ```
 
 **One route tree** serves browsers, mobile, integrations, and the product CLI ([D-009](#d-009--one-http-capability-api-not-cli-vs-http-controllers)):
@@ -1199,34 +1199,34 @@ Queue workers have **no HTTP session**. That must not become silent privilege or
 **Required:** every job payload names an **actor** — a user id acting on behalf of someone, or a registered **system actor** for true machine work.
 
 ```php
-use Rawphp\Capabilities\Jobs\RunCapability;
+use Rawphp\Capabilities\Adapters\RunCapabilityJob;
 use Rawphp\Capabilities\Support\SystemActor;
 
 // Act as a concrete user (e.g. “run this for user 42 after they requested it”)
-RunCapability::dispatch(
-    name: 'create-invoice',
-    input: [
+RunCapabilityJob::dispatch([
+    'name' => 'create-invoice',
+    'input' => [
         'customer_id' => 42,
         'amount_cents' => 2500,
         'currency' => 'USD',
     ],
-    actingAs: 42, // user_id — required
-);
+    'actingAs' => 42, // user_id — required
+]);
 
 // True system work (nightly reconciliation) — must be allowlisted on the capability.
 // Tenant is a first-class job field (D-003 / P2-005) — never buried in input as _tenant_id.
-RunCapability::dispatch(
-    name: 'daily-reconciliation',
-    input: [],
-    actingAs: SystemActor::named('scheduler'),
-    tenantId: 'tenant_7',
-);
+RunCapabilityJob::dispatch([
+    'name' => 'daily-reconciliation',
+    'input' => [],
+    'actingAs' => SystemActor::named('scheduler'),
+    'tenantId' => 'tenant_7',
+]);
 ```
 
 Scheduled example:
 
 ```php
-$schedule->job(new RunCapability(
+$schedule->job(new RunCapabilityJob(
     name: 'daily-reconciliation',
     input: [],
     actingAs: SystemActor::named('scheduler'),
@@ -1337,7 +1337,7 @@ public function authorize(CreateInvoiceInput $input, CapabilityContext $ctx): bo
 
 ### Problem
 
-`RunCapability::dispatch('create-invoice', [...])` with `caller: job` and `authorize()` written as `$ctx->user()` collides with reality: **queue workers have no authenticated user**.
+`RunCapabilityJob::dispatch(['name' => 'create-invoice', …])` with `caller: job` and `authorize()` written as `$ctx->user()` collides with reality: **queue workers have no authenticated user**.
 
 Without a specified model, authors fall into one of three dual-path failure modes:
 
@@ -1414,7 +1414,7 @@ Capabilities **without** `allowSystemCallers` (or with `[]`) **reject** `SystemA
 #### Job payload contract
 
 ```php
-new RunCapability(
+new RunCapabilityJob(
     name: string,           // capability name
     input: array,           // wire JSON → DTO (capability fields only — never tenant magic keys)
     actingAs: int|SystemActor,  // REQUIRED — user_id or SystemActor
@@ -1430,7 +1430,7 @@ new RunCapability(
 | `actingAs: SystemActor` | Capability must list that name in `allowSystemCallers`; else fail |
 | `SystemActor` + multi-tenant | Require first-class `tenantId` (or equivalent context attr) **or** capability `globalSystem: true` — **not** `input['_tenant_id']` ([P2-005](#tenant-source-for-system-actors-p2-005)) |
 | `authorize()` returns false | Fail job; **do not** run; audit denial |
-| Audit | Always record `actor_type`, `actor_id`/`actor_name`, `caller=job`, and resolved `tenant_id` |
+| Audit | Always record `actor_type`, `actor_id` (user id, or the `SystemActor` name), `caller=job`, and resolved `tenant_id` |
 
 #### What we refuse
 
@@ -1490,10 +1490,10 @@ A second failure mode (**P2-005**): resolving `SystemActor` tenant from **wire i
 ### Decision
 
 1. **Document a required pattern:** never trust client resource IDs alone; re-resolve every resource under the active scope inside `authorize()` and `run()`.  
-2. **First-class context hooks:** `CapabilityContext::scope()`, `tenantId()`, optional `team()` / `organizationId()`, backed by an app-supplied **`ScopeResolver`**.  
+2. **First-class context hooks:** `CapabilityContext::scope()`, `tenantId()`, `teamId()` / `organizationId()`, backed by a **`ScopeResolver`** (package default `DefaultScopeResolver`; apps may rebind).  
 3. **Pipeline middleware:** resolve scope **after** actor, **before** `authorize` / `run` (`ResolveTenantFromCaller`).  
 4. **Testing helpers:** `assertCannotInvokeAcrossTenant` (and related) so cross-tenant invoke is a package-level regression target.  
-5. **SystemActor scope from trusted context only (P2-005):** `RunCapability::$tenantId` / context attributes set by trusted dispatchers — **never** from capability input / magic keys. User-facing capabilities may declare an explicit `tenant_id` DTO field only if it is **membership-checked** against the authenticated user; that path is still not for `SystemActor`.
+5. **SystemActor scope from trusted context only (P2-005):** `RunCapabilityJob::$tenantId` / context attributes set by trusted dispatchers — **never** from capability input / magic keys. User-facing capabilities may declare an explicit `tenant_id` DTO field only if it is **membership-checked** against the authenticated user; that path is still not for `SystemActor`.
 
 The package does **not** mandate a single tenancy library (Stancl, Spark, home-grown). It mandates a **scope choke point** every surface hits.
 
@@ -1542,7 +1542,9 @@ Invoice::create([
 
 Same for updates: load the aggregate under scope, then mutate. Do not `find($id)` in the global connection and “check tenant_id later” unless that check is unavoidable and tested — prefer scoped query so the leak is impossible.
 
-### ScopeResolver (app-supplied)
+### ScopeResolver (package default, app-overridable)
+
+The package binds `Rawphp\Capabilities\Support\DefaultScopeResolver` by default (users: membership / `current_tenant_id`; `SystemActor`: first-class job/context fields only). Apps rebind `ScopeResolver` for their own tenancy model.
 
 ```php
 namespace Rawphp\Capabilities\Contracts;
@@ -1600,11 +1602,11 @@ final class AppScopeResolver implements ScopeResolver
         if ($user === null) {
             // SystemActor: tenant ONLY from first-class job/context fields (P2-005).
             // Never: $partial->input['_tenant_id'] or any wire/DTO magic key.
-            $tenantId = $partial->jobTenantId()   // RunCapability::$tenantId
+            $tenantId = $partial->jobTenantId()   // RunCapabilityJob::$tenantId
                 ?? $partial->contextAttr('tenant_id') // trusted dispatcher only
                 ?? null;
 
-            if ($tenantId === null && ! $partial->capabilityAllowsGlobalSystem()) {
+            if ($tenantId === null && ! $partial->contextAttr('global_system')) {
                 throw new UnresolvedScopeException(
                     'System jobs must declare tenantId on the job/context, not in input.'
                 );
@@ -1677,14 +1679,14 @@ Optional: header `X-Tenant-Id` **only** as a hint that the resolver may accept a
 
 | Source | Allowed for `SystemActor` scope? |
 |---|---|
-| `RunCapability::$tenantId` (constructor / dispatch arg) | **Yes** — trusted dispatcher |
+| `RunCapabilityJob::$tenantId` (constructor arg / dispatch payload key) | **Yes** — trusted dispatcher |
 | Context attributes set only by in-process trusted code (schedule, admin console, package job) | **Yes** |
 | Capability `globalSystem: true` (no tenant; rare cross-tenant maintenance) | **Yes** — explicit opt-in on the capability |
 | `input['_tenant_id']`, `input['tenant_id']` smuggled for system jobs | **No** — backdoor if any path hydrates input into the resolver |
 | Agent / MCP / HTTP body magic underscore fields | **No** |
 | Explicit DTO field on a **user-facing** capability (e.g. staff “switch tenant”) | **Only** if declared on the schema **and** membership-checked against the authenticated user — still not for `SystemActor` |
 
-**Package stance:** official examples, tests, and `RunCapability` API use first-class `tenantId`. Docs and static analysis guidance forbid reading `$partial->input[...]` for system scope. If an app resolvers still does, that is an app bug — the package example must not teach it.
+**Package stance:** official examples, tests, and `RunCapabilityJob` API use first-class `tenantId`. Docs and static analysis guidance forbid reading `$partial->input[...]` for system scope. If an app resolvers still does, that is an app bug — the package example must not teach it.
 
 ### SystemActor + tenancy
 
@@ -1698,12 +1700,12 @@ System jobs are high risk: no human session, easy to forget the tenant.
 | Audit | Record both `actor` and `tenant_id` (from resolved scope, not from raw input) |
 
 ```php
-RunCapability::dispatch(
-    name: 'daily-reconciliation',
-    input: [], // domain payload only — never ['_tenant_id' => …]
-    actingAs: SystemActor::named('scheduler'),
-    tenantId: 'tenant_7', // first-class job field (P2-005)
-);
+RunCapabilityJob::dispatch([
+    'name' => 'daily-reconciliation',
+    'input' => [], // domain payload only — never ['_tenant_id' => …]
+    'actingAs' => SystemActor::named('scheduler'),
+    'tenantId' => 'tenant_7', // first-class job field (P2-005)
+]);
 ```
 
 ### What `exists` and policies are for
@@ -1732,7 +1734,7 @@ Capability::assertCannotInvokeAcrossTenant(
 );
 
 // Explicit positive control
-Capability::invoke('create-invoice', [...], caller: 'http')
+Capability::invoke('create-invoice', [...], ['caller' => 'http'])
     ->assertOk(); // customer in tenant A
 ```
 
@@ -1768,30 +1770,30 @@ Cross-tenant tests are **as mandatory** as schema tests for any multi-tenant app
 
 ```php
 // System job without first-class tenant fails when tenancy required
-expect(fn () => RunCapability::dispatch(
-    name: 'daily-reconciliation',
-    input: [],
-    actingAs: SystemActor::named('scheduler'),
+expect(fn () => RunCapabilityJob::dispatch([
+    'name' => 'daily-reconciliation',
+    'input' => [],
+    'actingAs' => SystemActor::named('scheduler'),
     // tenantId omitted
-))->toThrow(MissingJobTenantException::class);
+]))->toThrow(MissingJobTenantException::class);
 // or job runs and ScopeResolver throws UnresolvedScopeException
 
 // Smuggled input tenant must not become scope
-RunCapability::dispatchSync(
-    name: 'daily-reconciliation',
-    input: ['_tenant_id' => 'evil_tenant'],
-    actingAs: SystemActor::named('scheduler'),
-    tenantId: 'tenant_7',
-);
+RunCapabilityJob::dispatchSync($registry, [
+    'name' => 'daily-reconciliation',
+    'input' => ['_tenant_id' => 'evil_tenant'],
+    'actingAs' => SystemActor::named('scheduler'),
+    'tenantId' => 'tenant_7',
+]);
 Capability::assertLastScopeTenant('tenant_7'); // not evil_tenant
 
 // Even if input alone is provided, resolver must not honor it for SystemActor
-RunCapability::dispatchSync(
-    name: 'daily-reconciliation',
-    input: ['_tenant_id' => 'evil_tenant'],
-    actingAs: SystemActor::named('scheduler'),
+RunCapabilityJob::dispatchSync($registry, [
+    'name' => 'daily-reconciliation',
+    'input' => ['_tenant_id' => 'evil_tenant'],
+    'actingAs' => SystemActor::named('scheduler'),
     // no tenantId
-);
+]);
 // → UnresolvedScopeException / MissingJobTenantException — never scoped to evil_tenant
 ```
 
@@ -1988,7 +1990,7 @@ schedule every N minutes (default 1)
 | **Lease / claim** | `execution_lease_until` + optional `execution_attempt` so two workers do not both `run` |
 | **Not a second accept** | Resume does not require a second human click; decision already final |
 | **Replay after executed** | Further accept/resume returns stored `result_json` |
-| **Stuck alert** | If `approved` longer than `approval.stuck_after_seconds` (default 300), increment metric and optional log/alert |
+| **Stuck alert** | If `approved` longer than `approval.resume.stuck_after_seconds` (default 300), increment metric and optional log/alert |
 | **Manual repair** | `php artisan capabilities:approvals-resume --id=… --force` (or `ResumeApprovedApprovals::artisan($id?)` / `ApprovalManager::artisanResume`) — same path as the scheduled sweep. Core registers the command and schedules it every `resume.every_seconds` when `execution = deferred` and `resume.enabled` |
 
 #### Shape B — Atomic accept (no sweeper required for limbo)
@@ -2064,7 +2066,7 @@ Configured per app and optionally overridden per capability.
 | `requester` | Only the original requester (self-confirm UX) |
 | `requester_or_role` | Requester **or** users with a given ability/role (default) |
 | `role:…` | Only users with that role/ability (requester cannot self-approve) |
-| `any_staff` | Any authenticated user in the tenant with `capabilities.approve` |
+| `any_staff` | Any staff principal in the tenant (host `staffChecker`, or `is_staff` on the principal; fails closed without either) |
 | Custom | App `ApprovalPolicy` class |
 
 Rules:
@@ -2218,9 +2220,8 @@ expect($approval->fresh()->status)->toBe('approved'); // still in-flight; accept
 'approval' => [
     'store' => 'database',
     'ttl_hours' => 24,
+    'connection' => null, // optional DB connection when store=database
     'default_policy' => 'requester_or_role',
-    'role_ability' => 'capabilities.approve',
-    'telegram_callback_ttl_seconds' => 900,
     'execution' => 'deferred', // deferred | atomic  (P2-004)
     'resume' => [
         'enabled' => true,
@@ -2263,7 +2264,7 @@ Support an optional **idempotency key** on invoke and on approval accept. When p
 | **HTTP** | Header `Idempotency-Key: <string>` or body `idempotency_key` (header wins) |
 | **CLI** | Auto-generates a UUID per `run` unless `--idempotency-key=` is set; always sends the header |
 | **MCP / AI tools** | Optional tool argument `idempotency_key` (agents should pass a stable key for a logical action) |
-| **Jobs** | Optional `idempotencyKey` on `RunCapability` (recommended for at-least-once queues) |
+| **Jobs** | Optional `idempotencyKey` on `RunCapabilityJob` (recommended for at-least-once queues) |
 | **Approval accept** | Same header/field; default = key from the original approval row if the invoke had one |
 
 Key constraints (illustrative): 1–128 chars, `[A-Za-z0-9._:-]+`, opaque to the server.
@@ -2356,8 +2357,8 @@ Reject does not execute `run`; repeated reject is a no-op after first reject (`r
 ```php
 $key = 'test-idem-1';
 
-$a = Capability::invoke('create-invoice', $input, caller: 'http', idempotencyKey: $key);
-$b = Capability::invoke('create-invoice', $input, caller: 'http', idempotencyKey: $key);
+$a = Capability::invoke('create-invoice', $input, ['caller' => 'http', 'idempotency_key' => $key]);
+$b = Capability::invoke('create-invoice', $input, ['caller' => 'http', 'idempotency_key' => $key]);
 
 $a->assertOk();
 $b->assertOk();
@@ -2365,7 +2366,7 @@ expect($b->data['invoice_id'])->toBe($a->data['invoice_id']);
 expect(Invoice::query()->count())->toBe(1);
 
 // Different body, same key
-Capability::invoke('create-invoice', $otherInput, caller: 'http', idempotencyKey: $key)
+Capability::invoke('create-invoice', $otherInput, ['caller' => 'http', 'idempotency_key' => $key])
     ->assertConflict();
 ```
 
@@ -2568,14 +2569,14 @@ Domain events fired inside `run()`:
 ```php
 // best_effort: domain survives audit failure
 Audit::shouldReceive('write')->andThrow(new RuntimeException('disk full'));
-$result = Capability::invoke('create-invoice', $input, caller: 'http');
+$result = Capability::invoke('create-invoice', $input, ['caller' => 'http']);
 $result->assertOk();
 expect(Invoice::count())->toBe(1);
 // outbox has pending audit row when required
 
 // bus event after success
 Event::fake([CapabilityInvoked::class]);
-Capability::invoke('create-invoice', $input, caller: 'http')->assertOk();
+Capability::invoke('create-invoice', $input, ['caller' => 'http'])->assertOk();
 Event::assertDispatched(CapabilityInvoked::class);
 ```
 
@@ -2692,7 +2693,6 @@ An earlier catalog example used Laravel rule strings (`"customer_id": "required|
 
 ```php
 use Rawphp\Capabilities\Facades\Capability;
-use Rawphp\Capabilities\Testing\FakeCapabilities;
 
 public function test_create_invoice_via_registry(): void
 {
@@ -2702,7 +2702,7 @@ public function test_create_invoice_via_registry(): void
         'customer_id' => Customer::factory()->for($user->tenant)->create()->id,
         'amount_cents' => 2500,
         'currency' => 'USD',
-    ], caller: 'http');
+    ], ['caller' => 'http']);
 
     $result->assertOk();
     $this->assertDatabaseHas('invoices', [
@@ -2713,13 +2713,13 @@ public function test_create_invoice_via_registry(): void
 
 public function test_agent_surface_requires_approval_for_large_amounts(): void
 {
-    FakeCapabilities::partial(); // or real registry
+    Capability::fake(); // returns the real registry; no partial fake ships
 
     $result = Capability::invoke('create-invoice', [
         'customer_id' => 1,
         'amount_cents' => 500_000,
         'currency' => 'USD',
-    ], caller: 'agent');
+    ], ['caller' => 'agent']);
 
     $result->assertApprovalRequired();
 }
@@ -2871,7 +2871,8 @@ internal/
   run/
   api/           # HTTP client → single capability API (D-009)
   # mcpstdio/  — removed (ORI-791); product MCP is server laravel/mcp
-dist/            # goreleaser binaries + install.sh + brew formula
+scripts/install.sh
+.goreleaser.yml  # release binaries → dist/ (gitignored)
 ```
 
 The CLI never embeds domain `run()`. Messaging never embeds domain `run()`. Only the registry executes capabilities.
@@ -2970,7 +2971,7 @@ Invoke accepts **canonical or alias**. Dual-name period: both work until `sunset
 - Exceeded → stable error `rate_limited` (HTTP 429, CLI exit **6**).  
 - AI adapter stops the tool loop when `max_tool_calls` hit and returns a structured message to the model.  
 - Per-capability overrides: `#[Capability(rateLimit: ['per_minute' => 10])]`.
-- Per-capability turn budget: `rateLimit: ['max_tool_calls_per_turn' => 3]` stops a turn from reaching this capability after N tool calls. It can only tighten `agent_turn.max_tool_calls`, never loosen it. Applies to any invoke that carries a server-side `agent_turn_tool_calls` count (AI adapter, AI package `TurnRunner`).
+- Per-capability turn budget: `rateLimit: ['max_tool_calls_per_turn' => 3]` stops a turn from reaching this capability after N tool calls. It can only tighten `rate_limits.agent_turn.max_tool_calls`, never loosen it. Applies to any invoke that carries a server-side `agent_turn_tool_calls` count (AI adapter, AI package `TurnRunner`).
 
 ---
 
@@ -3161,7 +3162,7 @@ The CLI prints every structured result (success or failure) on **stdout** and hu
 |---|---|
 | **Metrics** | `capabilities_invoke_total{capability,caller,status}`, latency histogram, `approval_required_total`, `approvals_stuck_approved_total` (D-006 / P2-004), `approvals_resume_total{result}`, `authz_deny_total`, `http_unauthenticated_total{route,auth}` (HTTP 401 before the bus; no caller label because none is derived), `rate_limited_total`, `idempotent_replay_total` |
 | **OpenTelemetry** | Span `capabilities.invoke` attributes: `capability`, `caller`, `surface`, `tenant_id`, `actor_type`, `approval_id`, `idempotency_key` (hashed if needed) |
-| **Failed jobs** | `RunCapability` + messaging `ProcessTelegramUpdate` use Laravel failed-job hooks; tag with capability/channel |
+| **Failed jobs** | `RunCapabilityJob::failed()` (Laravel failed-job hook) logs `capability.job.failed` tagged capability / caller / actor_type / tenant_id; messaging `ProcessTelegramUpdateJob` has no hook — `ProcessTelegramUpdate` logs failures tagged channel / chat_id / update_id, and retryable ones end in `failed_jobs` |
 | **Driver** | Laravel Pulse / OTel exporter optional; package emits via contracts `Metrics` / `Tracer` with log fallback |
 
 Audit remains the compliance trail (D-010); metrics/traces are for operators.
@@ -3778,8 +3779,8 @@ Approval and rate-limit **policy** may still branch on `caller` (e.g. large invo
 
 ```php
 // Same capability, http vs cli caller metadata — one pipeline (in-process)
-Capability::invoke('create-invoice', $input, caller: 'http')->assertOk();
-Capability::invoke('create-invoice', $input, caller: 'cli')->assertOk();
+Capability::invoke('create-invoice', $input, ['caller' => 'http'])->assertOk();
+Capability::invoke('create-invoice', $input, ['caller' => 'cli'])->assertOk();
 
 // HTTP: CLI credential → server sets caller=cli (not a header claim)
 $token = $user->createToken('cli', ['capabilities:cli'])->plainTextToken;
@@ -3832,8 +3833,8 @@ Without fixing this, D-006 approval differences by surface and D-008/D-013 surfa
 | OAuth / device-code (`client_id`) | Registered client type in `clients.oauth` → `cli`, `http`, etc. Unregistered → `http` (or reject if `cli` surface requires registration). |
 | In-process AI adapter | Sets `caller: agent` in code when invoking the registry (model never supplies caller). Includes the AI package's `TurnRunner` tool calls; its proposal accept (a human confirming over HTTP) keeps `caller: job` until decided separately. |
 | In-process MCP adapter | Sets `caller: mcp` in code. |
-| Jobs / scheduler | Sets `caller: job` via `RunCapability` / dispatch helpers ([D-002](#d-002--job--scheduler-caller-identity)). |
-| In-process app code | Explicit `Capability::invoke(..., caller: 'http'\|…)` argument — trusted only because it is **server code**, not the wire. |
+| Jobs / scheduler | Sets `caller: job` via `RunCapabilityJob` / dispatch helpers ([D-002](#d-002--job--scheduler-caller-identity)). |
+| In-process app code | Explicit `Capability::invoke(..., ['caller' => 'http'\|…])` option — trusted only because it is **server code**, not the wire. |
 | `X-Capabilities-Caller` header | **Optional telemetry** and/or **downgrade only** (see below). Never the sole authority. |
 
 ### Credential → caller matrix (normative)
@@ -3846,7 +3847,7 @@ Without fixing this, D-006 approval differences by surface and D-008/D-013 surfa
 | OAuth client registered as mobile / integration | `http` | Same policy bucket as staff/API unless app maps a finer type |
 | `laravel/ai` tool adapter | `agent` | In-process only |
 | `laravel/mcp` tool adapter | `mcp` | In-process only |
-| `RunCapability` job | `job` | Requires actor ([D-002](#d-002--job--scheduler-caller-identity)) |
+| `RunCapabilityJob` | `job` | Requires actor ([D-002](#d-002--job--scheduler-caller-identity)) |
 | Operator `php artisan capability:run` | `http` or dedicated `artisan` if configured | Still hits registry with explicit actor |
 
 Apps may add finer labels (`mobile`, `server_integration`) **only if** they also define how those labels affect policy; the package core still treats unknown wire clients as `http` unless mapped.
@@ -4052,14 +4053,12 @@ $credential = $this->resolveMcpCredential($request); // PAT | client_credentials
     ]],
 };
 
-return Capability::invoke(
-    $name,
-    $input,
-    caller: 'mcp',
-    actor: $actor,
-    mcp: $mcpMeta,
-    idempotencyKey: $request->idempotencyKey(),
-);
+return Capability::invoke($name, $input, [
+    'caller' => 'mcp',
+    'actor' => $actor,
+    'mcp' => $mcpMeta,
+    'idempotency_key' => $request->idempotencyKey(),
+]);
 ```
 
 - Model/tool JSON **must not** include `actor`, `user_id`, or `client_id` as authoritative fields.  
@@ -4074,7 +4073,7 @@ See `surfaces.mcp.auth` and `surfaces.mcp.profiles` under [Configuration](#confi
 // Registration of integration clients (illustrative)
 'surfaces.mcp.auth' => [
     'default_profile' => 'user_pat',
-    'allow_integration_credentials' => env('CAPABILITIES_MCP_INTEGRATION', false),
+    'allow_integration_credentials' => false, // opt in explicitly; no env toggle ships
     'integration_actors' => [
         'mcp-billing-service' => 'billing-bot', // → SystemActor::named('billing-bot')
     ],

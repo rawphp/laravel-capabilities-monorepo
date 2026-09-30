@@ -53,7 +53,7 @@ Rows may include client-side synthesis helpers:
 
 | Field | Meaning |
 |-------|---------|
-| `cli.domain` / `cli.verb` | Routing metadata from the server when fully set |
+| `cli.domain` / `cli.verb` | Routing metadata from the server when fully set; when the server sends none, filled from the client mapping when one resolves |
 | `mapped_command` | Client-derived `"domain verb"` string |
 | `mapping_error` | Client suppressed synthesis (e.g. collision) — use `run <name>` |
 
@@ -61,7 +61,7 @@ Unmapped capabilities stay available via `run` / `describe` only.
 
 Reserved meta-commands always win over domain tokens of the same name:
 
-`auth` · `catalog` · `describe` · `run` · `approvals` · `version` · `help`
+`auth` · `catalog` · `describe` · `run` · `approvals` · `version` · `self-update` · `help`
 
 The token **`mcp` is reserved forever** (cannot be a synthesis domain) but is
 **not** a runnable command.
@@ -83,6 +83,11 @@ The token **`mcp` is reserved forever** (cannot be a synthesis domain) but is
 When the server's error envelope carries `error.cli_exit` (1–6), the CLI exits
 with that value, so codes the server adds later keep their class. The table
 above is the fallback for envelopes without it.
+
+Exit **1** also covers two local refusals that a retry will not fix: an API
+version mismatch before `run` invokes (`server speaks capability API vN …` —
+`self-update` the CLI or upgrade the server package) and any HTTP 3xx from the
+capability API (redirects are never followed — fix `--base-url`).
 
 **Help/usage (exit 0):** bare `capabilities`, `capabilities help …`, `… --help`, bare `approvals`.  
 **Not help (exit 2):** `approvals accept` / `reject` without `<id>`; invalid flags / local schema failures (type, required, structure, **and** string formats).
@@ -109,7 +114,13 @@ Unknown formats are **not** enforced locally. This subset may **false-reject**
 values the server would accept (loose email/URI/date-time variants); always
 handle server error envelopes as well (D-004).
 
-On failure for `describe` / domain not-found style paths, a D-018 error envelope may appear on **stdout** (same idea as invoke). Always prefer stdout JSON over stderr text.
+`describe`, `catalog`, `approvals accept|reject` and domain/verb lookup print
+the D-018 error envelope on **stdout** on failure — the server's own body when
+it sent one, otherwise a built envelope (never a raw HTML page). `run` and
+domain/verb invokes print a built envelope for local refusals (schema
+validation, API version mismatch); for a server error they print the response
+body as-is, which may not be JSON when the server sent none. Always prefer
+stdout JSON over stderr text.
 
 ---
 
@@ -133,7 +144,8 @@ Rules:
 
 - Base body = `--input` / `--input-file` or `{}`.
 - Each scalar flag overwrites that key (**flag wins**).
-- Object/array fields are **JSON-only** (no flag).
+- Object/array fields, `oneOf` / `anyOf` / `allOf` properties, and properties whose flag names collide are **JSON-only** (no flag). Flag name = property name with `_` → `-` (`customer_id` → `--customer-id`); `--help` lists the exact flags.
+- Capability names and approval ids must be one URL path segment (no `/`, `\`, `%`, `?`, `#`, whitespace, control characters, `.` or `..`) → otherwise exit **2**, `validation_failed` envelope, no HTTP call.
 - Unknown flags or json-only fields as flags → exit **2**.
 - Local schema failures (missing required, wrong type, **invalid string format**) → exit **2**, no network.
 - Empty invoke with an all-optional schema may POST `{}`.

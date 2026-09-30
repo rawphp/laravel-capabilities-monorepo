@@ -193,7 +193,7 @@ Env: `CAPABILITIES_MCP_ON_REGISTER_ERROR=throw|disable`.
 php artisan capabilities:integration-health
 ```
 
-Diagnoses **host product readiness** (bindings, audit writer wired into the registry, AI-chat mode, MCP tools, AI proposals/AlwaysReady safety when `capabilities-ai` config is present). Distinct from **HTTP** `GET …/capabilities/health` (surface catalog / peer status for clients).
+Diagnoses **host product readiness** (bindings, audit writer wired into the registry, AI-chat mode, MCP tools, AI proposals/AlwaysReady safety and a live AI progress-store ping when `capabilities-ai` config is present). Distinct from **HTTP** `GET …/capabilities/health` (surface catalog / peer status for clients).
 
 AI-chat mode for this command: `capabilities-ai.routes.enabled` **OR** non-empty `capabilities-ai.queue.name`. Details: [docs/user-guide.md](docs/user-guide.md#integration-health-vs-http-health).
 
@@ -247,7 +247,7 @@ Consumer applications that install real peers can run an app-owned peer-live pat
 
 ## Durable persistence (QueryTableGateway)
 
-Database-backed approval and idempotency stores use a first-party **`QueryTableGateway`** (`Rawphp\Capabilities\Persistence\QueryTableGateway`) implementing `TableGateway`. The package builds **one gateway per table** from an Illuminate `ConnectionInterface` — not a shared Eloquent model layer.
+Database-backed approval and idempotency stores, and the audit writer, use a first-party **`QueryTableGateway`** (`Rawphp\Capabilities\Persistence\QueryTableGateway`) implementing `TableGateway`. The package builds **one gateway per table** from an Illuminate `ConnectionInterface` — not a shared Eloquent model layer.
 
 | Driver config | Key | Default | Database path |
 |---|---|---|---|
@@ -255,12 +255,15 @@ Database-backed approval and idempotency stores use a first-party **`QueryTableG
 | Approval connection | `approval.connection` | `null` (app default) | Optional named connection |
 | Idempotency | `idempotency.driver` | `database` | Aligned with approval.store (L-009). Set `memory` only for single-process tests → `InMemoryIdempotencyStore` |
 | Idempotency connection | `idempotency.connection` | `null` | Optional named connection |
+| Audit writer | `audit.driver` | `database` | `DatabaseAuditWriter` + `QueryTableGateway` on `capabilities_audit_outbox` (app default connection). A host-bound `Contracts\AuditWriter` wins; no writer fails boot only for `audit.mode=strict` or `audit.required` |
 
 ```bash
 php artisan vendor:publish --tag=capabilities-config
 php artisan vendor:publish --tag=capabilities-migrations
 php artisan migrate
 ```
+
+Migrations are published, not auto-loaded: after upgrading the package, re-run `vendor:publish --tag=capabilities-migrations` and `migrate` to pick up new ones (for example the approval `executor_actor_*` and `approval_policy` columns).
 
 **Production default path:** leave `TableGateway` unbound; with `approval.store` / `idempotency.driver` = `database`, factories construct `QueryTableGateway` per table. Missing connection → boot/factory failure (no silent `ArrayTableGateway`).
 
@@ -276,7 +279,7 @@ $this->app->singleton(TableGateway::class, function () {
 });
 ```
 
-A host-bound `TableGateway` is used for **both** database stores when present. Prefer unbound + dual QueryTableGateway in production. Integrator walkthrough: monorepo [first-capability tutorial](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/tutorials/first-capability.md#durable-stores-approvals--idempotency).
+A host-bound `TableGateway` is used for **every** database-backed table (approvals, idempotency, audit outbox) when present. Prefer unbound + per-table QueryTableGateway in production. Integrator walkthrough: monorepo [first-capability tutorial](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/tutorials/first-capability.md#durable-stores-approvals--idempotency).
 
 **Honesty:** this package is still **not Packagist-published** (path/VCS install only until a human completes the monorepo Packagist checklist). Durable gateway code is unit-tested with connection fakes; default package CI does not require a live MySQL/Postgres.
 

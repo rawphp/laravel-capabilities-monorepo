@@ -54,7 +54,9 @@ go build -ldflags "-X main.Version=0.4.0" -o dist/capabilities ./cmd/capabilitie
 # → capabilities 0.4.0
 ```
 
-Without `-ldflags`, the binary keeps the source default in `Version` (dev string).
+Without `-ldflags`, the binary keeps the source default in `Version` (a
+hard-coded release number such as `0.4.0`, not a dev marker), so a source build
+can report an older version than the tree it was built from.
 
 ## GoReleaser (release path)
 
@@ -67,6 +69,7 @@ Config: package-root `.goreleaser.yml` (self-contained after split).
 | Binary | `capabilities` |
 | Matrix | darwin/linux/windows × amd64/arm64 |
 | Version ldflags | `-X main.Version={{.Version}}` (tag `v1.2.3` → `1.2.3`) |
+| Release key ldflags | `-X github.com/rawphp/capabilities-cli/internal/selfupdate.ReleasePublicKey=…` from `CAPABILITIES_RELEASE_PUBLIC_KEY` (empty → checksum-only self-update) — see [`release-signing.md`](release-signing.md#release-signature-self-update) |
 | Checksums | `checksums.txt` (sha256) |
 | Signing | Secret-gated (macOS + Windows); **unsigned** assets still publish when secrets are missing — see [`docs/release-signing.md`](release-signing.md) |
 

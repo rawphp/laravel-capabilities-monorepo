@@ -80,6 +80,7 @@ From [`.github/workflows/release.yml`](../.github/workflows/release.yml):
 | Install osslsigncode | `steps.signing.outputs.windows_present == 'true'` | Installs `osslsigncode` via **apt** (Linux) or **brew** (Darwin) — presence via `env:` + step outputs, **not** `if: secrets.*` |
 | Apple signing readiness | `steps.signing.outputs.apple_present == 'true'` | Logs host OS and whether codesign hooks can run |
 | Run GoReleaser | after `test` + `select-runner` | Full multi-arch matrix; passes Apple/Windows secret env vars when set (empty when unset). Uses Go from `go.mod` (1.24+) so Darwin binaries include `LC_UUID`. |
+| **sign-checksums** | `select-runner` derived a release public key | Signs and uploads `checksums.txt.sig` (see [Release signature](#release-signature-self-update)) |
 
 ### Runner selection
 
@@ -141,7 +142,7 @@ Behaviour:
 - **Secret absent** → no pin, no `.sig`; logs `release signature skipped`. Self-update stays checksum-only (as before).
 - **Secret present** → binaries from that release refuse any later release whose `checksums.txt.sig` is missing or does not verify. The pin lives in the already-installed binary, so an attacker who controls release assets cannot remove it.
 - Between GoReleaser publishing and the `.sig` upload, pinned clients fail closed (retry after the workflow finishes).
-- **Rotating the key** strands pinned binaries: they reject releases signed by the new key. Users reinstall with `scripts/install.sh` (checksum-only today). Treat the key as long-lived.
+- **Rotating the key** strands pinned binaries: they reject releases signed by the new key. Users reinstall with `scripts/install.sh`, which verifies neither `checksums.txt` nor the signature today. Treat the key as long-lived.
 
 Local check:
 

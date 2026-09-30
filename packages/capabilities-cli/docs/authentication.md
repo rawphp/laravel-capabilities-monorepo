@@ -3,7 +3,7 @@
 How `capabilities` stores credentials, how **one laptop talks to many projects**,
 and how agents should select a profile.
 
-Related: [User guide](user-guide.md) · [Agents & MCP](agents.md)
+Related: [User guide](user-guide.md) · [Agents](agents.md)
 
 ---
 
@@ -37,7 +37,8 @@ The CLI never embeds product domain logic. Authorization always happens on the
 ```bash
 capabilities auth login --base-url=URL [--token=PAT] [--code=OAUTH] [--profile=NAME] [--json]
 capabilities auth logout [--profile=NAME]
-capabilities auth status [--profile=NAME]
+capabilities auth status [--profile=NAME] [--json]
+capabilities auth list [--json]            # alias: auth profiles
 ```
 
 ### Login modes
@@ -189,8 +190,10 @@ you to re-login or pass `--base-url`.
 
 ### Profile name rules
 
-Names are sanitized for the filesystem: letters, digits, `-`, `_`. Other
-characters become `_`. Empty → `default`.
+Names must be filesystem-safe: letters, digits, `-`, `_`. Empty → `default`.
+Any other name (e.g. `prod.eu`) is **rejected**, never rewritten, and the error
+suggests a safe name (`prod_eu`). Rejection happens before any request, so a
+device or OAuth login never starts for an unusable profile.
 
 ### Shell aliases (zero extra tools)
 
@@ -248,4 +251,5 @@ Until those exist, pass `--profile=` or use aliases.
 | `auth login requires --base-url` | 2 | Pass `--base-url` |
 | `not authenticated: run capabilities auth login` | 3 | Login for that profile |
 | `missing base URL` | 3 | Re-login with base URL or pass `--base-url` |
+| `invalid profile name "…"` | 1 (`login`), 2 (`logout`), 3 (commands that use the token; `auth status` just reports `logged_in=false`) | Use the suggested name (letters, digits, `-`, `_`) |
 | Server rejects token | 3 | New token / correct profile / correct host (`--token` login checks this up front and leaves the profile unchanged) |

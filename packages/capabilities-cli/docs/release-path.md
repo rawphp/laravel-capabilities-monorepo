@@ -15,7 +15,9 @@ not add monorepo jobs that create CLI releases on PHP package remotes.
 ## Terminal
 
 `rawphp/capabilities-cli` has a **GitHub Release** for that tag with multi-arch
-`capabilities` archives (darwin/linux/windows × amd64/arm64) plus checksums.
+`capabilities` archives (darwin/linux/windows × amd64/arm64) plus
+`checksums.txt` (and `checksums.txt.sig` when `CAPABILITIES_RELEASE_SIGNING_KEY`
+is set).
 When platform-signing secrets are present, assets may be signed; when absent,
 unsigned publish still succeeds (**secret-gated** soft path). A downloaded
 binary reports the release version via `capabilities version` (tag without
@@ -29,6 +31,7 @@ leading `v`, injected at build via ldflags).
 | 2 | Multi-arch build, archives, checksums | package-root [`.goreleaser.yml`](../.goreleaser.yml) |
 | 3 | Tag trigger `v*`, GoReleaser release, **replace** on retag | [`.github/workflows/release.yml`](../.github/workflows/release.yml) |
 | 4 | Platform signing when secrets exist; skip + log otherwise | [`release-signing.md`](release-signing.md), `scripts/sign-binary.sh` |
+| 5 | ed25519 `checksums.txt.sig` for signed self-update when the release key is set | `sign-checksums` job in the workflow; [`release-signing.md`](release-signing.md#release-signature-self-update) |
 
 After split, this tree is the child repo root: workflow and GoReleaser paths
 above appear at repo root on `rawphp/capabilities-cli`.

@@ -67,6 +67,7 @@ When you enable **database** drivers, the package uses a first-party `Rawphp\Cap
 | `approval.connection` | Optional Illuminate connection name for approvals | `null` → app default (`db`) |
 | `idempotency.driver` | Idempotency store driver | `database` (aligned with approval; set `memory` only for single-process tests) |
 | `idempotency.connection` | Optional connection name for idempotency | `null` → app default |
+| `audit.driver` | Audit sink: `database` writes one row per entry to `capabilities_audit_outbox` (`DatabaseAuditWriter`); a host-bound `AuditWriter` wins | `database` |
 
 Env mirrors: `CAPABILITIES_APPROVAL_CONNECTION`, `CAPABILITIES_IDEMPOTENCY_DRIVER`, `CAPABILITIES_IDEMPOTENCY_CONNECTION`.
 
@@ -89,13 +90,13 @@ use Rawphp\Capabilities\Persistence\TableGateway;
 public function register(): void
 {
     // Optional: override the package QueryTableGateway default for database drivers.
-    // Unbound = QueryTableGateway per table (capabilities_approvals / capabilities_idempotency).
+    // Unbound = QueryTableGateway per table (capabilities_approvals / capabilities_idempotency / capabilities_audit_outbox).
     $this->app->singleton(TableGateway::class, fn () => new ArrayTableGateway);
     // Or: $this->app->singleton(TableGateway::class, fn () => new App\Persistence\MyGateway(...));
 }
 ```
 
-Prefer leaving `TableGateway` **unbound** in production so dual-table QueryTableGateway wiring stays correct. A single host-bound gateway is shared by both database stores when present.
+Prefer leaving `TableGateway` **unbound** in production so per-table QueryTableGateway wiring stays correct. A single host-bound gateway is shared by both database stores and the database audit writer when present.
 
 ---
 
@@ -254,6 +255,10 @@ final class CreateInvoice implements DefinesCapability
 
 Boot discovery runs via `Rawphp\Capabilities\Discovery\CapabilityDiscoveryBoot` / the service provider — put classes on the configured path; do not invent a third registration mechanism. Prefer **one** style per capability (attribute **or** fluent), never both for the same name.
 
+A class with `#[Capability]` that does not implement `DefinesCapability` fails boot with a `BootException`. A class without its own `authorize()` falls through to the host `Authorizer` (deny by default). For approval, add `needsApproval(Input $input, CapabilityContext $ctx): bool` to the class (fluent: `->needsApproval(fn …)`).
+
+In production, `php artisan capabilities:cache` writes a discovery class map (`bootstrap/cache/capabilities.php`; `optimize` runs it too on Laravel 11.27+). While it exists, boot does not scan the path, so new classes stay hidden until `php artisan capabilities:clear` or a fresh `capabilities:cache`.
+
 Full design: [docs/spec.md — Defining a capability](../spec.md#defining-a-capability).
 
 ---
@@ -305,7 +310,9 @@ When `config('capabilities.surfaces.http.enabled')` is true (default), the packa
 | `GET` | `/capabilities` | Catalog list |
 | `GET` | `/capabilities/{name}` | Describe one capability |
 | `POST` | `/capabilities/{name}` | **Invoke** (same registry `run()` as code) |
-| `GET` | `/capabilities/health` | Health |
+| `GET` | `/capabilities/health` | Health (reports `api_version`) |
+| `POST` | `/capabilities/approvals/{id}/accept` · `/reject` | Approval decision |
+| `POST` / `GET` | `/capabilities/auth/token` · `/auth/device` · `/auth/callback` | CLI login (no `auth:sanctum`; throttled `6,1` by default) |
 
 Example:
 
