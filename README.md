@@ -4,6 +4,8 @@
 > **User docs:** [docs/README.md](docs/README.md) · **Spec:** [docs/spec.md](docs/spec.md) · **Versioning & install:** [docs/versioning.md](docs/versioning.md)  
 > Unit-green ≠ shipped product: treat path/VCS install + package CHANGELOGs as pre-release readiness, not Packagist release.
 
+[![Watch the 4-minute intro to Laravel Capabilities](https://img.youtube.com/vi/U6l31XqDZok/maxresdefault.jpg)](https://youtu.be/U6l31XqDZok)
+
 Product capability bus for Laravel: define once, expose via agent, MCP, HTTP, product CLI, jobs, chat, and optional AI turns — same rules, one `run()`.
 
 ## Scope (product boundary)
