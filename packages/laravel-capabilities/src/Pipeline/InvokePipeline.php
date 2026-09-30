@@ -64,6 +64,18 @@ final class InvokePipeline
     public ?Dispatcher $events = null;
 
     /**
+     * Late source for the host Authorizer (container binding), read at the first authorize
+     * decision so a binding made after the registry was built still gates. An explicit
+     * `$authorizer` always wins. Returns null when nothing is bound; throws when the binding
+     * cannot be resolved (fail closed).
+     *
+     * @var (Closure(): ?Authorizer)|null
+     */
+    public ?Closure $authorizerResolver = null;
+
+    private ?Authorizer $resolvedAuthorizer = null;
+
+    /**
      * @param  array{
      *     enabled?: bool,
      *     defaults?: array{per_minute?: int, per_capability_per_minute?: int},
@@ -644,6 +656,22 @@ final class InvokePipeline
     }
 
     /**
+     * The host-bound Authorizer, if any: the explicit instance, else the late container
+     * binding (resolved once, then cached). A binding that throws propagates.
+     */
+    public function hostAuthorizer(): ?Authorizer
+    {
+        if ($this->authorizer !== null) {
+            return $this->authorizer;
+        }
+        if ($this->resolvedAuthorizer === null && $this->authorizerResolver !== null) {
+            $this->resolvedAuthorizer = ($this->authorizerResolver)();
+        }
+
+        return $this->resolvedAuthorizer;
+    }
+
+    /**
      * Authorize decision (D-017 / L-003). A host-bound Authorizer is a gate every invoke
      * must pass, asked first. The capability's own rule (fluent authorize callable, else
      * the class authorize()) must also pass. With no own rule the host Authorizer alone
@@ -652,7 +680,7 @@ final class InvokePipeline
      */
     private function allows(CapabilityDefinition $definition, mixed $input, mixed $context, ?object $handler): bool
     {
-        $host = $this->authorizer;
+        $host = $this->hostAuthorizer();
         if ($host !== null && ! $host->authorize($definition->name, $input, $context)) {
             return false;
         }

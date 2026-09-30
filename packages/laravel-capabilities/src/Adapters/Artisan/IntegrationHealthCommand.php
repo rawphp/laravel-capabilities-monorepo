@@ -39,6 +39,7 @@ class IntegrationHealthCommand extends Command
             $this->idempotencyReadinessClassCallback(),
             $this->progressStoreReadyCallback(),
             $this->auditWriterWiredCallback(),
+            $this->authorizerGateActiveCallback(),
         );
 
         $this->render($report);
@@ -72,6 +73,30 @@ class IntegrationHealthCommand extends Command
         }
 
         return is_array($cfg) ? $cfg : null;
+    }
+
+    /**
+     * Whether the live registry will apply a host Authorizer gate (explicit or late container
+     * binding); a broken binding reads as not active. Null when no registry is bound.
+     *
+     * @return (callable(): bool)|null
+     */
+    private function authorizerGateActiveCallback(): ?callable
+    {
+        if (! $this->laravel->bound(CapabilityRegistry::class)) {
+            return null;
+        }
+
+        return function (): bool {
+            try {
+                /** @var CapabilityRegistry $registry */
+                $registry = $this->laravel->make(CapabilityRegistry::class);
+
+                return $registry->hostAuthorizerApplies();
+            } catch (Throwable) {
+                return false;
+            }
+        };
     }
 
     /**

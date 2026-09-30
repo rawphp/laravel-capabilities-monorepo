@@ -402,3 +402,14 @@ it('readiness class probe returns the resolved class, null when unbound or unres
         ->and($invoke(ihCommandApp()))->toBeNull()
         ->and($invoke($throwing))->toBeNull();
 });
+
+it('authorizer_bound reflects whether the registry applies the gate, not the container binding alone [REQ-528]', function () {
+    $checker = new IntegrationHealthChecker;
+    $config = ['surfaces' => ['http' => ['enabled' => true]]];
+
+    $boundButInactive = $checker->check($config, null, static fn (string $a): bool => true, authorizerGateActive: static fn (): bool => false);
+    $activeWithoutBinding = $checker->check($config, null, static fn (string $a): bool => false, authorizerGateActive: static fn (): bool => true);
+
+    expect($boundButInactive->checks[0]['level'])->toBe('fail')
+        ->and($activeWithoutBinding->checks[0]['level'])->toBe('ok');
+});

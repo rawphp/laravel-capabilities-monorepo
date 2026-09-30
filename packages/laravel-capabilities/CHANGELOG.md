@@ -28,7 +28,10 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   | absent | no | Denied (default deny, L-003) |
 
   "Bound" means passed to the registry, `withAuthorizer()`, or bound in the container as
-  `Contracts\Authorizer`, which the service provider now hands to the registry. The built-in
+  `Contracts\Authorizer`, which the registry reads at its first authorize decision (so a binding
+  made in any provider's `boot()` counts; an explicit `withAuthorizer()` wins). A binding that
+  throws, or resolves to something that is not an `Authorizer`, fails the invoke closed. The
+  `capabilities:health` `authorizer_bound` check now reports whether the registry applies the gate. The built-in
   deny fallback is not a gate. The same composition applies to the approval accept re-check
   (`CapabilityRegistry::authorizes()`) and to executing an approved row. Hosts on 0.6.0 that
   relied on a class `authorize()` alone, with an `Authorizer` bound, will see the `Authorizer`

@@ -216,11 +216,9 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 approvalManager: $approval,
             );
 
-            // A host-bound Authorizer gates every invoke; an unbound one leaves no host gate (L-003).
-            $hostAuthorizer = self::boundAuthorizerOrNull($app);
-            if ($hostAuthorizer !== null) {
-                $registry->withAuthorizer($hostAuthorizer);
-            }
+            // A host-bound Authorizer gates every invoke. Read at the first authorize decision, not
+            // here: the host may bind it in a provider that boots after this singleton is built.
+            $registry->withAuthorizerResolver(static fn (): ?Authorizer => self::boundAuthorizerOrNull($app));
 
             return $registry->withRequesterResolver(
                 // Approved rows execute as the real requester — same lookup as the accept re-check (D-006).
@@ -490,7 +488,8 @@ class CapabilitiesServiceProvider extends ServiceProvider
 
     /**
      * The host's Authorizer binding, or null when none is bound (no host gate, L-003).
-     * A binding that fails to resolve throws: dropping the gate would fail open.
+     * Fails closed: a binding that throws, or resolves to something that is not an
+     * Authorizer, throws instead of silently dropping the gate.
      */
     private static function boundAuthorizerOrNull(object $app): ?Authorizer
     {
@@ -498,8 +497,15 @@ class CapabilitiesServiceProvider extends ServiceProvider
             return null;
         }
         $authorizer = $app->make(Authorizer::class);
+        if (! $authorizer instanceof Authorizer) {
+            throw new \UnexpectedValueException(sprintf(
+                'The container binding for %s resolved to %s, which does not implement it.',
+                Authorizer::class,
+                get_debug_type($authorizer),
+            ));
+        }
 
-        return $authorizer instanceof Authorizer ? $authorizer : null;
+        return $authorizer;
     }
 
     private static function boundTableGatewayOrNull(object $app): ?TableGateway

@@ -252,8 +252,9 @@ it('happy: the production probe against laravel/mcp 0.9.4 with the default matri
         ->and($probe->supports(PeerVersionProbe::PEER_AI))->toBeTrue();
 });
 
-it('happy: the config fallback mirrors PeerSupportMatrix [REQ-528]', function () {
+it('happy: the published config reads the matrix unconditionally [REQ-528]', function () {
     $config = require __DIR__.'/../../../config/capabilities.php';
 
-    expect($config['peers']['support'])->toBe(PeerSupportMatrix::constraints());
+    expect($config['peers']['support'])->toBe(PeerSupportMatrix::constraints())
+        ->and(file_get_contents(__DIR__.'/../../../config/capabilities.php'))->not->toContain("['^0.1'");
 });

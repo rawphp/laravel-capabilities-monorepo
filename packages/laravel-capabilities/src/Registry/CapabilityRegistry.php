@@ -353,6 +353,28 @@ final class CapabilityRegistry implements CapabilityBus
     }
 
     /**
+     * Late host-Authorizer source (the service provider passes the container binding). Read at
+     * the first authorize decision; an explicit withAuthorizer() instance wins over it.
+     *
+     * @param  \Closure(): ?Authorizer  $resolver
+     */
+    public function withAuthorizerResolver(\Closure $resolver): self
+    {
+        $this->pipeline->authorizerResolver = $resolver;
+
+        return $this;
+    }
+
+    /**
+     * Whether a host Authorizer gate will be applied on invoke (resolves a late binding;
+     * throws if that binding is broken).
+     */
+    public function hostAuthorizerApplies(): bool
+    {
+        return $this->pipeline->hostAuthorizer() !== null;
+    }
+
+    /**
      * How #[Capability] class handlers are built (D-017). Default: the Illuminate container,
      * so constructor dependencies resolve. Units pass a closure.
      *
