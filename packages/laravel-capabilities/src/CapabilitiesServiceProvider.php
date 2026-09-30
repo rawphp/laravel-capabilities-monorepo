@@ -39,6 +39,7 @@ use Rawphp\Capabilities\Boot\SurfaceNames;
 use Rawphp\Capabilities\Contracts\ApprovalGateway;
 use Rawphp\Capabilities\Contracts\ApprovalNotifier;
 use Rawphp\Capabilities\Contracts\AuditWriter;
+use Rawphp\Capabilities\Contracts\Authorizer;
 use Rawphp\Capabilities\Contracts\AuthTokenIssuer;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
@@ -203,7 +204,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
             /** @var RateLimiter $rateLimiter */
             $rateLimiter = $app->make(RateLimiter::class);
 
-            return ContainerBindings::makeRegistry(
+            $registry = ContainerBindings::makeRegistry(
                 $config,
                 self::boundTableGatewayOrNull($app),
                 null,
@@ -213,7 +214,15 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 $rateLimiter,
                 $this->auditWriterOrNull($app, $config),
                 approvalManager: $approval,
-            )->withRequesterResolver(
+            );
+
+            // A host-bound Authorizer gates every invoke; an unbound one leaves no host gate (L-003).
+            $hostAuthorizer = self::boundAuthorizerOrNull($app);
+            if ($hostAuthorizer !== null) {
+                $registry->withAuthorizer($hostAuthorizer);
+            }
+
+            return $registry->withRequesterResolver(
                 // Approved rows execute as the real requester — same lookup as the accept re-check (D-006).
                 static fn (string $type, string $id): ?object => self::authUserOrNull($app, $id),
             )->withEventDispatcher(self::eventDispatcherOrNull($app, $config))
@@ -477,6 +486,20 @@ class CapabilitiesServiceProvider extends ServiceProvider
         $user = is_object($users) && method_exists($users, 'retrieveById') ? $users->retrieveById($id) : null;
 
         return is_object($user) ? $user : null;
+    }
+
+    /**
+     * The host's Authorizer binding, or null when none is bound (no host gate, L-003).
+     * A binding that fails to resolve throws: dropping the gate would fail open.
+     */
+    private static function boundAuthorizerOrNull(object $app): ?Authorizer
+    {
+        if (! method_exists($app, 'bound') || ! $app->bound(Authorizer::class)) {
+            return null;
+        }
+        $authorizer = $app->make(Authorizer::class);
+
+        return $authorizer instanceof Authorizer ? $authorizer : null;
     }
 
     private static function boundTableGatewayOrNull(object $app): ?TableGateway

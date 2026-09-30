@@ -18,6 +18,7 @@ use Rawphp\Capabilities\Boot\SurfaceNames;
 use Rawphp\Capabilities\CapabilitiesServiceProvider;
 use Rawphp\Capabilities\Capability;
 use Rawphp\Capabilities\Contracts\ApprovalGateway;
+use Rawphp\Capabilities\Contracts\Authorizer;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\Metrics;
@@ -175,6 +176,11 @@ function req048FakeApp(array $capabilitiesConfig = []): object
             }
 
             return $entry;
+        }
+
+        public function bound(string $abstract): bool
+        {
+            return $this->offsetExists($abstract);
         }
 
         public function offsetGet(mixed $key): mixed
@@ -781,4 +787,65 @@ it('happy: boot publishes the config and migrations when running in console', fu
     $provider->boot();
 
     expect(array_column($provider->publishCalls, 'group'))->toBe(['capabilities-config', 'capabilities-migrations']);
+});
+
+// REQ-528: a container-bound Authorizer is host-bound (a gate); an unbound one is not (L-003).
+function req528GateCapability(CapabilityRegistry $registry, object $counter): void
+{
+    Capability::define('gate-cap')
+        ->description('gate test')
+        ->surfaces(['http'])
+        ->input(CreateInvoiceInput::class)
+        ->output(CreateInvoiceResult::class)
+        ->allowSystemCallers(true)
+        ->authorize(function () use ($counter): bool {
+            $counter->own++;
+
+            return true;
+        })
+        ->run(fn () => new CreateInvoiceResult(invoice_id: 1))
+        ->register($registry);
+}
+
+it('REQ-528: a container-bound Authorizer becomes a host gate on the registry', function () {
+    $app = req048FakeApp(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+    ]));
+    $host = new class implements Authorizer
+    {
+        public int $calls = 0;
+
+        public function authorize(string $capability, mixed $input, mixed $context): bool
+        {
+            $this->calls++;
+
+            return false;
+        }
+    };
+    $app->instance(Authorizer::class, $host);
+    $counter = (object) ['own' => 0];
+
+    $registry = $app->make(CapabilityRegistry::class);
+    req528GateCapability($registry, $counter);
+    $result = $registry->invoke('gate-cap', PipelineHelpers::validInput(), PipelineHelpers::options());
+
+    expect($result->errorCode())->toBe('forbidden')
+        ->and($host->calls)->toBe(1)
+        ->and($counter->own)->toBe(0);
+});
+
+it('REQ-528: with no container-bound Authorizer the capability own rule alone decides', function () {
+    $app = req048FakeApp(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+    ]));
+    $counter = (object) ['own' => 0];
+
+    $registry = $app->make(CapabilityRegistry::class);
+    req528GateCapability($registry, $counter);
+    $result = $registry->invoke('gate-cap', PipelineHelpers::validInput(), PipelineHelpers::options());
+
+    expect($result->isOk())->toBeTrue()
+        ->and($counter->own)->toBe(1);
 });

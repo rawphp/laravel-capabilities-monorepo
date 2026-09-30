@@ -92,9 +92,20 @@ Place classes under `config('capabilities.path')` (default `app/Capabilities`) w
 
 The class owns its governance. On every invoke the pipeline resolves the handler **once through the container** (constructor injection works) and calls, in order:
 
-- `authorize(Input $input, CapabilityContext $ctx): bool` — the decision for this capability. Without it, the host `Authorizer` decides (deny by default).
+- `authorize(Input $input, CapabilityContext $ctx): bool` — this capability's own rule. It must pass in addition to any host `Authorizer` you bound (see below). Without it, the host `Authorizer` alone decides (deny by default).
 - `needsApproval(Input $input, CapabilityContext $ctx): bool` — optional; `true` stores an approval request and returns `approval_required` without calling `run()`.
 - `run(Input $input, CapabilityContext $ctx)` — the single mutation path.
+
+**Authorization precedence** (fluent `->authorize()` callables and class `authorize()` alike):
+
+| Own rule | Host `Authorizer` bound | Result |
+|---|---|---|
+| present | yes | Host asked first; if it denies, the own rule is not called. Both must allow |
+| present | no | The own rule decides |
+| absent | yes | The host `Authorizer` decides |
+| absent | no | Denied (default deny) |
+
+"Bound" means you passed it to the registry, called `withAuthorizer()`, or bound `Rawphp\Capabilities\Contracts\Authorizer` in the container. The same composition applies when an approval is accepted and the original requester is re-checked. If your `Authorizer` already delegates to the class `authorize()`, drop that delegation, or the class rule runs twice.
 
 Each method may declare `(Input $input)` alone; the context is passed only when the signature takes a second argument. Unit tests swap construction with `CapabilityRegistry::withHandlerFactory(fn (string $class) => ...)`.
 

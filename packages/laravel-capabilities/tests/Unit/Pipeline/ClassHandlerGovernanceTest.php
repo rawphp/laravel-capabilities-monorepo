@@ -138,9 +138,9 @@ it('fail: a class authorize() returning false denies even when the host authoriz
         ->and(GovernanceDenyingHandler::$runs)->toBe(0);
 });
 
-it('happy: a class authorize() is the decision; the host authorizer is not consulted [L-001 / D-017]', function () {
+it('happy: with the host gate open, a class authorize() decides and sees the context [L-001 / D-017]', function () {
     GovernanceAllowingHandler::$seenContext = null;
-    $h = governanceHarness(GovernanceAllowingHandler::class, authorize: false);
+    $h = governanceHarness(GovernanceAllowingHandler::class, authorize: true);
 
     $result = $h['registry']->invoke('class-cap', PipelineHelpers::validInput(), PipelineHelpers::options());
 
@@ -151,7 +151,7 @@ it('happy: a class authorize() is the decision; the host authorizer is not consu
 });
 
 it('fail: a class authorize() sees the typed input and can deny on it [L-001]', function () {
-    $h = governanceHarness(GovernanceAllowingHandler::class, authorize: false);
+    $h = governanceHarness(GovernanceAllowingHandler::class, authorize: true);
 
     $result = $h['registry']->invoke('class-cap', array_merge(PipelineHelpers::validInput(), ['amount_cents' => 5_000_000]), PipelineHelpers::options());
 
@@ -175,7 +175,7 @@ it('happy: a handler with constructor dependencies is resolved through the conta
     $container = new Container;
     $container->instance(GovernanceInvoiceNumbers::class, new GovernanceInvoiceNumbers(next: 777));
     Container::setInstance($container);
-    $h = governanceHarness(GovernanceInjectedHandler::class, authorize: false);
+    $h = governanceHarness(GovernanceInjectedHandler::class, authorize: true);
 
     $result = $h['registry']->invoke('class-cap', PipelineHelpers::validInput(), PipelineHelpers::options());
 
@@ -186,7 +186,7 @@ it('happy: a handler with constructor dependencies is resolved through the conta
 
 it('happy: registry withHandlerFactory replaces container resolution [L-001]', function () {
     GovernanceInjectedHandler::$constructions = 0;
-    $h = governanceHarness(GovernanceInjectedHandler::class, authorize: false);
+    $h = governanceHarness(GovernanceInjectedHandler::class, authorize: true);
     $made = [];
     $h['registry']->withHandlerFactory(function (string $class) use (&$made): object {
         $made[] = $class;
@@ -232,9 +232,9 @@ it('edge: approval re-check authorizes() uses the class authorize() [L-001 / D-0
     expect($h['registry']->authorizes('class-cap', PipelineHelpers::validInput(), $context))->toBeFalse();
 });
 
-it('edge: a fluent authorize callable still wins over the host authorizer [D-017 parity]', function () {
+it('fail: a host authorizer that denies gates a fluent authorize callable too [REQ-528]', function () {
     $h = PipelineHelpers::harness(['authorize' => false, 'authorize_cb' => fn () => true]);
 
-    expect($h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options())->isOk())->toBeTrue()
-        ->and($h['registry']->withAuthorizer(StubAuthorizer::deny()))->not->toBeNull();
+    expect($h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options())->errorCode())->toBe('forbidden')
+        ->and($h['registry']->withAuthorizer(StubAuthorizer::allow())->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options())->isOk())->toBeTrue();
 });
