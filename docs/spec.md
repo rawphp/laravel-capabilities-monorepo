@@ -298,13 +298,14 @@ Messaging is **not** a second mutation API. Telegram does not call Eloquent. It 
 
 ### Peer support matrix (maintained in README + CI)
 
-Versions below are **illustrative placeholders** until first release; the machine-readable source of truth is package `PeerSupportMatrix` (mirrored in `config/capabilities.php` → `peers.support`). Package README documents the D-011 release gate.
+Versions below are **illustrative**; the machine-readable source of truth is package `PeerSupportMatrix` (mirrored in `config/capabilities.php` → `peers.support`). Package README documents the D-011 release gate.
 
 | `rawphp/laravel-capabilities` | Laravel | `laravel/ai` | `laravel/mcp` | Adapter API |
 |---|---|---|---|---|
 | `^0.1` | `^11.0` \| `^12.0` | matrix constraints (see `PeerSupportMatrix`) | matrix constraints (see `PeerSupportMatrix`) | `v1` |
 | `^0.2` (example) | … | … | … | `v1` or `v2` |
 
+- Caret on a `0.x` version pins the minor (`^0.9` = `>=0.9.0 <0.10.0`), so the matrix lists each `0.x` minor real hosts run (currently `laravel/mcp` `^0.6`, `^0.9`; `laravel/ai` `^0.10`, `^0.11`), never bare `*`. The production probe reads installed versions from Composer, so a minor missing here fails boot for hosts on it.
 - **Composer `suggest`** lists peers; **composer.json `conflict`** / test matrix pins known-bad combos when discovered.
 - **Default package CI does not install live `laravel/ai` / `laravel/mcp`.** Package honesty = matrix + unit contract fixtures (mocks/fakes). Live peer minors are an **optional consumer-app** path.
 - Each release notes declared peer constraints; consumer apps that run peer-live may record which minors they exercised.

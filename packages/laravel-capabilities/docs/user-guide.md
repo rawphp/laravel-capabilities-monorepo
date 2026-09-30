@@ -332,7 +332,7 @@ Rules of thumb:
 |---|---|
 | Matrix source of truth | `src/Adapters/PeerSupportMatrix.php` |
 | Config mirror | `peers.support` |
-| Declared constraints (current scaffold) | `laravel/ai`: `^0.1`, `^1.0`; `laravel/mcp`: `^0.1`, `^1.0` |
+| Declared constraints (current scaffold) | `laravel/ai`: `^0.1`, `^0.10`, `^0.11`, `^1.0`; `laravel/mcp`: `^0.1`, `^0.6`, `^0.9`, `^1.0` (caret on a `0.x` version pins the minor, so each `0.x` minor is listed) |
 | MCP auto-register (plan) | `Adapters\Mcp\McpServerRegistrar` + `surfaces.mcp.auto_register` / `profiles` / `servers` / planned `path_prefix` |
 
 When agent or MCP is enabled and the peer is missing or `supportsInstalledPeer() === false`:

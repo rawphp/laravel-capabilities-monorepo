@@ -22,16 +22,16 @@ final class PeerSupportMatrix
     /**
      * Declared Composer-style version constraints per peer.
      *
-     * Placeholders until first release pins real minors in CI — still non-empty
-     * and not bare `*`, so compatibility is matrix-driven rather than open-ended.
+     * Caret on a 0.x version pins the minor (`^0.9` = >=0.9.0 <0.10.0), so every 0.x minor
+     * a host runs is listed explicitly. Never bare `*`: compatibility is matrix-driven.
      *
      * @return array<string, list<string>>
      */
     public static function constraints(): array
     {
         return [
-            self::PEER_AI => ['^0.1', '^1.0'],
-            self::PEER_MCP => ['^0.1', '^1.0'],
+            self::PEER_AI => ['^0.1', '^0.10', '^0.11', '^1.0'],
+            self::PEER_MCP => ['^0.1', '^0.6', '^0.9', '^1.0'],
         ];
     }
 

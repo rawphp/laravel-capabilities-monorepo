@@ -231,8 +231,8 @@ return [
         'support' => class_exists(PeerSupportMatrix::class)
             ? PeerSupportMatrix::constraints()
             : [
-                'laravel/ai' => ['^0.1', '^1.0'],
-                'laravel/mcp' => ['^0.1', '^1.0'],
+                'laravel/ai' => ['^0.1', '^0.10', '^0.11', '^1.0'],
+                'laravel/mcp' => ['^0.1', '^0.6', '^0.9', '^1.0'],
             ],
     ],
 ];
