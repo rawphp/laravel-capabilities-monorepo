@@ -64,16 +64,14 @@ final class InvokePipeline
     public ?Dispatcher $events = null;
 
     /**
-     * Late source for the host Authorizer (container binding), read at the first authorize
-     * decision so a binding made after the registry was built still gates. An explicit
-     * `$authorizer` always wins. Returns null when nothing is bound; throws when the binding
-     * cannot be resolved (fail closed).
+     * Late source for the host Authorizer (container binding), called on every authorize
+     * decision so a binding made after the registry was built still gates and a request-scoped
+     * Authorizer is never reused across requests. An explicit `$authorizer` always wins.
+     * Returns null when nothing is bound; throws when the binding cannot be resolved (fail closed).
      *
      * @var (Closure(): ?Authorizer)|null
      */
     public ?Closure $authorizerResolver = null;
-
-    private ?Authorizer $resolvedAuthorizer = null;
 
     /**
      * @param  array{
@@ -657,18 +655,15 @@ final class InvokePipeline
 
     /**
      * The host-bound Authorizer, if any: the explicit instance, else the late container
-     * binding (resolved once, then cached). A binding that throws propagates.
+     * binding, resolved fresh on every call (never cached). A binding that throws propagates.
      */
     public function hostAuthorizer(): ?Authorizer
     {
         if ($this->authorizer !== null) {
             return $this->authorizer;
         }
-        if ($this->resolvedAuthorizer === null && $this->authorizerResolver !== null) {
-            $this->resolvedAuthorizer = ($this->authorizerResolver)();
-        }
 
-        return $this->resolvedAuthorizer;
+        return $this->authorizerResolver !== null ? ($this->authorizerResolver)() : null;
     }
 
     /**

@@ -105,7 +105,7 @@ The class owns its governance. On every invoke the pipeline resolves the handler
 | absent | yes | The host `Authorizer` decides |
 | absent | no | Denied (default deny) |
 
-"Bound" means you passed it to the registry, called `withAuthorizer()`, or bound `Rawphp\Capabilities\Contracts\Authorizer` in the container. The same composition applies when an approval is accepted and the original requester is re-checked. If your `Authorizer` already delegates to the class `authorize()`, drop that delegation, or the class rule runs twice.
+"Bound" means you passed it to the registry, called `withAuthorizer()`, or bound `Rawphp\Capabilities\Contracts\Authorizer` in the container (resolved on every authorize decision; a binding that throws or is not an `Authorizer` denies). The same composition applies when an approval is accepted and the original requester is re-checked. If your `Authorizer` already delegates to the class `authorize()`, drop that delegation, or the class rule runs twice.
 
 Each method may declare `(Input $input)` alone; the context is passed only when the signature takes a second argument. Unit tests swap construction with `CapabilityRegistry::withHandlerFactory(fn (string $class) => ...)`.
 

@@ -14,6 +14,7 @@ use Rawphp\Capabilities\Contracts\Authorizer;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\IntegrationHealthChecker;
+use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Tests\Fixtures\AdapterHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\ArtisanCommandHarness;
 
@@ -412,4 +413,39 @@ it('authorizer_bound reflects whether the registry applies the gate, not the con
 
     expect($boundButInactive->checks[0]['level'])->toBe('fail')
         ->and($activeWithoutBinding->checks[0]['level'])->toBe('ok');
+});
+
+function ihGateConfig(): array
+{
+    return ['capabilities' => ['surfaces' => ['http' => ['enabled' => true]]]];
+}
+
+it('command FAILs authorizer_bound when the container has a binding the registry does not apply [REQ-528]', function () {
+    $r = ArtisanCommandHarness::run(new IntegrationHealthCommand, [], [
+        Authorizer::class => StubAuthorizer::allow(),
+        CapabilityRegistry::class => new CapabilityRegistry,
+    ], ihGateConfig());
+
+    expect($r['output'])->toContain('[FAIL] authorizer_bound:');
+});
+
+it('gate probe: a throwing resolver reads as not active [REQ-528]', function () {
+    $registry = (new CapabilityRegistry)->withAuthorizerResolver(static function (): never {
+        throw new RuntimeException('broken binding');
+    });
+    $r = ArtisanCommandHarness::run(new IntegrationHealthCommand, [], [
+        Authorizer::class => StubAuthorizer::allow(),
+        CapabilityRegistry::class => $registry,
+    ], ihGateConfig());
+
+    expect($r['output'])->toContain('[FAIL] authorizer_bound:');
+});
+
+it('gate probe: a registry with an explicit withAuthorizer() reads as active even with no container binding [REQ-528]', function () {
+    $registry = (new CapabilityRegistry)->withAuthorizer(StubAuthorizer::allow());
+    $r = ArtisanCommandHarness::run(new IntegrationHealthCommand, [], [
+        CapabilityRegistry::class => $registry,
+    ], ihGateConfig());
+
+    expect($r['output'])->toContain('[OK] authorizer_bound:');
 });

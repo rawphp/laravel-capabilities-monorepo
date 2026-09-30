@@ -881,6 +881,7 @@ it('REQ-528: an Authorizer bound after the registry was built still gates the fi
     $counter = (object) ['own' => 0];
     $registry = $app->make(CapabilityRegistry::class);
     req528GateCapability($registry, $counter);
+    expect($registry->hostAuthorizerApplies())->toBeFalse();
 
     $host = req528Denier();
     $app->instance(Authorizer::class, $host);
@@ -945,4 +946,23 @@ it('REQ-528: a binding that resolves to a non-Authorizer fails closed with a cle
     expect($result->isOk())->toBeFalse()
         ->and($counter->own)->toBe(0)
         ->and(fn () => $registry->hostAuthorizerApplies())->toThrow(UnexpectedValueException::class, 'stdClass');
+});
+
+it('REQ-528: the container binding is read on every authorize decision, never reused across them', function () {
+    $app = req528LateApp();
+    $counter = (object) ['own' => 0];
+    $registry = $app->make(CapabilityRegistry::class);
+    req528GateCapability($registry, $counter);
+
+    $app->instance(Authorizer::class, StubAuthorizer::allow());
+    $first = $registry->invoke('gate-cap', PipelineHelpers::validInput(), PipelineHelpers::options());
+
+    $denier = req528Denier();
+    $app->instance(Authorizer::class, $denier);
+    $second = $registry->invoke('gate-cap', PipelineHelpers::validInput(), PipelineHelpers::options());
+
+    expect($first->isOk())->toBeTrue()
+        ->and($second->errorCode())->toBe('forbidden')
+        ->and($denier->calls)->toBe(1)
+        ->and($counter->own)->toBe(1);
 });

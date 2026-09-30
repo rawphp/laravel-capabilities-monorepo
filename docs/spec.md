@@ -3085,7 +3085,7 @@ One discovery pass builds the registry. Fluent calls insert into the same map (d
 | absent | yes | The host `Authorizer` decides |
 | absent | no | Denied (default deny, fail closed) |
 
-"Host-bound" means explicitly supplied: passed to the registry constructor, `withAuthorizer()`, or bound in the container as `Contracts\Authorizer` (the service provider hands it to the registry). The package's built-in deny fallback is not a gate; it only applies in the last row. A host `Authorizer` that already delegates to the class `authorize()` should stop doing so, or the class rule runs twice.
+"Host-bound" means explicitly supplied: passed to the registry constructor, `withAuthorizer()`, or bound in the container as `Contracts\Authorizer` (the registry resolves that binding on every authorize decision, never cached, so a late or request-scoped binding works; a binding that throws or is not an `Authorizer` denies). The package's built-in deny fallback is not a gate; it only applies in the last row. A host `Authorizer` that already delegates to the class `authorize()` should stop doing so, or the class rule runs twice.
 
 ---
 
