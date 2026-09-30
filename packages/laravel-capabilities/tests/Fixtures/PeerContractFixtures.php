@@ -106,8 +106,8 @@ final class PeerContractFixtures
     public static function matrixCells(): array
     {
         return [
-            PeerSupportMatrix::PEER_AI => ['^0.1', '^1.0'],
-            PeerSupportMatrix::PEER_MCP => ['^0.1', '^1.0'],
+            PeerSupportMatrix::PEER_AI => ['^0.1', '^0.10', '^0.11', '^1.0'],
+            PeerSupportMatrix::PEER_MCP => ['^0.1', '^0.6', '^0.9', '^1.0'],
         ];
     }
 

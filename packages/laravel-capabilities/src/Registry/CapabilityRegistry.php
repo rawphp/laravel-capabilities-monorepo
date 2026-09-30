@@ -36,7 +36,6 @@ use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\CapabilityScope;
 use Rawphp\Capabilities\Support\InMemoryRateLimiter;
 use Rawphp\Capabilities\Support\RegistryAssertions;
-use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Support\SystemClock;
 use stdClass;
@@ -178,10 +177,9 @@ final class CapabilityRegistry implements CapabilityBus
         $this->clock = $clock ?? new SystemClock;
         // Published idempotency.* config (ttl_hours, enabled, warn_missing_key) reaches the guard (L-011).
         $idempotencyGuard = new IdempotencyGuard($idempotencyStore, $this->clock, IdempotencyConfig::fromArray($idempotencyConfig));
-        // Fail closed (L-003 / REQ-070): no per-capability authorize and no host
-        // authorizer → deny. Tests and hosts must pass StubAuthorizer::allow() or
-        // withAuthorizer(...) / a capability authorize callable explicitly.
-        $authorizer = $authorizer ?? StubAuthorizer::deny();
+        // Fail closed (L-003 / REQ-070): no own authorize rule and no host Authorizer → deny.
+        // A null `$authorizer` is "no host gate"; only an explicitly supplied one (constructor,
+        // withAuthorizer(), container binding) gates every invoke.
         $rateLimiter = $rateLimiter ?? new InMemoryRateLimiter;
         $this->approvalStore = $approvalStore;
         $approvalManager = ($approvalStore !== null
@@ -343,11 +341,37 @@ final class CapabilityRegistry implements CapabilityBus
         return $this->pipeline->validateOutputEnabled;
     }
 
+    /**
+     * Bind the host Authorizer: a gate every invoke must pass, in front of a capability's own
+     * authorize rule (D-017 / L-003).
+     */
     public function withAuthorizer(Authorizer $authorizer): self
     {
         $this->pipeline->authorizer = $authorizer;
 
         return $this;
+    }
+
+    /**
+     * Late host-Authorizer source (the service provider passes the container binding). Resolved
+     * on every authorize decision (never cached); an explicit withAuthorizer() instance wins over it.
+     *
+     * @param  \Closure(): ?Authorizer  $resolver
+     */
+    public function withAuthorizerResolver(\Closure $resolver): self
+    {
+        $this->pipeline->authorizerResolver = $resolver;
+
+        return $this;
+    }
+
+    /**
+     * Whether a host Authorizer gate will be applied on invoke (resolves a late binding;
+     * throws if that binding is broken).
+     */
+    public function hostAuthorizerApplies(): bool
+    {
+        return $this->pipeline->hostAuthorizer() !== null;
     }
 
     /**

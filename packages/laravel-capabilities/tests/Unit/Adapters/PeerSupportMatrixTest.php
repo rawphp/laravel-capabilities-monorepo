@@ -219,3 +219,42 @@ it('PeerVersionProbe reports installed and compatible from overrides and support
     );
     expect($probe4->isCompatible('laravel/ai'))->toBeTrue();
 });
+
+it('happy: the default matrix accepts the laravel/mcp and laravel/ai minors hosts run [REQ-528 / D-011]', function () {
+    $mcp = PeerSupportMatrix::for(PeerSupportMatrix::PEER_MCP);
+    $ai = PeerSupportMatrix::for(PeerSupportMatrix::PEER_AI);
+
+    foreach (['0.6.7', '0.9.1', '0.9.2', '0.9.4', '0.9.5', 'v0.9.5', '1.0.0'] as $version) {
+        expect(PeerSupportMatrix::versionSatisfies($version, $mcp))->toBeTrue("mcp {$version}");
+    }
+    foreach (['0.10.3', '0.11.2', '1.0.0'] as $version) {
+        expect(PeerSupportMatrix::versionSatisfies($version, $ai))->toBeTrue("ai {$version}");
+    }
+});
+
+it('fail: the default matrix still rejects 0.x minors nobody declared [REQ-528 / D-011]', function () {
+    $mcp = PeerSupportMatrix::for(PeerSupportMatrix::PEER_MCP);
+    $ai = PeerSupportMatrix::for(PeerSupportMatrix::PEER_AI);
+
+    expect(PeerSupportMatrix::versionSatisfies('0.7.0', $mcp))->toBeFalse()
+        ->and(PeerSupportMatrix::versionSatisfies('0.10.0', $mcp))->toBeFalse()
+        ->and(PeerSupportMatrix::versionSatisfies('0.9.0', $ai))->toBeFalse()
+        ->and(PeerSupportMatrix::versionSatisfies('0.12.0', $ai))->toBeFalse();
+});
+
+it('happy: the production probe against laravel/mcp 0.9.4 with the default matrix is compatible [REQ-528]', function () {
+    $probe = PeerVersionProbe::fromComposer(
+        versionLookup: static fn (string $package): ?string => $package === PeerVersionProbe::PEER_MCP ? '0.9.4' : '0.11.2',
+        classExists: static fn (string $class): bool => true,
+    );
+
+    expect($probe->supports(PeerVersionProbe::PEER_MCP))->toBeTrue()
+        ->and($probe->supports(PeerVersionProbe::PEER_AI))->toBeTrue();
+});
+
+it('happy: the published config reads the matrix unconditionally [REQ-528]', function () {
+    $config = require __DIR__.'/../../../config/capabilities.php';
+
+    expect($config['peers']['support'])->toBe(PeerSupportMatrix::constraints())
+        ->and(file_get_contents(__DIR__.'/../../../config/capabilities.php'))->not->toContain("['^0.1'");
+});

@@ -18,6 +18,7 @@ use Rawphp\Capabilities\Boot\SurfaceNames;
 use Rawphp\Capabilities\CapabilitiesServiceProvider;
 use Rawphp\Capabilities\Capability;
 use Rawphp\Capabilities\Contracts\ApprovalGateway;
+use Rawphp\Capabilities\Contracts\Authorizer;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\Metrics;
@@ -29,9 +30,12 @@ use Rawphp\Capabilities\Persistence\DatabaseApprovalStore;
 use Rawphp\Capabilities\Persistence\DatabaseIdempotencyStore;
 use Rawphp\Capabilities\Persistence\TableGateway;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
+use Rawphp\Capabilities\Support\CapabilityContext;
+use Rawphp\Capabilities\Support\CapabilityScope;
 use Rawphp\Capabilities\Support\DefaultScopeResolver;
 use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
+use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Tests\Fixtures\AdapterHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\BootHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
@@ -175,6 +179,11 @@ function req048FakeApp(array $capabilitiesConfig = []): object
             }
 
             return $entry;
+        }
+
+        public function bound(string $abstract): bool
+        {
+            return $this->offsetExists($abstract);
         }
 
         public function offsetGet(mixed $key): mixed
@@ -781,4 +790,179 @@ it('happy: boot publishes the config and migrations when running in console', fu
     $provider->boot();
 
     expect(array_column($provider->publishCalls, 'group'))->toBe(['capabilities-config', 'capabilities-migrations']);
+});
+
+// REQ-528: a container-bound Authorizer is host-bound (a gate); an unbound one is not (L-003).
+function req528GateCapability(CapabilityRegistry $registry, object $counter): void
+{
+    Capability::define('gate-cap')
+        ->description('gate test')
+        ->surfaces(['http'])
+        ->input(CreateInvoiceInput::class)
+        ->output(CreateInvoiceResult::class)
+        ->allowSystemCallers(true)
+        ->authorize(function () use ($counter): bool {
+            $counter->own++;
+
+            return true;
+        })
+        ->run(fn () => new CreateInvoiceResult(invoice_id: 1))
+        ->register($registry);
+}
+
+it('REQ-528: a container-bound Authorizer becomes a host gate on the registry', function () {
+    $app = req048FakeApp(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+    ]));
+    $host = new class implements Authorizer
+    {
+        public int $calls = 0;
+
+        public function authorize(string $capability, mixed $input, mixed $context): bool
+        {
+            $this->calls++;
+
+            return false;
+        }
+    };
+    $app->instance(Authorizer::class, $host);
+    $counter = (object) ['own' => 0];
+
+    $registry = $app->make(CapabilityRegistry::class);
+    req528GateCapability($registry, $counter);
+    $result = $registry->invoke('gate-cap', PipelineHelpers::validInput(), PipelineHelpers::options());
+
+    expect($result->errorCode())->toBe('forbidden')
+        ->and($host->calls)->toBe(1)
+        ->and($counter->own)->toBe(0);
+});
+
+it('REQ-528: with no container-bound Authorizer the capability own rule alone decides', function () {
+    $app = req048FakeApp(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+    ]));
+    $counter = (object) ['own' => 0];
+
+    $registry = $app->make(CapabilityRegistry::class);
+    req528GateCapability($registry, $counter);
+    $result = $registry->invoke('gate-cap', PipelineHelpers::validInput(), PipelineHelpers::options());
+
+    expect($result->isOk())->toBeTrue()
+        ->and($counter->own)->toBe(1);
+});
+
+function req528Denier(): Authorizer
+{
+    return new class implements Authorizer
+    {
+        public int $calls = 0;
+
+        public function authorize(string $capability, mixed $input, mixed $context): bool
+        {
+            $this->calls++;
+
+            return false;
+        }
+    };
+}
+
+function req528LateApp(): object
+{
+    return req048FakeApp(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+    ]));
+}
+
+it('REQ-528: an Authorizer bound after the registry was built still gates the first invoke', function () {
+    $app = req528LateApp();
+    $counter = (object) ['own' => 0];
+    $registry = $app->make(CapabilityRegistry::class);
+    req528GateCapability($registry, $counter);
+    expect($registry->hostAuthorizerApplies())->toBeFalse();
+
+    $host = req528Denier();
+    $app->instance(Authorizer::class, $host);
+
+    $result = $registry->invoke('gate-cap', PipelineHelpers::validInput(), PipelineHelpers::options());
+
+    expect($result->errorCode())->toBe('forbidden')
+        ->and($host->calls)->toBe(1)
+        ->and($counter->own)->toBe(0)
+        ->and($registry->hostAuthorizerApplies())->toBeTrue();
+});
+
+it('REQ-528: an explicit withAuthorizer() beats the container binding', function () {
+    $app = req528LateApp();
+    $counter = (object) ['own' => 0];
+    $registry = $app->make(CapabilityRegistry::class);
+    req528GateCapability($registry, $counter);
+    $bound = req528Denier();
+    $app->instance(Authorizer::class, $bound);
+    $registry->withAuthorizer(StubAuthorizer::allow());
+
+    $result = $registry->invoke('gate-cap', PipelineHelpers::validInput(), PipelineHelpers::options());
+
+    expect($result->isOk())->toBeTrue()
+        ->and($bound->calls)->toBe(0)
+        ->and($counter->own)->toBe(1);
+});
+
+it('REQ-528: no binding at all means no host gate, and hostAuthorizerApplies() is false', function () {
+    $registry = req528LateApp()->make(CapabilityRegistry::class);
+
+    expect($registry->hostAuthorizerApplies())->toBeFalse();
+});
+
+it('REQ-528: a container binding that throws fails closed; the capability never runs', function () {
+    $app = req528LateApp();
+    $counter = (object) ['own' => 0];
+    $registry = $app->make(CapabilityRegistry::class);
+    req528GateCapability($registry, $counter);
+    $app->singleton(Authorizer::class, static function (): never {
+        throw new RuntimeException('authorizer cannot be built');
+    });
+    $context = new CapabilityContext(caller: 'http', actor: PipelineHelpers::userActor(), scope: new CapabilityScope(tenantId: 't-1'));
+
+    $result = $registry->invoke('gate-cap', PipelineHelpers::validInput(), PipelineHelpers::options());
+
+    expect($result->isOk())->toBeFalse()
+        ->and($counter->own)->toBe(0)
+        ->and($registry->authorizes('gate-cap', PipelineHelpers::validInput(), $context))->toBeFalse()
+        ->and(fn () => $registry->hostAuthorizerApplies())->toThrow(RuntimeException::class, 'authorizer cannot be built');
+});
+
+it('REQ-528: a binding that resolves to a non-Authorizer fails closed with a clear message', function () {
+    $app = req528LateApp();
+    $counter = (object) ['own' => 0];
+    $registry = $app->make(CapabilityRegistry::class);
+    req528GateCapability($registry, $counter);
+    $app->instance(Authorizer::class, new stdClass);
+
+    $result = $registry->invoke('gate-cap', PipelineHelpers::validInput(), PipelineHelpers::options());
+
+    expect($result->isOk())->toBeFalse()
+        ->and($counter->own)->toBe(0)
+        ->and(fn () => $registry->hostAuthorizerApplies())->toThrow(UnexpectedValueException::class, 'stdClass');
+});
+
+it('REQ-528: the container binding is read on every authorize decision, never reused across them', function () {
+    $app = req528LateApp();
+    $counter = (object) ['own' => 0];
+    $registry = $app->make(CapabilityRegistry::class);
+    req528GateCapability($registry, $counter);
+
+    $app->instance(Authorizer::class, StubAuthorizer::allow());
+    $first = $registry->invoke('gate-cap', PipelineHelpers::validInput(), PipelineHelpers::options());
+
+    $denier = req528Denier();
+    $app->instance(Authorizer::class, $denier);
+    $second = $registry->invoke('gate-cap', PipelineHelpers::validInput(), PipelineHelpers::options());
+
+    expect($first->isOk())->toBeTrue()
+        ->and($second->errorCode())->toBe('forbidden')
+        ->and($denier->calls)->toBe(1)
+        ->and($counter->own)->toBe(1);
 });

@@ -64,6 +64,16 @@ final class InvokePipeline
     public ?Dispatcher $events = null;
 
     /**
+     * Late source for the host Authorizer (container binding), called on every authorize
+     * decision so a binding made after the registry was built still gates and a request-scoped
+     * Authorizer is never reused across requests. An explicit `$authorizer` always wins.
+     * Returns null when nothing is bound; throws when the binding cannot be resolved (fail closed).
+     *
+     * @var (Closure(): ?Authorizer)|null
+     */
+    public ?Closure $authorizerResolver = null;
+
+    /**
      * @param  array{
      *     enabled?: bool,
      *     defaults?: array{per_minute?: int, per_capability_per_minute?: int},
@@ -77,7 +87,7 @@ final class InvokePipeline
         public ResolveActor $resolveActor,
         public ResolveTenantFromCaller $resolveTenant,
         public IdempotencyGuard $idempotencyGuard,
-        public Authorizer $authorizer,
+        public ?Authorizer $authorizer,
         public RateLimiter $rateLimiter,
         public ApprovalManager $approvalManager,
         public OutputValidator $outputValidator,
@@ -644,11 +654,32 @@ final class InvokePipeline
     }
 
     /**
-     * Authorize decision order (D-017): fluent authorize callable → class authorize()
-     * → host Authorizer (deny by default, L-003).
+     * The host-bound Authorizer, if any: the explicit instance, else the late container
+     * binding, resolved fresh on every call (never cached). A binding that throws propagates.
+     */
+    public function hostAuthorizer(): ?Authorizer
+    {
+        if ($this->authorizer !== null) {
+            return $this->authorizer;
+        }
+
+        return $this->authorizerResolver !== null ? ($this->authorizerResolver)() : null;
+    }
+
+    /**
+     * Authorize decision (D-017 / L-003). A host-bound Authorizer is a gate every invoke
+     * must pass, asked first. The capability's own rule (fluent authorize callable, else
+     * the class authorize()) must also pass. With no own rule the host Authorizer alone
+     * decides; with neither, the invoke is denied (fail closed). A null `$authorizer`
+     * means no host Authorizer was supplied, so it is not a gate.
      */
     private function allows(CapabilityDefinition $definition, mixed $input, mixed $context, ?object $handler): bool
     {
+        $host = $this->hostAuthorizer();
+        if ($host !== null && ! $host->authorize($definition->name, $input, $context)) {
+            return false;
+        }
+
         $definitionAuth = $definition->authorize;
         if (is_callable($definitionAuth)) {
             return (bool) $definitionAuth($input, $context);
@@ -658,7 +689,7 @@ final class InvokePipeline
             return (bool) self::callWithArity([$handler, 'authorize'], $input, $context);
         }
 
-        return $this->authorizer->authorize($definition->name, $input, $context);
+        return $host !== null;
     }
 
     /**

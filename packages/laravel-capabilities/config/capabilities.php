@@ -228,11 +228,6 @@ return [
     |
     */
     'peers' => [
-        'support' => class_exists(PeerSupportMatrix::class)
-            ? PeerSupportMatrix::constraints()
-            : [
-                'laravel/ai' => ['^0.1', '^1.0'],
-                'laravel/mcp' => ['^0.1', '^1.0'],
-            ],
+        'support' => PeerSupportMatrix::constraints(),
     ],
 ];

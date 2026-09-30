@@ -298,13 +298,14 @@ Messaging is **not** a second mutation API. Telegram does not call Eloquent. It 
 
 ### Peer support matrix (maintained in README + CI)
 
-Versions below are **illustrative placeholders** until first release; the machine-readable source of truth is package `PeerSupportMatrix` (mirrored in `config/capabilities.php` → `peers.support`). Package README documents the D-011 release gate.
+Versions below are **illustrative**; the machine-readable source of truth is package `PeerSupportMatrix` (mirrored in `config/capabilities.php` → `peers.support`). Package README documents the D-011 release gate.
 
 | `rawphp/laravel-capabilities` | Laravel | `laravel/ai` | `laravel/mcp` | Adapter API |
 |---|---|---|---|---|
 | `^0.1` | `^11.0` \| `^12.0` | matrix constraints (see `PeerSupportMatrix`) | matrix constraints (see `PeerSupportMatrix`) | `v1` |
 | `^0.2` (example) | … | … | … | `v1` or `v2` |
 
+- Caret on a `0.x` version pins the minor (`^0.9` = `>=0.9.0 <0.10.0`), so the matrix lists each `0.x` minor real hosts run (currently `laravel/mcp` `^0.6`, `^0.9`; `laravel/ai` `^0.10`, `^0.11`), never bare `*`. The production probe reads installed versions from Composer, so a minor missing here fails boot for hosts on it.
 - **Composer `suggest`** lists peers; **composer.json `conflict`** / test matrix pins known-bad combos when discovered.
 - **Default package CI does not install live `laravel/ai` / `laravel/mcp`.** Package honesty = matrix + unit contract fixtures (mocks/fakes). Live peer minors are an **optional consumer-app** path.
 - Each release notes declared peer constraints; consumer apps that run peer-live may record which minors they exercised.
@@ -958,7 +959,7 @@ raw JSON + optional Idempotency-Key
   → server-only validation (exists, …)
   → resolve actor / scope (D-002, D-003)
   → idempotency lookup (D-005)
-  → authorize(DTO)
+  → authorize(DTO)       → host Authorizer gate, then the capability's own rule (D-017)
   → rate limit check (D-013) — before approval, so approval requests are budgeted too
   → needsApproval(DTO)?  → maybe pending + CapabilityApprovalRequested event
   → run(DTO)             → domain owns its transaction (D-010)
@@ -2039,7 +2040,7 @@ Validation at **request** time is not enough. On accept, the pipeline re-runs:
 1. JSON Schema (portable) on stored input  
 2. Server-only rules (`exists`, etc.)  
 3. **D-003** scoped re-resolve of every resource id  
-4. `authorize()` for the **original actor** under the scope persisted on the approval row at request time (default): the tenant is the row's `tenant_id`; team, organization and scalar attributes come from the stamped `scope`; untenanted rows with a stamped `scope` (team-only hosts, global system work) rebuild it with a null tenant; legacy rows rebuild tenant-only (bare tenant `scope`) or, with neither tenant nor stamped scope, resolve at execution. The approved `run()`, audit and idempotency row use the same stamped scope. The `ScopeResolver` does **not** place the requester again, so current tenant membership is not re-checked: a requester removed from that tenant after requesting still runs there unless the capability's `authorize()` checks membership.
+4. `authorize()` (host `Authorizer` gate, then the capability's own rule, D-017) for the **original actor** under the scope persisted on the approval row at request time (default): the tenant is the row's `tenant_id`; team, organization and scalar attributes come from the stamped `scope`; untenanted rows with a stamped `scope` (team-only hosts, global system work) rebuild it with a null tenant; legacy rows rebuild tenant-only (bare tenant `scope`) or, with neither tenant nor stamped scope, resolve at execution. The approved `run()`, audit and idempotency row use the same stamped scope. The `ScopeResolver` does **not** place the requester again, so current tenant membership is not re-checked: a requester removed from that tenant after requesting still runs there unless the capability's `authorize()` checks membership.
 
 If the customer was deleted, moved tenants, or the actor lost permission:
 
@@ -3074,6 +3075,17 @@ Docs refer to one binary name: `capabilities`. No multi-language CLI matrix in v
 | Ad-hoc invokable without registry | **Forbidden** for product mutations |
 
 One discovery pass builds the registry. Fluent calls insert into the same map (duplicate name = boot exception). Tests assert single definition per name.
+
+**Authorize composition (L-003, REQ-528).** One rule, same for both styles and for every place authorization is decided (the invoke pipeline's authorize stage, the approval accept re-check, and the approved-row execution, which re-enters the pipeline):
+
+| Own rule (fluent `->authorize()` callable, else class `authorize()`) | Host `Authorizer` explicitly bound | Result |
+|---|---|---|
+| present | yes | Host asked first; if it denies, the own rule is not called. Both must allow |
+| present | no | The own rule decides |
+| absent | yes | The host `Authorizer` decides |
+| absent | no | Denied (default deny, fail closed) |
+
+"Host-bound" means explicitly supplied: passed to the registry constructor, `withAuthorizer()`, or bound in the container as `Contracts\Authorizer` (the registry resolves that binding on every authorize decision, never cached, so a late or request-scoped binding works; a binding that throws or is not an `Authorizer` denies). The package's built-in deny fallback is not a gate; it only applies in the last row. A host `Authorizer` that already delegates to the class `authorize()` should stop doing so, or the class rule runs twice.
 
 ---
 

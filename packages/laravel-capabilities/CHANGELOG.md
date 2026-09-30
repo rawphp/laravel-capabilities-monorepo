@@ -11,6 +11,56 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-30
+
+### Fixed
+
+- **Security: the host `Authorizer` gate is restored for class capabilities (0.6.0 regression
+  from L-001).** In 0.6.0 any `#[Capability]` class that defined `authorize()` skipped the
+  `Authorizer` the host bound, so a host's shared policy gate (for example a token-scope check)
+  no longer applied to it. A host-bound `Authorizer` is now a gate every invoke must pass, and
+  the capability's own rule (fluent `->authorize()` callable, else the class `authorize()`)
+  must pass as well:
+
+  | Own rule | Host `Authorizer` bound | Result |
+  |---|---|---|
+  | present | yes | Host asked first; if it denies the own rule is not called. Both must allow |
+  | present | no | The own rule decides (the L-001 fix stays) |
+  | absent | yes | The host `Authorizer` decides |
+  | absent | no | Denied (default deny, L-003) |
+
+  "Bound" here means passed to the registry constructor or `withAuthorizer()`, the only ways
+  any released version applied a host `Authorizer` (see the container-binding note under
+  *Changed (BREAKING)*). The built-in deny fallback is not a gate. The same composition applies
+  to the approval accept re-check (`CapabilityRegistry::authorizes()`) and to executing an
+  approved row. Hosts on 0.6.0 that used `withAuthorizer()` and relied on a class `authorize()`
+  alone will see their `Authorizer` enforced again.
+- **The default peer matrix accepts the `laravel/mcp` and `laravel/ai` minors hosts run.**
+  Caret on a `0.x` version pins the minor, so `^0.1` rejected `laravel/mcp` 0.9.x and 0.6.0
+  refused to boot with `on_incompatible: fail` (0.5.x never read installed versions, so an
+  unknown version passed). `PeerSupportMatrix` now lists `laravel/mcp` `^0.1`, `^0.6`, `^0.9`,
+  `^1.0` and `laravel/ai` `^0.1`, `^0.10`, `^0.11`, `^1.0`; config `peers.support` reads it
+  directly. Hosts that overrode `capabilities.peers.support` to get past boot can drop the
+  override.
+
+### Changed (BREAKING)
+
+- **A container binding of `Contracts\Authorizer` is now honoured, for the first time.** No
+  released version read it; only the constructor and `withAuthorizer()` applied a host
+  `Authorizer`, so a bound but unwired `Authorizer` was ignored. The registry now resolves the
+  binding on every authorize decision (never cached, so request-scoped instances are safe, and
+  a binding made in any provider's `boot()` counts; `withAuthorizer()` still wins). A binding
+  that throws, or resolves to something that is not an `Authorizer`, fails the invoke closed.
+  Hosts that bound one (getting-started told them to) will see it enforced, and it now decides
+  capabilities with no own rule, which the deny stub used to block. Check what you bound.
+  `capabilities:health` `authorizer_bound` now reports whether the registry applies the gate.
+- **A host `Authorizer` now also gates fluent `->authorize()` callables.** Before, a fluent
+  callable bypassed the `Authorizer`; now the `Authorizer` is asked first and the callable only
+  runs if it allows. Upgrade note: a host `Authorizer` that itself delegates to the class
+  `authorize()` should drop that delegation, or the class rule runs twice. Hosts that bind an
+  `Authorizer` that denies by default and use fluent callables must make it allow those
+  capabilities.
+
 ## [0.6.0] - 2026-09-30
 
 ### Added

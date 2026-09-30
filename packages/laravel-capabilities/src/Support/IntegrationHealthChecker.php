@@ -39,6 +39,7 @@ final class IntegrationHealthChecker
      * @param  (callable(): string|null)|null  $idempotencyReadinessClass  resolved class or null
      * @param  (callable(): bool|null)|null  $progressStoreReady  live ping; null when readiness unbound
      * @param  (callable(): bool)|null  $auditWriterWired  true when the live registry has an AuditWriter; null to skip
+     * @param  (callable(): bool)|null  $authorizerGateActive  true when the live registry will apply a host Authorizer gate; null falls back to the container binding
      */
     public function check(
         array $capabilitiesConfig,
@@ -48,12 +49,13 @@ final class IntegrationHealthChecker
         ?callable $idempotencyReadinessClass = null,
         ?callable $progressStoreReady = null,
         ?callable $auditWriterWired = null,
+        ?callable $authorizerGateActive = null,
     ): IntegrationHealthReport {
         $checks = [];
         $aiChat = $this->isAiChat($aiConfig);
         $mode = $aiChat ? 'ai-chat' : 'bus-only';
 
-        $checks[] = $this->checkAuthorizer($capabilitiesConfig, $bound);
+        $checks[] = $this->checkAuthorizer($capabilitiesConfig, $bound, $authorizerGateActive);
         $checks[] = $this->checkAuditWriter($capabilitiesConfig, $auditWriterWired);
 
         if ($aiChat) {
@@ -85,9 +87,10 @@ final class IntegrationHealthChecker
     /**
      * @param  array<string, mixed>  $capabilitiesConfig
      * @param  callable(class-string): bool  $bound
+     * @param  (callable(): bool)|null  $gateActive
      * @return array{level: 'fail'|'warn'|'ok'|'skip', code: string, message: string}
      */
-    private function checkAuthorizer(array $capabilitiesConfig, callable $bound): array
+    private function checkAuthorizer(array $capabilitiesConfig, callable $bound, ?callable $gateActive = null): array
     {
         if (! $this->anyInvokeSurface($capabilitiesConfig)) {
             return [
@@ -97,7 +100,7 @@ final class IntegrationHealthChecker
             ];
         }
 
-        if ($bound(Authorizer::class)) {
+        if ($gateActive !== null ? $gateActive() : $bound(Authorizer::class)) {
             return [
                 'level' => 'ok',
                 'code' => 'authorizer_bound',
