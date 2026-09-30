@@ -216,8 +216,8 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 approvalManager: $approval,
             );
 
-            // A host-bound Authorizer gates every invoke. Read at the first authorize decision, not
-            // here: the host may bind it in a provider that boots after this singleton is built.
+            // A host-bound Authorizer gates every invoke. Read on every authorize decision, not here:
+            // the host may bind it in a provider that boots after this singleton is built, or scope it per request.
             $registry->withAuthorizerResolver(static fn (): ?Authorizer => self::boundAuthorizerOrNull($app));
 
             return $registry->withRequesterResolver(

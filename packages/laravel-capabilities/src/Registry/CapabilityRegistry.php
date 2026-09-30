@@ -353,8 +353,8 @@ final class CapabilityRegistry implements CapabilityBus
     }
 
     /**
-     * Late host-Authorizer source (the service provider passes the container binding). Read at
-     * the first authorize decision; an explicit withAuthorizer() instance wins over it.
+     * Late host-Authorizer source (the service provider passes the container binding). Resolved
+     * on every authorize decision (never cached); an explicit withAuthorizer() instance wins over it.
      *
      * @param  \Closure(): ?Authorizer  $resolver
      */
