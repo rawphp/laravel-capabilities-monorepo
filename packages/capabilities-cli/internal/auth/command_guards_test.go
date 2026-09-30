@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"os"
 	"testing"
 
 	"github.com/rawphp/capabilities-cli/internal/api"
@@ -81,5 +82,17 @@ func TestApprovalsfailswithexit3whennotoken(t *testing.T) {
 	st := tempStore(t)
 	if ExitCodeForAuthError(GuardAuth(st, "default", "approvals")) != api.ExitAuth {
 		t.Fatal()
+	}
+}
+
+func TestExemptCommandPassesGuardAndNonAuthErrorsAreInternal(t *testing.T) {
+	if GuardAuth(tempStore(t), "default", "version") != nil {
+		t.Fatal("version must not need a token")
+	}
+	if got := ExitCodeForAuthError(nil); got != api.ExitOK {
+		t.Fatalf("nil error: exit %d", got)
+	}
+	if got := ExitCodeForAuthError(os.ErrNotExist); got != api.ExitInternal {
+		t.Fatalf("non-auth error: exit %d", got)
 	}
 }

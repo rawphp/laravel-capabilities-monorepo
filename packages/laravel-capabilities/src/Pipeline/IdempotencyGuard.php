@@ -20,6 +20,7 @@ use RuntimeException;
  * Pipeline step: store outcomes and replay when Idempotency-Key matches (D-005).
  *
  * Behaviours:
+ * - idempotency.enabled=false → the guard is inert (no lookup, no store, no key policy)
  * - no key / flag none / readOnly → continue (non-idempotent path)
  * - first key → atomically claim with a processing row, continue (a lost claim is busy)
  * - completed + same hash → replay
@@ -82,7 +83,7 @@ final class IdempotencyGuard
         ?string $key,
         string $caller = 'http',
     ): ?CapabilityResult {
-        if (! $definition->shouldUseIdempotency()) {
+        if (! $this->config->enabled || ! $definition->shouldUseIdempotency()) {
             return null;
         }
 
@@ -116,6 +117,8 @@ final class IdempotencyGuard
     }
 
     /**
+     * @param  string|null  $executingApprovalId  the approval whose accepted execution this invoke is (D-006);
+     *                                            it continues past its own pending_approval row
      * @return array{action: 'continue'|'replay'|'conflict'|'busy', result?: CapabilityResult, record?: array<string, mixed>}
      */
     public function lookup(
@@ -123,8 +126,9 @@ final class IdempotencyGuard
         CapabilityContext $context,
         ?string $key,
         string $requestHash,
+        ?string $executingApprovalId = null,
     ): array {
-        if ($key === null || $key === '' || ! $definition->shouldUseIdempotency() || $this->store === null) {
+        if (! $this->config->enabled || $key === null || $key === '' || ! $definition->shouldUseIdempotency() || $this->store === null) {
             return ['action' => 'continue'];
         }
 
@@ -231,7 +235,7 @@ final class IdempotencyGuard
             ];
         }
 
-        // pending_approval / unknown: conflict on different hash; else continue cautiously.
+        // pending_approval / unknown: conflict on different hash.
         if ($existingHash !== null && $existingHash !== $requestHash) {
             return [
                 'action' => 'conflict',
@@ -242,6 +246,22 @@ final class IdempotencyGuard
                 ),
                 'record' => $existing,
             ];
+        }
+
+        // Same request while its approval is pending: replay the one approval_required
+        // (same approval_id) — a retry must not open a second approval (L-102 / D-005 §11).
+        // Only the accepted execution of that very approval continues through to run().
+        if ($status === 'pending_approval') {
+            $ownsRow = $executingApprovalId !== null
+                && $executingApprovalId !== ''
+                && (string) ($existing['approval_id'] ?? '') === $executingApprovalId;
+            if (! $ownsRow && is_array($existing['result_json'] ?? null)) {
+                return [
+                    'action' => 'replay',
+                    'result' => $this->hydrateResult($existing['result_json'], false),
+                    'record' => $existing,
+                ];
+            }
         }
 
         return ['action' => 'continue', 'record' => $existing];
@@ -258,7 +278,7 @@ final class IdempotencyGuard
         CapabilityResult $result,
         ?string $approvalId = null,
     ): void {
-        if ($this->store === null || ! $definition->shouldUseIdempotency()) {
+        if (! $this->config->enabled || $this->store === null || ! $definition->shouldUseIdempotency()) {
             return;
         }
 
@@ -298,7 +318,8 @@ final class IdempotencyGuard
             'request_hash' => $requestHash,
             'status' => $status,
             'result_json' => $result->toArray(),
-            'approval_id' => $approvalId ?? ($result->approvalId()),
+            // An approved execution settles its pending_approval row: keep the link (L-202).
+            'approval_id' => $approvalId ?? $result->approvalId() ?? (is_array($existing) ? ($existing['approval_id'] ?? null) : null),
             'created_at' => $createdAt,
             'expires_at' => $expiresAt,
         ]);

@@ -5,7 +5,8 @@
 #   1. Version helpers / strict filtering
 #   2. Flag matrix early exits
 #   3. Empty-range / origin-missing / squash contracts (static + pure probes)
-#   4. Temp git fixture: strict tags + soft-reset squash
+#   4. Temp git fixtures: strict tags, reachable range tag, squash base = unpushed
+#      commits only (never rewrites history already on origin)
 #
 # Usage:
 #   bash scripts/lib/test-release.sh
@@ -160,14 +161,19 @@ fi
 
 assert_exit "flag -m without --squash exits 2" 2 bash "$RELEASE_SH" -m "only message"
 
-if grep -n 'force-with-lease' "$RELEASE_SH" | grep -q .; then
-  if grep -B30 'force-with-lease' "$RELEASE_SH" | grep -q 'SQUASH'; then
-    pass "force-with-lease gated by SQUASH path"
-  else
-    fail_case "force-with-lease gated by SQUASH path" "force-with-lease not near SQUASH guard"
-  fi
+if grep -E '^[^#]*git push[^#]*(--force|-f( |$)|\+refs/)' "$RELEASE_SH" | grep -q .; then
+  fail_case "release.sh never force-pushes" "$(grep -nE '^[^#]*git push[^#]*(--force|-f( |$)|\+refs/)' "$RELEASE_SH" | head -1)"
 else
-  fail_case "force-with-lease gated by SQUASH path" "force-with-lease missing from release.sh"
+  pass "release.sh never force-pushes"
+fi
+
+_help="$(bash "$RELEASE_SH" --help 2>&1)"
+if grep -q 'composer format:test' <<<"$_help" && grep -q 'composer analyse' <<<"$_help" \
+  && grep -q 'composer test ' <<<"$_help" && grep -q 'gofmt -l' <<<"$_help" \
+  && grep -q 'composer test:cli' <<<"$_help"; then
+  pass "help lists the five quality gates"
+else
+  fail_case "help lists the five quality gates" "--help is missing a gate command"
 fi
 
 if grep -q 'tag only — no branch push' "$RELEASE_SH"; then
@@ -180,6 +186,18 @@ if grep -q 'composer test' "$RELEASE_SH" && grep -q 'test:cli' "$RELEASE_SH"; th
   pass "gates reference composer test + test:cli"
 else
   fail_case "gates reference composer test + test:cli" "missing monorepo gate commands"
+fi
+
+if grep -q 'composer format:test' "$RELEASE_SH" && grep -q 'composer analyse' "$RELEASE_SH"; then
+  pass "gates reference composer format:test + analyse (Pint + PHPStan, same as CI)"
+else
+  fail_case "gates reference composer format:test + analyse (Pint + PHPStan, same as CI)" "missing static gate commands"
+fi
+
+if grep -A12 '^run_cli_gates()' "$RELEASE_SH" | grep -q 'gofmt -l'; then
+  pass "CLI gates run gofmt -l (same as CI go job)"
+else
+  fail_case "CLI gates run gofmt -l (same as CI go job)" "run_cli_gates has no gofmt check"
 fi
 
 printf '\n-- empty-range / origin-missing contracts --\n'
@@ -207,22 +225,6 @@ if grep -n 'latest_tag' "$RELEASE_SH" | head -1 >/dev/null \
   pass "strict tag regex used in latest_tag path"
 else
   fail_case "strict tag regex used in latest_tag path" "could not find strict filter in latest_tag"
-fi
-
-# First-release squash may use origin/$BRANCH as base (not only prior tag).
-if grep -q 'origin/\$BRANCH' "$RELEASE_SH" || grep -q 'origin/$BRANCH' "$RELEASE_SH"; then
-  if grep -A15 'SQUASH_BASE' "$RELEASE_SH" | grep -q 'origin/'; then
-    pass "first-release squash can use origin branch base"
-  else
-    # looser: plan mentions squash base without requiring prior tag only
-    if grep -q 'or origin' "$RELEASE_SH"; then
-      pass "first-release squash can use origin branch base"
-    else
-      fail_case "first-release squash can use origin branch base" "no origin base path for SQUASH_BASE"
-    fi
-  fi
-else
-  fail_case "first-release squash can use origin branch base" "origin/\$BRANCH not referenced"
 fi
 
 probe_empty_range() {
@@ -277,46 +279,143 @@ _local_latest="$(
 )"
 assert_eq "temp-repo strict latest ignores rc/multi-dot" "v1.1.0" "$_local_latest"
 
-printf '\n-- temp git fixture (squash soft-reset) --\n'
-_tmp_sq="$(mktemp -d "${TMPDIR:-/tmp}/test-release-squash.XXXXXX")"
-cleanup_tmp_sq() { rm -rf "$_tmp_sq"; }
-trap 'cleanup_tmp; cleanup_tmp_sq' EXIT
-
+printf '\n-- temp git fixture (commit range base = tag reachable from HEAD) --\n'
+# A tag cut on a side branch (hotfix) is the global max but not in main's
+# history: bump from it, but take the commit range from the nearest reachable tag.
+# shellcheck disable=SC1090
+eval "$(extract_fn reachable_tag)" 2>/dev/null || true
+_tmp_rt="$(mktemp -d "${TMPDIR:-/tmp}/test-release-reachable.XXXXXX")"
+cleanup_tmp_rt() { rm -rf "$_tmp_rt"; }
+trap 'cleanup_tmp; cleanup_tmp_rt' EXIT
 (
-  cd "$_tmp_sq"
+  cd "$_tmp_rt"
   git init -q -b main
   git config user.email "test@example.com"
   git config user.name "test-release"
-  echo a > file.txt
-  git add file.txt
-  git commit -q -m "base"
+  echo a > file.txt && git add file.txt && git commit -q -m "base"
   git tag v0.1.0
-  echo b >> file.txt
-  git add file.txt
-  git commit -q -m "wip one"
-  echo c >> file.txt
-  git add file.txt
-  git commit -q -m "wip two"
-  echo d >> file.txt
-  git add file.txt
-  git commit -q -m "merge(ORI-x): noise"
-  count_before="$(git rev-list --count v0.1.0..HEAD)"
-  tree_before="$(git rev-parse 'HEAD^{tree}')"
-  git reset --soft v0.1.0
-  git commit -q -m "Release v0.2.0"
-  count_after="$(git rev-list --count v0.1.0..HEAD)"
-  tree_after="$(git rev-parse 'HEAD^{tree}')"
-  msg="$(git log -1 --pretty=%s)"
-  printf '%s\n' "$count_before" > "$_tmp_sq/count_before"
-  printf '%s\n' "$count_after" > "$_tmp_sq/count_after"
-  printf '%s\n' "$tree_before" > "$_tmp_sq/tree_before"
-  printf '%s\n' "$tree_after" > "$_tmp_sq/tree_after"
-  printf '%s\n' "$msg" > "$_tmp_sq/msg"
+  git tag v0.1.1-rc1
+  git checkout -q -b hotfix
+  echo fix >> file.txt && git commit -q -am "hotfix"
+  git tag v0.1.1
+  git checkout -q main
+  echo b >> file.txt && git commit -q -am "main work"
 )
-assert_eq "squash fixture starts with 3 commits since tag" "3" "$(cat "$_tmp_sq/count_before")"
-assert_eq "squash fixture collapses to 1 commit since tag" "1" "$(cat "$_tmp_sq/count_after")"
-assert_eq "squash fixture preserves tree" "$(cat "$_tmp_sq/tree_before")" "$(cat "$_tmp_sq/tree_after")"
-assert_eq "squash fixture clean message" "Release v0.2.0" "$(cat "$_tmp_sq/msg")"
+if declare -F reachable_tag >/dev/null; then
+  assert_eq "reachable_tag skips side-branch tag v0.1.1" "v0.1.0" "$(cd "$_tmp_rt" && reachable_tag)"
+  assert_eq "reachable_tag on hotfix branch sees v0.1.1" "v0.1.1" "$(cd "$_tmp_rt" && git checkout -q hotfix && reachable_tag)"
+else
+  fail_case "reachable_tag skips side-branch tag v0.1.1" "reachable_tag() missing from release.sh"
+fi
+if grep -q 'RANGE_BASE="\${RANGE_TAG:-}"' "$RELEASE_SH"; then
+  pass "commit range uses the reachable tag, not the global max"
+else
+  fail_case "commit range uses the reachable tag, not the global max" "RANGE_BASE not wired to RANGE_TAG"
+fi
+
+printf '\n-- temp git fixture (squash base = commits not yet on origin) --\n'
+# --squash folds only the unpushed stack: base is origin/<branch>, so the squash
+# commit fast-forwards origin and pushed (PR-merged) history is never rewritten.
+# shellcheck disable=SC1090
+eval "$(extract_fn squash_base)" 2>/dev/null || true
+_tmp_sb="$(mktemp -d "${TMPDIR:-/tmp}/test-release-squashbase.XXXXXX")"
+cleanup_tmp_sb() { rm -rf "$_tmp_sb"; }
+trap 'cleanup_tmp; cleanup_tmp_rt; cleanup_tmp_sb' EXIT
+(
+  cd "$_tmp_sb"
+  git init -q --bare origin.git
+  git init -q -b main work
+  cd work
+  git config user.email "test@example.com"
+  git config user.name "test-release"
+  git remote add origin ../origin.git
+  echo a > file.txt && git add file.txt && git commit -q -m "base"
+  git tag v0.1.0
+  echo b >> file.txt && git commit -q -am "merged PR one"
+  echo c >> file.txt && git commit -q -am "merged PR two"
+  git push -q origin main
+)
+if declare -F squash_base >/dev/null; then
+  set +e
+  _sb_out="$(cd "$_tmp_sb/work" && squash_base main 2>&1)"
+  _sb_rc=$?
+  set -e
+  if [[ "$_sb_rc" -ne 0 ]] && grep -q 'never rewrites' <<<"$_sb_out"; then
+    pass "squash_base refuses when HEAD is already on origin (pushed history)"
+  else
+    fail_case "squash_base refuses when HEAD is already on origin (pushed history)" "rc=$_sb_rc out='$_sb_out'"
+  fi
+
+  (
+    cd "$_tmp_sb/work"
+    echo d >> file.txt && git commit -q -am "docs: promote CHANGELOGs"
+    echo e >> file.txt && git commit -q -am "wip"
+  )
+  assert_eq "squash_base is origin/<branch> even when a tag is reachable" \
+    "origin/main" "$(cd "$_tmp_sb/work" && squash_base main)"
+
+  _sb_tree_before="$(cd "$_tmp_sb/work" && git rev-parse 'HEAD^{tree}')"
+  _sb_origin_before="$(cd "$_tmp_sb/work" && git rev-parse origin/main)"
+  (
+    cd "$_tmp_sb/work"
+    git reset -q --soft "$(squash_base main)"
+    git commit -q -m "Release v0.2.0"
+    git push -q origin refs/heads/main
+  ) >/dev/null 2>&1
+  assert_eq "squash folds the unpushed stack into one commit" \
+    "1" "$(cd "$_tmp_sb/work" && git rev-list --count "$_sb_origin_before..HEAD")"
+  assert_eq "squash commit carries the release message" \
+    "Release v0.2.0" "$(cd "$_tmp_sb/work" && git log -1 --pretty=%s)"
+  assert_eq "squash preserves the tree" "$_sb_tree_before" "$(cd "$_tmp_sb/work" && git rev-parse 'HEAD^{tree}')"
+  assert_eq "squash of unpushed stack fast-forwards origin without force" \
+    "$(cd "$_tmp_sb/work" && git rev-parse HEAD)" "$(git -C "$_tmp_sb/origin.git" rev-parse main)"
+  assert_eq "squash leaves pushed commits in origin history" \
+    "3" "$(git -C "$_tmp_sb/work" rev-list --count v0.1.0..origin/main)"
+
+  set +e
+  _sb_out="$(cd "$_tmp_sb/work" && git checkout -q -b master && squash_base master 2>&1)"
+  _sb_rc=$?
+  set -e
+  if [[ "$_sb_rc" -ne 0 ]] && grep -q 'origin/master' <<<"$_sb_out"; then
+    pass "squash_base refuses when origin/<branch> does not exist"
+  else
+    fail_case "squash_base refuses when origin/<branch> does not exist" "rc=$_sb_rc out='$_sb_out'"
+  fi
+else
+  fail_case "squash_base refuses when HEAD is already on origin (pushed history)" "squash_base() missing from release.sh"
+fi
+if grep -q 'SQUASH_BASE="\$(squash_base "\$BRANCH")"' "$RELEASE_SH"; then
+  pass "release.sh takes the squash base from squash_base"
+else
+  fail_case "release.sh takes the squash base from squash_base" "SQUASH_BASE not wired to squash_base"
+fi
+
+printf '\n-- CHANGELOG readiness (one [Unreleased] + section per tag) --\n'
+# shellcheck disable=SC1090
+eval "$(extract_fn changelog_problems)"
+_tmp_cl="$(mktemp -d "${TMPDIR:-/tmp}/test-release-changelog.XXXXXX")"
+cleanup_tmp_cl() { rm -rf "$_tmp_cl"; }
+trap 'cleanup_tmp; cleanup_tmp_rt; cleanup_tmp_sb; cleanup_tmp_cl' EXIT
+mkdir -p "$_tmp_cl/packages/a" "$_tmp_cl/packages/b"
+printf '## [Unreleased]\n\n## [0.6.0] - 2026-10-01\n\n- x\n' > "$_tmp_cl/packages/a/CHANGELOG.md"
+printf '## [Unreleased]\n\n## [0.6.0] - 2026-10-01\n\nNo changes.\n' > "$_tmp_cl/packages/b/CHANGELOG.md"
+assert_eq "changelog ready: every package has one [Unreleased] + [0.6.0]" "" "$(changelog_problems "$_tmp_cl" 0.6.0)"
+assert_eq "changelog refuse: missing tag section" \
+  "packages/a/CHANGELOG.md: no ## [0.6.1] section|packages/b/CHANGELOG.md: no ## [0.6.1] section" \
+  "$(changelog_problems "$_tmp_cl" 0.6.1 | paste -sd'|' -)"
+printf '## [Unreleased]\n\n## [0.6.0] - 2026-10-01\n\n## [Unreleased]\n' > "$_tmp_cl/packages/b/CHANGELOG.md"
+assert_eq "changelog refuse: duplicate [Unreleased]" \
+  "packages/b/CHANGELOG.md: 2 [Unreleased] sections (expected 1)" \
+  "$(changelog_problems "$_tmp_cl" 0.6.0)"
+assert_eq "changelog version dots are literal" \
+  "packages/a/CHANGELOG.md: no ## [0x6x0] section|packages/b/CHANGELOG.md: 2 [Unreleased] sections (expected 1)|packages/b/CHANGELOG.md: no ## [0x6x0] section" \
+  "$(changelog_problems "$_tmp_cl" 0x6x0 | paste -sd'|' -)"
+
+if grep -q 'changelog_problems "\$ROOT"' "$RELEASE_SH"; then
+  pass "release.sh checks CHANGELOG readiness for the new tag"
+else
+  fail_case "release.sh checks CHANGELOG readiness for the new tag" "changelog_problems not called on ROOT"
+fi
 
 printf '\n==> summary: %s passed, %s failed\n' "$PASS" "$FAIL"
 if [[ "$FAIL" -ne 0 ]]; then

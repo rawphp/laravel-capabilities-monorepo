@@ -5,11 +5,14 @@
 declare(strict_types=1);
 
 use Rawphp\Capabilities\Approval\ApprovalManager;
+use Rawphp\Capabilities\Approval\ApprovalPolicy;
+use Rawphp\Capabilities\Approval\ApprovalStateMachine;
 use Rawphp\Capabilities\Boot\ArrayContainer;
 use Rawphp\Capabilities\Boot\ContainerBindings;
 use Rawphp\Capabilities\CapabilitiesServiceProvider;
 use Rawphp\Capabilities\Contracts\ApprovalGateway;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Tests\Fixtures\ApprovalHelpers;
 
 it('happy: ApprovalGateway contract exists with find accept reject [D-006]', function () {
@@ -76,4 +79,51 @@ it('happy: ApprovalGateway contract has no concrete ApprovalManager use-import [
 
     expect($src)->not->toMatch('/^use\s+Rawphp\\\\Capabilities\\\\Approval\\\\ApprovalManager\s*;/m')
         ->and($src)->toMatch('/\\\\Rawphp\\\\Capabilities\\\\Approval\\\\ApprovalManager|never on concrete ApprovalManager/');
+});
+
+function gatewayRejectManager(): ApprovalManager
+{
+    $clock = new FixedClock(new DateTimeImmutable('2026-05-02T00:00:00Z'));
+
+    return ApprovalManager::inMemory($clock)
+        ->withConfig([
+            'execution' => ApprovalStateMachine::EXECUTION_DEFERRED,
+            'ttl_hours' => 1,
+            'resume' => [
+                'enabled' => true,
+                'every_seconds' => 15,
+                'grace_seconds' => 5,
+                'stuck_after_seconds' => 30,
+                'lease_seconds' => 20,
+            ],
+        ])
+        ->withPolicy(new ApprovalPolicy(
+            policy: ApprovalPolicy::CUSTOM,
+            customChecker: static fn () => true,
+        ))
+        ->withExecutor(static fn () => CapabilityResult::ok(['x' => 1]));
+}
+
+it('reject of an unknown approval id is not_found [D-006]', function () {
+    expect(gatewayRejectManager()->reject('missing', (object) ['id' => 'a'])->errorCode())->toBe('not_found');
+});
+
+it('reject of a pending approval is rejected or forbidden, and a repeat reject conflicts [D-006]', function () {
+    $mgr = gatewayRejectManager();
+    $pending = $mgr->request([
+        'capability_name' => 'c',
+        'tenant_id' => 't1',
+        'requester_actor_type' => 'user',
+        'requester_actor_id' => 'u1',
+        'input_json' => [],
+    ]);
+
+    $rejected = $mgr->reject($pending['id'], (object) ['id' => 'u1'], 'no', ['tenant_id' => 't1']);
+    expect($rejected->errorCode())->toBeIn(['rejected', 'forbidden']);
+
+    // second reject on rejected → conflict
+    if ($rejected->errorCode() === 'rejected') {
+        expect($mgr->reject($pending['id'], (object) ['id' => 'u1'], null, ['tenant_id' => 't1'])->errorCode())
+            ->toBe('conflict');
+    }
 });

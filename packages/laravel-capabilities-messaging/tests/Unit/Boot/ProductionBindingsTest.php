@@ -132,9 +132,10 @@ it('webhook requires UpdateQueue and does not default FakeQueue [L-004]', functi
     $ctor = $ref->getConstructor();
     expect($ctor)->not->toBeNull();
     $params = $ctor->getParameters();
-    expect($params)->toHaveCount(2)
+    expect($params)->toHaveCount(3)
         ->and($params[1]->getName())->toBe('queue')
-        ->and($params[1]->allowsNull())->toBeFalse();
+        ->and($params[1]->allowsNull())->toBeFalse()
+        ->and($params[2]->getName())->toBe('logger');
 
     $queue = new FakeQueue;
     $ctrl = new TelegramWebhookController($config, $queue);
@@ -175,7 +176,7 @@ it('HttpTelegramBotClient uses transport only — no network [L-004]', function 
 
     $bot->editMessageText('42', 3, 'edited');
     expect($calls[1]['method'])->toBe('editMessageText');
-    expect($bot->calls())->toHaveCount(2);
+    expect($calls)->toHaveCount(2);
 });
 
 it('HttpTelegramBotClient fails closed without bot token [L-004]', function () {
@@ -234,5 +235,5 @@ it('webhook controller source does not hard-default FakeQueue [L-004]', function
 it('README documents L-006 residual for identity/threads [L-004]', function () {
     $readme = file_get_contents(H::MSG_ROOT.'/README.md');
     expect($readme)->toContain('L-006')
-        ->and($readme)->toMatch('/in-memory|process-local|not durable/i');
+        ->and($readme)->toContain('no thread history');
 });

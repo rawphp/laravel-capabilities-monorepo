@@ -21,6 +21,47 @@ final class TelegramUpdateParser
     }
 
     /**
+     * A tapped inline button (Telegram `callback_query`) — an approval decision, never chat text.
+     *
+     * @param  array<string, mixed>  $update
+     */
+    public static function isCallbackQuery(array $update): bool
+    {
+        return is_array($update['callback_query'] ?? null);
+    }
+
+    /**
+     * @param  array<string, mixed>  $update
+     */
+    public static function callbackQueryId(array $update): ?string
+    {
+        $id = $update['callback_query']['id'] ?? null;
+
+        return is_scalar($id) ? (string) $id : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $update
+     */
+    public static function callbackData(array $update): string
+    {
+        $data = $update['callback_query']['data'] ?? '';
+
+        return is_scalar($data) ? (string) $data : '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $update
+     * @return array<string, mixed>
+     */
+    public static function callbackFrom(array $update): array
+    {
+        $from = $update['callback_query']['from'] ?? [];
+
+        return is_array($from) ? $from : [];
+    }
+
+    /**
      * @param  array<string, mixed>  $update
      */
     public static function chatId(array $update): string|int|null
@@ -29,6 +70,14 @@ final class TelegramUpdateParser
             ?? $update['callback_query']['message']['chat']['id']
             ?? $update['chat_id']
             ?? null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $update
+     */
+    public static function isPrivateChat(array $update): bool
+    {
+        return ($update['message']['chat']['type'] ?? null) === 'private';
     }
 
     /**
@@ -84,15 +133,27 @@ final class TelegramUpdateParser
      */
     public static function idempotencyKey(array $update, int $toolCallIndex): ?string
     {
+        $key = self::updateKey($update);
+
+        return $key === null ? null : $key.':'.$toolCallIndex;
+    }
+
+    /**
+     * `telegram:<chat>:<update_id>` — one update in one chat. Null when either is not an integer.
+     *
+     * @param  array<string, mixed>  $update
+     */
+    public static function updateKey(array $update): ?string
+    {
         $updateId = $update['update_id'] ?? null;
         $chatId = self::chatId($update);
         if ($chatId === null || (! is_int($updateId) && ! is_string($updateId))) {
             return null;
         }
 
-        $key = sprintf('telegram:%s:%s:%d', $chatId, $updateId, $toolCallIndex);
+        $key = sprintf('telegram:%s:%s', $chatId, $updateId);
 
-        return preg_match('/^telegram:-?\d+:-?\d+:\d+$/', $key) === 1 ? $key : null;
+        return preg_match('/^telegram:-?\d+:-?\d+$/', $key) === 1 ? $key : null;
     }
 
     /**

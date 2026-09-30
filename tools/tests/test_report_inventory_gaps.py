@@ -160,6 +160,37 @@ class ReportInventoryGapsTests(unittest.TestCase):
             # Remaining gap labels appear in the report body
             self.assertIn("TestMissingGapCase", out)
 
+    def test_fail_on_gaps_exits_non_zero_when_gaps_remain(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._seed_tree(root)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                code = self.report.main(
+                    ["--root", str(root), "--no-pest-list", "--fail-on-gaps"]
+                )
+            self.assertEqual(code, 1)
+            self.assertIn("TestMissingGapCase", buf.getvalue())
+
+    def test_fail_on_gaps_exits_zero_when_inventory_is_matched(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._seed_tree(root)
+            inv = root / "docs/requirements-inventory.md"
+            inv.write_text(
+                "# Inventory\n\n## CLI (`packages/capabilities-cli`)\n\n"
+                "### `internal/catalog/cache_test.go` (1)\n\n"
+                "- [x] TestCachehitsameversion [CLI-CAT]\n",
+                encoding="utf-8",
+            )
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                code = self.report.main(
+                    ["--root", str(root), "--no-pest-list", "--fail-on-gaps"]
+                )
+            self.assertEqual(code, 0)
+            self.assertIn("Remaining gaps: none", buf.getvalue())
+
     def test_gaps_grouped_with_file_context(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

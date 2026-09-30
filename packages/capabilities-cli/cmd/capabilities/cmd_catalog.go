@@ -43,8 +43,7 @@ func cmdCatalog(env Env, args []string) int {
 	}
 	if err != nil {
 		if se, ok := err.(*api.StructuredError); ok {
-			fmt.Fprintln(env.Stderr, se.Error())
-			return se.ExitCode
+			return writeErrorEnvelope(env, se)
 		}
 		fmt.Fprintln(env.Stderr, err.Error())
 		return api.ExitInternal

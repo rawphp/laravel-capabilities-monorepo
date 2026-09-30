@@ -5,13 +5,15 @@ declare(strict_types=1);
 namespace Rawphp\CapabilitiesAi\Support;
 
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use InvalidArgumentException;
 use Rawphp\Capabilities\Contracts\Metrics;
 use Rawphp\Capabilities\Contracts\Tracer;
-use Rawphp\CapabilitiesAi\Contracts\LlmClient;
+use Rawphp\CapabilitiesAi\Contracts\DeadlineAwareLlmClient;
+use Rawphp\CapabilitiesAi\Package;
 use RuntimeException;
 use stdClass;
 use Throwable;
@@ -26,10 +28,18 @@ use Throwable;
  * Observability (D-019): optional core Metrics/Tracer record latency, token
  * usage (response `usage`) and failures around the outbound call only.
  *
+ * Deadline: $deadlineSeconds after the call started, or the turn deadline TurnRunner
+ * passes via withDeadline() when that is sooner. Each request's transport timeout is
+ * $timeoutSeconds capped at the time left minus DEADLINE_MARGIN_SECONDS, and no request
+ * starts with under MIN_REQUEST_SECONDS left (RetryableLlmException, nothing sent).
+ *
  * Rate limits: a 429 is retried up to $maxRetries times via Laravel's Http retry,
  * waiting Retry-After seconds (capped) or 1s, 2s, 4s… when the header is unusable.
+ * The retry follows the same rule, measured from when it will start: it gets the
+ * capped timeout, or is skipped when under MIN_REQUEST_SECONDS would be left. The
+ * 429 then surfaces as a RetryableLlmException carrying its Retry-After.
  */
-final class AnthropicLlmClient implements LlmClient
+final class AnthropicLlmClient implements DeadlineAwareLlmClient
 {
     use LlmClientDefaults;
 
@@ -43,6 +53,20 @@ final class AnthropicLlmClient implements LlmClient
 
     private const MAX_RETRY_AFTER_SECONDS = 60;
 
+    /** Per-request transport timeout; below the default claim_ttl (120s) so one call fits a turn job. */
+    public const DEFAULT_TIMEOUT_SECONDS = 110;
+
+    /**
+     * Seconds kept between a request's capped transport timeout and the deadline. The job
+     * timer starts slightly before TurnRunner fixes the deadline, and after a timeout the
+     * worker still has to record the failed turn (status row, progress events) before the
+     * job is killed; both take well under 2s.
+     */
+    private const DEADLINE_MARGIN_SECONDS = 2;
+
+    /** Absolute turn deadline (hrtime ns) from withDeadline(); null = per-call deadline only. */
+    private ?int $turnDeadlineNs = null;
+
     public function __construct(
         private readonly string $apiKey,
         private readonly string $model = 'claude-sonnet-4-6',
@@ -51,11 +75,26 @@ final class AnthropicLlmClient implements LlmClient
         private readonly ?Metrics $metrics = null,
         private readonly ?Tracer $tracer = null,
         private readonly int $maxRetries = 2,
-    ) {}
+        private readonly int $timeoutSeconds = self::DEFAULT_TIMEOUT_SECONDS,
+        /** Whole complete() call, 429 waits included, must end this long after it starts (claim_ttl). */
+        private readonly int $deadlineSeconds = Package::DEFAULT_CLAIM_TTL,
+    ) {
+        if ($this->timeoutSeconds <= 0) {
+            throw new InvalidArgumentException('Anthropic timeout must be a positive number of seconds');
+        }
+    }
 
     public function supportsToolRounds(): bool
     {
         return true;
+    }
+
+    public function withDeadline(int $deadlineNs): static
+    {
+        $copy = clone $this;
+        $copy->turnDeadlineNs = $deadlineNs;
+
+        return $copy;
     }
 
     public function complete(array $messages, array $tools = []): array
@@ -205,18 +244,40 @@ final class AnthropicLlmClient implements LlmClient
     private function send(array $payload): Response
     {
         $labels = ['provider' => 'anthropic', 'model' => $this->model];
-        $spanId = $this->tracer?->startSpan(self::SPAN_COMPLETE, $labels);
         $started = hrtime(true);
+        $deadlineNs = $started + $this->deadlineSeconds * 1_000_000_000;
+        if ($this->turnDeadlineNs !== null) {
+            $deadlineNs = min($deadlineNs, $this->turnDeadlineNs);
+        }
+        $timeout = $this->timeoutFor($started, $deadlineNs)
+            ?? throw new RetryableLlmException(
+                'Anthropic request not sent: under '.self::MIN_REQUEST_SECONDS.'s left before the turn deadline'
+            );
+        $spanId = $this->tracer?->startSpan(self::SPAN_COMPLETE, $labels);
+        $failedAttempts = 0;
 
         try {
             $response = Http::withHeaders([
                 'x-api-key' => $this->apiKey,
                 'anthropic-version' => '2023-06-01',
                 'content-type' => 'application/json',
-            ])->retry(
+            ])->timeout($timeout)->retry(
                 max(0, $this->maxRetries) + 1,
                 fn (int $attempt, Throwable $e): int => $this->retryDelayMs($attempt, $e),
-                fn (Throwable $e): bool => $e instanceof RequestException && $e->response->status() === 429,
+                function (Throwable $e, PendingRequest $request) use ($deadlineNs, &$failedAttempts): bool {
+                    if (! $e instanceof RequestException || $e->response->status() !== 429) {
+                        return false;
+                    }
+                    $retryAt = hrtime(true) + $this->retryDelayMs(++$failedAttempts, $e) * 1_000_000;
+                    $retryTimeout = $this->timeoutFor($retryAt, $deadlineNs);
+                    if ($retryTimeout === null) {
+                        return false;
+                    }
+                    // Options are re-read per attempt, so the retry runs with its own cap.
+                    $request->timeout($retryTimeout);
+
+                    return true;
+                },
                 throw: false,
             )->post(rtrim($this->baseUrl, '/').'/v1/messages', $payload);
         } catch (Throwable $e) {
@@ -268,6 +329,21 @@ final class AnthropicLlmClient implements LlmClient
     private static function elapsedMs(int $started): float
     {
         return (hrtime(true) - $started) / 1e6;
+    }
+
+    /**
+     * Transport timeout for a request starting at $startNs: the configured timeout, capped
+     * so the request ends DEADLINE_MARGIN_SECONDS before $deadlineNs; null when under
+     * MIN_REQUEST_SECONDS would be left, so the request is not worth starting.
+     */
+    private function timeoutFor(int $startNs, int $deadlineNs): ?int
+    {
+        $leftNs = $deadlineNs - $startNs;
+        if ($leftNs < self::MIN_REQUEST_SECONDS * 1_000_000_000) {
+            return null;
+        }
+
+        return min($this->timeoutSeconds, intdiv($leftNs, 1_000_000_000) - self::DEADLINE_MARGIN_SECONDS);
     }
 
     /**

@@ -1,0 +1,202 @@
+{
+  "auditor": "cross-cutting-auditor",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-audit3",
+  "stack_summary": {
+    "laravel": {
+      "present": true,
+      "version": "11.x|12.x|13.x (illuminate/* components; three packages, not a full app)",
+      "php_version": "8.2+",
+      "key_packages": [
+        "illuminate/support",
+        "illuminate/http",
+        "illuminate/routing",
+        "illuminate/console",
+        "illuminate/bus",
+        "illuminate/events",
+        "illuminate/database",
+        "illuminate/validation",
+        "pestphp/pest",
+        "phpstan/phpstan"
+      ]
+    },
+    "frontend": {
+      "framework": "none",
+      "framework_version": null,
+      "inertia_version": null,
+      "typescript": false,
+      "state_library": "none",
+      "ui_library": "none",
+      "build_tool": "unknown",
+      "key_packages": []
+    },
+    "testing": {
+      "backend": "pest",
+      "frontend": "none"
+    },
+    "tooling": {
+      "linter_backend": "none",
+      "linter_frontend": "none",
+      "formatter_frontend": "none",
+      "types_php": "phpstan"
+    },
+    "infrastructure_hints": {
+      "queue_driver": "unknown",
+      "cache_driver": "unknown",
+      "ci": "github-actions (tests.yml, split-packages.yml)",
+      "deploy": "unknown"
+    },
+    "notes": "Monorepo: packages/laravel-capabilities (core bus, ~22.8k LOC), packages/laravel-capabilities-messaging (~3k), packages/laravel-capabilities-ai (~4.5k), packages/capabilities-cli (Go, ~5.5k). No root app/routes/package.json. Unit-test-only policy (no feature/DB tests), >=95% coverage. Design oracle: docs/spec.md (D-002..D-023). Standing decisions: /Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.do-work/decisions.md (primary checkout, untracked).",
+    "control_plane": {
+      "present": true,
+      "language": "go",
+      "path": "packages/capabilities-cli",
+      "notes": "Go product CLI, HTTP client only (D-016)"
+    }
+  },
+  "scanned_files_count": 46,
+  "findings": [
+    {
+      "id": "X-201",
+      "title": "Split's single concurrency group can drop a pending tag mirror",
+      "category": "ci_cd",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": [
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": ".github/workflows/split-packages.yml",
+          "line": 30,
+          "snippet": "# Serialize ALL splits (main + v* tags share package remotes). Per-ref groups\n# raced ...\nconcurrency:\n  group: split-packages\n  cancel-in-progress: false"
+        },
+        {
+          "file": ".github/workflows/split-packages.yml",
+          "line": 129,
+          "snippet": "if [[ \"$SOURCE_REF\" != \"refs/heads/main\" ]]; then\n  echo \"Source ref ${SOURCE_REF} is not main; leaving ${TARGET_REPO} main untouched\""
+        },
+        {
+          "file": "docs/versioning.md",
+          "line": 50,
+          "snippet": "All split runs (`main`, `v*` tags, `workflow_dispatch`) share one concurrency group, `split-packages` ... Runs queue one after another and are never cancelled"
+        }
+      ],
+      "current_state": "Every split run (main pushes and v* tags) shares the concurrency group `split-packages`. `cancel-in-progress: false` protects only the running run. GitHub keeps at most one pending run per group, and a newer queued run cancels the pending one. Take a tag pushed while a main split is in progress, for example `release.sh --squash`, which pushes main and then the tag within seconds. The tag run waits as pending, and any later push to main in that window (the fix loop merged 42 commits today) cancels it. That tag then never reaches the package remotes, Packagist or the CLI GoReleaser. versioning.md:50 says runs 'queue one after another'.",
+      "recommended_state": "Tag runs never share a pending slot with main runs. After X-101, a tag run pushes only `refs/tags/<tag>` and a main run pushes only `main`, so the race the global group was added for (both pushing package main, 'cannot lock ref') is gone. A per-ref group is enough. Main runs still serialize, and a newer pending main run replacing an older one is correct because the latest tree wins.",
+      "rationale": "The global group was the fix for main and tag runs both pushing package-remote main. X-101 removed that shared ref, so the global group now only adds a way to lose a release publication. The cancellation shows up only as a 'cancelled' run in Actions. Nothing tells the releaser that Packagist or CLI binaries are missing for the tag, and release.sh has already pushed the tag and refuses to reuse it.",
+      "implementation_hint": "split-packages.yml: `concurrency: { group: split-packages-${{ github.ref }}, cancel-in-progress: false }`. Rewrite the lines 30-33 comment to say the main-vs-tag race ended with tag runs no longer pushing main (X-101). Update docs/versioning.md:50 to match: main runs serialize and the newest main wins, and each tag has its own group. A tag run that overlaps a main run may point at a side commit whose parent is the previous package main. That is the same shape hotfix tags already have (versioning.md:25)."
+    },
+    {
+      "id": "X-202",
+      "title": "/release makes --squash the default, which rewrites PR-merged public main",
+      "category": "git_workflow",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "reliability",
+        "dx"
+      ],
+      "locations": [
+        {
+          "file": ".claude/commands/release.md",
+          "line": 46,
+          "snippet": "6. Prefer **`--squash -m \"…\"`** when history since the last tag (or unpushed stack) is noisy merge/wip commits — one clean release commit."
+        },
+        {
+          "file": ".claude/commands/release.md",
+          "line": 102,
+          "snippet": "# Subsequent patch:\n./scripts/release.sh --yes --squash patch"
+        },
+        {
+          "file": "scripts/release.sh",
+          "line": 366,
+          "snippet": "if [[ -n \"$RANGE_TAG\" ]]; then\n    SQUASH_BASE=\"$RANGE_TAG\""
+        },
+        {
+          "file": "scripts/release.sh",
+          "line": 493,
+          "snippet": "git reset --soft \"$SQUASH_BASE\" ... git push --force-with-lease origin \"refs/heads/$BRANCH\""
+        },
+        {
+          "file": ".claude/commands/release.md",
+          "line": 71,
+          "snippet": "- gates: whatever `./scripts/release.sh --help` lists (Pint, PHPStan, Pest, Go)"
+        }
+      ],
+      "current_state": "Since the X-102 fix, `--squash` works: its base is the last tag reachable from HEAD (v0.5.2). origin/main has 216 commits since v0.5.2, 91 of them GitHub PR merges ('Merge pull request #126 …'). The agent command tells the agent to prefer `--squash` whenever the history is 'noisy merge' commits, which it always is on this repo, and gives `--yes --squash patch` as the standard follow-up example. Following it collapses all 216 public commits into one and force-with-lease pushes main. Open PR branches and the `.worktrees/*` checkouts are all based on the old main. The v0.5.x releases did not squash. Secondary: step 2 tells the agent to read the gate list from `release.sh --help`, but `usage()` prints only options. The gates are in the header comment and the dry-run plan.",
+      "recommended_state": "A routine release never rewrites pushed history. `--squash` folds only the unpushed stack, for example the CHANGELOG promotion commit (base `origin/<branch>`). Or it stays the explicit first-cut tool that the command never recommends by default. The gate list the command points at is printed where the command says it is.",
+      "rationale": "On a PR-merged main, a squash-to-last-tag force-push orphans every merged PR's commits. Every open branch then carries 216 commits that no longer exist on main, so their PR diffs balloon or conflict. If main is protected, the push fails after the local `reset --soft`, and local main is left diverged. The script is honest about the rewrite. The problem is the command's default guidance, which makes the destructive path the normal one for an agent running `/release` unattended.",
+      "implementation_hint": "release.md: delete hard rule 6. Change the 'Subsequent patch' example to `./scripts/release.sh --yes patch`, and say `--squash` is for the first public cut or for folding unpushed local commits. Optionally, in release.sh, use `SQUASH_BASE=origin/$BRANCH` whenever it exists, so a squash only touches commits not yet on origin; the tag-based base then remains only for the first-release case. Add a test-release.sh case asserting that base. Add a 'Gates:' block to `usage()` (the same five lines as the header comment), or change release.md:71 to point at `--dry-run`, which prints them."
+    },
+    {
+      "id": "X-203",
+      "title": "Core [Unreleased] omits 5 removed public methods; one entry is stale",
+      "category": "documentation",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": [
+        "maintainability",
+        "dx"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/CHANGELOG.md",
+          "line": 97,
+          "snippet": "### Changed (BREAKING)"
+        },
+        {
+          "file": "packages/laravel-capabilities/CHANGELOG.md",
+          "line": 365,
+          "snippet": "`ArtisanCommandRegistrar::classes($artisanConfig, $approvalConfig)` adds\n  `ResumeApprovalsCommand` whenever `ResumeSchedulePlan::fromConfig()` plans a sweep"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Adapters/Artisan/ArtisanCommandRegistrar.php",
+          "line": 39,
+          "snippet": "public static function classes(array $artisanConfig = []): array"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Adapters/PeerSupportMatrix.php",
+          "line": 16,
+          "snippet": "final class PeerSupportMatrix  // public static supports() removed in 1ff1b28"
+        }
+      ],
+      "current_state": "Four X-001 commits removed public methods that shipped in v0.5.3: `SurfaceNames::isKnown()` (e963a9d), `BootGuard::fromDefaults()` and `evaluatePeer()` (ed1c2c8), `SchemaSnapshot::document()` (ec7c174) and `PeerSupportMatrix::supports()` (1ff1b28). None of them touched the CHANGELOG, and [Unreleased] names none of them. The README presents `PeerSupportMatrix` as the machine-readable matrix. Separately, the L-108 Fixed entry documents `ArtisanCommandRegistrar::classes($artisanConfig, $approvalConfig)`. The later L-015 commit moved the resume command to `infrastructure()` / `all()` and put `classes()` back to one argument, as the L-015 Added entry says. The two entries contradict each other.",
+      "recommended_state": "[Unreleased] lists the five removals under 'Changed (BREAKING)', or under a 'Removed' heading. The L-108 entry names the shipped seam: `ArtisanCommandRegistrar::infrastructure($approvalConfig)` / `all()`.",
+      "rationale": "On 0.x, removals are allowed without a major bump (versioning.md). The package CHANGELOG is the consumer's only upgrade guide on the split remote, though, and this one already has a BREAKING section for exactly this. Every other fix commit in c82e624..HEAD that touched package src also updated its CHANGELOG (checked commit by commit). These four are the only gaps, besides 47e0877, which is internal only.",
+      "implementation_hint": "Under `### Changed (BREAKING)` add: '- **Unused public helpers removed:** `Boot\\SurfaceNames::isKnown()`, `Boot\\BootGuard::fromDefaults()` / `evaluatePeer()`, `Support\\SchemaSnapshot::document()`, `Adapters\\PeerSupportMatrix::supports()`. Use `PeerSupportMatrix` constraints with Composer semver, or `BootGuard` via the provider.' In the L-108 bullet, replace `ArtisanCommandRegistrar::classes($artisanConfig, $approvalConfig)` with `ArtisanCommandRegistrar::infrastructure($approvalConfig)` (provider: `all()`)."
+    },
+    {
+      "id": "X-204",
+      "title": "CI never runs the release self-test (scripts/lib/test-release.sh)",
+      "category": "ci_cd",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": [
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": ".github/workflows/tests.yml",
+          "line": 51,
+          "snippet": "- name: Inventory tools unit tests\n  run: python3 -m unittest discover -s tools/tests"
+        },
+        {
+          "file": "scripts/lib/test-release.sh",
+          "line": 10,
+          "snippet": "# Usage:\n#   bash scripts/lib/test-release.sh"
+        },
+        {
+          "file": "docs/versioning.md",
+          "line": 80,
+          "snippet": "bash scripts/lib/test-release.sh"
+        }
+      ],
+      "current_state": "The release script has a self-contained self-test: 50 cases for version bumps, the flag matrix, squash base, reachable-tag range and the CHANGELOG gate. It needs no network and ran in about 2 s here, all passing. Only a human or agent following versioning.md or /release runs it. release.sh changed again this iteration (X-102: reachable-tag base, CHANGELOG gate, gofmt gate). Its comments show earlier regressions that only a run exposes, such as the SIGPIPE-under-pipefail abort at line 413.",
+      "recommended_state": "The Tests workflow runs `bash scripts/lib/test-release.sh`, next to the inventory tool tests, so a PR that breaks the ship path fails before the next release attempt.",
+      "rationale": "Nobody runs the release path until release day, and a break then blocks a tag. The harness already exists and is cheap. The repo gates its other tooling (tools/tests) the same way, so this adds no new kind of gate.",
+      "implementation_hint": "tests.yml php job, after 'Inventory tools unit tests': `- name: Release ship-path self-test\\n  run: bash scripts/lib/test-release.sh`. The harness builds temp git fixtures and sets its own git identity, so on ubuntu-latest it needs only git and bash."
+    }
+  ],
+  "notes": "Iteration-3 checks of the iteration-2 fixes. X-101 is fixed correctly: only refs/heads/main pushes package main, tag runs push only the tag, and the job-level `if` makes a dispatch from another ref a no-op. The fix also makes the global concurrency group unnecessary, and that group now carries its own risk (X-201). X-102 is fixed: release.md has a required CHANGELOG promote-and-push step, and release.sh takes the range and squash base from `git tag --merged HEAD`, covered by test-release.sh (50/50 pass). A working --squash exposes that the command recommends it by default (X-202), and the gate-list pointer to --help is wrong (folded into X-202). X-103 is fixed: D-018 now says stdout, http_status, cli_exit (1-6 range) and retry_after, and names ErrorCodeMap as the full set. Checked against errors.go ParseErrorEnvelope, HttpResponse Retry-After and ErrorCodeMap's 500 default. X-104 is fixed: no package doc links escape the split tree or point at tests/, test commands say to run in the monorepo, and a slug checker over every repo .md found 0 broken relative links or anchors. X-105 is fixed: README L-006 wording, D-002–D-024 in AGENTS.md and docs/README.md, and versioning.md covers all three Composer packages. X-106 is fixed: gofmt step in the Go job and in release.sh run_cli_gates, and `gofmt -l .` is empty. Other checks: Pint --test passes, the inventory gap check reports no gaps, tools/tests are OK, and composer validate passes for root and all three packages (self.version lockstep and branch-alias 0.x-dev on messaging and AI). Dependency direction is clean: messaging and AI import only Contracts\\*, CapabilityResult/CapabilityContext and the allowlisted ErrorCodeMap (messaging) and Redactor (AI). Core refers to siblings only through class_exists/string constants. The new L-015 `optimizes()` hook is guarded with method_exists, so the illuminate ^11.0 prefer-lowest cell is safe. Every CHANGELOG-named symbol for the iteration-2 fixes exists in code. LinkStore and AgentTurn did not exist at v0.5.3, so their new methods are not a released-API break. Every src-touching commit in c82e624..HEAD has a CHANGELOG entry except the four X-001 removals (X-203) and 47e0877 (internal). Not re-raised: coverage floor and release.sh not running coverage (versioning.md documents it as enforced on the PR, and coverage is deferred for this run), package-remote main rollback (deferred), and the duplicate Tests run on main pushes (cost only)."
+}

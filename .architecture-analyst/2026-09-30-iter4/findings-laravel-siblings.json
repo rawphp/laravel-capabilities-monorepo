@@ -1,0 +1,108 @@
+{
+  "auditor": "laravel-auditor-siblings",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-audit4",
+  "stack_summary": {
+    "laravel": "illuminate/* 11-13 component packages (library monorepo, not an app)",
+    "scope": ["packages/laravel-capabilities-messaging", "packages/laravel-capabilities-ai"],
+    "testing": "pest, unit-only policy",
+    "types": "phpstan"
+  },
+  "scanned_files_count": 41,
+  "findings": [
+    {
+      "id": "M-301",
+      "title": "Let an in-tenant approver accept: core reads approver and row tenant differently",
+      "category": "authorization",
+      "severity": "high",
+      "effort": "small",
+      "impact": ["reliability", "security"],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+          "line": 823,
+          "snippet": "private function tenantOf(object $actor): ?string { if (isset($actor->tenant_id)) { ... } return null; }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+          "line": 390,
+          "snippet": "->allows($row, $approver, $options['tenant_id'] ?? $this->tenantOf($approver))"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Support/DefaultScopeResolver.php",
+          "line": 120,
+          "snippet": "} elseif (is_object($user) && isset($user->current_tenant_id)) { $fromMembership = (string) $user->current_tenant_id;"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Support/DefaultScopeResolver.php",
+          "line": 159,
+          "snippet": "$tenantId = 'default-tenant';"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+          "line": 739,
+          "snippet": "'tenant_id' => $ctx->tenantId(),"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalPolicy.php",
+          "line": 121,
+          "snippet": "if ($rowTenant !== null && $rowTenant !== '' && $actorTenantId !== $rowTenant) { return false; }"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Support/LinkedUser.php",
+          "line": 14,
+          "snippet": "public readonly ?string $tenantId = null,"
+        },
+        {
+          "file": "packages/laravel-capabilities-messaging/src/Telegram/CallbackHandler.php",
+          "line": 126,
+          "snippet": "$options = ['decided_via' => [...]]; // no tenant_id: core falls back to tenantOf($user)"
+        }
+      ],
+      "current_state": "The fixer's report is correct but understates the problem. The approval row's tenant comes from the ScopeResolver: the user's current_tenant_id, or 'default-tenant' when the user has none and tenancy is not required. The approver's tenant comes from ApprovalManager::tenantOf(), which reads $actor->tenant_id. ApprovalResumer::tenantOf does the same. Neither Telegram (CallbackHandler) nor HTTP (ApprovalController) passes options['tenant_id']. So every accept or reject fails with forbidden unless the actor has both tenant_id and current_tenant_id and they match. Reproduced on the default registry with policy=requester, where the requester accepts their own approval: a plain user gets row 'default-tenant' and forbidden; tenant_id='t1' only gets row 'default-tenant' and forbidden; current_tenant_id='t1' only gets row 't1' and forbidden; a messaging LinkedUser('7','t1') gets row 'default-tenant' and forbidden; both attributes set gives ok.",
+      "recommended_state": "An approver passes the tenant check exactly when the ScopeResolver that stamped the row resolves the approver to the same tenant. Every accept, reject and resume path (HTTP, Telegram, CLI) uses that one rule. A single-tenant host whose User has no tenant attributes can then approve with the default setup.",
+      "rationale": "In a default install, no approval-gated capability can be approved or rejected over Telegram or HTTP. Every tap returns 'You are not allowed to decide this approval.' (after M-202), and the rows sit pending until they expire. It fails closed, so nothing leaks, but the whole D-006 approval loop is unusable unless the host happens to set both attributes. Renaming LinkedUser::$tenantId to tenant_id, as the fixer's note suggests, would not fix it: the row still holds 'default-tenant' or current_tenant_id. Unit tests miss it because every accept test passes an explicit tenant_id option or gives the actor a matching tenant_id (for example l102Approver in ApprovalRetryTest). The fix belongs in core, the messaging sibling only surfaces it. Dedupe with any core finding on ApprovalManager::tenantOf.",
+      "implementation_hint": "Core: inject the bound ScopeResolver (via ResolveTenantFromCaller) into ApprovalManager and ApprovalResumer. Replace tenantOf($actor) with `$this->scopes->resolve(CapabilityContext::make(['caller' => $via, 'actor' => $actor]))->tenantId`, keeping options['tenant_id'] as a trusted override. Delete both tenantOf helpers. Unit tests on the default registry, with no tenant option and no tenant attributes: the requester accepts their own approval (ok), a user with current_tenant_id='t1' accepts a 't1' row (ok) and is refused on a 't2' row (forbidden). Messaging needs no change. Add a CallbackRoutingTest case with a real ApprovalManager and a LinkedUser tapper, which today is forbidden and after the fix is ok."
+    },
+    {
+      "id": "M-302",
+      "title": "Budget the whole AI turn, not each LLM call, against the claim_ttl job timeout",
+      "category": "queues_events",
+      "severity": "medium",
+      "effort": "small",
+      "impact": ["reliability"],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities-ai/src/Domain/ConversationService.php",
+          "line": 91,
+          "snippet": "$job->timeout = $this->claimTtl; // one job runs the whole turn"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Domain/TurnRunner.php",
+          "line": 84,
+          "snippet": "while ($rounds < $this->maxToolRounds) { ... $response = $this->llm->complete($messages, $toolDefs);"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Support/AnthropicLlmClient.php",
+          "line": 223,
+          "snippet": "$started = hrtime(true); // per complete() call, reset every round"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Support/AnthropicLlmClient.php",
+          "line": 298,
+          "snippet": "return self::elapsedMs($started) + $delayMs + $this->timeoutSeconds * 1000 < $this->deadlineSeconds * 1000;"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/src/Support/ContainerBindings.php",
+          "line": 134,
+          "snippet": "claim_ttl is also the client's retry deadline, so 429 waits cannot push it past the job."
+        }
+      ],
+      "current_state": "RunTurnJob's worker timeout is claim_ttl (120s) for the whole turn, and TurnRunner makes up to max_tool_rounds (8) complete() calls in that one job. The M-104 guard (timeout 110 < claim_ttl 120) and the M-206 retry deadline both measure from the start of each complete() call. So only round 1 is protected. A tool-using turn whose rounds together pass 120s (for example 20s to pick a tool plus a 105s answer, which is under the 110s per-call timeout) or a 429 wait in round 2 gets the worker killed mid-request. The turn then waits for the stale-running reaper.",
+      "recommended_state": "A turn stops cleanly before it can outlive its job. The runner does not start a new LLM round, and the client does not retry a 429, unless elapsed turn time plus one full request timeout still fits inside claim_ttl minus a small margin. Otherwise the turn fails as a retryable timeout with its progress events, as round-1 timeouts already do.",
+      "rationale": "M-206 was fixed as specified, but the ContainerBindings and config comments now promise a guarantee that holds for the first round only. Every tool call costs at least a second LLM round, so multi-round turns are the normal agent case, not an edge. A worker killed by the queue timeout also kills the worker process. The user then sees the turn hang until the host-scheduled reaper runs, instead of an immediate retryable error.",
+      "implementation_hint": "Keep the LlmClient contract. Give AnthropicLlmClient an absolute deadline instead of a relative one: `withDeadline(float $monotonicDeadlineMs): self`, or a nullable deadline property. TurnRunner computes `$turnDeadline = hrtime at claim + claimTtl*1000` once. Before each round it fails the turn retryably when `now + timeout*1000 >= turnDeadline`, and it hands the deadline to the client so retryFitsDeadline compares against the turn and not the call. Correct the ContainerBindings and config comments. Unit test with FakeLlmClient and a fake clock: a second round that would start past the budget fails as retryable without calling complete()."
+    }
+  ],
+  "notes": "Iteration-4 audit of messaging and AI on arch-audit4 (HEAD after edd3edd). Read AGENTS.md, common4 context, the iteration-3 sibling findings, and the 019e698..HEAD diffs of both packages. The boundary (D-007/D-011) still holds: the new code imports only the core contracts, CapabilityResult and Support\\Redactor, which is on the allowlist. Verified fixes from iteration 3: M-201 is complete (messaging moves the chat_id skip above requireTelegramSecrets, and core now wraps each notifyPending in try/catch via FailureReporter). M-202 is correct: a completed reject is recognised by the 'rejected' code, and forbidden is split by re-reading the row. A capability whose own run() returns conflict or not_found after acceptance gets the toast 'already decided' or 'Unknown approval', which is cosmetic and not reported. M-203 is correct: redacted input as JSON-encoded key lines with control characters removed from keys, truncated to 4096 UTF-16 units, posted to message_thread_id. M-204 is correct: TelegramText measures in UTF-16 units and never splits a character, sendReply keeps the index of the part that failed so a retry does not resend earlier parts, and blank answers get a fallback. The adapter's second split is redundant but harmless. M-205 is correct: the marker is claimed after the pending-reply check, and the only exception that reaches the queue (RetryableUpdateFailure) comes from sendReply after the pending reply is stored, so the marker never blocks a legitimate retry. The job timeout of 120 is documented alongside retry_after. M-206 is correct per call, but the budget is per call and the job runs up to 8 calls (M-302). Fixer-flagged gap: LinkedUser exposes tenantId while core reads tenant_id. It is real, but it is one symptom of the core mismatch between tenantOf (tenant_id) and DefaultScopeResolver (current_tenant_id, else 'default-tenant'). Reproduced with a scratch script on the default registry, and it breaks HTTP and Eloquent-user approvals too. Raised as M-301 with the fix in core, so dedupe with the core auditor. Also note that MessagingBindings::build() wires no CallbackHandler and no bus, so on that path taps already fail closed as 'unavailable'. LinkedUser matters only to hosts that construct IdentityLinker themselves. Deferred items were not re-reported. Test suites were not run because the tree is a read-only snapshot."
+}

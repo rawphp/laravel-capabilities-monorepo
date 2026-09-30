@@ -4,18 +4,22 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Domain;
 
-use Illuminate\Support\Carbon;
+use Closure;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\Redactor;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
+use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
+use Rawphp\CapabilitiesAi\Contracts\DeadlineAwareLlmClient;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
+use Rawphp\CapabilitiesAi\Contracts\TurnClaim;
 use Rawphp\CapabilitiesAi\Models\Conversation;
-use Rawphp\CapabilitiesAi\Models\Message;
-use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
+use Rawphp\CapabilitiesAi\Package;
+use Rawphp\CapabilitiesAi\Support\EloquentConversationStore;
 use Rawphp\CapabilitiesAi\Support\ProposalFenceExtractor;
 use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
 use Rawphp\CapabilitiesAi\Support\RetryableLlmException;
@@ -24,6 +28,11 @@ use RuntimeException;
 
 /**
  * Run a claimed turn: LLM loop + bus-only tool invokes.
+ *
+ * Turn budget: the whole turn runs in one job whose timeout is claim_ttl ($turnBudgetSeconds).
+ * A {@see DeadlineAwareLlmClient} gets that deadline and caps each request (and retry) to the
+ * time left, so the worker is never killed mid-request. A round is refused, failing the turn
+ * as retryable, only when less than {@see DeadlineAwareLlmClient::MIN_REQUEST_SECONDS} remain.
  */
 final class TurnRunner
 {
@@ -39,6 +48,10 @@ final class TurnRunner
         private readonly ProposalFenceExtractor $proposalExtractor = new ProposalFenceExtractor,
         private readonly ResolveConversationActor $actors = new ResolveConversationActor,
         private readonly bool $proposalsEnabled = true,
+        private readonly ConversationStore $store = new EloquentConversationStore,
+        private readonly int $turnBudgetSeconds = Package::DEFAULT_CLAIM_TTL,
+        /** @var (Closure(): int)|null Monotonic nanoseconds; null = hrtime(true). Tests inject a fake clock. */
+        private readonly ?Closure $clock = null,
     ) {}
 
     public function run(string $turnUlid): Turn
@@ -47,44 +60,58 @@ final class TurnRunner
             throw new RuntimeException('ConversationContextProvider and ToolCatalog must be bound before running a turn');
         }
 
-        $turn = $this->claim->claim($turnUlid, $this->claimOwner);
-        if ($turn === null) {
+        // The job (and its claim_ttl timeout) started just before this.
+        $deadlineNs = $this->now() + $this->turnBudgetSeconds * 1_000_000_000;
+        $llm = $this->llm instanceof DeadlineAwareLlmClient ? $this->llm->withDeadline($deadlineNs) : $this->llm;
+
+        if (! $this->claim->claim($turnUlid, $this->claimOwner)) {
             throw new RuntimeException("Failed to claim turn {$turnUlid}");
         }
 
         $this->progress->append($turnUlid, ['kind' => 'status', 'data' => ['status' => Turn::STATUS_RUNNING]]);
 
+        $usage = [];
         try {
-            $conversation = Conversation::query()->findOrFail($turn->conversation_id);
+            $turn = $this->store->turn($turnUlid);
+            $conversation = $turn->conversation;
+            if (! $conversation instanceof Conversation) {
+                throw (new ModelNotFoundException)->setModel(Conversation::class, [$turn->conversation_id]);
+            }
             $messages = $this->context->messagesForTurn($conversation->ulid, $turnUlid);
             // Do not advertise tools to clients that cannot continue after tool results.
-            $toolDefs = $this->llm->supportsToolRounds()
+            $toolDefs = $llm->supportsToolRounds()
                 ? $this->tools->toolsForTurn($conversation->ulid, $turnUlid)
                 : [];
             // Snapshot of what the model was shown; tool_calls outside it never reach the bus.
             $offeredNames = array_column($toolDefs, 'name');
 
             $rounds = 0;
-            $usage = [];
             // 1-based tool-call count across all rounds of this turn → core D-013 agent turn budget.
             $toolCallCount = 0;
+            $replied = false;
             while ($rounds < $this->maxToolRounds) {
+                // Cooperative cancel: no further LLM call once the owner cancelled.
+                if ($this->claim->isCancelled($turnUlid)) {
+                    return $this->stopped($turn, $usage);
+                }
+                if ($llm instanceof DeadlineAwareLlmClient
+                    && $deadlineNs - $this->now() < DeadlineAwareLlmClient::MIN_REQUEST_SECONDS * 1_000_000_000) {
+                    throw new RetryableLlmException(
+                        "Turn time budget (claim_ttl {$this->turnBudgetSeconds}s) has under "
+                        .DeadlineAwareLlmClient::MIN_REQUEST_SECONDS.'s left for another LLM round'
+                    );
+                }
                 $rounds++;
-                $startedAt = hrtime(true);
-                $response = $this->llm->complete($messages, $toolDefs);
+                $startedAt = $this->now();
+                $response = $llm->complete($messages, $toolDefs);
                 $usage[] = $this->roundUsage($response, $startedAt);
                 $toolCalls = $response['tool_calls'] ?? [];
 
                 if ($toolCalls === []) {
                     $content = (string) ($response['content'] ?? '');
-                    Message::query()->create([
-                        'conversation_id' => $conversation->id,
-                        'ulid' => strtoupper(bin2hex(random_bytes(13))),
-                        'role' => 'assistant',
-                        'content' => $content,
-                        'meta' => null,
-                    ]);
+                    $this->store->createMessage($conversation, $this->ulid(), 'assistant', $content);
                     $this->maybeCreateProposalsFromFence($conversation, $turn, $content);
+                    $replied = true;
                     break;
                 }
 
@@ -93,16 +120,18 @@ final class TurnRunner
                 }
 
                 // Fail closed before any bus mutation when the client cannot continue after tool results.
-                if (! $this->llm->supportsToolRounds()) {
+                if (! $llm->supportsToolRounds()) {
                     throw new RuntimeException(
                         'Bound LlmClient does not support multi-round tool results; refusing tool invokes (fail closed)'
                     );
                 }
 
-                // Principal once per tool-using round: conversation user as actor + caller=job.
+                // Principal once per tool-using round: conversation user as actor + caller=agent
+                // (LLM-chosen tool calls are the agent surface, D-022), so the agent kill switch,
+                // per-capability surface narrowing and agent approval rules apply.
                 // Missing/invalid user_id fails closed (never ResolveActor::defaultUser).
                 $actor = $this->actors->resolve($conversation->user_id);
-                $invokeOptions = $this->actors->invokeOptions($actor);
+                $invokeOptions = $this->actors->invokeOptions($actor, ResolveConversationActor::CALLER_AGENT);
 
                 // Normalize ids first so assistant tool_use and role=tool share the same id.
                 $normalizedCalls = [];
@@ -122,14 +151,9 @@ final class TurnRunner
                 if ($normalizedCalls === []) {
                     // tool_calls present but unusable — treat as text-only terminal content.
                     $content = (string) ($response['content'] ?? '');
-                    Message::query()->create([
-                        'conversation_id' => $conversation->id,
-                        'ulid' => strtoupper(bin2hex(random_bytes(13))),
-                        'role' => 'assistant',
-                        'content' => $content,
-                        'meta' => null,
-                    ]);
+                    $this->store->createMessage($conversation, $this->ulid(), 'assistant', $content);
                     $this->maybeCreateProposalsFromFence($conversation, $turn, $content);
+                    $replied = true;
                     break;
                 }
 
@@ -141,6 +165,10 @@ final class TurnRunner
                 ];
 
                 foreach ($normalizedCalls as $call) {
+                    // Cancel means stop acting for the user: no bus invoke after it, even mid-round.
+                    if ($this->claim->isCancelled($turnUlid)) {
+                        return $this->stopped($turn, $usage);
+                    }
                     $name = (string) ($call['name'] ?? '');
                     $payload = $call['arguments'] ?? $call['input'] ?? [];
                     if (! is_array($payload)) {
@@ -185,19 +213,16 @@ final class TurnRunner
                 }
             }
 
-            // Cooperative cancel: do not overwrite cancelled mid-run
-            $fresh = Turn::query()->where('ulid', $turnUlid)->first();
-            if ($fresh !== null && $fresh->status === Turn::STATUS_CANCELLED) {
-                $fresh->usage = $usage;
-                $fresh->save();
-
-                return $fresh;
+            // D-013 loop protection: every round asked for tools and none replied — fail loudly,
+            // never a silent `completed` with no assistant message.
+            if (! $replied) {
+                throw new RuntimeException("max_tool_rounds ({$this->maxToolRounds}) reached without a final reply");
             }
 
-            $turn->status = Turn::STATUS_COMPLETED;
-            $turn->usage = $usage;
-            $turn->finished_at = Carbon::now();
-            $turn->save();
+            // CAS running→completed: a cancel (or reap) that landed first wins; no completed terminal.
+            if (! $this->claim->complete($turnUlid, $usage)) {
+                return $this->stopped($turn, $usage);
+            }
 
             // Terminal progress AFTER DB completed
             $this->progress->append($turnUlid, [
@@ -205,19 +230,12 @@ final class TurnRunner
                 'data' => ['status' => Turn::STATUS_COMPLETED],
             ]);
 
-            return $turn->refresh();
+            return $this->store->turn($turnUlid);
         } catch (\Throwable $e) {
-            $fresh = Turn::query()->where('ulid', $turnUlid)->first();
-            if ($fresh !== null && $fresh->status === Turn::STATUS_CANCELLED) {
-                // Cancelled mid-run — do not overwrite with failed / terminal failed
+            // CAS running→failed: a turn cancelled (or reaped) mid-run keeps its status and events.
+            if (! $this->claim->fail($turnUlid, $e->getMessage(), $usage)) {
                 throw $e;
             }
-
-            $turn->status = Turn::STATUS_FAILED;
-            $turn->error = $e->getMessage();
-            $turn->usage = $usage ?? null;
-            $turn->finished_at = Carbon::now();
-            $turn->save();
             // retryable=true: transient LLM failure; the turn stays failed, but a caller may try again later.
             $error = ['message' => $e->getMessage(), 'retryable' => $e instanceof RetryableLlmException];
             if ($e instanceof RetryableLlmException && $e->retryAfterSeconds !== null) {
@@ -233,6 +251,19 @@ final class TurnRunner
     }
 
     /**
+     * The turn left running under the runner (cancelled, reaped): keep its status and
+     * terminal event, record the rounds' usage, and return the fresh row.
+     *
+     * @param  list<array<string, int>>  $usage
+     */
+    private function stopped(Turn $turn, array $usage): Turn
+    {
+        $this->claim->recordUsage($turn->ulid, $usage);
+
+        return $this->store->turn($turn->ulid);
+    }
+
+    /**
      * One round's accounting: runner-measured latency plus any non-negative int
      * token counts the client reported (junk values are dropped, not coerced).
      *
@@ -241,7 +272,7 @@ final class TurnRunner
      */
     private function roundUsage(array $response, int $startedAt): array
     {
-        $round = ['latency_ms' => intdiv(hrtime(true) - $startedAt, 1_000_000)];
+        $round = ['latency_ms' => intdiv($this->now() - $startedAt, 1_000_000)];
         $reported = is_array($response['usage'] ?? null) ? $response['usage'] : [];
         foreach (['input_tokens', 'output_tokens'] as $key) {
             if (is_int($reported[$key] ?? null) && $reported[$key] >= 0) {
@@ -250,6 +281,11 @@ final class TurnRunner
         }
 
         return $round;
+    }
+
+    private function now(): int
+    {
+        return $this->clock !== null ? ($this->clock)() : hrtime(true);
     }
 
     private function encodeToolResult(string $name, CapabilityResult $result): string
@@ -281,16 +317,19 @@ final class TurnRunner
 
         $target = isset($data['target_capability']) ? (string) $data['target_capability'] : null;
 
-        Proposal::query()->create([
-            'turn_id' => $turn->id,
-            'conversation_id' => $conversation->id,
-            'ulid' => strtoupper(bin2hex(random_bytes(13))),
-            'type' => (string) ($data['type'] ?? 'action'),
-            'payload' => $data['payload'] ?? $data,
-            'target_capability' => $target,
-            'schema_hash' => $target === null ? null : $this->targetSchemaHash($target, $conversation->ulid, $turn->ulid),
-            'status' => Proposal::STATUS_PENDING,
-        ]);
+        $this->store->createProposal(
+            $turn,
+            $this->ulid(),
+            (string) ($data['type'] ?? 'action'),
+            $data['payload'] ?? $data,
+            $target,
+            $target === null ? null : $this->targetSchemaHash($target, $conversation->ulid, $turn->ulid),
+        );
+    }
+
+    private function ulid(): string
+    {
+        return strtoupper(bin2hex(random_bytes(13)));
     }
 
     /**

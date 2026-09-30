@@ -61,6 +61,13 @@ final class LaravelCacheRateLimiter implements RateLimiter
         return max(0, $maxAttempts - $this->attempts($this->storageKey($key)));
     }
 
+    public function availableIn(string $key): int
+    {
+        $timer = $this->cache->get($this->storageKey($key).':timer');
+
+        return is_numeric($timer) ? max(0, (int) $timer - time()) : 0;
+    }
+
     public function clear(string $key): void
     {
         $storageKey = $this->storageKey($key);

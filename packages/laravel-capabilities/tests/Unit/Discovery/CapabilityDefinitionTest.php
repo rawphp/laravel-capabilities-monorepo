@@ -10,6 +10,7 @@ use Rawphp\Capabilities\Tests\Fixtures\Capabilities\AttributedCreateInvoice;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
 use Rawphp\Capabilities\Tests\Fixtures\DiscoveryHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
 it('happy: attribute class with DefinesCapability auto-discovered under configured path [D-017]', function () {
     $registry = DiscoveryHelpers::registry();
@@ -157,8 +158,8 @@ it('happy: definition stores field globalSystem when declared [D-017]', function
 
 it('happy: definition stores field approvalPolicy when declared [D-017]', function () {
     $registry = DiscoveryHelpers::registry();
-    $def = DiscoveryHelpers::mutatingWith($registry, 'ap-cap', ['approvalPolicy' => 'two_person']);
-    expect($def->approvalPolicy)->toBe('two_person');
+    $def = DiscoveryHelpers::mutatingWith($registry, 'ap-cap', ['approvalPolicy' => 'role:two_person']);
+    expect($def->approvalPolicy)->toBe('role:two_person');
 });
 
 it('happy: definition stores field approvalTtlHours when declared [D-017]', function () {
@@ -210,7 +211,7 @@ it('happy: aliases resolve to canonical name before run [D-012]', function () {
         'customer_id' => 1,
         'amount_cents' => 100,
         'currency' => 'USD',
-    ]);
+    ], ['actor' => PipelineHelpers::userActor()]);
     expect($result->isOk())->toBeTrue()
         ->and($result->data->invoice_id)->toBe(9);
 });

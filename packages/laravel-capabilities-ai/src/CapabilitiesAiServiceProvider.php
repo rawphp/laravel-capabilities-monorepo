@@ -10,21 +10,26 @@ use Illuminate\Support\ServiceProvider;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\Metrics;
+use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\CapabilitiesAi\Console\ReapStaleTurnsCommand;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
+use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStoreReadiness;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
+use Rawphp\CapabilitiesAi\Contracts\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\StaleTurnReaper;
-use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
+use Rawphp\CapabilitiesAi\Http\ChatController;
 use Rawphp\CapabilitiesAi\Support\ContainerBindings;
+use Rawphp\CapabilitiesAi\Support\EloquentConversationStore;
+use Rawphp\CapabilitiesAi\Support\EloquentTurnClaim;
 use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
 use Rawphp\CapabilitiesAi\Support\StoreBoundIdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Support\StoreBoundProgressStoreReadiness;
@@ -34,7 +39,7 @@ use RuntimeException;
  * AI package service provider — config + migrations publish tags + optional routes + DI.
  *
  * Host seams (ConversationContextProvider, ToolCatalog) are intentionally unbound.
- * Host-prebound LlmClient / ProgressStore are preserved (bound() guard).
+ * Host-prebound LlmClient / ProgressStore / ConversationStore / TurnClaim are preserved (bound() guard).
  */
 final class CapabilitiesAiServiceProvider extends ServiceProvider
 {
@@ -101,14 +106,26 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
             });
         }
 
-        $this->app->singleton(TurnClaim::class, static fn () => new TurnClaim);
+        // Package-table persistence: Eloquent by default; one store + claim shared by every service.
+        if (! $this->app->bound(ConversationStore::class)) {
+            $this->app->singleton(ConversationStore::class, static fn () => new EloquentConversationStore);
+        }
+
+        if (! $this->app->bound(TurnClaim::class)) {
+            $this->app->singleton(TurnClaim::class, static fn () => new EloquentTurnClaim);
+        }
 
         $this->app->singleton(StaleTurnReaper::class, static fn (Container $app) => new StaleTurnReaper(
             $app->make(ProgressStore::class),
+            $app->make(TurnClaim::class),
         ));
 
         $this->app->singleton(TurnService::class, function (Container $app) {
-            return ContainerBindings::makeTurnService($app->make(ProgressStore::class));
+            return ContainerBindings::makeTurnService(
+                $app->make(ProgressStore::class),
+                $app->make(ConversationStore::class),
+                $app->make(TurnClaim::class),
+            );
         });
 
         $this->app->singleton(TurnRunner::class, function (Container $app) {
@@ -122,6 +139,7 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
                 context: self::optional($app, ConversationContextProvider::class),
                 tools: self::optional($app, ToolCatalog::class),
                 bus: self::optional($app, CapabilityBus::class),
+                store: $app->make(ConversationStore::class),
             );
         });
 
@@ -156,8 +174,14 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
                 $app->make(ProgressStore::class),
                 ContainerBindings::claimTtlFromConfig($config),
                 $config,
+                self::optional($app, RateLimiter::class),
+                $app->make(ConversationStore::class),
             );
         });
+
+        $this->app->bind(ChatController::class, static fn (Container $app) => new ChatController(
+            ContainerBindings::maxMessageCharsFromConfig(self::configFromApp($app)),
+        ));
 
         $this->app->singleton(ProposalService::class, function (Container $app) {
             if (! $app->bound(CapabilityBus::class)) {
@@ -174,6 +198,7 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
                 $app->make(IdempotencyReadiness::class),
                 is_string($userModel) && $userModel !== '' ? $userModel : null,
                 self::optional($app, ToolCatalog::class),
+                $app->make(ConversationStore::class),
             );
         });
     }
@@ -205,14 +230,6 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
                 $applyQueue($job);
 
                 return $bus->dispatch($job);
-            };
-        }
-
-        if (function_exists('dispatch')) {
-            return static function (object $job) use ($applyQueue): mixed {
-                $applyQueue($job);
-
-                return dispatch($job);
             };
         }
 
@@ -313,29 +330,14 @@ final class CapabilitiesAiServiceProvider extends ServiceProvider
     }
 
     /**
-     * Escape hatch for local demos: CAPABILITIES_AI_ALLOW_UNSAFE=1.
-     * Default closed — never the production happy path.
+     * Escape hatch for local demos (CAPABILITIES_AI_ALLOW_UNSAFE → allow_unsafe).
+     * Read from config only so cached config is honoured. Default closed.
      *
      * @param  array<string, mixed>  $config  capabilities-ai config slice
      */
     private static function allowUnsafeDrivers(array $config): bool
     {
-        if (! empty($config['allow_unsafe'])) {
-            return true;
-        }
-
-        $value = $_ENV['CAPABILITIES_AI_ALLOW_UNSAFE']
-            ?? $_SERVER['CAPABILITIES_AI_ALLOW_UNSAFE']
-            ?? getenv('CAPABILITIES_AI_ALLOW_UNSAFE');
-
-        if ($value === false || $value === null || $value === '') {
-            return false;
-        }
-
-        return match (strtolower((string) $value)) {
-            '1', 'true', '(true)', 'yes', 'on' => true,
-            default => false,
-        };
+        return filter_var($config['allow_unsafe'] ?? false, FILTER_VALIDATE_BOOLEAN);
     }
 
     /**

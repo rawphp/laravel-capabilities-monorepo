@@ -1,0 +1,752 @@
+{
+  "generated_at": "2026-09-29T15:23:32Z",
+  "stack_summary": {
+    "laravel": {
+      "present": true,
+      "version": "11.x|12.x|13.x (illuminate/* components; three packages, not a full app)",
+      "php_version": "8.2+",
+      "key_packages": [
+        "illuminate/support",
+        "illuminate/http",
+        "illuminate/routing",
+        "illuminate/console",
+        "illuminate/bus",
+        "illuminate/events",
+        "illuminate/database",
+        "illuminate/validation",
+        "pestphp/pest",
+        "phpstan/phpstan"
+      ]
+    },
+    "frontend": {
+      "framework": "none",
+      "framework_version": null,
+      "inertia_version": null,
+      "typescript": false,
+      "state_library": "none",
+      "ui_library": "none",
+      "build_tool": "unknown",
+      "key_packages": []
+    },
+    "testing": {
+      "backend": "pest",
+      "frontend": "none"
+    },
+    "tooling": {
+      "linter_backend": "none",
+      "linter_frontend": "none",
+      "formatter_frontend": "none",
+      "types_php": "phpstan"
+    },
+    "infrastructure_hints": {
+      "queue_driver": "unknown",
+      "cache_driver": "unknown",
+      "ci": "github-actions (tests.yml, split-packages.yml)",
+      "deploy": "unknown"
+    },
+    "notes": "Monorepo: packages/laravel-capabilities (core bus, ~22.8k LOC), packages/laravel-capabilities-messaging (~3k), packages/laravel-capabilities-ai (~4.5k), packages/capabilities-cli (Go, ~5.5k). No root app/routes/package.json. Unit-test-only policy (no feature/DB tests), >=95% coverage. Design oracle: docs/spec.md (D-002..D-023). Standing decisions: /Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.do-work/decisions.md (primary checkout, untracked).",
+    "control_plane": {
+      "present": true,
+      "language": "go",
+      "path": "packages/capabilities-cli",
+      "notes": "Go product CLI, HTTP client only (D-016)"
+    }
+  },
+  "mode": "audit",
+  "iteration": 3,
+  "previous_run": "2026-09-30-iter2",
+  "audited_head": "d460a24",
+  "synthesis_head": "3a0a829",
+  "buckets": {
+    "critical": [],
+    "high": [
+      {
+        "id": "C-201",
+        "title": "Untrack the 10 MB Mach-O binary committed by the X-001 CLI coverage commit",
+        "category": "structure",
+        "severity": "high",
+        "effort": "trivial",
+        "impact": [
+          "maintainability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/capabilities-cli/cmd/capabilities/capabilities",
+            "line": 1,
+            "snippet": "Mach-O 64-bit executable arm64, 10288930 bytes, mode 100755 (added in 1971187)"
+          },
+          {
+            "file": "packages/capabilities-cli/.gitignore",
+            "line": 2,
+            "snippet": "dist/"
+          },
+          {
+            "file": ".gitignore",
+            "line": 13,
+            "snippet": "packages/capabilities-cli/**/bin/"
+          }
+        ],
+        "current_state": "Commit 1971187 ('test: cover CLI dispatch suggestions…', X-001) added `packages/capabilities-cli/cmd/capabilities/capabilities`, a 10.3 MB arm64 Mach-O file. It is what `go build` writes when run inside cmd/capabilities. It is tracked at HEAD on arch/analyst-loop-2026-09-29 but is not on main yet. Neither .gitignore covers it: the package ignores only `dist/` and the root ignores only `**/bin/`.",
+        "recommended_state": "Remove the binary from the index before the branch merges, and ignore the in-package `go build` output path so it cannot come back.",
+        "rationale": "Once this reaches main, split-packages.yml pushes packages/capabilities-cli into rawphp/capabilities-cli, and the 10 MB blob is in that remote's history for good. It also goes into every Go module zip that `go install`/the module proxy serves for later tags, and a stale local dev build sits next to the sources as if it were a release. Cleaning it up after the split push needs a history rewrite on two repos. Cleaning it up now takes one commit.",
+        "implementation_hint": "`git rm --cached packages/capabilities-cli/cmd/capabilities/capabilities`, then append `/cmd/capabilities/capabilities` to packages/capabilities-cli/.gitignore. The package .gitignore travels with the split, so the remote is covered too. Optionally squash or amend before merge so the blob never enters main's history. The monorepo uses merge commits, so a follow-up rm still leaves the blob reachable from 1971187 if the branch is merged as-is.",
+        "source_auditor": "control-plane-auditor",
+        "status": "fixed_before_synthesis",
+        "score": 40.0,
+        "fixed_in": "3a0a829 chore: ignore local CLI build output in cmd/capabilities (C-201)",
+        "fix_note": "Unpushed branch history rewritten so the binary never entered any commit on arch/analyst-loop-2026-09-29; root .gitignore:31 ignores packages/capabilities-cli/cmd/capabilities/capabilities."
+      }
+    ],
+    "quick_wins": [
+      {
+        "id": "M-202",
+        "title": "Show 'Approved.' on a Telegram tap only when core actually accepted it",
+        "category": "authorization",
+        "severity": "medium",
+        "effort": "trivial",
+        "impact": [
+          "security",
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/CallbackHandler.php",
+            "line": 127,
+            "snippet": "$result = $action === 'accept' ? $this->approvals->accept(...) : $this->approvals->reject(...);\nreturn ['status' => 'ok', 'result' => $result, ...];"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 361,
+            "snippet": "'ok' => $outcome['message'] === 'reject' ? 'Rejected.' : 'Approved.',"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+            "line": 402,
+            "snippet": "return CapabilityResult::failure('forbidden', 'Approver is not authorized for this approval.');"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/tests/Unit/Telegram/CallbackRoutingTest.php",
+            "line": 66,
+            "snippet": "// Accept on a manager with no executor fails closed inside core; ... expect($r['ok'])->toBeTrue()"
+          }
+        ],
+        "current_state": "CallbackHandler returns status 'ok' whatever CapabilityResult ApprovalGateway::accept()/reject() gives back. Core's approval policy check (requester_or_role by default, role:<name>, any_staff), lost double-tap races (conflict), expiry and execution failures all come back as failure results. They reach the tapper as the toast 'Approved.' and ProcessTelegramUpdate logs no warning (ok=true).",
+        "recommended_state": "The handler maps a non-ok result to its own status: forbidden, already_handled for conflict and expired, and a failed status for an execution failure. The toast then tells the truth ('You are not allowed to decide this approval.' and so on), and the update result is ok=false with the error code.",
+        "rationale": "In a group chat the buttons are visible to every member. Under the default policy, a linked member who is neither the requester nor a role holder taps Accept, is told 'Approved.', and nothing happens. The approval then sits pending until it expires while the requester believes it was approved. The same happens to a requester tapping on a role:<name> capability. The existing routing test even pins ok=true for an accept that core failed closed.",
+        "implementation_hint": "In CallbackHandler::handle after the gateway call: `if (! $result->isOk()) return ['status' => match ($result->errorCode()) { 'forbidden' => 'forbidden', 'conflict', 'expired' => 'already_handled', 'not_found' => 'not_found', default => 'failed' }, 'result' => $result, 'message' => $result->errorCode() ?? 'failed'];`. Add a 'failed' toast in callbackToast and a unit test where the ApprovalManager policy denies the tapper.",
+        "source_auditor": "laravel-auditor-siblings",
+        "status": "open",
+        "score": 15.0
+      },
+      {
+        "id": "X-201",
+        "title": "Split's single concurrency group can drop a pending tag mirror",
+        "category": "ci_cd",
+        "severity": "medium",
+        "effort": "trivial",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": ".github/workflows/split-packages.yml",
+            "line": 30,
+            "snippet": "# Serialize ALL splits (main + v* tags share package remotes). Per-ref groups\n# raced ...\nconcurrency:\n  group: split-packages\n  cancel-in-progress: false"
+          },
+          {
+            "file": ".github/workflows/split-packages.yml",
+            "line": 129,
+            "snippet": "if [[ \"$SOURCE_REF\" != \"refs/heads/main\" ]]; then\n  echo \"Source ref ${SOURCE_REF} is not main; leaving ${TARGET_REPO} main untouched\""
+          },
+          {
+            "file": "docs/versioning.md",
+            "line": 50,
+            "snippet": "All split runs (`main`, `v*` tags, `workflow_dispatch`) share one concurrency group, `split-packages` ... Runs queue one after another and are never cancelled"
+          }
+        ],
+        "current_state": "Every split run (main pushes and v* tags) shares the concurrency group `split-packages`. `cancel-in-progress: false` protects only the running run. GitHub keeps at most one pending run per group, and a newer queued run cancels the pending one. Take a tag pushed while a main split is in progress, for example `release.sh --squash`, which pushes main and then the tag within seconds. The tag run waits as pending, and any later push to main in that window (the fix loop merged 42 commits today) cancels it. That tag then never reaches the package remotes, Packagist or the CLI GoReleaser. versioning.md:50 says runs 'queue one after another'.",
+        "recommended_state": "Tag runs never share a pending slot with main runs. After X-101, a tag run pushes only `refs/tags/<tag>` and a main run pushes only `main`, so the race the global group was added for (both pushing package main, 'cannot lock ref') is gone. A per-ref group is enough. Main runs still serialize, and a newer pending main run replacing an older one is correct because the latest tree wins.",
+        "rationale": "The global group was the fix for main and tag runs both pushing package-remote main. X-101 removed that shared ref, so the global group now only adds a way to lose a release publication. The cancellation shows up only as a 'cancelled' run in Actions. Nothing tells the releaser that Packagist or CLI binaries are missing for the tag, and release.sh has already pushed the tag and refuses to reuse it.",
+        "implementation_hint": "split-packages.yml: `concurrency: { group: split-packages-${{ github.ref }}, cancel-in-progress: false }`. Rewrite the lines 30-33 comment to say the main-vs-tag race ended with tag runs no longer pushing main (X-101). Update docs/versioning.md:50 to match: main runs serialize and the newest main wins, and each tag has its own group. A tag run that overlaps a main run may point at a side commit whose parent is the previous package main. That is the same shape hotfix tags already have (versioning.md:25).",
+        "source_auditor": "cross-cutting-auditor",
+        "status": "open",
+        "score": 15.0
+      },
+      {
+        "id": "M-201",
+        "title": "Stop a Telegram notify failure from turning an approval into an internal error",
+        "category": "queues_events",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Notifiers/TelegramApprovalNotifier.php",
+            "line": 38,
+            "snippet": "$this->config->requireTelegramSecrets(); // before the chat_id check"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Notifiers/TelegramApprovalNotifier.php",
+            "line": 117,
+            "snippet": "$this->auditDeliveryFailure($approval, $method, $e);\n throw $e;"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+            "line": 359,
+            "snippet": "foreach ($this->notifiers as $notifier) {\n    $notifier->notifyPending($row);\n}"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+            "line": 227,
+            "snippet": "} catch (Throwable $e) {\n    return $this->finishUncaught($state, $e);"
+          }
+        ],
+        "current_state": "Since the M-101/L-101 fixes the Telegram notifier really runs inside ApprovalManager::request(), after store->put() and the approval.requested audit. The notifier rethrows any Bot API failure (429, 5xx, bot blocked, chat not found), and with telegram.enabled=true but a missing token or webhook secret it throws for every approval, HTTP and CLI included, because requireTelegramSecrets() runs before the chat_id skip. request() has no try/catch, so the pipeline returns `internal` instead of approval_required.",
+        "recommended_state": "Notifier failures never change the approval outcome. The row stays pending, the caller gets approval_required with its id, the failure is audited (approval.notify_failed) and logged, and the remaining notifiers still run. Rows with no chat target return before any secret check.",
+        "rationale": "Right now a failed notification leaves a pending row that an HTTP or CLI approver can still accept, while the requester (and, over Telegram, the agent's reply) was told the request failed. So an action the user believes failed can still execute later. Each retry from chat then creates another orphan row. This is the same isolation rule L-103 applied to bus listeners (a side channel must not change the domain outcome), and it only started to matter once M-101 wired the notifier in.",
+        "implementation_hint": "In TelegramApprovalNotifier::notifyPending move resolveChatId() and the empty-id return above requireTelegramSecrets(). Then pick one owner for isolation. Preferred: core ApprovalManager::request wraps each notifyPending in try/catch and reports through its audit and PSR logger, which covers host notifiers too. Alternative: the Telegram notifier audits and returns instead of rethrowing. Update NotifierDeliveryAuditTest ('audited and rethrown') to match, and add a unit test: a throwing notifier still yields approval_required and a pending row.",
+        "source_auditor": "laravel-auditor-siblings",
+        "status": "open",
+        "score": 12.75,
+        "related": [
+          "L-201"
+        ],
+        "cross_reference": "Same root cause as L-201 (core owns the fix). Not merged: titles share one token (Jaccard 0.05), below the 80% dedupe rule. Ship with L-201 in one PR."
+      },
+      {
+        "id": "M-203",
+        "title": "Show the approver what they are approving in the Telegram approval message",
+        "category": "authorization",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Notifiers/TelegramApprovalNotifier.php",
+            "line": 63,
+            "snippet": "sprintf(\"Approval required: %s\\n%s\", $approval['capability_name'] ?? 'capability', $approval['summary'] ?? '')"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+            "line": 732,
+            "snippet": "$this->approvalManager->request([ 'capability_name' => ..., 'input_json' => ..., 'messaging' => $ctx->messaging() ]) // no summary"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Notifiers/TelegramApprovalNotifier.php",
+            "line": 69,
+            "snippet": "$this->bot->sendMessage($chatId, $text, ['reply_markup' => [...]]) // no message_thread_id"
+          }
+        ],
+        "current_state": "The notifier prints capability_name plus $approval['summary'], but nothing in core or messaging sets `summary`, so the live message reads 'Approval required: billing.refund' and nothing else. input_json is on the row but never shown. The message also ignores the row's messaging.topic_id, so in a forum supergroup the buttons land in General, not the topic the request came from.",
+        "recommended_state": "The message shows a server-rendered, redacted view of the row's input (core Support\\Redactor, which siblings may already import), truncated to fit Telegram's text limit, or a capability-declared summary when one exists. It is posted into the originating topic (message_thread_id).",
+        "rationale": "For agent-initiated actions, the approval exists to put a human check on what the model chose to do. The only other description the approver sees is the agent's own chat reply, which is LLM text and can be wrong or prompt-injected ('refunding $5' while the input says $5000). Accept should never be tapped on a capability name alone.",
+        "implementation_hint": "In notifyPending build the body from Redactor::redact((array) ($approval['input_json'] ?? [])) as 'key: value' lines (JSON-encode non-scalars), cap it at about 3500 characters with an ellipsis, and prefer $approval['summary'] when set. Pass 'message_thread_id' => (int) $approval['messaging']['topic_id'] when numeric. Unit-test the rendered text and params against FakeTelegramBotClient.",
+        "source_auditor": "laravel-auditor-siblings",
+        "status": "open",
+        "score": 12.75
+      },
+      {
+        "id": "C-202",
+        "title": "Keep describe's description/readOnly/idempotent; describe --json and --help drop them",
+        "category": "wire_contract",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "dx",
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/capabilities-cli/internal/catalog/cache.go",
+            "line": 17,
+            "snippet": "type CacheEntry struct { Name, SchemaVersion, ETag, InputSchema, OutputSchema, Deprecated, Successor, SunsetAt, Aliases, Canonical, CLI }"
+          },
+          {
+            "file": "packages/capabilities-cli/cmd/capabilities/cmd_domain.go",
+            "line": 236,
+            "snippet": "// Describe carries no description; domain/verb come from the index."
+          },
+          {
+            "file": "packages/capabilities-cli/cmd/capabilities/cmd_run.go",
+            "line": 55,
+            "snippet": "b, _ := json.MarshalIndent(entry, \"\", \"  \")"
+          },
+          {
+            "file": "packages/capabilities-cli/docs/user-guide.md",
+            "line": 315,
+            "snippet": "JSON Schema / description for one capability."
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Schema/CatalogPresenter.php",
+            "line": 174,
+            "snippet": "'description' => $definition->description,  // metadataFields(), shared by list and describe"
+          }
+        ],
+        "current_state": "Core's describe response is `fullEntry` = `metadataFields` + schemas, so it includes `description`, `readOnly`, `idempotent`, `surfaces`, `groups` and `tags`. The CLI decodes describe into `CacheEntry`, which has none of these fields. That struct is also what `describe --json` prints (cmd_run.go:55). So `capabilities describe X --json`, `capabilities run X --help` and `capabilities <domain> <verb> --help` never show the description or the read-only/idempotent flags. The coverage commit 1971187 replaced the old blanking line with a comment claiming describe has no description, which is false against the core presenter.",
+        "recommended_state": "CacheEntry decodes and keeps `description`, `readOnly` and `idempotent`, at least. writeCapabilityHelp sets `info.Description = entry.Description`, so help after `run X --help` / `<domain> <verb> --help` is complete. The misleading comment is gone.",
+        "rationale": "docs/agents.md makes `describe --json` and `<domain> <verb> --help --json` the agent's per-capability discovery step, and the user guide promises a description. `readOnly`/`idempotent` are exactly what an agent needs to decide whether a retry or speculative call is safe, and the server already sends them. Today the CLI's cache struct silently strips them, so the only way to see them is `catalog --json` over the whole list. This is a CLI-side decode gap, not a server change.",
+        "implementation_hint": "Add `Description string `json:\"description,omitempty\"``, `ReadOnly bool `json:\"readOnly,omitempty\"`` and `Idempotent bool `json:\"idempotent,omitempty\"`` to CacheEntry in internal/catalog/cache.go. In cmd_domain.go, replace the comment at 236 with `info.Description = entry.Description`. Old cache files decode with empty fields and fill in on the next live describe; no migration is needed. One catalog test decodes a describe body carrying description/readOnly, and one cmd test asserts `run X --help --json` includes the description.",
+        "source_auditor": "control-plane-auditor",
+        "status": "open",
+        "score": 12.75
+      },
+      {
+        "id": "L-201",
+        "title": "Isolate approval notifiers and the ApprovalRequested listener after the row is saved",
+        "category": "queues_events",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+            "line": 360,
+            "snippet": "foreach ($this->notifiers as $notifier) { $notifier->notifyPending($row); }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+            "line": 349,
+            "snippet": "$row = $this->store->put($record);"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+            "line": 760,
+            "snippet": "$this->events?->dispatch($requested);"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+            "line": 228,
+            "snippet": "return $this->finishUncaught($state, $e);"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/IdempotencyGuard.php",
+            "line": 203,
+            "snippet": "if ($status === 'failed') { ... 'action' => 'replay'"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+            "line": 769,
+            "snippet": "'idempotency_key' => $str('idempotency_key', null),"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Notifiers/TelegramApprovalNotifier.php",
+            "line": 38,
+            "snippet": "$this->config->requireTelegramSecrets();"
+          }
+        ],
+        "current_state": "Since L-101, bound notifiers really fire. ApprovalManager::request() saves and audits the row, then calls each notifyPending() without a guard. The Telegram notifier rethrows Bot API failures, and it throws for every approval (HTTP/CLI too) when Telegram is enabled without secrets, because the secrets check runs before the chat-id check. The L-103 fix isolated listeners in the finalizer, ApprovalManager and ApprovalExecutor, but it missed the CapabilityApprovalRequested dispatch in buildApprovalRequired. Either throw reaches finishUncaught: the caller gets 'internal', the pending approval row stays, and a keyed invoke's idempotency row is stored as 'failed'.",
+        "recommended_state": "Once the approval row is saved, a notifier or listener failure must not change the outcome. Report it (ExceptionHandler + metric), keep going to the next notifier, and return approval_required as usual. This is the same rule L-103/L-104 set for listeners and audit.",
+        "rationale": "The failure is not only cosmetic. With an Idempotency-Key (the CLI sends one on every run), the L-102 fix runs the accepted execution under that key. The lookup then finds the 'failed' row and replays 'internal', so an approver who accepts the orphan row burns the approval and the capability never runs. Without a key, the client retries after 'internal' and opens a second approval, and both can be accepted, which is a double execution (D-005 retries must not double-apply). A Telegram outage or a half-configured messaging install is enough to trigger it.",
+        "implementation_hint": "ApprovalManager::request(): wrap each `$notifier->notifyPending($row)` in try/catch(Throwable) → FailureReporter::reportAndCount($e, 'approval_notify_failed_total', ['notifier' => $notifier::class]). InvokePipeline::buildApprovalRequired(): send the event through `$this->results()->dispatch($requested)` (the isolating dispatcher) instead of `$this->events?->dispatch()`. Unit tests with InMemoryApprovalStore + InMemoryIdempotencyStore: (1) a notifier whose notifyPending throws → invoke returns approval_required, the key row is pending_approval, and a second notifier is still called; (2) a Dispatcher fake throwing on CapabilityApprovalRequested → same outcome, exception reported once. Optionally, in messaging, move requireTelegramSecrets() after the chat-id early return.",
+        "source_auditor": "laravel-auditor",
+        "status": "open",
+        "score": 12.75,
+        "related": [
+          "M-201"
+        ],
+        "cross_reference": "Same root cause as M-201: ApprovalManager::request() calls notifyPending() with no guard after the row is saved. One core fix (try/catch per notifier, isolating dispatch for CapabilityApprovalRequested) closes both; M-201 adds the messaging-side chat-id-before-secrets reorder and the NotifierDeliveryAuditTest update."
+      },
+      {
+        "id": "M-204",
+        "title": "Deliver agent replies longer than Telegram's 4096-character limit",
+        "category": "api",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/TelegramAdapter.php",
+            "line": 75,
+            "snippet": "$this->bot->sendMessage($chatId, $text, $params);"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 253,
+            "snippet": "$replyText = is_array($answer) ? (string) ($answer['text'] ?? 'ok') : 'ok';"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 398,
+            "snippet": "throw new RuntimeException($message, 0, $e); // non-retryable send failure: terminal, no reply"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Support/TelegramBotApiException.php",
+            "line": 30,
+            "snippet": "$status === 400 => 'validation_failed',"
+          }
+        ],
+        "current_state": "The AgentTurn text goes to sendMessage as it is. Telegram rejects text over 4096 characters (and empty text) with 400. That maps to validation_failed, which is not retryable, so sendReply throws a terminal error: the update ends ok=false with no reply, after the agent turn and any tool invokes have already run. Nothing in messaging splits or checks the text length.",
+        "recommended_state": "The adapter splits a long reply into consecutive messages of at most 4096 characters (on paragraph or line boundaries where possible, same chat and topic) and replaces empty text with a short fallback. A reply that still cannot be sent is logged with the reason.",
+        "rationale": "LLM answers over 4096 characters are common: lists, summaries, a reply to several tool results. The user then gets silence after the side effects already happened, which is the outcome M-102 set out to remove.",
+        "implementation_hint": "TelegramAdapter::reply: `foreach (self::chunks($text, 4096) as $part) $this->bot->sendMessage($chatId, $part, $params);` using mb_str_split, or a boundary-aware splitter on mb_ strings. Map '' to a fixed fallback such as 'Done.'. For the pending-reply retry, keep the index of the last chunk that was sent so a retry does not resend earlier chunks. Unit-test 4097- and 9000-character replies against FakeTelegramBotClient.",
+        "source_auditor": "laravel-auditor-siblings",
+        "status": "open",
+        "score": 12.75
+      },
+      {
+        "id": "M-205",
+        "title": "Keep the Telegram agent turn at most once when the job is killed mid-turn",
+        "category": "queues_events",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdateJob.php",
+            "line": 18,
+            "snippet": "public int $tries = 3; // no $timeout: the worker default (60s) applies"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 177,
+            "snippet": "$pending = $pendingKey === null ? null : $this->pendingReplies?->get($pendingKey);"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 239,
+            "snippet": "$answer = $this->adapter->handle($ingressMessage);"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/ProcessTelegramUpdate.php",
+            "line": 249,
+            "snippet": "$answer = $this->adapter->handle($ingressMessage + ['tool_results' => $toolResults]);"
+          }
+        ],
+        "current_state": "The M-103 fix makes a retry skip the turn only when a pending reply was cached, and that happens only after a transient send failure. Each update now makes two agent calls (respond and respondWithResults) plus tool invokes, inside a job with no timeout of its own (worker default --timeout=60) and 3 tries. A worker timeout, crash or deploy mid-turn redelivers the update. That runs a fresh agent turn, whose tool calls only replay when the new LLM answer repeats the same capability and input at the same index.",
+        "recommended_state": "Once an update's agent turn has started, a redelivery never starts another. The job records a per-update 'turn started' marker (cache add) before conversation_ingress. A redelivery that finds the marker and no pending reply ends the update without calling the agent (optionally a fixed 'please resend' reply) and logs it. The job declares a $timeout sized for two agent calls.",
+        "rationale": "User-guide:192 and the class doc now promise 'the agent turn and its tool calls run once per update'. Worker timeouts are the most likely way that promise breaks, because two LLM calls can easily pass 60s, and the result is the duplicate or divergent mutations M-103 was about.",
+        "implementation_hint": "In process(), after the pending-reply check and link handling: `if ($key !== null && $this->pendingReplies !== null && ! $this->pendingReplies->add($key.':turn', true, self::PENDING_REPLY_TTL)) throw new RuntimeException('turn_already_started');` (terminal). Add `public int $timeout = 110;` to ProcessTelegramUpdateJob and note in the docs that the queue's retry_after must exceed it. Unit test: a second handle() of the same update after an interrupted first one never calls the AgentTurn.",
+        "source_auditor": "laravel-auditor-siblings",
+        "status": "open",
+        "score": 12.75
+      },
+      {
+        "id": "X-202",
+        "title": "/release makes --squash the default, which rewrites PR-merged public main",
+        "category": "git_workflow",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": ".claude/commands/release.md",
+            "line": 46,
+            "snippet": "6. Prefer **`--squash -m \"…\"`** when history since the last tag (or unpushed stack) is noisy merge/wip commits — one clean release commit."
+          },
+          {
+            "file": ".claude/commands/release.md",
+            "line": 102,
+            "snippet": "# Subsequent patch:\n./scripts/release.sh --yes --squash patch"
+          },
+          {
+            "file": "scripts/release.sh",
+            "line": 366,
+            "snippet": "if [[ -n \"$RANGE_TAG\" ]]; then\n    SQUASH_BASE=\"$RANGE_TAG\""
+          },
+          {
+            "file": "scripts/release.sh",
+            "line": 493,
+            "snippet": "git reset --soft \"$SQUASH_BASE\" ... git push --force-with-lease origin \"refs/heads/$BRANCH\""
+          },
+          {
+            "file": ".claude/commands/release.md",
+            "line": 71,
+            "snippet": "- gates: whatever `./scripts/release.sh --help` lists (Pint, PHPStan, Pest, Go)"
+          }
+        ],
+        "current_state": "Since the X-102 fix, `--squash` works: its base is the last tag reachable from HEAD (v0.5.2). origin/main has 216 commits since v0.5.2, 91 of them GitHub PR merges ('Merge pull request #126 …'). The agent command tells the agent to prefer `--squash` whenever the history is 'noisy merge' commits, which it always is on this repo, and gives `--yes --squash patch` as the standard follow-up example. Following it collapses all 216 public commits into one and force-with-lease pushes main. Open PR branches and the `.worktrees/*` checkouts are all based on the old main. The v0.5.x releases did not squash. Secondary: step 2 tells the agent to read the gate list from `release.sh --help`, but `usage()` prints only options. The gates are in the header comment and the dry-run plan.",
+        "recommended_state": "A routine release never rewrites pushed history. `--squash` folds only the unpushed stack, for example the CHANGELOG promotion commit (base `origin/<branch>`). Or it stays the explicit first-cut tool that the command never recommends by default. The gate list the command points at is printed where the command says it is.",
+        "rationale": "On a PR-merged main, a squash-to-last-tag force-push orphans every merged PR's commits. Every open branch then carries 216 commits that no longer exist on main, so their PR diffs balloon or conflict. If main is protected, the push fails after the local `reset --soft`, and local main is left diverged. The script is honest about the rewrite. The problem is the command's default guidance, which makes the destructive path the normal one for an agent running `/release` unattended.",
+        "implementation_hint": "release.md: delete hard rule 6. Change the 'Subsequent patch' example to `./scripts/release.sh --yes patch`, and say `--squash` is for the first public cut or for folding unpushed local commits. Optionally, in release.sh, use `SQUASH_BASE=origin/$BRANCH` whenever it exists, so a squash only touches commits not yet on origin; the tag-based base then remains only for the first-release case. Add a test-release.sh case asserting that base. Add a 'Gates:' block to `usage()` (the same five lines as the header comment), or change release.md:71 to point at `--dry-run`, which prints them.",
+        "source_auditor": "cross-cutting-auditor",
+        "status": "open",
+        "score": 12.75
+      }
+    ],
+    "medium": [],
+    "enhancements": [
+      {
+        "id": "C-203",
+        "title": "Warn at --token login when the server derives a caller other than cli",
+        "category": "auth_flow",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "dx",
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/capabilities-cli/internal/auth/session.go",
+            "line": 40,
+            "snippet": "res, err := client.ListCapabilities(ctx)"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/api/errors.go",
+            "line": 112,
+            "snippet": "type Meta struct { RequestID, Capability, IdempotentReplay }  // no caller"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/Http/CapabilityController.php",
+            "line": 53,
+            "snippet": "return HttpResponse::ok($envelope, ['caller' => $caller['caller'], 'derived_caller' => $caller['derived']], ...)"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Http/CallerDeriver.php",
+            "line": 78,
+            "snippet": "return 'http';"
+          },
+          {
+            "file": "packages/capabilities-cli/docs/authentication.md",
+            "line": 60,
+            "snippet": "return `not_found` on `run`, with no auth error to explain why."
+          }
+        ],
+        "current_state": "C-103 was fixed in docs only (authentication.md, AuthTokenIssuer docblock), and L-110 now derives `cli` strictly from `clients.token_abilities`. LoginWithToken already makes an authenticated GET /capabilities to verify the PAT, and the server's reply carries `meta.caller`. The CLI ignores it. A PAT minted without `capabilities:cli` logs in cleanly, and the user only finds out later through a filtered catalog or `not_found`. The docs call this failure silent.",
+        "recommended_state": "When the verification response has `meta.caller` and it is not `cli`, --token login still stores the token (the host may intend it) but prints one stderr warning. The warning names the derived caller and points at the `capabilities:cli` ability section. With --json, it also adds `caller` to the success payload.",
+        "rationale": "This is the cheapest runtime guard for the failure mode C-103 documents, and the data is already in a response the CLI receives and discards. It turns a later, misleading not_found into an immediate, named cause at login time. Older servers without meta.caller are unaffected: no field means no warning.",
+        "implementation_hint": "Add `Caller string `json:\"caller,omitempty\"`` to api.Meta. In LoginWithToken, after the OK check, return the caller on LoginResult (for example `Caller string`). In cmd_auth.go, if `r.Caller != \"\" && r.Caller != \"cli\"`, print `warning: server treats this token as caller %q, not cli; capabilities exposed only to cli will be hidden (mint it with the capabilities:cli ability)` to stderr. Leave the device/OAuth flows alone: they make no verification GET, and adding one is out of scope. One auth test with meta.caller=http asserts the warning and that the token is stored.",
+        "source_auditor": "control-plane-auditor",
+        "status": "open",
+        "score": 5.0
+      },
+      {
+        "id": "X-204",
+        "title": "CI never runs the release self-test (scripts/lib/test-release.sh)",
+        "category": "ci_cd",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": ".github/workflows/tests.yml",
+            "line": 51,
+            "snippet": "- name: Inventory tools unit tests\n  run: python3 -m unittest discover -s tools/tests"
+          },
+          {
+            "file": "scripts/lib/test-release.sh",
+            "line": 10,
+            "snippet": "# Usage:\n#   bash scripts/lib/test-release.sh"
+          },
+          {
+            "file": "docs/versioning.md",
+            "line": 80,
+            "snippet": "bash scripts/lib/test-release.sh"
+          }
+        ],
+        "current_state": "The release script has a self-contained self-test: 50 cases for version bumps, the flag matrix, squash base, reachable-tag range and the CHANGELOG gate. It needs no network and ran in about 2 s here, all passing. Only a human or agent following versioning.md or /release runs it. release.sh changed again this iteration (X-102: reachable-tag base, CHANGELOG gate, gofmt gate). Its comments show earlier regressions that only a run exposes, such as the SIGPIPE-under-pipefail abort at line 413.",
+        "recommended_state": "The Tests workflow runs `bash scripts/lib/test-release.sh`, next to the inventory tool tests, so a PR that breaks the ship path fails before the next release attempt.",
+        "rationale": "Nobody runs the release path until release day, and a break then blocks a tag. The harness already exists and is cheap. The repo gates its other tooling (tools/tests) the same way, so this adds no new kind of gate.",
+        "implementation_hint": "tests.yml php job, after 'Inventory tools unit tests': `- name: Release ship-path self-test\\n  run: bash scripts/lib/test-release.sh`. The harness builds temp git fixtures and sets its own git identity, so on ubuntu-latest it needs only git and bash.",
+        "source_auditor": "cross-cutting-auditor",
+        "status": "open",
+        "score": 5.0
+      },
+      {
+        "id": "X-203",
+        "title": "Core [Unreleased] omits 5 removed public methods; one entry is stale",
+        "category": "documentation",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "maintainability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/CHANGELOG.md",
+            "line": 97,
+            "snippet": "### Changed (BREAKING)"
+          },
+          {
+            "file": "packages/laravel-capabilities/CHANGELOG.md",
+            "line": 365,
+            "snippet": "`ArtisanCommandRegistrar::classes($artisanConfig, $approvalConfig)` adds\n  `ResumeApprovalsCommand` whenever `ResumeSchedulePlan::fromConfig()` plans a sweep"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/Artisan/ArtisanCommandRegistrar.php",
+            "line": 39,
+            "snippet": "public static function classes(array $artisanConfig = []): array"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Adapters/PeerSupportMatrix.php",
+            "line": 16,
+            "snippet": "final class PeerSupportMatrix  // public static supports() removed in 1ff1b28"
+          }
+        ],
+        "current_state": "Four X-001 commits removed public methods that shipped in v0.5.3: `SurfaceNames::isKnown()` (e963a9d), `BootGuard::fromDefaults()` and `evaluatePeer()` (ed1c2c8), `SchemaSnapshot::document()` (ec7c174) and `PeerSupportMatrix::supports()` (1ff1b28). None of them touched the CHANGELOG, and [Unreleased] names none of them. The README presents `PeerSupportMatrix` as the machine-readable matrix. Separately, the L-108 Fixed entry documents `ArtisanCommandRegistrar::classes($artisanConfig, $approvalConfig)`. The later L-015 commit moved the resume command to `infrastructure()` / `all()` and put `classes()` back to one argument, as the L-015 Added entry says. The two entries contradict each other.",
+        "recommended_state": "[Unreleased] lists the five removals under 'Changed (BREAKING)', or under a 'Removed' heading. The L-108 entry names the shipped seam: `ArtisanCommandRegistrar::infrastructure($approvalConfig)` / `all()`.",
+        "rationale": "On 0.x, removals are allowed without a major bump (versioning.md). The package CHANGELOG is the consumer's only upgrade guide on the split remote, though, and this one already has a BREAKING section for exactly this. Every other fix commit in c82e624..HEAD that touched package src also updated its CHANGELOG (checked commit by commit). These four are the only gaps, besides 47e0877, which is internal only.",
+        "implementation_hint": "Under `### Changed (BREAKING)` add: '- **Unused public helpers removed:** `Boot\\SurfaceNames::isKnown()`, `Boot\\BootGuard::fromDefaults()` / `evaluatePeer()`, `Support\\SchemaSnapshot::document()`, `Adapters\\PeerSupportMatrix::supports()`. Use `PeerSupportMatrix` constraints with Composer semver, or `BootGuard` via the provider.' In the L-108 bullet, replace `ArtisanCommandRegistrar::classes($artisanConfig, $approvalConfig)` with `ArtisanCommandRegistrar::infrastructure($approvalConfig)` (provider: `all()`).",
+        "source_auditor": "cross-cutting-auditor",
+        "status": "open",
+        "score": 5.0
+      },
+      {
+        "id": "L-202",
+        "title": "Remove the approval executor's second idempotency writer (dead in production)",
+        "category": "architecture",
+        "severity": "low",
+        "effort": "small",
+        "impact": [
+          "maintainability",
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalExecutor.php",
+            "line": 233,
+            "snippet": "$this->completeIdempotency($row, $result);"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalExecutor.php",
+            "line": 363,
+            "snippet": "'status' => 'completed', 'result_json' => $result->toArray(),"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+            "line": 232,
+            "snippet": "public function withIdempotency(?IdempotencyStore $store): self"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+            "line": 154,
+            "snippet": ")->withExecutor(static function (array $row) use ($app): CapabilityResult {"
+          },
+          {
+            "file": "packages/laravel-capabilities/tests/Unit/Approval/ApprovalStateMachineTest.php",
+            "line": 285,
+            "snippet": "it('happy: idempotency key completed after approval execution [D-005]'"
+          }
+        ],
+        "current_state": "After L-102, the approved execution runs through the pipeline under the row's idempotency key, and the pipeline moves that key from pending_approval to completed or failed. ApprovalExecutor::completeIdempotency still writes the same row a second time, always as status 'completed', even when the result failed. Only ApprovalManager::withIdempotency() enables it, and neither the provider nor ContainerBindings::makeApprovalManager ever calls that, so it never runs in production. The approval idempotency tests (ApprovalStateMachineTest:285, ApprovalCrashRecoveryTest:131) wire it through test helpers, so they prove a path hosts never run.",
+        "recommended_state": "One writer for the idempotency row: the pipeline. Remove withIdempotency/completeIdempotency from ApprovalManager and ApprovalExecutor. Re-point the approval idempotency tests at the registry path (executeApproval under the key → row completed/failed, retry replays).",
+        "rationale": "Two mechanisms for one invariant, only one of them live, is how the L-101/L-102 class of bug arose: tests passed on a manager that production never built. If a host did wire it, it would overwrite the pipeline's 'failed' with 'completed'. A different-hash retry would then get 409 conflict instead of the stored failure replay.",
+        "implementation_hint": "Delete ApprovalExecutor::completeIdempotency and its call, the $idempotency ctor param and withIdempotency on both classes, and the idempotency entries in tests/Fixtures/ApprovalHelpers.php and tests/Support/SharedFakes.php. Rewrite ApprovalStateMachineTest:285-320 and ApprovalCrashRecoveryTest:131 against a registry with InMemoryIdempotencyStore + InMemoryApprovalStore: invoke with key → approval_required; accept → key row status completed; a failing run() → key row status failed. Keep coverage at 95% or above.",
+        "source_auditor": "laravel-auditor",
+        "status": "open",
+        "score": 4.25
+      },
+      {
+        "id": "M-206",
+        "title": "Count 429 retry waits in the Anthropic timeout vs claim_ttl guard",
+        "category": "configuration",
+        "severity": "low",
+        "effort": "small",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-ai/src/Support/ContainerBindings.php",
+            "line": 141,
+            "snippet": "if ($timeout >= $claimTtl) { throw new InvalidArgumentException(\"... one request has to fit inside the turn job\"); }"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Support/AnthropicLlmClient.php",
+            "line": 224,
+            "snippet": "->timeout($this->timeoutSeconds)->retry(max(0, $this->maxRetries) + 1, fn (...) => $this->retryDelayMs(...), ...)"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Support/AnthropicLlmClient.php",
+            "line": 290,
+            "snippet": "return min($seconds, self::MAX_RETRY_AFTER_SECONDS) * 1000; // up to 60s per retry"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/config/capabilities-ai.php",
+            "line": 72,
+            "snippet": "'max_retries' => (int) $env('CAPABILITIES_AI_ANTHROPIC_MAX_RETRIES', 2),"
+          }
+        ],
+        "current_state": "The M-104 guard only checks timeout < claim_ttl (110 < 120). One complete() call can take (max_retries+1) timeouts plus up to 60s of Retry-After sleep per retry. With the defaults, a single 429 that says 'retry after 10s' followed by a slow reply passes 120s. The worker is then killed mid-request, and the turn waits for the stale reaper instead of failing as a retryable timeout.",
+        "recommended_state": "One complete() call keeps its whole retry sequence within the job budget. The 429 retry callback stops retrying once elapsed + delay + timeout would pass claim_ttl minus a margin, and throws RetryableLlmException with retry_after_seconds instead.",
+        "rationale": "The guard's own message says the goal is that one request fits the turn job. Retries were left out, so the defaults can still break that goal on a common transient (rate limiting under load). This is not the recorded max_tokens decision. It is the timeout validation that the deferred list says is now in place.",
+        "implementation_hint": "Pass a deadline (claim_ttl - 5) into AnthropicLlmClient. In the Http::retry `when` callback, return false when (now - start) + retryDelay + timeout > deadline, so the 429 surfaces as RetryableLlmException with its Retry-After. Unit-test it with Http::fake returning 429 with Retry-After: 30 under a 110/120 budget.",
+        "source_auditor": "laravel-auditor-siblings",
+        "status": "open",
+        "score": 4.25
+      }
+    ]
+  },
+  "counts": {
+    "total": 15,
+    "critical": 0,
+    "high": 1,
+    "medium": 9,
+    "low": 5,
+    "open": 14,
+    "fixed_before_synthesis": [
+      "C-201"
+    ],
+    "quick_wins": 9
+  },
+  "dropped_count": 0,
+  "merges": [],
+  "cross_references": [
+    {
+      "ids": [
+        "L-201",
+        "M-201"
+      ],
+      "reason": "Shared root cause (unguarded notifyPending in ApprovalManager::request); dedupe rule not met (same category and shared files, title Jaccard 0.05 < 0.8)."
+    }
+  ],
+  "baseline_items": [],
+  "deferred_owner_decisions": [
+    {
+      "item": "AI tests on sqlite :memory:",
+      "detail": "EloquentTurnClaimTest, EloquentConversationStoreTest, MigrationModelsTest still use sqlite :memory:.",
+      "owner": "Tom",
+      "reason": "Test-policy decision pending (unit-only rule vs these persistence tests)."
+    },
+    {
+      "item": "CLI catalog.ResolveAlias / Cache.GetByETag",
+      "detail": "Unused in production code but referenced by requirements-inventory tests.",
+      "owner": "Tom",
+      "reason": "Delete-or-wire decision pending."
+    },
+    {
+      "item": "Package-remote main repair",
+      "detail": "Package remotes' main may have been rolled back by the old v0.5.3 tag split run (pre-X-101).",
+      "owner": "Tom",
+      "reason": "Remote repair needs owner push rights and a call on which tree wins."
+    },
+    {
+      "item": "AI llm.anthropic.max_tokens default 64000",
+      "detail": "Recorded host-parity decision. timeout < claim_ttl is now validated (M-206 is about retries inside that budget, not max_tokens).",
+      "owner": "Tom",
+      "reason": "Recorded decision."
+    },
+    {
+      "item": "Core audit required=true fallback outbox is process-local",
+      "detail": "Documented known limit from the L-104 fix.",
+      "owner": "Tom",
+      "reason": "Documented limit; durable outbox is a design call."
+    }
+  ],
+  "warnings": [
+    "findings-laravel-siblings.json uses non-standard prefix M- (auditor \"laravel-auditor-siblings\"); kept as-is by orchestrator instruction.",
+    "Mode not supplied by orchestrator; recorded as \"audit\".",
+    "Auditors reviewed .worktrees/arch-audit3 at d460a24. The synthesis branch is now 3a0a829 after the C-201 history rewrite (d460a24 is no longer an ancestor). `git diff d460a24 3a0a829` touches only .gitignore and the removed binary, so every other line ref is current.",
+    "C-201 fix placed the ignore rule in the root .gitignore (line 31), not packages/capabilities-cli/.gitignore as the hint suggested. The split remote therefore does not carry the rule. Harmless for the blob (it is out of history), but a `go build` inside a standalone rawphp/capabilities-cli checkout is not ignored.",
+    "Auditor notes scanned for cross-scope hand-offs: only the siblings note (M-201 overlaps core) qualifies, handled as the L-201/M-201 cross-reference. No other note hands off an uncovered defect.",
+    "Deferred / do-not-report honoured by all four auditors (see report section 'Deferred (owner decisions)')."
+  ]
+}

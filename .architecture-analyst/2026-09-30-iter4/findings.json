@@ -1,0 +1,371 @@
+{
+  "generated_at": "2026-09-29T15:39:29Z",
+  "stack_summary": {
+    "laravel": {
+      "present": true,
+      "version": "11.x|12.x|13.x (illuminate/* components; three packages, not a full app)",
+      "php_version": "8.2+",
+      "key_packages": [
+        "illuminate/support",
+        "illuminate/http",
+        "illuminate/routing",
+        "illuminate/console",
+        "illuminate/bus",
+        "illuminate/events",
+        "illuminate/database",
+        "illuminate/validation",
+        "pestphp/pest",
+        "phpstan/phpstan"
+      ]
+    },
+    "frontend": {
+      "framework": "none",
+      "framework_version": null,
+      "inertia_version": null,
+      "typescript": false,
+      "state_library": "none",
+      "ui_library": "none",
+      "build_tool": "unknown",
+      "key_packages": []
+    },
+    "testing": {
+      "backend": "pest",
+      "frontend": "none"
+    },
+    "tooling": {
+      "linter_backend": "none",
+      "linter_frontend": "none",
+      "formatter_frontend": "none",
+      "types_php": "phpstan"
+    },
+    "infrastructure_hints": {
+      "queue_driver": "unknown",
+      "cache_driver": "unknown",
+      "ci": "github-actions (tests.yml, split-packages.yml)",
+      "deploy": "unknown"
+    },
+    "notes": "Monorepo: packages/laravel-capabilities (core bus, ~22.8k LOC), packages/laravel-capabilities-messaging (~3k), packages/laravel-capabilities-ai (~4.5k), packages/capabilities-cli (Go, ~5.5k). No root app/routes/package.json. Unit-test-only policy (no feature/DB tests), >=95% coverage. Design oracle: docs/spec.md (D-002..D-023). Standing decisions: /Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.do-work/decisions.md (primary checkout, untracked).",
+    "control_plane": {
+      "present": true,
+      "language": "go",
+      "path": "packages/capabilities-cli",
+      "notes": "Go product CLI, HTTP client only (D-016)"
+    }
+  },
+  "mode": "audit",
+  "iteration": 4,
+  "previous_run": "2026-09-30-iter3",
+  "audited_head": "edd3edd",
+  "synthesis_head": "edd3edd",
+  "loop_trend": {
+    "iter1": 58,
+    "iter2": 28,
+    "iter3": 15,
+    "iter4": 5
+  },
+  "buckets": {
+    "critical": [],
+    "high": [
+      {
+        "id": "M-301",
+        "title": "Let an in-tenant approver accept: core reads approver and row tenant differently",
+        "category": "authorization",
+        "severity": "high",
+        "effort": "small",
+        "impact": [
+          "reliability",
+          "security"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+            "line": 823,
+            "snippet": "private function tenantOf(object $actor): ?string { if (isset($actor->tenant_id)) { ... } return null; }"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+            "line": 390,
+            "snippet": "->allows($row, $approver, $options['tenant_id'] ?? $this->tenantOf($approver))"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Support/DefaultScopeResolver.php",
+            "line": 120,
+            "snippet": "} elseif (is_object($user) && isset($user->current_tenant_id)) { $fromMembership = (string) $user->current_tenant_id;"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Support/DefaultScopeResolver.php",
+            "line": 159,
+            "snippet": "$tenantId = 'default-tenant';"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+            "line": 739,
+            "snippet": "'tenant_id' => $ctx->tenantId(),"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalPolicy.php",
+            "line": 121,
+            "snippet": "if ($rowTenant !== null && $rowTenant !== '' && $actorTenantId !== $rowTenant) { return false; }"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Support/LinkedUser.php",
+            "line": 14,
+            "snippet": "public readonly ?string $tenantId = null,"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/src/Telegram/CallbackHandler.php",
+            "line": 126,
+            "snippet": "$options = ['decided_via' => [...]]; // no tenant_id: core falls back to tenantOf($user)"
+          }
+        ],
+        "current_state": "The fixer's report is correct but understates the problem. The approval row's tenant comes from the ScopeResolver: the user's current_tenant_id, or 'default-tenant' when the user has none and tenancy is not required. The approver's tenant comes from ApprovalManager::tenantOf(), which reads $actor->tenant_id. ApprovalResumer::tenantOf does the same. Neither Telegram (CallbackHandler) nor HTTP (ApprovalController) passes options['tenant_id']. So every accept or reject fails with forbidden unless the actor has both tenant_id and current_tenant_id and they match. Reproduced on the default registry with policy=requester, where the requester accepts their own approval: a plain user gets row 'default-tenant' and forbidden; tenant_id='t1' only gets row 'default-tenant' and forbidden; current_tenant_id='t1' only gets row 't1' and forbidden; a messaging LinkedUser('7','t1') gets row 'default-tenant' and forbidden; both attributes set gives ok.",
+        "recommended_state": "An approver passes the tenant check exactly when the ScopeResolver that stamped the row resolves the approver to the same tenant. Every accept, reject and resume path (HTTP, Telegram, CLI) uses that one rule. A single-tenant host whose User has no tenant attributes can then approve with the default setup.",
+        "rationale": "In a default install, no approval-gated capability can be approved or rejected over Telegram or HTTP. Every tap returns 'You are not allowed to decide this approval.' (after M-202), and the rows sit pending until they expire. It fails closed, so nothing leaks, but the whole D-006 approval loop is unusable unless the host happens to set both attributes. Renaming LinkedUser::$tenantId to tenant_id, as the fixer's note suggests, would not fix it: the row still holds 'default-tenant' or current_tenant_id. Unit tests miss it because every accept test passes an explicit tenant_id option or gives the actor a matching tenant_id (for example l102Approver in ApprovalRetryTest). The fix belongs in core, the messaging sibling only surfaces it. Dedupe with any core finding on ApprovalManager::tenantOf.",
+        "implementation_hint": "Core: inject the bound ScopeResolver (via ResolveTenantFromCaller) into ApprovalManager and ApprovalResumer. Replace tenantOf($actor) with `$this->scopes->resolve(CapabilityContext::make(['caller' => $via, 'actor' => $actor]))->tenantId`, keeping options['tenant_id'] as a trusted override. Delete both tenantOf helpers. Unit tests on the default registry, with no tenant option and no tenant attributes: the requester accepts their own approval (ok), a user with current_tenant_id='t1' accepts a 't1' row (ok) and is refused on a 't2' row (forbidden). Messaging needs no change. Add a CallbackRoutingTest case with a real ApprovalManager and a LinkedUser tapper, which today is forbidden and after the fix is ok.",
+        "source_auditor": "laravel-auditor-siblings",
+        "status": "open",
+        "score": 34.0
+      }
+    ],
+    "quick_wins": [
+      {
+        "id": "M-302",
+        "title": "Budget the whole AI turn, not each LLM call, against the claim_ttl job timeout",
+        "category": "queues_events",
+        "severity": "medium",
+        "effort": "small",
+        "impact": [
+          "reliability"
+        ],
+        "locations": [
+          {
+            "file": "packages/laravel-capabilities-ai/src/Domain/ConversationService.php",
+            "line": 91,
+            "snippet": "$job->timeout = $this->claimTtl; // one job runs the whole turn"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Domain/TurnRunner.php",
+            "line": 84,
+            "snippet": "while ($rounds < $this->maxToolRounds) { ... $response = $this->llm->complete($messages, $toolDefs);"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Support/AnthropicLlmClient.php",
+            "line": 223,
+            "snippet": "$started = hrtime(true); // per complete() call, reset every round"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Support/AnthropicLlmClient.php",
+            "line": 298,
+            "snippet": "return self::elapsedMs($started) + $delayMs + $this->timeoutSeconds * 1000 < $this->deadlineSeconds * 1000;"
+          },
+          {
+            "file": "packages/laravel-capabilities-ai/src/Support/ContainerBindings.php",
+            "line": 134,
+            "snippet": "claim_ttl is also the client's retry deadline, so 429 waits cannot push it past the job."
+          }
+        ],
+        "current_state": "RunTurnJob's worker timeout is claim_ttl (120s) for the whole turn, and TurnRunner makes up to max_tool_rounds (8) complete() calls in that one job. The M-104 guard (timeout 110 < claim_ttl 120) and the M-206 retry deadline both measure from the start of each complete() call. So only round 1 is protected. A tool-using turn whose rounds together pass 120s (for example 20s to pick a tool plus a 105s answer, which is under the 110s per-call timeout) or a 429 wait in round 2 gets the worker killed mid-request. The turn then waits for the stale-running reaper.",
+        "recommended_state": "A turn stops cleanly before it can outlive its job. The runner does not start a new LLM round, and the client does not retry a 429, unless elapsed turn time plus one full request timeout still fits inside claim_ttl minus a small margin. Otherwise the turn fails as a retryable timeout with its progress events, as round-1 timeouts already do.",
+        "rationale": "M-206 was fixed as specified, but the ContainerBindings and config comments now promise a guarantee that holds for the first round only. Every tool call costs at least a second LLM round, so multi-round turns are the normal agent case, not an edge. A worker killed by the queue timeout also kills the worker process. The user then sees the turn hang until the host-scheduled reaper runs, instead of an immediate retryable error.",
+        "implementation_hint": "Keep the LlmClient contract. Give AnthropicLlmClient an absolute deadline instead of a relative one: `withDeadline(float $monotonicDeadlineMs): self`, or a nullable deadline property. TurnRunner computes `$turnDeadline = hrtime at claim + claimTtl*1000` once. Before each round it fails the turn retryably when `now + timeout*1000 >= turnDeadline`, and it hands the deadline to the client so retryFitsDeadline compares against the turn and not the call. Correct the ContainerBindings and config comments. Unit test with FakeLlmClient and a fake clock: a second round that would start past the budget fails as retryable without calling complete().",
+        "source_auditor": "laravel-auditor-siblings",
+        "status": "open",
+        "score": 12.75
+      }
+    ],
+    "medium": [],
+    "enhancements": [
+      {
+        "id": "X-301",
+        "title": "Packagist checklist still omits the AI package and forbids a third one",
+        "category": "documentation",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "reliability",
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "docs/versioning.md",
+            "line": 253,
+            "snippet": "### Package names and publish surface  (table rows: laravel-capabilities, laravel-capabilities-messaging, capabilities-cli; no laravel-capabilities-ai)"
+          },
+          {
+            "file": "docs/versioning.md",
+            "line": 265,
+            "snippet": "- Do not invent a third Composer package name."
+          },
+          {
+            "file": "docs/versioning.md",
+            "line": 278,
+            "snippet": "- [ ] **Submit package** for `rawphp/laravel-capabilities-messaging` the same way (after core is listed)."
+          },
+          {
+            "file": "docs/versioning.md",
+            "line": 295,
+            "snippet": "`composer show rawphp/laravel-capabilities` (and messaging) resolves a version."
+          },
+          {
+            "file": "README.md",
+            "line": 106,
+            "snippet": "| **Packaging / Packagist publish** | residual | **Residual until human completes** the Packagist + git tag publish **checklist** in docs/versioning.md"
+          }
+        ],
+        "current_state": "The X-105 fix brought the top of versioning.md up to three Composer packages (line 11 row, branch-alias table at 177/199, path/VCS snippets). The 'Packagist + git tag publish checklist' further down was not updated. Its publish-surface table lists only core, messaging and the CLI. It says 'Do not invent a third Composer package name', although rawphp/laravel-capabilities-ai is that third package. Its submit, prep (line 272) and verify (line 295) steps cover only core and messaging. The root README names this checklist as the one remaining human gate for Packagist publishing.",
+        "recommended_state": "The checklist covers all three Composer packages. The table has an AI row, the submit and verify steps include rawphp/laravel-capabilities-ai (published after core, which it requires via self.version), and the 'third package' line is gone or changed to say there are exactly three.",
+        "rationale": "Nothing in CI publishes to Packagist (decisions.md UR-008: human-gated). This checklist is the only procedure for doing it. A maintainer who follows it as written submits two packages. `composer require rawphp/laravel-capabilities-ai` then fails for consumers, and line 265 tells them not to add the missing one. Line 349 mentions the AI package's Packagist step, but only as a side note far below the checklist.",
+        "implementation_hint": "docs/versioning.md: add the row `| rawphp/laravel-capabilities-ai | packages/laravel-capabilities-ai | Packagist (Composer) | https://github.com/rawphp/laravel-capabilities-ai |` after the messaging row. Line 264: 'Messaging and AI depend on core, so publish core first, then messaging and AI.' Line 265: 'Exactly three Composer packages; do not invent a fourth.' Line 272: '(`composer test`: core, messaging and AI)'. Add a '**Submit package** for rawphp/laravel-capabilities-ai' step after line 278. Line 295: '(and messaging, AI)'.",
+        "source_auditor": "cross-cutting-auditor",
+        "status": "open",
+        "score": 5.0
+      },
+      {
+        "id": "X-302",
+        "title": "Iteration-3 fixes left D-021 notify row and core sibling allowlist stale",
+        "category": "documentation",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "maintainability"
+        ],
+        "locations": [
+          {
+            "file": "docs/spec.md",
+            "line": 3236,
+            "snippet": "| First webhook / `messaging:telegram-setup` / first outbound notify | **Validate secrets**; fail that request/command loudly |"
+          },
+          {
+            "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+            "line": 348,
+            "snippet": "$notifier->notifyPending($row);\n} catch (Throwable $e) {"
+          },
+          {
+            "file": "packages/laravel-capabilities/README.md",
+            "line": 60,
+            "snippet": "| | `Support\\Redactor` | D-010 key redaction shared with the audit log; allowed for AI |"
+          },
+          {
+            "file": "packages/laravel-capabilities-messaging/tests/Unit/Architecture/SiblingCoreImportAllowlistTest.php",
+            "line": 45,
+            "snippet": "// D-010 sensitive-key redaction (static, no state) — approval messages echo stored input.\n'Rawphp\\\\Capabilities\\\\Support\\\\Redactor',"
+          }
+        ],
+        "current_state": "Two iteration-3 fixes changed documented cross-package contracts without updating their docs. (1) L-201 (13dd370): ApprovalManager::request() now catches a notifier throw, reports it (ExceptionHandler plus approval_notify_failed_total) and still returns approval_required. D-021 in the spec still says a first outbound notify with missing secrets fails the request loudly. The TelegramApprovalNotifier still throws, but the request no longer fails. (2) M-203 (32e1acd): messaging now imports core Support\\Redactor, and its architecture allowlist test was widened to permit that. The core README's 'Public surface for sibling packages' table still marks Redactor 'allowed for AI'.",
+        "recommended_state": "The D-021 notify row describes the shipped behaviour: the notifier validates secrets and throws, and core reports the throw without failing the invoke, so the approval stays pending. The core README Redactor row says 'allowed for messaging and AI', which matches both architecture tests.",
+        "rationale": "The spec is the design oracle that audits and fixes are checked against (AGENTS.md). A later pass reading D-021 as written would flag L-201's isolation as a D-021 violation and could undo it. The README table is the stated contract for which core helpers siblings depend on. A core maintainer changing Redactor would read it as affecting only AI.",
+        "implementation_hint": "docs/spec.md:3236, second cell: '**Validate secrets**; fail the webhook / setup command loudly. An outbound notify throws, and core reports it (ExceptionHandler + `approval_notify_failed_total{notifier}`) without failing the invoke: the approval stays pending (L-201).' packages/laravel-capabilities/README.md:60: 'allowed for AI' → 'allowed for messaging (approval message input) and AI'. Docs only, no code change.",
+        "source_auditor": "cross-cutting-auditor",
+        "status": "open",
+        "score": 5.0
+      },
+      {
+        "id": "C-301",
+        "title": "Make the C-202 fix reach warm caches; --no-cache does not refresh them",
+        "category": "wire_contract",
+        "severity": "low",
+        "effort": "trivial",
+        "impact": [
+          "dx"
+        ],
+        "locations": [
+          {
+            "file": "packages/capabilities-cli/CHANGELOG.md",
+            "line": 61,
+            "snippet": "cached by an older CLI lack them until the next live describe (`--no-cache`)."
+          },
+          {
+            "file": "packages/capabilities-cli/internal/catalog/service.go",
+            "line": 89,
+            "snippet": "if !s.NoCache && s.Cache != nil { if e, ok := s.Cache.Get(name, \"\"); ok { return e, nil, nil } }"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/catalog/service.go",
+            "line": 124,
+            "snippet": "if s.Cache != nil && !s.NoCache { _ = s.Cache.Put(entry) }"
+          },
+          {
+            "file": "packages/capabilities-cli/internal/catalog/cache.go",
+            "line": 131,
+            "snippet": "sum := sha256.Sum256([]byte(c.BaseURL + \"\\x00\" + c.Token))"
+          }
+        ],
+        "current_state": "C-202 added description/readOnly/idempotent to CacheEntry, but describe cache hits have no TTL or version check (service.go:89 calls Get with version \"\"). So every entry an older CLI cached keeps serving empty fields, and it is refreshed only by `catalog --refresh`, a token change, or a schema rejection. The CHANGELOG tells users to run `--no-cache`, but NoCache skips both the read and the Put (service.go:124). The live describe is shown once and never stored, so the next plain `describe`/`--help` shows no description again.",
+        "recommended_state": "Upgraded installs pick up the new fields with no user action, and the CHANGELOG names a remedy that works.",
+        "rationale": "For anyone who has run a capability before, C-202 is invisible: `describe --json` and `<domain> <verb> --help` still show no description, and those are the agent discovery steps in docs/agents.md. The documented workaround does nothing lasting. Stale readOnly/idempotent read as false because of omitempty, which is the safe direction, so this is low and not a correctness bug.",
+        "implementation_hint": "Version the cache namespace: in PrincipalCache, hash a format tag with the key, e.g. `sha256.Sum256([]byte(\"v2\\x00\" + c.BaseURL + \"\\x00\" + c.Token))`. Pre-C-202 entries are then never read, and the first describe refetches. Orphaned old dirs are a few KB under the profile's schemas/ dir. Also change CHANGELOG.md:61 to drop the `--no-cache` advice, or to say `capabilities catalog --refresh` if the version bump is not taken. One catalog unit test: an entry written under the old key is a miss for PrincipalCache.",
+        "source_auditor": "control-plane-auditor",
+        "status": "open",
+        "score": 5.0
+      }
+    ]
+  },
+  "counts": {
+    "total": 5,
+    "critical": 0,
+    "high": 1,
+    "medium": 1,
+    "low": 3,
+    "open": 5,
+    "fixed_before_synthesis": [],
+    "quick_wins": 1
+  },
+  "dropped_count": 0,
+  "merges": [],
+  "cross_references": [
+    {
+      "ids": [
+        "M-301"
+      ],
+      "reason": "Siblings finding whose fix is in core (ApprovalManager/ApprovalResumer::tenantOf vs DefaultScopeResolver). Core auditor returned zero findings and did not cover it, so no merge. tenantOf predates iteration 2 (present at c82e624), so it is pre-existing, not fix-introduced; M-202 made it visible as a forbidden toast."
+    }
+  ],
+  "baseline_items": [],
+  "deferred_owner_decisions": [
+    {
+      "item": "AI tests on sqlite :memory:",
+      "detail": "EloquentTurnClaimTest, EloquentConversationStoreTest, MigrationModelsTest still use sqlite :memory:.",
+      "owner": "Tom",
+      "reason": "Test-policy decision pending (unit-only rule vs these persistence tests)."
+    },
+    {
+      "item": "CLI catalog.ResolveAlias / Cache.GetByETag",
+      "detail": "Unused in production code but referenced by requirements-inventory tests.",
+      "owner": "Tom",
+      "reason": "Delete-or-wire decision pending."
+    },
+    {
+      "item": "Package-remote main repair",
+      "detail": "Package remotes' main may have been rolled back by the old v0.5.3 tag split run (pre-X-101).",
+      "owner": "Tom",
+      "reason": "Remote repair needs owner push rights and a call on which tree wins."
+    },
+    {
+      "item": "AI llm.anthropic.max_tokens default 64000",
+      "detail": "Recorded host-parity decision. timeout < claim_ttl is now validated (M-206 is about retries inside that budget, not max_tokens).",
+      "owner": "Tom",
+      "reason": "Recorded decision."
+    },
+    {
+      "item": "Core audit required=true fallback outbox is process-local",
+      "detail": "Documented known limit from the L-104 fix.",
+      "owner": "Tom",
+      "reason": "Documented limit; durable outbox is a design call."
+    },
+    {
+      "item": "Local branch backup/analyst-loop-pre-filter",
+      "detail": "Holds the pre-rewrite history with the 10 MB CLI binary blob (commit 1971187, C-201). Not on any remote at synthesis time.",
+      "owner": "Tom",
+      "reason": "Must never be pushed; delete it after the PR merges."
+    }
+  ],
+  "warnings": [
+    "findings-laravel-siblings.json uses non-standard prefix M- (auditor \"laravel-auditor-siblings\"); kept as-is by orchestrator instruction.",
+    "Mode not supplied by orchestrator; recorded as \"audit\".",
+    "findings-laravel-core.json has 0 findings. Valid file, no warning beyond this note.",
+    "Auditors reviewed .worktrees/arch-audit4 at edd3edd, which is the synthesis HEAD. Line refs are current.",
+    "Auditor notes scanned for cross-scope hand-offs: the siblings note hands M-301 to core (\"dedupe with the core auditor\"). The core file has no covering finding, so M-301 stands as filed. No other note hands off an uncovered defect.",
+    "Iteration-3 warning about C-201 resolved: packages/capabilities-cli/.gitignore now ignores /cmd/capabilities/capabilities and travels with the split (control-plane auditor).",
+    "Deferred / do-not-report honoured by all four auditors (see report section 'Deferred (owner decisions)')."
+  ]
+}

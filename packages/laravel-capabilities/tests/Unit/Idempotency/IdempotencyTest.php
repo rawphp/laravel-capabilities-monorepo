@@ -420,6 +420,13 @@ it('happy: request_hash is canonical input JSON hash [D-005]', function () {
         ->and(strlen($a))->toBe(64);
 });
 
+it('edge: a JSON-string payload hashes like the decoded input; plain strings hash as themselves [D-005]', function () {
+    expect(RequestHash::of('  {"b": 1, "a": [2, 3]}'))->toBe(RequestHash::of(['a' => [2, 3], 'b' => 1]))
+        ->and(RequestHash::of('[1, 2]'))->toBe(RequestHash::of([1, 2]))
+        ->and(RequestHash::of('plain text'))->toBe(hash('sha256', '"plain text"'))
+        ->and(fn () => RequestHash::of('{not json'))->toThrow(JsonException::class);
+});
+
 it('edge: omitted optional field and its explicit default hash the same and replay [D-005]', function () {
     $h = IdempotencyHelpers::harness();
     $opts = IdempotencyHelpers::options('http', ['idempotency_key' => 'canon-1']);

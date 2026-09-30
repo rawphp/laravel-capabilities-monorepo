@@ -47,7 +47,7 @@ Capability::define('create-invoice')
     ->register($registry);
 ```
 
-Builder highlights (non-exhaustive): `description`, `surfaces`, `input`, `output`, `aliases`, deprecation fields, `groups`, `tags`, `idempotent`, `idempotencyKeyFields` (derive a key from named input fields when the caller sends none), `authorize`, `run`, approval-related setters, `register`.
+Builder highlights (non-exhaustive): `description`, `surfaces`, `input`, `output`, `aliases`, deprecation fields, `groups`, `tags`, `idempotent`, `idempotencyKeyFields` (derive a key from named input fields when the caller sends none), `authorize`, `needsApproval` (`(Input, CapabilityContext): bool` — true stores an approval request and returns `approval_required` instead of running), `approvalPolicy` / `approvalTtlHours` (who may decide — one of `requester`, `requester_or_role`, `any_staff`, `custom`, `role:<name>`; anything else is rejected when the definition is built — and for how long the request stays pending; both travel on the approval row), `run`, `register`.
 
 ### CLI routing metadata (`domain` / `verb`)
 
@@ -78,7 +78,7 @@ Rules (fail closed):
 
 - Domain and verb tokens: lowercase `[a-z][a-z0-9-]*`
 - Incomplete metadata (only domain or only verb) → definition error
-- Domain must not collide with reserved CLI meta-commands (`auth`, `catalog`, `describe`, `run`, `mcp`, `approvals`, `version`, `help`)
+- Domain must not collide with reserved CLI meta-commands (`auth`, `catalog`, `describe`, `run`, `mcp`, `approvals`, `version`, `help`, `self-update`)
 - Two definitions claiming the same `(domain, verb)` → register/boot failure (server authoritative)
 - Omit `cli` when unmapped — entry stays valid; clients use `run <name>` only
 - `cli` is **routing only** — JSON Schema remains the sole input/output contract
@@ -87,6 +87,16 @@ Rules (fail closed):
 ### Attribute + discovery (canonical path)
 
 Place classes under `config('capabilities.path')` (default `app/Capabilities`) with `#[Rawphp\Capabilities\Attributes\Capability]` implementing `Rawphp\Capabilities\Contracts\DefinesCapability`. Boot discovery runs through the service provider — do not invent a third registration mechanism.
+
+**Cache the class map in production.** Without a cache every boot (each request, each queue job) walks and tokenizes the discovery path. `php artisan capabilities:cache` writes `bootstrap/cache/capabilities.php` (the classes the attribute scan finds — a cache, not another discovery path) and boot uses it instead of scanning; `php artisan capabilities:clear` removes it. Both are hooked into `optimize` / `optimize:clear` on Laravel 11.27+. Run `capabilities:clear` (or `optimize`) after adding, renaming or removing a capability class, exactly as for `event:cache`.
+
+The class owns its governance. On every invoke the pipeline resolves the handler **once through the container** (constructor injection works) and calls, in order:
+
+- `authorize(Input $input, CapabilityContext $ctx): bool` — the decision for this capability. Without it, the host `Authorizer` decides (deny by default).
+- `needsApproval(Input $input, CapabilityContext $ctx): bool` — optional; `true` stores an approval request and returns `approval_required` without calling `run()`.
+- `run(Input $input, CapabilityContext $ctx)` — the single mutation path.
+
+Each method may declare `(Input $input)` alone; the context is passed only when the signature takes a second argument. Unit tests swap construction with `CapabilityRegistry::withHandlerFactory(fn (string $class) => ...)`.
 
 Full teaching sample (monorepo): [First capability tutorial](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/tutorials/first-capability.md).
 
@@ -111,6 +121,8 @@ $result = $registry->invoke('create-invoice', [
 ], [
     // caller is normally set by the adapter
     'caller' => 'http',
+    // who is acting — required on every surface (D-002); never inferred
+    'actor' => $request->user(),
 ]);
 
 if ($result->ok) {
@@ -134,7 +146,7 @@ Global switches live in published `config/capabilities.php` under `surfaces.*`:
 | MCP | `surfaces.mcp` | **Product MCP (server):** needs `laravel/mcp`; named profiles; optional `auto_register` (default true) via `McpServerRegistrar`; auth under `surfaces.mcp.auth` |
 | HTTP | `surfaces.http` | Default prefix `capabilities`; middleware `api`, `auth:sanctum` — also the transport the product CLI uses |
 | CLI | `surfaces.cli` | Marks capabilities available to product CLI **HTTP** callers (not an MCP bridge) |
-| Job | `surfaces.job` | Queue/job invokes need an explicit actor (not “null user = allow”) |
+| Job | `surfaces.job` | `RunCapabilityJob::dispatch(['name' => …, 'input' => …, 'actingAs' => $userId \| SystemActor::named('scheduler'), 'tenantId' => …])` queues a real `ShouldQueue` job; the worker runs it through the registry. An explicit actor is required (not “null user = allow”); user ids resolve through the default auth provider |
 | Artisan | `surfaces.artisan` | Optional **in-server** ops — not the downloadable product CLI |
 | Messaging | `surfaces.messaging` | Conversation channel flag; implementation is the **sibling** package. Invokes carrying messaging metadata stay `caller: agent` but are refused while this is off |
 
@@ -206,7 +218,7 @@ Once `mcp` is enabled, who can invoke `send-invoice-reminder`:
 
 Every successful call records `caller: mcp` and `mcp.auth_profile`; `integration` and `user_delegated` also record `mcp.client_id` (`user_pat` only when a client id is supplied and `audit_client_id` is on). An `integration` principal's tenant comes from the trusted credential session (`session.tenant_id`), never from tool input.
 
-For `integration` principals `$ctx->user()` is `null` — an `authorize()` that only checks `$ctx->user() !== null` (like the `create-invoice` example above) will deny every integration call. Branch on `$ctx->actor()` instead. The table is pinned by `tests/Unit/Mcp/AuthProfileCapabilityMatrixTest.php`.
+For `integration` principals `$ctx->user()` is `null` — an `authorize()` that only checks `$ctx->user() !== null` (like the `create-invoice` example above) will deny every integration call. Branch on `$ctx->actor()` instead. The table is pinned by the monorepo unit test [`AuthProfileCapabilityMatrixTest`](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/packages/laravel-capabilities/tests/Unit/Mcp/AuthProfileCapabilityMatrixTest.php).
 
 ### HTTP API (single tree)
 
@@ -224,7 +236,23 @@ When `surfaces.http.enabled` is true, routes come from `RouteTable` (default pre
 | `GET` | `/capabilities/{name}` | Describe one capability |
 | `POST` | `/capabilities/{name}` | **Invoke** |
 
+The three `auth/*` routes issue credentials, so they skip `auth:*` middleware and are throttled per client IP (`throttle:6,1,capabilities-auth`). Set `surfaces.http.auth_middleware` to a middleware list to replace that stack, for example to allow faster device-code polling.
+
 Product CLI is a remote client of **this** API. Do not add a second invoke controller tree.
+
+#### Device-code login (what the CLI expects from your `AuthTokenIssuer`)
+
+`capabilities auth login --base-url=…` runs RFC 8628 against the two `auth/*` routes above; the host binds `Rawphp\Capabilities\Contracts\AuthTokenIssuer` and core only wraps its return value in the `ok: true` envelope.
+
+| Step | Route | Your issuer returns (`data`) |
+|---|---|---|
+| Start | `POST …/auth/device` `{"client_id":"capabilities-cli"}` → `issueDeviceCode()` | `device_code`, `user_code`, `verification_uri`, `expires_in`, `interval` |
+| Poll (every `interval` s, floored to 10 s by the CLI) | `POST …/auth/token` `{"grant_type":"urn:ietf:params:oauth:grant-type:device_code","device_code":…,"client_id":"capabilities-cli"}` → `issueToken()` | while undecided: `{"status":"authorization_pending"}` (or `{"error":"authorization_pending"}`); `{"status":"slow_down"}` adds 5 s; `{"status":"access_denied"}` / `{"status":"expired_token"}` end the login |
+| Approved | same poll | `access_token`, `token_type`, `expires_in` — minted **with the CLI ability** (see below) |
+
+The token your issuer mints (and any PAT a user pastes into `capabilities auth login --token`) must carry the ability mapped to caller `cli` in `clients.token_abilities` — by default `capabilities:cli`, e.g. `$user->createToken('cli', ['capabilities:cli'])->plainTextToken`. Core derives the caller from that ability alone (D-022): a token without it is an `http` caller, so capabilities exposed on `cli` but not `http` disappear from the CLI catalog and `run` returns `not_found` with nothing pointing at the credential. The same map decides the request's `authKind` (`cli_token` only for an exact match on a `cli`-mapped ability).
+
+Pending statuses travel **inside** `ok: true` — do not throw or return an error envelope for them. The constants `AuthTokenIssuer::GRANT_DEVICE_CODE` and `AuthTokenIssuer::DEVICE_POLL_STATUSES` spell the wire values. Keep `interval >= 10` (the CLI polls no faster) unless `surfaces.http.auth_middleware` replaces the default `throttle:6,1,capabilities-auth` stack; an HTTP 429 makes the CLI back off by `Retry-After`.
 
 Example invoke:
 
@@ -251,10 +279,11 @@ Publish: `php artisan vendor:publish --tag=capabilities-config`
 | Agent/MCP profiles | `surfaces.*.profiles`, `require_profile`, tool count limits | Never dump full catalog by default (`name => list<string>` for MCP) |
 | Peer mismatch | `on_incompatible` → `fail` \| `disable` | Boot fail vs soft-disable |
 | MCP register errors | `surfaces.mcp.on_register_error` → `throw` (default) \| `disable` | Mid-mount adapter failure policy for non-empty plans |
-| HTTP | `prefix`, `middleware` | Route mount and auth |
-| Approval | `store`, `ttl_hours`, `execution`, `resume.*` | Human-in-the-loop |
-| Idempotency | `enabled`, `driver` (default `database`; use `memory` only for single-process tests), `header` (`Idempotency-Key`) | Safe retries; AI proposal accept readiness pings this store |
-| Audit | `enabled`, `mode` (`best_effort`), `driver` | Observability of invokes. A single capability can force strict with `->audit(['mode' => 'strict'])` (or `audit: ['mode' => 'strict']` on the attribute); it can only tighten the global mode, never loosen it |
+| HTTP | `prefix`, `middleware`, `auth_middleware` | Route mount and auth. The product CLI appends `/capabilities/…` to its `--base-url`, so `prefix` must end in `capabilities` (`api/capabilities` → `--base-url=https://host/api`). The unauthenticated `auth/*` routes drop `auth:*` and get `throttle:6,1,capabilities-auth` unless `auth_middleware` replaces that stack |
+| Approval | `store`, `ttl_hours`, `execution`, `resume.*` | Human-in-the-loop. With `execution=deferred` (default) and `resume.enabled`, the package schedules `capabilities:approvals-resume` every `resume.every_seconds` to finish approvals whose process died after `approved` — keep `schedule:run` in cron |
+| Idempotency | `enabled` (false makes the guard inert: no lookup, no store), `driver` (default `database`; use `memory` only for single-process tests), `ttl_hours` (stored outcome lifetime, default 24), `header` (`Idempotency-Key`; the one HTTP header setting), `warn_missing_key` | Safe retries; AI proposal accept readiness pings this store |
+| Events | `enabled` | Bus events (`CapabilityInvoked`, `CapabilityFailed`, `CapabilityApproval*`) are dispatched to the app's event dispatcher after `run()`; listen with normal Laravel listeners and use `afterCommit()` when you touch the database |
+| Audit | `enabled`, `mode` (`best_effort`), `driver` (`database`), `required` | Observability of invokes and approvals. `driver=database` writes one row per entry to `capabilities_audit_outbox` (`DatabaseAuditWriter`; bind your own `Contracts\AuditWriter` to replace it). `mode=strict` or `required=true` without any writer fails boot (D-010). A write that fails at runtime is reported to your `ExceptionHandler` and counted as `audit_write_failed_total{mode}`; in `strict` the caller gets `audit_failed` with the fixed message `Audit failed.` (the driver exception never reaches the wire), in `best_effort` the invoke still succeeds. Approval audit records (`approval.requested/decided/executed`) are always best_effort. Bus-event listeners that throw after `run()` are reported (`bus_listener_failed_total`) and do not change the invoke outcome or its stored idempotency row. A single capability can force strict with `->audit(['mode' => 'strict'])` (or `audit: ['mode' => 'strict']` on the attribute); it can only tighten the global mode, never loosen it |
 | Rate limits | `defaults.per_minute`, per-capability, agent turn max tools | Abuse control |
 | Clients | `token_abilities` (e.g. `capabilities:cli` → `cli`), privilege order | Caller derivation |
 | Peers | `peers.support` | Mirrors `PeerSupportMatrix` |
@@ -267,7 +296,7 @@ Agent and MCP tool exposure uses **profiles** (D-008). Configure named profile �
 
 Rules of thumb:
 
-- Profiles limit **discovery** of tools.
+- Profiles limit **discovery** of tools — and execution: with `require_profile` (default) an adapter `handle()` with no registered or per-call profile returns `not_runnable` / `profile_required` instead of running a capability by name.
 - `authorize()` still runs on every invoke.
 - Messaging sets `agent_profile` so bots do not see the entire bus.
 
@@ -310,6 +339,8 @@ Two different readiness signals — do not merge:
 
 | Surface | What | Purpose |
 |---------|------|---------|
+| **Artisan** `php artisan capabilities:approvals-resume [--id=…] [--force]` | `ResumeApprovalsCommand` / `ResumeApprovedApprovals` | Crash-recovery sweep for approved-but-not-executed approvals (D-006). Scheduled automatically when `approval.execution=deferred` and `approval.resume.enabled` — and registered whenever it is scheduled, even with `surfaces.artisan.enabled=false`; `--force --id=…` is the operator repair path that ignores grace and lease |
+| **Artisan** `php artisan capabilities:cache` / `capabilities:clear` | `CacheCapabilitiesCommand` / `ClearCapabilitiesCommand` / `Discovery\DiscoveryManifest` | Write / remove `bootstrap/cache/capabilities.php`, the cached `#[Capability]` class map boot uses instead of scanning `capabilities.path` (L-015). Registered whatever `surfaces.artisan.enabled` says; wired into `optimize` / `optimize:clear` |
 | **Artisan** `php artisan capabilities:integration-health` | `IntegrationHealthChecker` / `IntegrationHealthCommand` | Host **product** readiness: bindings, audit writer wired into the registry (warn when audit is on but records would be dropped), AI-chat mode, MCP tool counts, proposals + AlwaysReady safety, live AI progress-store ping (`ai_progress_ready`), progress/queue ops checks when AI package config is present |
 | **HTTP** `GET /{prefix}/health` (default `/capabilities/health`) | `CatalogHealth` / controller | **Surface/catalog** peer health for HTTP clients (D-011 / D-021), plus `api_version` (`RouteTable::API_VERSION`) that the product CLI checks before `run` |
 
@@ -324,8 +355,8 @@ Greenfield AI-chat hosts use this after queue/progress/proposals config — see 
 
 ## Approval and idempotency (operator view)
 
-- **Approval:** definitions may require approval before `run()` finishes. HTTP accept/reject routes are on the capability prefix. Notifier contracts allow CLI/HTTP/Telegram-style prompts; messaging package supplies conversation-side notify implementation.
-- **Idempotency:** when enabled and the definition uses it, repeated keys replay stored outcomes instead of double-applying. CLI always sends a key on `run`.
+- **Approval:** a definition's `needsApproval` (fluent callable or class method) decides per invoke; `true` stores a pending row and returns `approval_required` without calling `run()`. Who may accept or reject is the capability's `approvalPolicy` when declared (stored on the row), otherwise `approval.default_policy`. HTTP accept/reject routes are on the capability prefix. Pending rows are announced through every `ApprovalNotifier` the container knows — bind the contract, or tag implementations with `CapabilitiesServiceProvider::APPROVAL_NOTIFIER_TAG` (`capabilities.approval_notifiers`) when several channels apply; the messaging package registers its Telegram notifier this way. A notifier that throws is reported (`approval_notify_failed_total{notifier}`) and never changes the outcome: the row stays pending, the other notifiers still run, and the caller gets `approval_required`. `approval.ttl_hours` (capped per capability by `approvalTtlHours`) sets `expires_at`.
+- **Idempotency:** when enabled and the definition uses it, repeated keys replay stored outcomes instead of double-applying. CLI always sends a key on `run`. A retry of an approval-gated invoke under the same key replays the one `approval_required` (same `approval_id`) rather than opening a second approval; the accepted execution runs under that key, so later retries replay the executed outcome.
 
 **Telegram approval notifiers (upgrade):** For in-memory recording doubles (tests/fakes — **no** Bot API in core), use `RecordingTelegramApprovalNotifier` (`Rawphp\Capabilities\Approval\Notifiers\RecordingTelegramApprovalNotifier`). Core still ships a **deprecated soft-landing** empty subclass `TelegramApprovalNotifier` of that recording double (still loadable; recording-only). Production Telegram Bot API delivery is the **messaging** package FQCN `Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier` — a different class, unchanged by this rename. Full consumer impact: package [CHANGELOG](../CHANGELOG.md) Unreleased **Breaking** and [README](../README.md) Telegram notifier / sibling notes. Pre-stable monorepo design surface — not a Packagist-stable API claim; soft-landing remains until a later removal.
 
@@ -333,15 +364,15 @@ Deep state machine detail (monorepo): [spec.md](https://github.com/rawphp/larave
 
 ## Error codes
 
-Every failure is a `CapabilityResult` with `ok: false` and an `error.code`. The source of truth is `src/Support/ErrorCodeMap.php` (D-018); `tests/Unit/Errors/ErrorCodesUserGuideTest.php` fails if this table drifts from it.
+Every failure is a `CapabilityResult` with `ok: false` and an `error.code`. The source of truth is `src/Support/ErrorCodeMap.php` (D-018); the monorepo unit test [`ErrorCodesUserGuideTest`](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/packages/laravel-capabilities/tests/Unit/Errors/ErrorCodesUserGuideTest.php) fails if this table drifts from it.
 
 How one code presents on each surface:
 
-- **HTTP:** the response status is `error.http_status` and the body is the result envelope (`ok`, `error`, `meta`).
+- **HTTP:** the response status is `error.http_status` and the body is the result envelope (`ok`, `error`, `meta`). A pipeline `rate_limited` carries `error.retry_after` (seconds until the tripped window frees) and the 429 response repeats it as `Retry-After`; the product CLI prints it as its backoff hint.
 - **Product CLI:** `--json` prints the same envelope as HTTP; the process exits with `error.cli_exit` (success is `0`).
 - **Agent / MCP:** tool handles return a structured error (`code`, `message`, `structured: true`, `retryable`, `details`). A few codes are renamed for tool callers (see the last column); `details` still carries the original registry error, including its `code`.
 - **Job / direct `invoke`:** the `CapabilityResult` itself. Branch on `isRetryable()` and `isHardRefuse()`, not on message text.
-- **Artisan `capability:run`** (in-server ops, not the product CLI): prints `error.message` and exits `1` for every code. `cli_exit` applies to the product CLI only.
+- **Artisan `capability:run`** (in-server ops, not the product CLI): prints `error.message` and exits `1` for every code. `cli_exit` applies to the product CLI only. `--acting-as=<id>` runs as the real user returned by the default auth guard's user provider (the registry requester resolver); an unknown id, or a registry without a resolver, exits `1` without running anything. `--system=<name>` runs as a `SystemActor` the capability must allow.
 
 | Code | HTTP | CLI exit | Retryable | Agent / MCP code |
 |---|---|---|---|---|

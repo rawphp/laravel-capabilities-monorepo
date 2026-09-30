@@ -169,7 +169,7 @@ final class ToolSurfaceResolver
      */
     private function recordBoundary(string $event, string $message, array $context, array $auditExtra = []): void
     {
-        $this->observation->logs[] = ['level' => 'warning', 'message' => $message, 'context' => $context];
+        $this->observation->log(['level' => 'warning', 'message' => $message, 'context' => $context]);
 
         $writer = $this->auditStage?->auditEnabled ? $this->auditStage->auditWriter : null;
         if ($writer === null) {
@@ -179,11 +179,11 @@ final class ToolSurfaceResolver
         try {
             $writer->write(['event' => $event, 'payload' => $context + $auditExtra]);
         } catch (Throwable $e) {
-            $this->observation->logs[] = [
+            $this->observation->log([
                 'level' => 'warning',
                 'message' => sprintf('Audit failed for %s: %s', $event, $e->getMessage()),
                 'context' => $context,
-            ];
+            ]);
         }
     }
 }

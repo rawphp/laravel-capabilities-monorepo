@@ -1,0 +1,34 @@
+{
+  "auditor": "control-plane-auditor",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-audit4/packages/capabilities-cli",
+  "stack_summary": {
+    "go_module": "github.com/rawphp/capabilities-cli",
+    "role": "product CLI, HTTP client only (D-009, D-016)",
+    "server_contract": "rawphp/laravel-capabilities CapabilityController / CatalogPresenter / CallerDeriver / HttpResponse / ErrorCodeMap",
+    "audited_head": "edd3edd",
+    "testing": "go vet clean, go test ./... green, gofmt -l empty (run in the snapshot tree)"
+  },
+  "scanned_files_count": 16,
+  "findings": [
+    {
+      "id": "C-301",
+      "title": "Make the C-202 fix reach warm caches; --no-cache does not refresh them",
+      "category": "wire_contract",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": ["dx"],
+      "locations": [
+        { "file": "packages/capabilities-cli/CHANGELOG.md", "line": 61, "snippet": "cached by an older CLI lack them until the next live describe (`--no-cache`)." },
+        { "file": "packages/capabilities-cli/internal/catalog/service.go", "line": 89, "snippet": "if !s.NoCache && s.Cache != nil { if e, ok := s.Cache.Get(name, \"\"); ok { return e, nil, nil } }" },
+        { "file": "packages/capabilities-cli/internal/catalog/service.go", "line": 124, "snippet": "if s.Cache != nil && !s.NoCache { _ = s.Cache.Put(entry) }" },
+        { "file": "packages/capabilities-cli/internal/catalog/cache.go", "line": 131, "snippet": "sum := sha256.Sum256([]byte(c.BaseURL + \"\\x00\" + c.Token))" }
+      ],
+      "current_state": "C-202 added description/readOnly/idempotent to CacheEntry, but describe cache hits have no TTL or version check (service.go:89 calls Get with version \"\"). So every entry an older CLI cached keeps serving empty fields, and it is refreshed only by `catalog --refresh`, a token change, or a schema rejection. The CHANGELOG tells users to run `--no-cache`, but NoCache skips both the read and the Put (service.go:124). The live describe is shown once and never stored, so the next plain `describe`/`--help` shows no description again.",
+      "recommended_state": "Upgraded installs pick up the new fields with no user action, and the CHANGELOG names a remedy that works.",
+      "rationale": "For anyone who has run a capability before, C-202 is invisible: `describe --json` and `<domain> <verb> --help` still show no description, and those are the agent discovery steps in docs/agents.md. The documented workaround does nothing lasting. Stale readOnly/idempotent read as false because of omitempty, which is the safe direction, so this is low and not a correctness bug.",
+      "implementation_hint": "Version the cache namespace: in PrincipalCache, hash a format tag with the key, e.g. `sha256.Sum256([]byte(\"v2\\x00\" + c.BaseURL + \"\\x00\" + c.Token))`. Pre-C-202 entries are then never read, and the first describe refetches. Orphaned old dirs are a few KB under the profile's schemas/ dir. Also change CHANGELOG.md:61 to drop the `--no-cache` advice, or to say `capabilities catalog --refresh` if the version bump is not taken. One catalog unit test: an entry written under the old key is a miss for PrincipalCache."
+    }
+  ],
+  "notes": "Iteration 4. Scope: packages/capabilities-cli and its wire contract with core at edd3edd. CLI source changed since iteration 3 only via cda5e22 (C-202), 4dd48b1 (C-203), 019e698 (C-201), merged in ef2c114 'Merge arch/i3-cli'. Iteration-3 fixes checked: C-201 is fixed and complete. The binary is untracked, packages/capabilities-cli/.gitignore ignores /cmd/capabilities/capabilities (and travels with the split), and history was rewritten: 1971187 is not an ancestor of HEAD and is reachable only from backup/analyst-loop-pre-filter. That local backup branch still holds the 10 MB blob, so it must not be pushed; this is repo hygiene for the owner, not a finding. C-202 is correct for fresh fetches. CacheEntry now decodes description/readOnly/idempotent, which match CatalogPresenter::metadataFields keys exactly (description, readOnly, idempotent). writeCapabilityHelp sets info.Description, and describe --json prints them. It is incomplete for warm caches: see C-301. C-203 is correct and complete. api.Meta.Caller decodes meta.caller, which CapabilityController::list sets from resolveCaller. The CLI never sends X-Capabilities-Caller (client.go:121-127 strips it), so meta.caller equals the credential-derived caller. The warning fires only for a non-empty, non-cli caller. The token is still stored, and --json adds data.caller. Device/OAuth are unchanged, as documented. Core changes since iteration 3 (L-201, L-202, M-201: ApprovalExecutor/ApprovalManager/IdempotencyGuard/InvokePipeline/FailureReporter) do not change any HTTP route, envelope shape or error code the CLI decodes. The approval_required 202, conflict/busy refusals and approval accept/reject still map through error.cli_exit. deferred_do_not_report honoured: catalog.ResolveAlias / Cache.GetByETag unused. Re-checked and not raised: the raw vs normalised base_url echo in the auth login success line (cosmetic, dismissed in iteration 3), and CapabilityHelpJSON not carrying readOnly/idempotent (describe --json carries them, and C-202 asked only for the description in help). Categories reconcile, registry_handles, capture_depth, plugin_shape and dual_path do not apply to a stateless HTTP client. Custom category slug: wire_contract."
+}

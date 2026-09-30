@@ -2,6 +2,7 @@
 
 namespace Rawphp\CapabilitiesMessaging\Boot;
 
+use Rawphp\Capabilities\Contracts\ApprovalNotifier;
 use Rawphp\CapabilitiesMessaging\MessagingConfig;
 use Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier;
 use Rawphp\CapabilitiesMessaging\Telegram\TelegramWebhookController;
@@ -46,6 +47,10 @@ final class MessagingRegistration
                 TelegramApprovalNotifier::class,
                 TelegramWebhookController::class,
                 'ApprovalNotifier.telegram',
+            ],
+            // Core collects approval notifiers from this tag (M-101).
+            'tags' => [
+                ApprovalNotifier::CONTAINER_TAG => [TelegramApprovalNotifier::class],
             ],
             'publish_tags' => self::PUBLISH_TAGS,
             // D-021: never require TELEGRAM_* at boot / artisan migrate

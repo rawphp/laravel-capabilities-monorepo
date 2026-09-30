@@ -1,6 +1,11 @@
 # Mirror each packages/* tree into its public package repo on every push to main,
 # and re-publish monorepo tags (v*) onto those repos for Packagist / releases.
 #
+# Only a monorepo main run moves package-remote main. A tag run builds its sync
+# commit off to the side (parent: package-remote main) and pushes only the tag,
+# so a tag cut off main (e.g. a hotfix branch) never rolls package main back.
+# workflow_dispatch is a no-op unless run from main or a v* tag.
+#
 # CLI binary GitHub Release is package-owned: after this workflow force-pushes a
 # v* tag to rawphp/capabilities-cli, that repo's .github/workflows/release.yml
 # (GoReleaser) builds assets — do not re-implement binary release here.
@@ -10,7 +15,7 @@
 #      on rawphp/laravel-capabilities, rawphp/laravel-capabilities-messaging,
 #      rawphp/laravel-capabilities-ai, and rawphp/capabilities-cli.
 #   2. Add it as repo secret: SPLIT_GITHUB_TOKEN
-#   3. Ensure the three package repos exist (empty is fine) and default branch is main.
+#   3. Ensure the four package repos exist (empty is fine) and default branch is main.
 #
 # Packagist: submit each *package* repo URL (not this monorepo). Tags drive versions.
 
@@ -22,12 +27,13 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
-# Serialize ALL splits (main + v* tags share package remotes). Per-ref groups
-# raced: simultaneous main + tag runs both cloned the same tip, committed the
-# same tree, and the loser failed with "cannot lock ref … expected OLD".
+# One group per ref. Main runs serialize (a newer pending main run replaces an
+# older pending one: the latest tree wins). Each tag gets its own group, so a
+# later main push can never cancel a pending tag run and drop a release. Main
+# and tag runs no longer race on package main: a tag run pushes only its tag.
 # Never cancel-in-progress: a cancelled matrix leaves partial package remotes.
 concurrency:
-  group: split-packages
+  group: split-packages-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -40,6 +46,8 @@ jobs:
 
   split:
     needs: tests
+    # A dispatch from any other ref must not publish its tree anywhere.
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -91,19 +99,16 @@ jobs:
 
           # Replace tracked tree with monorepo package contents (keep .git).
           find "$work" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
-          # Keep committed dist docs (dist/README.md, dist/.gitkeep) — capabilities-cli
-          # unit tests require them. Only drop GoReleaser/local build artifacts under dist/.
-          # Filter order: first match wins; include docs before excluding dist/* leftovers.
+          # dist/ is GoReleaser / local build output (untracked); never mirror it.
           rsync -a --delete \
             --exclude '.git' \
             --exclude 'vendor/' \
             --exclude 'node_modules/' \
-            --include 'dist/' \
-            --include 'dist/README.md' \
-            --include 'dist/.gitkeep' \
-            --exclude 'dist/*' \
+            --exclude 'dist/' \
             --exclude 'coverage/' \
             --exclude '.phpunit.result.cache' \
+            --exclude '/tests/' \
+            --exclude '/phpunit.xml' \
             "${PACKAGE_PATH}/" "$work/"
 
           git -C "$work" config user.name "github-actions[bot]"
@@ -111,16 +116,25 @@ jobs:
 
           git -C "$work" add -A
 
+          committed=0
           if git -C "$work" diff --cached --quiet; then
             echo "No file changes for ${TARGET_REPO}"
           else
             msg="sync: monorepo ${SOURCE_SHA:0:7} (${PACKAGE_PATH})"
             git -C "$work" commit -m "$msg"
+            committed=1
+          fi
+
+          # Only monorepo main advances package-remote main. A tag run keeps its
+          # sync commit local (off to the side) and publishes it via the tag below.
+          if [[ "$SOURCE_REF" != "refs/heads/main" ]]; then
+            echo "Source ref ${SOURCE_REF} is not main; leaving ${TARGET_REPO} main untouched"
+          elif (( committed )); then
             # main tracking branch may not exist yet on first push
             if ! git -C "$work" rev-parse --verify main >/dev/null 2>&1; then
               git -C "$work" branch -M main
             fi
-            # Push with retry: concurrent main+tag split can race on the same tree.
+            # Push with retry: remote main can move between clone and push.
             # If remote tip already has an identical tree, treat as success (CAS race).
             attempt=1
             max_attempts=5
@@ -151,7 +165,7 @@ jobs:
           # Monorepo tags (v*) are mirrored onto each package repo for Packagist.
           if [[ "$SOURCE_REF_TYPE" == "tag" ]]; then
             tag="$SOURCE_REF_NAME"
-            # Point tag at current package tree (after sync commit if any).
+            # Point tag at the tag's package tree (the side sync commit if any).
             git -C "$work" tag -f "$tag"
             git -C "$work" push origin "refs/tags/${tag}" --force
             echo "Pushed tag ${tag} → ${TARGET_REPO}"

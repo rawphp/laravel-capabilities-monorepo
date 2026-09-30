@@ -12,7 +12,9 @@ use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Audit\AuditLogger;
 use Rawphp\Capabilities\Contracts\ApprovalGateway;
 use Rawphp\Capabilities\Contracts\ApprovalStore;
+use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
+use Rawphp\Capabilities\Contracts\Clock;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\Metrics as MetricsContract;
 use Rawphp\Capabilities\Contracts\RateLimitCache;
@@ -24,6 +26,7 @@ use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\Capabilities\Observability\LogFallbackMetrics;
 use Rawphp\Capabilities\Persistence\ArrayTableGateway;
 use Rawphp\Capabilities\Persistence\DatabaseApprovalStore;
+use Rawphp\Capabilities\Persistence\DatabaseAuditWriter;
 use Rawphp\Capabilities\Persistence\DatabaseIdempotencyStore;
 use Rawphp\Capabilities\Persistence\MigrationCatalog;
 use Rawphp\Capabilities\Persistence\QueryTableGateway;
@@ -31,6 +34,7 @@ use Rawphp\Capabilities\Persistence\TableGateway;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\DefaultScopeResolver;
 use Rawphp\Capabilities\Support\InMemoryApprovalStore;
+use Rawphp\Capabilities\Support\InMemoryAuditWriter;
 use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
 use Rawphp\Capabilities\Support\InMemoryRateLimiter;
 use Rawphp\Capabilities\Support\LaravelCacheRateLimiter;
@@ -121,8 +125,8 @@ final class ContainerBindings
         $auditDriver = self::resolveStoreDriver(
             kind: 'audit.driver',
             requested: (string) (($config['audit']['driver'] ?? null) ?: 'memory'),
-            memoryConcrete: AuditLogger::class,
-            databaseConcrete: AuditLogger::class, // outbox writer not in this UR
+            memoryConcrete: InMemoryAuditWriter::class, // unit tests wire their own writer
+            databaseConcrete: DatabaseAuditWriter::class, // capabilities_audit_outbox (D-010)
         );
 
         $auditMode = (string) (($config['audit']['mode'] ?? null) ?: 'best_effort');
@@ -247,6 +251,11 @@ final class ContainerBindings
      * {@see QueryTableGateway} instances (approvals vs idempotency) from $connection.
      * Optional host $gateway (typically {@see ArrayTableGateway} in unit tests) overrides.
      *
+     * Audit (D-010 / L-006): $auditWriter (host-bound) wins; otherwise `audit.driver=database`
+     * builds {@see DatabaseAuditWriter} over the outbox table. When audit is enabled in
+     * `strict` mode or with `required = true` and no writer exists, boot fails — silent
+     * record loss is never an acceptable default.
+     *
      * @param  array<string, mixed>  $config
      */
     public static function makeRegistry(
@@ -257,6 +266,8 @@ final class ContainerBindings
         ?ConnectionInterface $connection = null,
         ?RateLimitCache $rateLimitCache = null,
         ?RateLimiter $rateLimiter = null,
+        ?AuditWriter $auditWriter = null,
+        ?ApprovalManager $approvalManager = null,
     ): CapabilityRegistry {
         $full = $config === [] ? CapabilitiesConfig::defaults() : $config;
         // Validate drivers/modes early (fail closed) using the shared resolve path.
@@ -266,21 +277,36 @@ final class ContainerBindings
 
         $registry->withGloballyEnabledSurfaces(CapabilitiesConfig::globallyEnabledSurfaces($full));
 
-        if ($approvalStore === null) {
-            $approvalStore = self::makeApprovalManager($full, $gateway, $connection)->store();
+        // One configured manager for every approval_required (L-101): the host's instance
+        // (notifiers, ttl_hours, policy) wins; a bare store still gets the published approval.* config.
+        if ($approvalManager === null) {
+            $approvalManager = $approvalStore !== null
+                ? new ApprovalManager($approvalStore, new SystemClock, (array) ($full['approval'] ?? []))
+                : self::makeApprovalManager($full, $gateway, $connection);
         }
-        $registry->withApprovalStore($approvalStore);
+        $registry->withApprovalManager($approvalManager);
 
         if ($idempotencyStore === null) {
             $idempotencyStore = self::makeIdempotencyStore($full, $gateway, $connection);
         }
         $registry->withIdempotencyStore($idempotencyStore);
 
+        $idempotencyConfig = (array) ($full['idempotency'] ?? []);
+        if ($idempotencyConfig !== []) {
+            $registry->withIdempotencyConfig($idempotencyConfig);
+        }
+
         $registry->withScopeResolver(new DefaultScopeResolver);
 
         $audit = (array) ($full['audit'] ?? []);
         if ($audit !== []) {
             $registry->withAuditConfig(self::registryAuditConfig($audit));
+        }
+        $auditWriter ??= self::makeAuditWriter($full, $gateway, $connection);
+        if ($auditWriter !== null) {
+            $registry->withAuditWriter($auditWriter);
+        } elseif ($registry->auditEnabled() && ($registry->auditMode() === 'strict' || $registry->auditRequired())) {
+            throw BootException::auditWriterRequired($registry->auditMode(), $registry->auditRequired());
         }
 
         $rateLimits = (array) ($full['rate_limits'] ?? []);
@@ -301,6 +327,8 @@ final class ContainerBindings
         if ($transactions !== []) {
             $registry->withTransactionsConfig($transactions);
         }
+        // wrap_run opens its transaction on the host connection (D-010); none wired → fails closed at invoke.
+        $registry->withTransactionConnection($connection);
 
         $events = (array) ($full['events'] ?? []);
         if ($events !== []) {
@@ -514,6 +542,37 @@ final class ContainerBindings
         }
 
         throw BootException::unknownDriver('approval.store', $driver);
+    }
+
+    /**
+     * Durable audit writer for `audit.driver` (D-010 / L-006).
+     *
+     * database → {@see DatabaseAuditWriter} on {@see MigrationCatalog::TABLE_AUDIT_OUTBOX}
+     * via the host $gateway or a per-table {@see QueryTableGateway} on $connection; null when
+     * neither is available (the caller decides whether that is fatal — {@see makeRegistry}).
+     * memory → null: unit tests inject their own {@see InMemoryAuditWriter}.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    public static function makeAuditWriter(
+        array $config = [],
+        ?TableGateway $gateway = null,
+        ?ConnectionInterface $connection = null,
+        ?Clock $clock = null,
+    ): ?AuditWriter {
+        $full = $config === [] ? CapabilitiesConfig::defaults() : $config;
+        $resolved = self::resolve($full);
+        if ($resolved['drivers']['audit']['resolved'] !== 'database') {
+            return null;
+        }
+        if ($gateway === null && $connection === null) {
+            return null;
+        }
+
+        return new DatabaseAuditWriter(
+            self::makeDatabaseTableGateway(MigrationCatalog::TABLE_AUDIT_OUTBOX, $full, $gateway, $connection),
+            $clock ?? new SystemClock,
+        );
     }
 
     /**

@@ -56,6 +56,8 @@ Sibling packages and thin adapters should depend only on this **allowlist** — 
 | **Public DTOs** | `Support\CapabilityResult` | Invoke / accept / reject outcomes |
 | | `Support\CapabilityContext` | Actor, caller, tenant, options for invoke |
 | | `Support\CapabilityData` | Typed capability input/output base (when used) |
+| **Stateless helpers** | `Support\ErrorCodeMap` | D-018 error-code vocabulary (HTTP status / CLI exit / retryable); allowed for messaging |
+| | `Support\Redactor` | D-010 key redaction shared with the audit log; allowed for messaging (approval message input) and AI |
 
 **Approval callbacks (messaging):** type-hint `ApprovalGateway` (find / accept / reject). The service provider aliases the same singleton as `ApprovalManager` — hosts may still inject `ApprovalManager` for resume/ops APIs that stay inside core.
 
@@ -122,6 +124,8 @@ php artisan vendor:publish --tag=capabilities-config
 
 Full monorepo install policy, branch-alias, and Packagist checklist: monorepo [`docs/versioning.md`](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versioning.md). First-capability walkthrough: monorepo [`docs/tutorials/first-capability.md`](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/tutorials/first-capability.md).
 
+**Tests and contributions:** the unit suite, `phpunit.xml`, and dev tooling live only in the [monorepo](https://github.com/rawphp/laravel-capabilities-monorepo); this package remote is a read-only split and ships no tests. Open issues and PRs against the monorepo and run `composer test:core` there.
+
 ## Peer support / D-011 release gate
 
 This package composes `laravel/ai` and `laravel/mcp` as optional peers. **Product MCP** is the server surface: with `surfaces.mcp` enabled and `auto_register` true (default), **`McpServerRegistrar`** builds a **server plan** from profiles/servers and may call `McpToolAdapter::register` for planned profiles. Production boot does **not** mount live `laravel/mcp` HTTP servers under `path_prefix` — hosts still wire peer MCP routes (e.g. `Mcp::web` / peer docs). Multi-profile sequential register **overwrites** adapter active tools (last profile wins); after that, `handle()` without `options['profile']` refuses with `profile_required` instead of guessing. The downloadable CLI is a separate HTTP client only — not an MCP stdio host. Release honesty is **matrix + unit contract fixtures**, not live SDKs in default package CI.
@@ -149,12 +153,6 @@ composer test:core -- --filter=PeerSupportMatrix
 composer test:core -- --filter=PeerContract
 composer test:core -- --filter=Adapter
 composer test:core -- --filter=PeerReleaseGateDocs
-
-# from this package (after composer install of dev deps)
-./vendor/bin/pest --filter=PeerSupportMatrix
-./vendor/bin/pest --filter=PeerContract
-./vendor/bin/pest --filter=Adapter
-./vendor/bin/pest --filter=PeerReleaseGateDocs
 ```
 
 Minimum intent (aligned with D-011 contract table):
@@ -204,7 +202,7 @@ AI-chat mode for this command: `capabilities-ai.routes.enabled` **OR** non-empty
 `AdapterApi` versions this package’s bridge shapes (not the peer package version).
 
 - Bump `AdapterApi` when Tool/MCP mapping **call shapes** change (`requiresBump` is true when previous shape ≠ next shape).
-- Keep `AdapterApi::CURRENT` and `supported()` in lockstep with [`PeerContractFixtures`](tests/Fixtures/PeerContractFixtures.php).
+- Keep `AdapterApi::CURRENT` and `supported()` in lockstep with [`PeerContractFixtures`](https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/packages/laravel-capabilities/tests/Fixtures/PeerContractFixtures.php) (monorepo test fixture).
 - Apps depend on stable catalog/tool surfaces; they must not hard-code adapter version selection for listing.
 
 ### Package CI policy (no live peers)

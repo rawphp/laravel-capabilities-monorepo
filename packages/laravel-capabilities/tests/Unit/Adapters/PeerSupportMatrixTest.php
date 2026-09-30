@@ -46,6 +46,28 @@ it('fail: matrix constraint match rejects out-of-range injected versions [D-011]
         ->and(PeerSupportMatrix::versionSatisfies('0.0.1-bad', PeerSupportMatrix::for(PeerSupportMatrix::PEER_AI)))->toBeFalse();
 });
 
+it('edge: caret on 0.0.x pins the patch; tilde pins the minor [D-011]', function () {
+    expect(PeerSupportMatrix::versionSatisfies('0.0.3', ['^0.0.3']))->toBeTrue()
+        ->and(PeerSupportMatrix::versionSatisfies('0.0.4', ['^0.0.3']))->toBeFalse()
+        ->and(PeerSupportMatrix::versionSatisfies('1.2.9', ['~1.2']))->toBeTrue()
+        ->and(PeerSupportMatrix::versionSatisfies('1.3.0', ['~1.2']))->toBeFalse()
+        ->and(PeerSupportMatrix::versionSatisfies('1.1.9', ['~1.2']))->toBeFalse();
+});
+
+it('edge: host constraints may be exact versions or a wildcard; v-prefixes and pre-release tags normalise [D-011]', function () {
+    expect(PeerSupportMatrix::versionSatisfies('v1.4.0', ['1.4']))->toBeTrue()
+        ->and(PeerSupportMatrix::versionSatisfies('1.4.1', ['1.4.0']))->toBeFalse()
+        ->and(PeerSupportMatrix::versionSatisfies('2.0.0-beta.1', ['^2.0']))->toBeTrue()
+        ->and(PeerSupportMatrix::versionSatisfies('anything', ['*']))->toBeTrue()
+        ->and(PeerSupportMatrix::versionSatisfies('anything', ['']))->toBeTrue()
+        ->and(PeerSupportMatrix::versionSatisfies('dev-main', ['^1.0']))->toBeFalse()
+        ->and(PeerSupportMatrix::versionSatisfies('1.0.0', []))->toBeFalse();
+});
+
+it('fail: an unknown peer has no declared constraints [D-011]', function () {
+    expect(PeerSupportMatrix::for('acme/peer'))->toBe([]);
+});
+
 it('happy: PeerVersionProbe defaults supported versions from PeerSupportMatrix [D-011]', function () {
     $probe = new PeerVersionProbe(
         installedOverrides: [
@@ -158,4 +180,42 @@ it('happy: PeerVersionProbe::composerVersion reads Composer installed versions [
     expect(PeerVersionProbe::composerVersion('pestphp/pest'))
         ->toBe(InstalledVersions::getPrettyVersion('pestphp/pest'))
         ->and(PeerVersionProbe::composerVersion('rawphp/not-installed-peer'))->toBeNull();
+});
+
+it('PeerVersionProbe reports installed and compatible from overrides and supported versions', function () {
+    $probe = new PeerVersionProbe(
+        installedOverrides: ['laravel/ai' => true, 'laravel/mcp' => false],
+        compatibleOverrides: [],
+        versions: ['laravel/ai' => '2.0.0', 'laravel/mcp' => null],
+        supportedVersions: ['laravel/ai' => ['1.0.0'], 'laravel/mcp' => ['*']],
+    );
+
+    expect($probe->isInstalled('laravel/ai'))->toBeTrue()
+        ->and($probe->isInstalled('laravel/mcp'))->toBeFalse()
+        ->and($probe->isCompatible('laravel/mcp'))->toBeFalse(); // not installed
+
+    // installed with version not in list
+    expect($probe->isCompatible('laravel/ai'))->toBeFalse();
+
+    $probe2 = new PeerVersionProbe(
+        installedOverrides: ['laravel/ai' => true],
+        compatibleOverrides: [],
+        versions: ['laravel/ai' => null],
+        supportedVersions: ['laravel/ai' => ['*']],
+    );
+    expect($probe2->isCompatible('laravel/ai'))->toBeTrue();
+
+    $probe3 = new PeerVersionProbe(
+        installedOverrides: [],
+        classExists: static fn (string $class): bool => false,
+    );
+    expect($probe3->isInstalled('laravel/ai'))->toBeFalse();
+
+    $probe4 = new PeerVersionProbe(
+        installedOverrides: ['laravel/ai' => true],
+        compatibleOverrides: [],
+        versions: ['laravel/ai' => '1.0.0'],
+        supportedVersions: ['laravel/ai' => ['1.0.0']],
+    );
+    expect($probe4->isCompatible('laravel/ai'))->toBeTrue();
 });

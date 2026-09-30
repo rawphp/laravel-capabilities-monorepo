@@ -16,6 +16,9 @@ import (
 // CacheEntry is one cached schema document.
 type CacheEntry struct {
 	Name          string          `json:"name"`
+	Description   string          `json:"description,omitempty"`
+	ReadOnly      bool            `json:"readOnly,omitempty"`
+	Idempotent    bool            `json:"idempotent,omitempty"`
 	SchemaVersion string          `json:"schema_version"`
 	ETag          string          `json:"etag,omitempty"`
 	InputSchema   json.RawMessage `json:"input_schema"`
@@ -28,6 +31,11 @@ type CacheEntry struct {
 	// CLI is optional routing metadata preserved from describe when present.
 	CLI *CLIMeta `json:"cli,omitempty"`
 }
+
+// cacheFormat versions the on-disk CacheEntry shape. Bump it when a CacheEntry
+// field is added that older entries lack, so upgraded CLIs refetch instead of
+// serving the old shape.
+const cacheFormat = "v2"
 
 // Cache is an on-disk schema cache; production callers scope it with PrincipalCache.
 type Cache struct {
@@ -123,8 +131,9 @@ func (c *Cache) Invalidate(name string) error {
 // PrincipalCache returns the cache for the principal c authenticates as, under a
 // profile's schema root. The catalog is filtered by server authorization, so
 // schemas cached for one credential or deployment are never read by another.
-// The key is a hash so the raw token never lands in a path.
+// The key is a hash so the raw token never lands in a path. cacheFormat is part
+// of the key, so entries written in an older CacheEntry shape are never read.
 func PrincipalCache(root string, c *api.Client) *Cache {
-	sum := sha256.Sum256([]byte(c.BaseURL + "\x00" + c.Token))
+	sum := sha256.Sum256([]byte(cacheFormat + "\x00" + c.BaseURL + "\x00" + c.Token))
 	return NewCache(filepath.Join(root, hex.EncodeToString(sum[:8])))
 }

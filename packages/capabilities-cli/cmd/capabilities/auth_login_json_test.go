@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/rawphp/capabilities-cli/internal/api"
+	"github.com/rawphp/capabilities-cli/internal/auth"
 )
 
 func unauthenticatedLoginAPI(t *testing.T) *httptest.Server {
@@ -94,5 +95,42 @@ func TestAuthLoginJSONSuccessEnvelopeNeverPrintsToken(t *testing.T) {
 func TestAuthHelpDocumentsLoginJSON(t *testing.T) {
 	if !strings.Contains(CommandHelp("auth login"), "[--profile=NAME] [--json]\n  capabilities auth logout") {
 		t.Fatal(CommandHelp("auth login"))
+	}
+}
+
+func callerLoginAPI(t *testing.T, caller string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true,"data":{"capabilities":[]},"meta":{"caller":"` + caller + `"}}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestAuthLoginTokenWarnsWhenServerDerivesNonCLICaller(t *testing.T) {
+	srv := callerLoginAPI(t, "http")
+	root := t.TempDir()
+	code, out, errb := CaptureExecute([]string{"auth", "login", "--base-url=" + srv.URL, "--token=tok", "--json"}, root, newClientFactory(srv))
+	if code != api.ExitOK {
+		t.Fatalf("exit=%d stderr=%s", code, errb)
+	}
+	if !strings.Contains(errb, `caller "http"`) || !strings.Contains(errb, "capabilities:cli") {
+		t.Fatalf("missing caller warning on stderr: %q", errb)
+	}
+	data := decodeEnvelope(t, out)["data"].(map[string]any)
+	if data["caller"] != "http" || data["logged_in"] != true {
+		t.Fatalf("json payload: %s", out)
+	}
+	if !auth.NewStore(root).HasToken("default") {
+		t.Fatal("token must be stored despite the warning")
+	}
+}
+
+func TestAuthLoginTokenCLICallerHasNoWarning(t *testing.T) {
+	srv := callerLoginAPI(t, "cli")
+	code, _, errb := CaptureExecute([]string{"auth", "login", "--base-url=" + srv.URL, "--token=tok"}, t.TempDir(), newClientFactory(srv))
+	if code != api.ExitOK || errb != "" {
+		t.Fatalf("exit=%d stderr=%q", code, errb)
 	}
 }

@@ -1,4 +1,4 @@
-# Monorepo unit suites (PHP core + messaging, Go CLI).
+# Monorepo unit suites (PHP core + messaging + AI, Go CLI) with the 95% coverage floor.
 # Unit-only: no feature/DB services, no Redis, no full app boot.
 # Reusable via workflow_call so split-packages can gate mirrors on green tests.
 
@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   php:
-    name: PHP unit (core + messaging)
+    name: PHP unit + coverage (core + messaging + AI)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -26,17 +26,77 @@ jobs:
         with:
           php-version: '8.2'
           extensions: mbstring, xml, dom, tokenizer
-          coverage: none
+          coverage: pcov
           tools: composer:v2
 
       - name: Install Composer dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
 
+      - name: Pint (composer format:test)
+        run: composer format:test
+
+      - name: PHPStan (composer analyse)
+        run: composer analyse
+
+      # Runs each suite once with pcov; fails if a package is below 95% line coverage (AGENTS.md).
+      - name: Pest core + coverage floor (composer coverage:core)
+        run: composer coverage:core
+
+      - name: Pest messaging + coverage floor (composer coverage:messaging)
+        run: composer coverage:messaging
+
+      - name: Pest AI + coverage floor (composer coverage:ai)
+        run: composer coverage:ai
+
+      - name: Inventory tools unit tests
+        run: python3 -m unittest discover -s tools/tests
+
+      # Release ship path (version bump, flag matrix, squash base, CHANGELOG gate);
+      # temp git fixtures only, no network.
+      - name: Release ship-path self-test
+        run: bash scripts/lib/test-release.sh
+
+      - name: Requirements inventory has no gaps
+        run: python3 tools/report_inventory_gaps.py --fail-on-gaps
+
+  # Declared support is illuminate/* ^11|^12|^13 on PHP ^8.2 (Laravel 13 needs
+  # PHP ^8.3). The lockfile job above covers PHP 8.2 + Laravel 12; these cells
+  # cover the lowest and highest ends of the range without the lock.
+  php-compat:
+    name: PHP ${{ matrix.php }} / illuminate ${{ matrix.illuminate }} (${{ matrix.stability }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - php: '8.2'
+            illuminate: '^11.0'
+            stability: prefer-lowest
+          - php: '8.5'
+            illuminate: '^13.0'
+            stability: prefer-stable
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, xml, dom, tokenizer
+          coverage: none
+          tools: composer:v2
+
+      - name: Resolve illuminate ${{ matrix.illuminate }} (${{ matrix.stability }})
+        run: |
+          composer require "illuminate/support:${{ matrix.illuminate }}" --no-update --no-interaction
+          composer update --${{ matrix.stability }} --with-all-dependencies --no-interaction --prefer-dist --no-progress
+
       - name: Pest unit suites (composer test)
         run: composer test
 
   go:
-    name: Go unit (capabilities-cli)
+    name: Go unit + coverage (capabilities-cli)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -51,5 +111,9 @@ jobs:
           go-version-file: packages/capabilities-cli/go.mod
           cache-dependency-path: packages/capabilities-cli/go.sum
 
-      - name: go test
-        run: go test ./...
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+
+      # go test with a coverage profile; fails if the module total is below 95% (AGENTS.md).
+      - name: go test + coverage floor (scripts/coverage.sh)
+        run: bash scripts/coverage.sh

@@ -5,6 +5,14 @@
 declare(strict_types=1);
 
 use Rawphp\Capabilities\RateLimiting\AgentTurnBudget;
+use Rawphp\Capabilities\Registry\CapabilityDefinition;
+use Rawphp\Capabilities\Registry\CapabilityRegistry;
+use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\CapabilityScope;
+use Rawphp\Capabilities\Support\FixedClock;
+use Rawphp\Capabilities\Support\InMemoryRateLimiter;
+use Rawphp\Capabilities\Support\StubAuthorizer;
+use Rawphp\Capabilities\Support\SystemActor;
 use Rawphp\Capabilities\Tests\Fixtures\RateLimitHelpers;
 
 it('happy: agent loop allows when budget=1 calls=0 [D-013]', function () {
@@ -185,4 +193,32 @@ it('fail: agent loop stops when budget=32 calls=33 [D-013]', function () {
     $h = RateLimitHelpers::harness(['max_tool_calls' => 32, 'per_min' => 1000, 'per_cap' => 1000, 'name' => 'turn-32-33']);
     $r = $h['registry']->invoke($h['name'], RateLimitHelpers::input(), RateLimitHelpers::options('agent', ['agent_turn_tool_calls' => 33]));
     expect($r->errorCode())->toBe('rate_limited')->and($r->error['structured'] ?? null)->not->toBeNull();
+});
+
+it('agent invoke whose turn tool-call count exceeds max_tool_calls is rate_limited [D-013]', function () {
+    $reg = (new CapabilityRegistry)
+        ->withAuthorizer(StubAuthorizer::allow())
+        ->withClock(new FixedClock(new DateTimeImmutable('2026-05-01T00:00:00Z')))
+        ->withRateLimiter(new InMemoryRateLimiter)
+        ->withRateLimitConfig([
+            'enabled' => true,
+            'defaults' => ['per_minute' => 60, 'per_capability_per_minute' => 30],
+            'agent_turn' => ['max_tool_calls' => 2],
+        ]);
+    $reg->register(new CapabilityDefinition(
+        name: 'agent-rl',
+        description: 'd',
+        readOnly: true,
+        allowSystemCallers: true,
+        run: static fn () => CapabilityResult::ok([]),
+    ));
+
+    $rl = $reg->invoke('agent-rl', [], [
+        'caller' => 'agent',
+        'actor' => SystemActor::named('s'),
+        'scope' => new CapabilityScope(tenantId: 't'),
+        'agent_turn_tool_calls' => 99,
+    ]);
+
+    expect($rl->errorCode())->toBe('rate_limited');
 });

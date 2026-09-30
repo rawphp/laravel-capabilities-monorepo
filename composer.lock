@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "8178679adf804c809e04527f13d1a1da",
+    "content-hash": "8696f5f8aa0e3a10369de98d6ed9ba4a",
     "packages": [
         {
             "name": "brick/math",
@@ -2743,7 +2743,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/laravel-capabilities",
-                "reference": "7ff6c7120b224078b65f2111d0d4f7c6cf20b069"
+                "reference": "0e36dace6df1201e9d7314737f5d2d3a034ea169"
             },
             "require": {
                 "illuminate/bus": "^11.0|^12.0|^13.0",
@@ -2756,9 +2756,8 @@
                 "illuminate/validation": "^11.0|^12.0|^13.0",
                 "php": "^8.2"
             },
-            "require-dev": {
-                "pestphp/pest": "^3.0",
-                "phpstan/phpstan": "^2.0"
+            "conflict": {
+                "laravel/prompts": "<0.1.15"
             },
             "suggest": {
                 "laravel/ai": "Required when surfaces.agent is enabled",
@@ -2783,16 +2782,6 @@
                 "psr-4": {
                     "Rawphp\\Capabilities\\": "src/"
                 }
-            },
-            "autoload-dev": {
-                "psr-4": {
-                    "Rawphp\\Capabilities\\Tests\\": "tests/"
-                }
-            },
-            "scripts": {
-                "test": [
-                    "pest --configuration=phpunit.xml --colors=always"
-                ]
             },
             "license": [
                 "MIT"
@@ -2821,7 +2810,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/laravel-capabilities-ai",
-                "reference": "cf65da4f18620b3932d39670fb30cd6ff24952c7"
+                "reference": "41265cdb275ac3b960bcd8770c9574480d8dbabc"
             },
             "require": {
                 "illuminate/contracts": "^11.0|^12.0|^13.0",
@@ -2829,10 +2818,7 @@
                 "illuminate/http": "^11.0|^12.0|^13.0",
                 "illuminate/support": "^11.0|^12.0|^13.0",
                 "php": "^8.2",
-                "rawphp/laravel-capabilities": "*"
-            },
-            "require-dev": {
-                "pestphp/pest": "^3.0"
+                "rawphp/laravel-capabilities": "self.version"
             },
             "type": "library",
             "extra": {
@@ -2849,16 +2835,6 @@
                 "psr-4": {
                     "Rawphp\\CapabilitiesAi\\": "src/"
                 }
-            },
-            "autoload-dev": {
-                "psr-4": {
-                    "Rawphp\\CapabilitiesAi\\Tests\\": "tests/"
-                }
-            },
-            "scripts": {
-                "test": [
-                    "pest --configuration=phpunit.xml --colors=always"
-                ]
             },
             "license": [
                 "MIT"
@@ -2887,7 +2863,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/laravel-capabilities-messaging",
-                "reference": "22cec4f0f985a06589204e0c0ff7bd02cae5c6e4"
+                "reference": "ccba1f9ead9d0024517b8bcc8ab803f3a0fe59a5"
             },
             "require": {
                 "illuminate/database": "^11.0|^12.0|^13.0",
@@ -2896,10 +2872,8 @@
                 "illuminate/routing": "^11.0|^12.0|^13.0",
                 "illuminate/support": "^11.0|^12.0|^13.0",
                 "php": "^8.2",
-                "rawphp/laravel-capabilities": "*"
-            },
-            "require-dev": {
-                "pestphp/pest": "^3.0"
+                "psr/log": "^1.0|^2.0|^3.0",
+                "rawphp/laravel-capabilities": "self.version"
             },
             "suggest": {
                 "laravel/ai": "Required for agent turns behind conversation ingress"
@@ -2919,16 +2893,6 @@
                 "psr-4": {
                     "Rawphp\\CapabilitiesMessaging\\": "src/"
                 }
-            },
-            "autoload-dev": {
-                "psr-4": {
-                    "Rawphp\\CapabilitiesMessaging\\Tests\\": "tests/"
-                }
-            },
-            "scripts": {
-                "test": [
-                    "pest --configuration=phpunit.xml --colors=always"
-                ]
             },
             "license": [
                 "MIT"
@@ -5494,6 +5458,68 @@
                 }
             ],
             "time": "2025-08-08T12:00:00+00:00"
+        },
+        {
+            "name": "illuminate/cache",
+            "version": "v12.69.3",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/illuminate/cache.git",
+                "reference": "2689356ab45bc53ffe796d1b1241babae59c69f6"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/illuminate/cache/zipball/2689356ab45bc53ffe796d1b1241babae59c69f6",
+                "reference": "2689356ab45bc53ffe796d1b1241babae59c69f6",
+                "shasum": ""
+            },
+            "require": {
+                "illuminate/collections": "^12.0",
+                "illuminate/contracts": "^12.0",
+                "illuminate/macroable": "^12.0",
+                "illuminate/support": "^12.0",
+                "php": "^8.2"
+            },
+            "provide": {
+                "psr/simple-cache-implementation": "1.0|2.0|3.0"
+            },
+            "suggest": {
+                "ext-apcu": "Required to use the APC cache driver.",
+                "ext-filter": "Required to use the DynamoDb cache driver.",
+                "ext-memcached": "Required to use the memcached cache driver.",
+                "illuminate/database": "Required to use the database cache driver (^12.0).",
+                "illuminate/filesystem": "Required to use the file cache driver (^12.0).",
+                "illuminate/redis": "Required to use the redis cache driver (^12.0).",
+                "symfony/cache": "Required to use PSR-6 cache bridge (^7.2)."
+            },
+            "type": "library",
+            "extra": {
+                "branch-alias": {
+                    "dev-master": "12.x-dev"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Illuminate\\Cache\\": ""
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Taylor Otwell",
+                    "email": "taylor@laravel.com"
+                }
+            ],
+            "description": "The Illuminate Cache package.",
+            "homepage": "https://laravel.com",
+            "support": {
+                "issues": "https://github.com/laravel/framework/issues",
+                "source": "https://github.com/laravel/framework"
+            },
+            "time": "2026-06-15T20:47:52+00:00"
         },
         {
             "name": "jean85/pretty-package-versions",

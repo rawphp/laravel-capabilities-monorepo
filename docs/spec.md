@@ -1989,7 +1989,7 @@ schedule every N minutes (default 1)
 | **Not a second accept** | Resume does not require a second human click; decision already final |
 | **Replay after executed** | Further accept/resume returns stored `result_json` |
 | **Stuck alert** | If `approved` longer than `approval.stuck_after_seconds` (default 300), increment metric and optional log/alert |
-| **Manual repair** | Call `ResumeApprovedApprovals::artisan($id?)` (or `ApprovalManager::artisanResume`) — same path as the scheduled sweep. **Not** a registered Artisan command in core today; host may wrap it in a command or schedule the class directly |
+| **Manual repair** | `php artisan capabilities:approvals-resume --id=… --force` (or `ResumeApprovedApprovals::artisan($id?)` / `ApprovalManager::artisanResume`) — same path as the scheduled sweep. Core registers the command and schedules it every `resume.every_seconds` when `execution = deferred` and `resume.enabled` |
 
 #### Shape B — Atomic accept (no sweeper required for limbo)
 
@@ -2037,7 +2037,7 @@ Validation at **request** time is not enough. On accept, the pipeline re-runs:
 1. JSON Schema (portable) on stored input  
 2. Server-only rules (`exists`, etc.)  
 3. **D-003** scoped re-resolve of every resource id  
-4. `authorize()` for the **original actor** under current scope (default)
+4. `authorize()` for the **original actor** under the scope persisted on the approval row at request time (default): the tenant is the row's `tenant_id`; team, organization and scalar attributes come from the stamped `scope`; untenanted rows with a stamped `scope` (team-only hosts, global system work) rebuild it with a null tenant; legacy rows rebuild tenant-only (bare tenant `scope`) or, with neither tenant nor stamped scope, resolve at execution. The approved `run()`, audit and idempotency row use the same stamped scope. The `ScopeResolver` does **not** place the requester again, so current tenant membership is not re-checked: a requester removed from that tenant after requesting still runs there unless the capability's `authorize()` checks membership.
 
 If the customer was deleted, moved tenants, or the actor lost permission:
 
@@ -3087,7 +3087,7 @@ One discovery pass builds the registry. Fluent calls insert into the same map (d
 
 **Problem:** CLI exit codes exist; HTTP lacks a stable machine envelope.
 
-**Decision:** Every non-success response (and CLI stderr JSON) uses:
+**Decision:** Every non-success response (and CLI stdout JSON; stderr is human-only) uses:
 
 ```json
 {
@@ -3100,12 +3100,20 @@ One discovery pass builds the registry. Fluent calls insert into the same map (d
     ],
     "approval_id": null,
     "request_id": "01J…",
-    "retryable": false
+    "retryable": false,
+    "http_status": 422,
+    "cli_exit": 2
   }
 }
 ```
 
-| `code` (normative set) | HTTP | CLI exit |
+- `http_status` — the HTTP status the server sends for this failure.
+- `cli_exit` — the CLI's exit authority: the CLI exits with this value (when it is in 1–6) and falls back to its local `code` table only when the field is absent, so codes added on the server keep their exit class.
+- `retry_after` — on `rate_limited` only, when the window is known: seconds until it frees. HTTP mirrors it as the `Retry-After` header; the CLI keeps it in the envelope it prints.
+
+The table is the normative core set. The full code map (HTTP status, CLI exit, retryable default) is `packages/laravel-capabilities/src/Support/ErrorCodeMap.php`, pinned to the core user guide by `ErrorCodesUserGuideTest`. Unknown codes map to HTTP 500 / CLI exit 1.
+
+| `code` (normative core set) | HTTP | CLI exit |
 |---|---|---|
 | `validation_failed` | 422 | 2 |
 | `unauthenticated` | 401 | 3 |
@@ -3132,7 +3140,7 @@ Success:
 }
 ```
 
-CLI `--json` prints the same envelope; exit code maps from `error.code`.
+The CLI prints every structured result (success or failure) on **stdout** and human hints on **stderr**; it exits with `error.cli_exit` (fallback: its table keyed by `error.code`).
 
 ---
 
@@ -3225,7 +3233,7 @@ Document: app CI should run schema snapshots for every capability before release
 | Check | When |
 |---|---|
 | Messaging package installed + surface enabled | Boot may register routes; **do not** require secrets yet |
-| First webhook / `messaging:telegram-setup` / first outbound notify | **Validate secrets**; fail that request/command loudly |
+| First webhook / `messaging:telegram-setup` / first outbound notify | **Validate secrets**; fail the webhook / setup command loudly. An outbound notify throws, and core reports it (`ExceptionHandler` + `approval_notify_failed_total{notifier}`) without failing the invoke: the request still returns `approval_required` and the approval stays pending |
 | Core peer adapters (`laravel/ai`) when surface enabled | Keep boot fail/disable (D-011) — needed to register tools safely |
 | `CAPABILITIES_SKIP_BOOT_CHECKS=true` | Skips **only** deferred-style checks in CI; **forbidden in production** (detect `APP_ENV=production` → ignore skip or abort) |
 
@@ -3822,7 +3830,7 @@ Without fixing this, D-006 approval differences by surface and D-008/D-013 surfa
 |---|---|
 | Sanctum personal access token | Mapped ability (e.g. `capabilities:cli` → `cli`) or token name pattern in `config/capabilities.php` `clients.token_abilities`. Unmapped → `http`. |
 | OAuth / device-code (`client_id`) | Registered client type in `clients.oauth` → `cli`, `http`, etc. Unregistered → `http` (or reject if `cli` surface requires registration). |
-| In-process AI adapter | Sets `caller: agent` in code when invoking the registry (model never supplies caller). |
+| In-process AI adapter | Sets `caller: agent` in code when invoking the registry (model never supplies caller). Includes the AI package's `TurnRunner` tool calls; its proposal accept (a human confirming over HTTP) keeps `caller: job` until decided separately. |
 | In-process MCP adapter | Sets `caller: mcp` in code. |
 | Jobs / scheduler | Sets `caller: job` via `RunCapability` / dispatch helpers ([D-002](#d-002--job--scheduler-caller-identity)). |
 | In-process app code | Explicit `Capability::invoke(..., caller: 'http'\|…)` argument — trusted only because it is **server code**, not the wire. |

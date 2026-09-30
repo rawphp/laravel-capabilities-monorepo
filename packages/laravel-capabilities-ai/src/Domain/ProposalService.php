@@ -4,16 +4,14 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Domain;
 
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
-use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Proposal;
-use Rawphp\CapabilitiesAi\Models\Turn;
-use Rawphp\CapabilitiesAi\Support\DatabaseConnection;
+use Rawphp\CapabilitiesAi\Support\EloquentConversationStore;
 use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
 use Rawphp\CapabilitiesAi\Support\ToolSchemaHash;
 use Rawphp\CapabilitiesAi\Support\UnresolvedConversationActorException;
@@ -48,6 +46,7 @@ final class ProposalService
         private readonly IdempotencyReadiness $idempotency,
         private readonly ResolveConversationActor $actors = new ResolveConversationActor,
         private readonly ?ToolCatalog $tools = null,
+        private readonly ConversationStore $store = new EloquentConversationStore,
     ) {}
 
     /**
@@ -56,15 +55,12 @@ final class ProposalService
      */
     public function ownedBy(string $proposalUlid, string $ownerId): bool
     {
-        return Proposal::query()
-            ->where('ulid', $proposalUlid)
-            ->whereHas('conversation', static fn (Builder $q) => $q->where('user_id', $ownerId))
-            ->exists();
+        return $this->store->proposalOwnedBy($proposalUlid, $ownerId);
     }
 
     public function accept(string $proposalUlid): AcceptOutcome
     {
-        $proposal = Proposal::query()->where('ulid', $proposalUlid)->firstOrFail();
+        $proposal = $this->store->proposal($proposalUlid);
 
         return match ($proposal->status) {
             Proposal::STATUS_ACCEPTED => AcceptOutcome::accepted($proposal),
@@ -117,7 +113,7 @@ final class ProposalService
 
     public function reject(string $proposalUlid): Proposal
     {
-        $proposal = Proposal::query()->where('ulid', $proposalUlid)->firstOrFail();
+        $proposal = $this->store->proposal($proposalUlid);
 
         if ($proposal->status === Proposal::STATUS_REJECTED) {
             return $proposal;
@@ -129,12 +125,12 @@ final class ProposalService
             );
         }
 
-        $claimed = $this->casStatus($proposalUlid, Proposal::STATUS_PENDING, [
+        $claimed = $this->store->transitionProposal($proposalUlid, Proposal::STATUS_PENDING, [
             'status' => Proposal::STATUS_REJECTED,
         ]);
 
-        if ($claimed !== 1) {
-            $fresh = Proposal::query()->where('ulid', $proposalUlid)->firstOrFail();
+        if (! $claimed) {
+            $fresh = $this->store->proposal($proposalUlid);
             if ($fresh->status === Proposal::STATUS_REJECTED) {
                 return $fresh;
             }
@@ -144,7 +140,7 @@ final class ProposalService
             );
         }
 
-        return Proposal::query()->where('ulid', $proposalUlid)->firstOrFail();
+        return $this->store->proposal($proposalUlid);
     }
 
     private function claimPendingThenAccept(string $proposalUlid, Proposal $proposal): AcceptOutcome
@@ -153,16 +149,16 @@ final class ProposalService
             return $this->idempotencyNotReady($proposal);
         }
 
-        $claimed = $this->casStatus($proposalUlid, Proposal::STATUS_PENDING, [
+        $claimed = $this->store->transitionProposal($proposalUlid, Proposal::STATUS_PENDING, [
             'status' => Proposal::STATUS_ACCEPTING,
         ]);
 
-        if ($claimed !== 1) {
+        if (! $claimed) {
             // Lost race: re-enter single status path (no duplicated policy / double-invoke).
             return $this->accept($proposalUlid);
         }
 
-        $claimedProposal = Proposal::query()->where('ulid', $proposalUlid)->firstOrFail();
+        $claimedProposal = $this->store->proposal($proposalUlid);
 
         return $this->executeAccept($claimedProposal);
     }
@@ -178,7 +174,7 @@ final class ProposalService
             $this->markFailed($proposal, 'not_configured', 'missing target_capability');
 
             return AcceptOutcome::refuse(
-                Proposal::query()->where('ulid', $proposal->ulid)->firstOrFail(),
+                $this->store->proposal($proposal->ulid),
                 message: "Proposal {$proposal->ulid} missing target_capability",
                 httpStatus: 422,
                 error: [
@@ -196,7 +192,7 @@ final class ProposalService
             $this->markFailed($proposal, 'capability_not_in_profile', $message);
 
             return AcceptOutcome::refuse(
-                $proposal->refresh(),
+                $this->store->proposal($proposal->ulid),
                 message: $message,
                 httpStatus: 403,
                 error: [
@@ -213,7 +209,7 @@ final class ProposalService
             $this->markFailed($proposal, 'conflict', $message);
 
             return AcceptOutcome::refuse(
-                $proposal->refresh(),
+                $this->store->proposal($proposal->ulid),
                 message: $message,
                 httpStatus: 409,
                 error: [
@@ -226,15 +222,15 @@ final class ProposalService
         }
 
         $payload = is_array($proposal->payload) ? $proposal->payload : [];
-        $conversation = Conversation::query()->findOrFail($proposal->conversation_id);
-        // Same principal shape as TurnRunner tool invokes (caller=job + conversation user).
+        // Conversation user as actor; caller=job (legacy accept shape — TurnRunner tool calls use agent).
+        // profileTool() already refused a proposal whose conversation row is gone.
         try {
-            $actor = $this->actors->resolve($conversation->user_id);
+            $actor = $this->actors->resolve($proposal->conversation?->user_id);
         } catch (UnresolvedConversationActorException $e) {
             $this->markFailed($proposal, 'forbidden', $e->getMessage());
 
             return AcceptOutcome::refuse(
-                $proposal->refresh(),
+                $this->store->proposal($proposal->ulid),
                 message: $e->getMessage(),
                 httpStatus: 403,
                 error: [
@@ -247,7 +243,7 @@ final class ProposalService
         $result = $this->bus->invoke(
             $target,
             $payload,
-            $this->actors->invokeOptions($actor, [
+            $this->actors->invokeOptions($actor, ResolveConversationActor::CALLER_JOB, [
                 'idempotency_key' => 'proposal:'.$proposal->ulid,
             ]),
         );
@@ -264,8 +260,8 @@ final class ProposalService
             return null;
         }
 
-        $conversationUlid = Conversation::query()->whereKey($proposal->getAttribute('conversation_id'))->value('ulid');
-        $turnUlid = Turn::query()->whereKey($proposal->getAttribute('turn_id'))->value('ulid');
+        $conversationUlid = $proposal->conversation?->ulid;
+        $turnUlid = $proposal->turn?->ulid;
         if (! is_string($conversationUlid) || ! is_string($turnUlid)) {
             return null;
         }
@@ -288,7 +284,7 @@ final class ProposalService
         // Branch approval_required *before* isRetryable so governance stays resumeable.
         if ($result->isApprovalRequired()) {
             return AcceptOutcome::approvalRequired(
-                Proposal::query()->where('ulid', $proposal->ulid)->firstOrFail(),
+                $this->store->proposal($proposal->ulid),
                 approvalId: $result->approvalId(),
                 message: is_string($result->error['message'] ?? null)
                     ? (string) $result->error['message']
@@ -309,7 +305,7 @@ final class ProposalService
             $this->markFailed($proposal, $code, $message);
 
             return AcceptOutcome::refuse(
-                Proposal::query()->where('ulid', $proposal->ulid)->firstOrFail(),
+                $this->store->proposal($proposal->ulid),
                 message: $message,
                 httpStatus: $http ?? 403,
                 error: $error,
@@ -319,7 +315,7 @@ final class ProposalService
         // Primary policy: CapabilityResult::isRetryable() (not ad-hoc error array dig)
         if ($result->isRetryable()) {
             return AcceptOutcome::retryable(
-                Proposal::query()->where('ulid', $proposal->ulid)->firstOrFail(),
+                $this->store->proposal($proposal->ulid),
                 message: $message,
                 httpStatus: $http ?? 409,
                 error: $error,
@@ -329,7 +325,7 @@ final class ProposalService
         $this->markFailed($proposal, $code, $message);
 
         return AcceptOutcome::failed(
-            Proposal::query()->where('ulid', $proposal->ulid)->firstOrFail(),
+            $this->store->proposal($proposal->ulid),
             message: $message,
             httpStatus: $http ?? 422,
             error: $error,
@@ -338,14 +334,14 @@ final class ProposalService
 
     private function markAccepted(Proposal $proposal): Proposal
     {
-        $updated = $this->casStatus($proposal->ulid, Proposal::STATUS_ACCEPTING, [
+        $updated = $this->store->transitionProposal($proposal->ulid, Proposal::STATUS_ACCEPTING, [
             'status' => Proposal::STATUS_ACCEPTED,
             'accepted_at' => Carbon::now()->toDateTimeString(),
             'last_error' => null,
         ]);
 
-        if ($updated !== 1) {
-            $fresh = Proposal::query()->where('ulid', $proposal->ulid)->firstOrFail();
+        if (! $updated) {
+            $fresh = $this->store->proposal($proposal->ulid);
             if ($fresh->status === Proposal::STATUS_ACCEPTED) {
                 return $fresh;
             }
@@ -355,18 +351,18 @@ final class ProposalService
             );
         }
 
-        return Proposal::query()->where('ulid', $proposal->ulid)->firstOrFail();
+        return $this->store->proposal($proposal->ulid);
     }
 
     private function markFailed(Proposal $proposal, string $code, string $message): void
     {
-        $updated = $this->casStatus($proposal->ulid, Proposal::STATUS_ACCEPTING, [
+        $updated = $this->store->transitionProposal($proposal->ulid, Proposal::STATUS_ACCEPTING, [
             'status' => Proposal::STATUS_FAILED,
             'last_error' => "{$code}: {$message}",
         ]);
 
-        if ($updated !== 1) {
-            $fresh = Proposal::query()->where('ulid', $proposal->ulid)->firstOrFail();
+        if (! $updated) {
+            $fresh = $this->store->proposal($proposal->ulid);
             if ($fresh->status === Proposal::STATUS_FAILED) {
                 return;
             }
@@ -389,21 +385,5 @@ final class ProposalService
                 'retryable' => true,
             ],
         );
-    }
-
-    /**
-     * Atomic status transition: UPDATE … WHERE ulid + status = $fromStatus.
-     *
-     * @param  array<string, mixed>  $attrs  Columns to set (status usually included)
-     */
-    private function casStatus(string $ulid, string $fromStatus, array $attrs): int
-    {
-        $payload = $attrs;
-        $payload['updated_at'] = Carbon::now()->toDateTimeString();
-
-        return (int) DatabaseConnection::resolve()->table((new Proposal)->getTable())
-            ->where('ulid', $ulid)
-            ->where('status', $fromStatus)
-            ->update($payload);
     }
 }

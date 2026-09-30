@@ -54,6 +54,56 @@ final class CapabilityScope
         return $factory->for($this, $model);
     }
 
+    /**
+     * JSON-safe row shape for the approval row's `scope` column (D-006, L-501): tenant, team,
+     * organization and scalar attributes. The query factory (a closure) and non-scalar
+     * attributes are not persisted; {@see fromRow()} rebuilds the scope at execution.
+     *
+     * @return array{tenant_id: ?string, team_id: ?string, organization_id: ?string, attributes: array<string, scalar|null>}
+     */
+    public function toRow(): array
+    {
+        return [
+            'tenant_id' => $this->tenantId,
+            'team_id' => $this->teamId,
+            'organization_id' => $this->organizationId,
+            'attributes' => array_filter($this->attributes, static fn (mixed $v): bool => $v === null || is_scalar($v)),
+        ];
+    }
+
+    /**
+     * Rebuild the scope an approval request was stamped with, so accept re-check and
+     * execution see what the approver saw (D-006, L-501). The row's `tenant_id` column —
+     * the tenant the approver was placed in — is the tenant; team, organization and
+     * attributes come from the `scope` array written by {@see toRow()}. The tenant may be
+     * null: an untenanted row (team-only host, global system work) still runs under its
+     * stamped team / organization (L-601). A legacy string / null `scope` yields a
+     * tenant-only scope; a legacy row with neither tenant nor stamp yields null so scope
+     * resolves at execution time. A rebuilt scope has no query factory: `query()` uses the
+     * container-bound {@see ScopedQueryFactory}, the same route as any resolver scope.
+     *
+     * @param  array<mixed>  $row  approval store row
+     */
+    public static function fromRow(array $row): ?self
+    {
+        $tenant = is_scalar($row['tenant_id'] ?? null) && (string) $row['tenant_id'] !== '' ? (string) $row['tenant_id'] : null;
+        $stamped = is_array($row['scope'] ?? null) ? $row['scope'] : null;
+        if ($tenant === null && $stamped === null) {
+            return null;
+        }
+
+        $stamped ??= [];
+        $str = static fn (string $key): ?string => is_scalar($stamped[$key] ?? null) ? (string) $stamped[$key] : null;
+        $attributes = is_array($stamped['attributes'] ?? null) ? $stamped['attributes'] : [];
+
+        return new self(
+            tenantId: $tenant,
+            teamId: $str('team_id'),
+            organizationId: $str('organization_id'),
+            attributes: array_filter($attributes, static fn (mixed $v): bool => $v === null || is_scalar($v)),
+        );
+    }
+
     public function withQueryFactory(ScopedQueryFactory $factory): self
     {
         return new self(

@@ -4,7 +4,6 @@ namespace Rawphp\Capabilities\Adapters\Artisan;
 
 use Illuminate\Console\Command;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
-use Rawphp\Capabilities\Support\CapabilityResult;
 use Throwable;
 
 /**
@@ -50,15 +49,21 @@ class RunCapabilityCommand extends Command
             return self::FAILURE;
         }
 
-        $invoker = new ArtisanCapabilityInvoker($registry);
-
         try {
-            $result = $invoker->invoke([
-                'name' => (string) $this->argument('name'),
-                'input' => $decoded,
-                'acting_as' => $this->option('acting-as'),
+            $flags = ArtisanCapabilityInvoker::parseFlags([
+                'acting-as' => $this->option('acting-as'),
                 'system' => $this->option('system'),
                 'tenant' => $this->option('tenant'),
+            ]);
+            $result = (new ArtisanCapabilityInvoker($registry))->run([
+                'name' => (string) $this->argument('name'),
+                'input' => $decoded,
+                ...$flags,
+                // --acting-as loads the host's real user through the same lookup approvals use
+                // (D-002 / L-107); with no resolver the invoker refuses instead of fabricating one.
+                'user_resolver' => $registry->hasRequesterResolver()
+                    ? static fn (int|string $id): ?object => $registry->resolveRequester('user', (string) $id)
+                    : null,
             ]);
         } catch (Throwable $e) {
             $this->error($e->getMessage());
@@ -66,13 +71,13 @@ class RunCapabilityCommand extends Command
             return self::FAILURE;
         }
 
-        if ($result instanceof CapabilityResult && ! $result->ok) {
-            $this->error($result->error['message'] ?? 'Capability failed');
+        if (! $result->ok) {
+            $this->error((string) ($result->error['message'] ?? 'Capability failed'));
 
             return self::FAILURE;
         }
 
-        $this->line(json_encode($result instanceof CapabilityResult ? $result->toArray() : $result, JSON_PRETTY_PRINT));
+        $this->line((string) json_encode($result->toArray(), JSON_PRETTY_PRINT));
 
         return self::SUCCESS;
     }

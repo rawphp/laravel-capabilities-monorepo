@@ -2,9 +2,12 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\CapabilitiesMessaging\Telegram\TelegramAdapter;
+use Rawphp\CapabilitiesMessaging\Telegram\TelegramWebhookController;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\FakeCapabilityBus;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers as H;
+use Rawphp\CapabilitiesMessaging\Tests\Fixtures\PipelineScenario;
 
 it('happy: linked identity maps chat to agent turn via ConversationIngress [MSG-003]', function () {
     $identity = H::identity();
@@ -44,7 +47,7 @@ it('happy: ConversationReply sends response via Bot API mock [MSG-003]', functio
     $bot = H::bot();
     $identity = H::identity();
     $identity->link('42', 'u1');
-    $adapter = new TelegramAdapter($bot);
+    $adapter = new TelegramAdapter($bot, H::echoAgent());
     $p = H::processor(['identity' => $identity, 'adapter' => $adapter, 'bot' => $bot]);
     $p->handle(H::telegramUpdate(userId: 42, chatId: 77));
     expect($bot->calls())->not->toBeEmpty();
@@ -77,6 +80,22 @@ it('happy: thread store maps chat topic to conversation thread [MSG-004]', funct
     $p = H::processor(['identity' => $identity, 'threads' => $threads]);
     $r = $p->handle(H::telegramUpdate(userId: 42, topicId: 3));
     expect($r['thread_id'])->toBe($threads->threadIdFor('100', 3));
+});
+
+it('edge: a long-lived worker keeps no per-chat thread state across updates [MSG-004]', function () {
+    // Nothing reads thread history back, so the queue-worker singleton must not grow with traffic.
+    $identity = H::identity();
+    $identity->link('42', 'u1');
+    $threads = H::threads();
+    $p = H::processor(['identity' => $identity, 'threads' => $threads]);
+
+    foreach ([[100, 3, 1], [100, 3, 2], [200, null, 3]] as [$chat, $topic, $update]) {
+        expect($p->handle(H::telegramUpdate(chatId: $chat, topicId: $topic, updateId: $update))['ok'])->toBeTrue();
+    }
+
+    expect($threads->find('100', 3))->toBeNull()
+        ->and($threads->find('200'))->toBeNull()
+        ->and($threads->history($threads->threadIdFor('100', 3)))->toBe([]);
 });
 
 it('edge: failed ProcessTelegramUpdate tags channel for failed jobs [D-019]', function () {
@@ -115,14 +134,12 @@ it('edge: queue ProcessTelegramUpdate async not sync domain mutation [MSG-003]',
     $q = H::queue();
     $ctrl = H::webhook([], $q);
     $ctrl->handle(['X-Telegram-Bot-Api-Secret-Token' => 'test-webhook-secret'], H::telegramUpdate());
-    expect($q->count())->toBe(1)->and($ctrl->registryInvokeCount())->toBe(0);
+    expect($q->count())->toBe(1)
+        ->and(H::constructorTypes(TelegramWebhookController::class))->not->toContain(CapabilityBus::class);
 });
 
 it('happy: pipeline verify secret then queue then identity then thread then ingress [MSG-003]', function () {
-    $identity = H::identity();
-    $identity->link('42', 'u1');
-    $p = H::processor(['identity' => $identity]);
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['secret_valid' => true]);
+    $r = PipelineScenario::happy()->run();
     expect($r['ok'])->toBeTrue();
     expect($r['steps'][0])->toBe('verify_webhook_secret');
     expect($r['steps'][1])->toBe('queue_process_update');
@@ -146,7 +163,7 @@ it('happy: tool call invokes registry with the gated agent profile as tool_profi
         'adapter' => $adapter,
         'profile_tools' => ['support.ping'],
     ]);
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42));
+    $r = $p->handle(H::telegramUpdate(userId: 42));
     expect($r['ok'])->toBeTrue()
         ->and($registry->invocations()[0]['options']['tool_profile'] ?? null)->toBe('support');
 });

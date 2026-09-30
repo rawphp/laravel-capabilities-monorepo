@@ -174,11 +174,6 @@ func CommandExists(name string) bool {
 			return true
 		}
 	}
-	// Also accept top-level only.
-	switch name {
-	case "auth", "catalog", "describe", "run", "approvals", "version", "self-update", "help":
-		return true
-	}
 	return false
 }
 

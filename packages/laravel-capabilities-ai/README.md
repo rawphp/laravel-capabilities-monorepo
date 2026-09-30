@@ -22,23 +22,23 @@ Requires [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabil
 | User guide | [docs/user-guide.md](docs/user-guide.md) |
 | **Upgrade (accept/reject wire)** | [docs/user-guide.md#upgrade-for-hosts-acceptreject-wire](docs/user-guide.md#upgrade-for-hosts-acceptreject-wire) · [CHANGELOG Unreleased Breaking](CHANGELOG.md) |
 | **Upgrade (chat HTTP non-proposal routes)** | [docs/user-guide.md#upgrade-for-hosts-chat-http-non-proposal-routes](docs/user-guide.md#upgrade-for-hosts-chat-http-non-proposal-routes) · [CHANGELOG Unreleased Breaking](CHANGELOG.md) (history / showTurn / cancelTurn / turnEvents / destroyConversation; **404** / **409**; `routes.enabled`) |
-| **Upgrade (LlmClient / tool rounds)** | [docs/user-guide.md#upgrade-for-hosts-llmclient-tool-rounds](docs/user-guide.md#upgrade-for-hosts-llmclient-tool-rounds) · [CHANGELOG Unreleased Breaking](CHANGELOG.md) |
-| **Upgrade (tool progress + tool messages)** | [docs/user-guide.md#upgrade-for-hosts-tool-progress-and-tool-messages](docs/user-guide.md#upgrade-for-hosts-tool-progress-and-tool-messages) · [CHANGELOG Unreleased Breaking](CHANGELOG.md) |
+| **Upgrade (LlmClient / tool rounds)** | [docs/user-guide.md#upgrade-for-hosts-llmclient--tool-rounds](docs/user-guide.md#upgrade-for-hosts-llmclient--tool-rounds) · [CHANGELOG Unreleased Breaking](CHANGELOG.md) |
+| **Upgrade (tool progress + tool messages)** | [docs/user-guide.md#upgrade-for-hosts-tool-progress--tool-messages](docs/user-guide.md#upgrade-for-hosts-tool-progress--tool-messages) · [CHANGELOG Unreleased Breaking](CHANGELOG.md) |
 | **Upgrade (Anthropic default model ID)** | [docs/user-guide.md#upgrade-for-hosts-anthropic-default-model-id](docs/user-guide.md#upgrade-for-hosts-anthropic-default-model-id) · [CHANGELOG Unreleased Breaking](CHANGELOG.md) |
-| **Upgrade (manual DI / constructor / job handle)** | [docs/user-guide.md#upgrade-for-hosts-manual-di-constructor-job-handle](docs/user-guide.md#upgrade-for-hosts-manual-di-constructor-job-handle) · [CHANGELOG Unreleased Breaking](CHANGELOG.md#manual-di--constructor--job-handle) |
+| **Upgrade (manual DI / constructor / job handle)** | [docs/user-guide.md#upgrade-for-hosts-manual-di--constructor--job-handle](docs/user-guide.md#upgrade-for-hosts-manual-di--constructor--job-handle) · [CHANGELOG Unreleased Breaking](CHANGELOG.md#manual-di--constructor--job-handle) |
 | Core package | [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities) |
 | Messaging sibling | [rawphp/laravel-capabilities-messaging](https://github.com/rawphp/laravel-capabilities-messaging) |
 | Monorepo design | [laravel-capabilities-monorepo](https://github.com/rawphp/laravel-capabilities-monorepo) |
 
-## Install (path package)
+## Install
 
 ```bash
-# monorepo root already path-wires this package
-composer update rawphp/laravel-capabilities-ai
-composer test:ai
+composer require rawphp/laravel-capabilities-ai
 ```
 
-Host app: require `rawphp/laravel-capabilities-ai` and register `Rawphp\CapabilitiesAi\CapabilitiesAiServiceProvider` (auto-discovery via `extra.laravel.providers`).
+`Rawphp\CapabilitiesAi\CapabilitiesAiServiceProvider` is auto-discovered (`extra.laravel.providers`).
+
+**Tests and contributions:** the unit suite, `phpunit.xml`, and dev tooling live only in the [monorepo](https://github.com/rawphp/laravel-capabilities-monorepo); this package remote is a read-only split and ships no tests. Open issues and PRs against the monorepo and run `composer test:ai` there.
 
 ## Config
 
@@ -55,11 +55,13 @@ Key defaults (`config/capabilities-ai.php`):
 |-----|---------|
 | `table_prefix` | `capabilities_ai_` |
 | `progress.driver` | `array` (or `redis`) — prod: **`redis`**; `array` outside testing throws unless `CAPABILITIES_AI_ALLOW_UNSAFE=1` |
+| `progress.ttl_seconds` | `86400` (`CAPABILITIES_AI_PROGRESS_TTL`) — Redis progress key lifetime after a turn's last event |
 | `llm.driver` | `fake` (set `CAPABILITIES_AI_LLM_DRIVER=anthropic` or bind `LlmClient` for production) — `fake` outside testing throws unless `CAPABILITIES_AI_ALLOW_UNSAFE=1` |
 | `llm.anthropic.model` | `claude-sonnet-4-6` (`CAPABILITIES_AI_ANTHROPIC_MODEL`) |
-| `llm.anthropic.max_tokens` | `64000` (`CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS`) |
-| `llm.anthropic.max_retries` | `2` (`CAPABILITIES_AI_ANTHROPIC_MAX_RETRIES`) — Anthropic 429 retries per request; waits `Retry-After` seconds (capped at 60) or 1s, 2s, 4s…; `0` disables |
+| `llm.anthropic.max_tokens` | `64000` (`CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS`) — a ceiling, not a target. Requests are non-streaming, so a turn only gets what the model writes within `llm.anthropic.timeout`; a reply that needs longer fails the turn as a retryable timeout. For very long replies raise `timeout` and `claim_ttl` together |
+| `llm.anthropic.max_retries` | `2` (`CAPABILITIES_AI_ANTHROPIC_MAX_RETRIES`) — Anthropic 429 retries per request; waits `Retry-After` seconds (capped at 60) or 1s, 2s, 4s…; `0` disables. A retry runs with its `timeout` capped to what is left of the turn's `claim_ttl` (counted from the job start, across all rounds) and is skipped when the wait would leave under 10s; the 429 then fails the turn as retryable |
 | `user_model` | null → falls back to `auth.providers.users.model` (`CAPABILITIES_AI_USER_MODEL`) |
+| `llm.anthropic.timeout` | `110` (`CAPABILITIES_AI_ANTHROPIC_TIMEOUT`) — seconds per Anthropic request (Laravel's HTTP default is 30s). Must be below `claim_ttl`, or the anthropic `LlmClient` refuses to build (`InvalidArgumentException`); a turn with several tool rounds makes several requests inside one job timeout. Each request's `timeout` is capped to what is left of `claim_ttl` minus 2s, so the worker is never killed mid-request; a round is refused, failing the turn as retryable (`error` + `terminal` events), only when under 10s are left. Raise `claim_ttl` for long multi-round turns |
 | `claim_ttl` | **`120`** (seconds; worker heartbeat / job timeout window) |
 | `queue.connection` | null (`CAPABILITIES_AI_QUEUE_CONNECTION`) — applied to default `RunTurnJob` dispatch when set |
 | `queue.name` | null (`CAPABILITIES_AI_QUEUE_NAME`) — applied to default dispatch; also marks **AI-chat** for core `capabilities:integration-health` when non-empty |
@@ -67,13 +69,15 @@ Key defaults (`config/capabilities-ai.php`):
 | `reaper.stale_queued_minutes` | `30` (`CAPABILITIES_AI_REAPER_STALE_QUEUED`) |
 | `reaper.stale_running_grace_seconds` | `60` (`CAPABILITIES_AI_REAPER_RUNNING_GRACE`) |
 | `allow_unsafe` | `false` (`CAPABILITIES_AI_ALLOW_UNSAFE`) — local demos only |
-| `max_concurrent_turns` | `0` = unlimited (`CAPABILITIES_AI_MAX_CONCURRENT_TURNS`) — at the ceiling of queued + running turns, message create returns **429** `outcome: retryable` and persists/dispatches nothing |
-| `max_tool_rounds` | `8` |
+| `turns_per_minute` | `20` (`CAPABILITIES_AI_TURNS_PER_MINUTE`) — D-013 per-user message (turn) budget via core `RateLimiter`; over it, message create returns **429** `rate_limited` and persists/dispatches nothing; `0` disables |
+| `max_concurrent_turns` | `0` = unlimited (`CAPABILITIES_AI_MAX_CONCURRENT_TURNS`) — at the ceiling of queued + running turns, message create returns **429** `rate_limited` (D-018 envelope, `retryable: true`) and persists/dispatches nothing |
+| `max_message_chars` | `32000` (`CAPABILITIES_AI_MAX_MESSAGE_CHARS`) — longest accepted chat message `content` in characters; longer → **422** `validation_failed`, nothing persisted or dispatched; `0` = no cap |
+| `max_tool_rounds` | `8` (`CAPABILITIES_AI_MAX_TOOL_ROUNDS`) — LLM rounds per turn; a turn still asking for tools after the last round **fails** (`max_tool_rounds (N) reached without a final reply`, `retryable: false`) |
 | `routes.enabled` | `false` |
 
 Progress events live in array/Redis — **not** MySQL product tables.
 
-**Bus principal (tool + accept invokes):** `TurnRunner` and `ProposalService` resolve the conversation’s Laravel user via `user_model` / auth provider and pass `caller=job` plus that user as `actor` on `CapabilityBus::invoke`. Missing/unresolvable `conversation.user_id` fails closed (no silent default user). When `CapabilityBus` is bound, provider boot also fails closed if the user model is unset, missing, or has no `query()` (class check only, no DB). Tool invokes pass `idempotency_key` only when the model supplies it as a tool argument (D-005; stripped from capability input) — otherwise they carry no key.
+**Bus principal (tool + accept invokes):** `TurnRunner` and `ProposalService` resolve the conversation’s Laravel user via `user_model` / auth provider and pass that user as `actor` on `CapabilityBus::invoke`. Turn tool calls use `caller=agent` (D-022), so the agent surface flag, per-capability `surfaces` narrowing and agent approval rules apply; proposal accept uses `caller=job`. Missing/unresolvable `conversation.user_id` fails closed (no silent default user). When `CapabilityBus` is bound, provider boot also fails closed if the user model is unset, missing, or has no `query()` (class check only, no DB). Tool invokes pass `idempotency_key` only when the model supplies it as a tool argument (D-005; stripped from capability input) — otherwise they carry no key.
 
 ### Host integration (D-024 seams)
 
@@ -115,7 +119,9 @@ $app->bind(LlmClient::class, fn () => new AnthropicLlmClient(
 ));
 ```
 
-**Custom `LlmClient`:** implement `supportsToolRounds()`. Prefer `use LlmClientDefaults` (returns false) and override to `true` **only** if the client accepts tool-result messages on the next `complete()` (OpenAI-style `role=tool` or Anthropic `tool_result` blocks). Lying opens a bus-then-crash path. (PHP interfaces still cannot ship method bodies on supported PHP; the trait is the fail-closed default for hosts.) **Host upgrade callouts:** [user guide](docs/user-guide.md#upgrade-for-hosts-llmclient-tool-rounds) · [CHANGELOG Breaking](CHANGELOG.md).
+**Custom `LlmClient`:** implement `supportsToolRounds()`. Prefer `use LlmClientDefaults` (returns false) and override to `true` **only** if the client accepts tool-result messages on the next `complete()` (OpenAI-style `role=tool` or Anthropic `tool_result` blocks). Lying opens a bus-then-crash path. (PHP interfaces still cannot ship method bodies on supported PHP; the trait is the fail-closed default for hosts.) **Host upgrade callouts:** [user guide](docs/user-guide.md#upgrade-for-hosts-llmclient--tool-rounds) · [CHANGELOG Breaking](CHANGELOG.md).
+
+**Turn time budget:** a custom client can implement `Contracts\DeadlineAwareLlmClient` (`withDeadline()`: cap every request and retry to end before the turn deadline, and start none with under `MIN_REQUEST_SECONDS` left) so `TurnRunner` holds its rounds and retries to `claim_ttl` the way it does for `AnthropicLlmClient`. Clients without it get no turn budget: keep their total turn time under `claim_ttl` yourself.
 
 **Transient LLM errors:** throw `RetryableLlmException` (rate limit, overload, 5xx, connection) from `complete()`; `AnthropicLlmClient` already does. The turn still ends `failed`, but its progress `error` event carries `retryable: true` (+ `retry_after_seconds` when the provider sent one) so callers can try again; other errors report `retryable: false`.
 

@@ -20,7 +20,10 @@ interface TelegramBotClient
     public function editMessageText(string $chatId, string|int $messageId, string $text, array $payload = []): array;
 
     /**
-     * @return list<array{method: string, args: array<string, mixed>}>
+     * Acknowledge a tapped inline button (stops the client spinner; `text` shows as a toast).
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
      */
-    public function calls(): array;
+    public function answerCallbackQuery(string $callbackQueryId, string $text = '', array $payload = []): array;
 }

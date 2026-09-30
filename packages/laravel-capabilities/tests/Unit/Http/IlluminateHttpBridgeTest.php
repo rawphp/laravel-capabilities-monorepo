@@ -12,11 +12,14 @@ use Rawphp\Capabilities\Adapters\Http\CapabilityController;
 use Rawphp\Capabilities\Adapters\Http\IlluminateApprovalController;
 use Rawphp\Capabilities\Adapters\Http\IlluminateAuthController;
 use Rawphp\Capabilities\Adapters\Http\IlluminateCapabilityController;
+use Rawphp\Capabilities\Contracts\AuthTokenIssuer;
 use Rawphp\Capabilities\Http\HttpAuthGate;
 use Rawphp\Capabilities\Http\HttpRequestContext;
 use Rawphp\Capabilities\Http\HttpResponse;
 use Rawphp\Capabilities\Http\HttpRouteRegistrar;
 use Rawphp\Capabilities\Http\IlluminateHttpBridge;
+use Rawphp\Capabilities\Tests\Fixtures\BootHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\FakeProviderApp;
 use Rawphp\Capabilities\Tests\Fixtures\HttpHelpers;
 
 it('maps array fixture stand-in to HttpRequestContext with server-derived auth', function () {
@@ -48,7 +51,7 @@ it('maps array fixture stand-in to HttpRequestContext with server-derived auth',
         ->and($ctx->query['include_schemas'] ?? null)->toBe('1')
         ->and($ctx->authKind)->toBe(HttpAuthGate::AUTH_CLI_TOKEN)
         ->and($ctx->credential['token_abilities'] ?? null)->toBe(['capabilities:cli'])
-        ->and($ctx->credential['adapter'] ?? null)->toBe('http');
+        ->and($ctx->credential)->not->toHaveKey('adapter'); // abilities drive caller (L-003)
 });
 
 it('maps unauthenticated Illuminate Request defaults closed', function () {
@@ -85,7 +88,7 @@ it('maps authenticated Illuminate Request user and token abilities from server r
     expect($ctx->authenticated)->toBeTrue()
         ->and($ctx->user)->toBe($user)
         ->and($ctx->authKind)->toBe(HttpAuthGate::AUTH_USER)
-        ->and($ctx->credential['adapter'] ?? null)->toBe('http')
+        ->and($ctx->credential)->not->toHaveKey('adapter')
         ->and($ctx->credential['token_abilities'] ?? null)->toBe(['*']);
 });
 
@@ -320,4 +323,174 @@ it('array fixture without user stays unauthenticated by default', function () {
         ->and($ctx->user)->toBeNull()
         ->and($ctx->authKind)->toBe(HttpAuthGate::AUTH_NONE)
         ->and($ctx->credential)->toBe([]);
+});
+
+// L-003: bridge + deriver composed — Sanctum CLI token must derive caller=cli (D-022).
+it('derives caller cli for a Sanctum token with capabilities:cli through bridge and controller', function () {
+    $user = new class
+    {
+        public int $id = 5;
+
+        public function currentAccessToken(): object
+        {
+            return (object) ['abilities' => ['capabilities:cli']];
+        }
+    };
+    $request = Request::create('/capabilities', 'GET');
+    $request->setUserResolver(static fn () => $user);
+
+    $ctx = IlluminateHttpBridge::fromIlluminate($request);
+    $resolved = (new CapabilityController(HttpHelpers::mockBus()))->resolveCaller($ctx);
+
+    expect($ctx->credential)->not->toHaveKey('adapter')
+        ->and($resolved['derived'])->toBe('cli')
+        ->and($resolved['caller'])->toBe('cli');
+});
+
+it('derives caller from the oauth client map, not a defaulted http adapter', function () {
+    $ctx = IlluminateHttpBridge::fromArray([
+        'authenticated' => true,
+        'user' => HttpHelpers::user(2),
+        'oauth_client_id' => 'cli-app',
+    ]);
+    $controller = new CapabilityController(HttpHelpers::mockBus(), ['oauth' => ['cli-app' => 'cli']]);
+
+    expect($controller->resolveCaller($ctx)['derived'])->toBe('cli');
+});
+
+it('keeps unmapped token abilities as caller http', function () {
+    $ctx = IlluminateHttpBridge::fromArray([
+        'authenticated' => true,
+        'user' => HttpHelpers::user(2),
+        'token_abilities' => ['*'],
+    ]);
+
+    expect((new CapabilityController(HttpHelpers::mockBus()))->resolveCaller($ctx)['derived'])->toBe('http');
+});
+
+it('forbids a CLI token from invoking an http-only capability', function () {
+    $h = HttpHelpers::harness(['cap_surfaces' => ['http']]);
+    $ctx = IlluminateHttpBridge::fromArray([
+        'method' => 'POST',
+        'authenticated' => true,
+        'user' => $h['user'],
+        'token_abilities' => ['capabilities:cli'],
+        'json' => ['customer_id' => 1, 'amount_cents' => 100, 'currency' => 'USD'],
+    ]);
+
+    $res = $h['controller']->invoke($ctx, $h['name']);
+
+    expect($res->body['ok'])->toBeFalse()
+        ->and($res->body['error']['code'])->toBe('forbidden')
+        ->and($res->body['meta']['caller'])->toBe('cli');
+});
+
+function bridgeProviderApp(array $instances = []): FakeProviderApp
+{
+    return FakeProviderApp::registered(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+        'audit' => ['driver' => 'memory'],
+    ]), $instances);
+}
+
+/**
+ * @return array{status: int, code: ?string}
+ */
+function bridgeOutcome(JsonResponse $response): array
+{
+    return [
+        'status' => $response->getStatusCode(),
+        'code' => json_decode((string) $response->getContent(), true)['error']['code'] ?? null,
+    ];
+}
+
+it('provider-built Illuminate wrappers answer every route action closed for a guest request', function () {
+    $app = bridgeProviderApp();
+    $capabilities = $app->make(IlluminateCapabilityController::class);
+    $auth = $app->make(IlluminateAuthController::class);
+    $approvals = $app->make(IlluminateApprovalController::class);
+    $guest = Request::create('/capabilities', 'POST');
+    $unauthenticated = ['status' => 401, 'code' => 'unauthenticated'];
+    $noIssuer = ['status' => 501, 'code' => 'not_configured'];
+
+    expect(bridgeOutcome($capabilities->list($guest)))->toBe($unauthenticated)
+        ->and(bridgeOutcome($capabilities->describe($guest, 'create-invoice')))->toBe($unauthenticated)
+        ->and(bridgeOutcome($capabilities->invoke($guest, 'create-invoice')))->toBe($unauthenticated)
+        ->and(bridgeOutcome($capabilities->health($guest)))->toBe($unauthenticated)
+        ->and(bridgeOutcome($approvals->accept($guest, 'apr-1')))->toBe($unauthenticated)
+        ->and(bridgeOutcome($approvals->reject($guest, 'apr-1')))->toBe($unauthenticated)
+        ->and(bridgeOutcome($auth->token($guest)))->toBe($noIssuer)
+        ->and(bridgeOutcome($auth->device($guest)))->toBe($noIssuer)
+        ->and(bridgeOutcome($auth->oauthCallback($guest)))->toBe($noIssuer);
+});
+
+it('provider-built auth wrapper issues tokens and device codes through the host AuthTokenIssuer', function () {
+    $app = bridgeProviderApp([AuthTokenIssuer::class => HttpHelpers::fakeAuthTokenIssuer()]);
+    $auth = $app->make(IlluminateAuthController::class);
+    $json = static fn (string $path, array $body): Request => Request::create(
+        $path, 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], json_encode($body, JSON_THROW_ON_ERROR),
+    );
+
+    $token = $auth->token($json('/capabilities/auth/token', ['grant_type' => 'client_credentials']));
+    $device = $auth->device($json('/capabilities/auth/device', []));
+
+    expect($token->getStatusCode())->toBe(200)
+        ->and(json_decode((string) $token->getContent(), true)['data']['access_token'] ?? null)->toBe('host-issued-token')
+        ->and($device->getStatusCode())->toBe(200)
+        ->and(json_decode((string) $device->getContent(), true)['data']['user_code'] ?? null)->toBe('HOST-USER');
+});
+
+it('provider-built auth wrapper fails closed when the bound AuthTokenIssuer is the wrong type or throws', function () {
+    $wrongType = bridgeProviderApp([AuthTokenIssuer::class => new stdClass]);
+    $throws = bridgeProviderApp();
+    $throws->singleton(AuthTokenIssuer::class, static fn () => throw new RuntimeException('issuer misconfigured'));
+    $guest = Request::create('/capabilities/auth/token', 'POST');
+
+    expect(bridgeOutcome($wrongType->make(IlluminateAuthController::class)->token($guest)))->toBe(['status' => 501, 'code' => 'not_configured'])
+        ->and(bridgeOutcome($throws->make(IlluminateAuthController::class)->token($guest)))->toBe(['status' => 501, 'code' => 'not_configured']);
+});
+
+// --- L-110: authKind is CLI only for an ability mapped to `cli` in clients.token_abilities ---
+
+it('classifies authKind by exact token_abilities mapping, not by a "cli" substring [L-110]', function (array $abilities, string $expected) {
+    $ctx = IlluminateHttpBridge::fromArray(['authenticated' => true, 'user' => new stdClass, 'token_abilities' => $abilities]);
+
+    expect($ctx->authKind)->toBe($expected);
+})->with([
+    'exact default ability' => [['capabilities:cli'], HttpAuthGate::AUTH_CLI_TOKEN],
+    'case-insensitive exact match' => [['Capabilities:CLI'], HttpAuthGate::AUTH_CLI_TOKEN],
+    'client scope that merely contains cli' => [['client:read'], HttpAuthGate::AUTH_USER],
+    'clinic wildcard' => [['clinic:*'], HttpAuthGate::AUTH_USER],
+    'decline' => [['decline'], HttpAuthGate::AUTH_USER],
+    'api token' => [['capabilities:api'], HttpAuthGate::AUTH_API_TOKEN],
+    'wildcard PAT' => [['*'], HttpAuthGate::AUTH_USER],
+]);
+
+it('reads the same clients.token_abilities map CallerDeriver uses [L-110]', function () {
+    $map = ['ops:remote' => 'cli', 'capabilities:read' => 'http'];
+
+    $remote = IlluminateHttpBridge::fromArray(['authenticated' => true, 'user' => new stdClass, 'token_abilities' => ['ops:remote']], $map);
+    $default = IlluminateHttpBridge::fromArray(['authenticated' => true, 'user' => new stdClass, 'token_abilities' => ['capabilities:cli']], $map);
+    $read = IlluminateHttpBridge::fromArray(['authenticated' => true, 'user' => new stdClass, 'token_abilities' => ['capabilities:read']], $map);
+
+    expect($remote->authKind)->toBe(HttpAuthGate::AUTH_CLI_TOKEN)
+        ->and($default->authKind)->toBe(HttpAuthGate::AUTH_USER)
+        ->and($read->authKind)->toBe(HttpAuthGate::AUTH_USER);
+});
+
+it('provider-built Illuminate wrappers carry clients.token_abilities into the bridge [L-110]', function () {
+    $app = FakeProviderApp::registered(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+        'audit' => ['driver' => 'memory'],
+        'clients' => ['token_abilities' => ['ops:remote' => 'cli']],
+    ]));
+
+    foreach ([IlluminateCapabilityController::class, IlluminateAuthController::class, IlluminateApprovalController::class] as $wrapper) {
+        $instance = $app->make($wrapper);
+        $map = (new ReflectionClass($instance))->getProperty('tokenAbilityMap')->getValue($instance);
+        // Published defaults merge under host config, so the default ability stays mapped too.
+        expect($map)->toBe(['capabilities:cli' => 'cli', 'ops:remote' => 'cli']);
+    }
 });

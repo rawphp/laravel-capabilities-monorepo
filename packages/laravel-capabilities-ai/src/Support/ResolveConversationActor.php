@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Support;
 
+use Rawphp\CapabilitiesAi\Contracts\ActorLookup;
 use RuntimeException;
 
 /**
@@ -14,14 +15,19 @@ use RuntimeException;
  */
 final class ResolveConversationActor
 {
-    /** In-process coach / job surface (legacy RunCoachCommandHandler shape). */
+    /** LLM-chosen tool calls in a turn: the agent surface (D-022 in-process AI adapter). */
+    public const CALLER_AGENT = 'agent';
+
+    /** Proposal accept: legacy job shape until the spec decides the accept surface. */
     public const CALLER_JOB = 'job';
 
     /**
-     * @param  class-string|null  $userModel  Explicit model override (tests / hosts)
+     * @param  class-string|null  $userModel  Explicit model override (hosts)
+     * @param  ActorLookup|null  $lookup  User lookup; null = {@see EloquentActorLookup} over the configured model
      */
     public function __construct(
         private readonly ?string $userModel = null,
+        private readonly ?ActorLookup $lookup = null,
     ) {}
 
     /**
@@ -48,14 +54,10 @@ final class ResolveConversationActor
             );
         }
 
-        $modelClass = self::assertQueryableModel($this->userModelClass());
+        $lookup = $this->lookup ?? new EloquentActorLookup(self::assertQueryableModel($this->userModelClass()));
 
-        $user = $modelClass::query()->find($id);
-        if ($user === null && ctype_digit($id)) {
-            $user = $modelClass::query()->find((int) $id);
-        }
-
-        if ($user === null || ! is_object($user)) {
+        $user = $lookup->find($id);
+        if ($user === null) {
             throw new UnresolvedConversationActorException(
                 "Conversation user_id [{$id}] does not resolve to a user; refusing bus invoke"
             );
@@ -96,17 +98,18 @@ final class ResolveConversationActor
     }
 
     /**
-     * Bus invoke options matching legacy coach job principal.
+     * Bus invoke options: server-chosen caller + resolved actor (never overridable by $extra).
      *
-     * @param  array<string, mixed>  $extra  Merged after caller/actor (e.g. idempotency_key)
+     * @param  self::CALLER_*  $caller
+     * @param  array<string, mixed>  $extra  Additional options (e.g. idempotency_key)
      * @return array<string, mixed>
      */
-    public function invokeOptions(object $actor, array $extra = []): array
+    public function invokeOptions(object $actor, string $caller, array $extra = []): array
     {
-        return array_merge([
-            'caller' => self::CALLER_JOB,
+        return [
+            'caller' => $caller,
             'actor' => $actor,
-        ], $extra);
+        ] + $extra;
     }
 
     /**

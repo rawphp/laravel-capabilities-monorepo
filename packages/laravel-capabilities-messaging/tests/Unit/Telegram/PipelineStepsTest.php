@@ -2,324 +2,166 @@
 
 declare(strict_types=1);
 
-use Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers as H;
+use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdate;
+use Rawphp\CapabilitiesMessaging\Tests\Fixtures\PipelineScenario as S;
 
+/**
+ * MSG-003 pipeline steps over the wired path (webhook → queue → processor).
+ * A failing step stops the pipeline: the next step never runs, and the bus is only reached from tool_calls_registry.
+ */
 it('happy: pipeline step verify_webhook_secret executes in order [MSG-003]', function () {
-    $identity = H::identity();
-    $identity->link('42', 'u1');
-    $p = H::processor(['identity' => $identity]);
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42));
-    expect($r['steps'] ?? [])->toContain('verify_webhook_secret');
+    $r = S::happy()->run();
+
+    expect($r['ok'])->toBeTrue()
+        ->and($r['steps'])->toContain('verify_webhook_secret');
 });
 
 it('fail: pipeline aborts before tools when step verify_webhook_secret fails if prior required [MSG-003]', function () {
-    $identity = H::identity();
-    $identity->link('42', 'u1');
-    $p = H::processor(['identity' => $identity]);
-    $failAt = 'verify_webhook_secret';
-    if ($failAt === 'verify_webhook_secret') {
-        $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['secret_valid' => false]);
-        expect($r['tools_reached'] ?? false)->toBeFalse();
+    $s = S::failingAt(S::STEP_FAILURES['verify_webhook_secret']);
 
-        return;
-    }
-    if ($failAt === 'queue_process_update') {
-        $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => 'queue_process_update']);
-        expect($r['tools_reached'] ?? false)->toBeFalse();
+    $r = $s->run();
 
-        return;
-    }
-    $map = [
-        'resolve_identity' => 'identity_unresolved',
-        'map_thread' => 'thread_store_failure',
-        'conversation_ingress' => 'ingress_failure',
-        'agent_tools_profile' => 'profile_missing',
-        'tool_calls_registry' => 'tool_registry_failure',
-        'conversation_reply' => 'reply_failure',
-    ];
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => $map[$failAt] ?? $failAt]);
-    expect($r['ok'])->toBeFalse();
-    if ($failAt !== 'tool_calls_registry' && $failAt !== 'conversation_reply' && $failAt !== 'agent_tools_profile') {
-        expect(in_array('tool_calls_registry', $r['steps'] ?? [], true))->toBeFalse();
-    }
+    expect($r['ok'])->toBeFalse()
+        ->and($r['steps'])->not->toContain('queue_process_update')
+        ->and($r['steps'])->not->toContain('conversation_reply')
+        ->and($s->bot->calls())->toBe([]);
+    expect($r['tools_reached'])->toBeFalse()
+        ->and($s->registry->invokeCount())->toBe(0);
 });
 
 it('happy: pipeline step queue_process_update executes in order [MSG-003]', function () {
-    $identity = H::identity();
-    $identity->link('42', 'u1');
-    $p = H::processor(['identity' => $identity]);
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42));
-    expect($r['steps'] ?? [])->toContain('queue_process_update');
+    $r = S::happy()->run();
+
+    expect($r['ok'])->toBeTrue()
+        ->and($r['steps'])->toContain('queue_process_update');
 });
 
 it('fail: pipeline aborts before tools when step queue_process_update fails if prior required [MSG-003]', function () {
-    $identity = H::identity();
-    $identity->link('42', 'u1');
-    $p = H::processor(['identity' => $identity]);
-    $failAt = 'queue_process_update';
-    if ($failAt === 'verify_webhook_secret') {
-        $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['secret_valid' => false]);
-        expect($r['tools_reached'] ?? false)->toBeFalse();
+    $s = S::failingAt(S::STEP_FAILURES['queue_process_update']);
 
-        return;
-    }
-    if ($failAt === 'queue_process_update') {
-        $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => 'queue_process_update']);
-        expect($r['tools_reached'] ?? false)->toBeFalse();
+    $r = $s->run();
 
-        return;
-    }
-    $map = [
-        'resolve_identity' => 'identity_unresolved',
-        'map_thread' => 'thread_store_failure',
-        'conversation_ingress' => 'ingress_failure',
-        'agent_tools_profile' => 'profile_missing',
-        'tool_calls_registry' => 'tool_registry_failure',
-        'conversation_reply' => 'reply_failure',
-    ];
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => $map[$failAt] ?? $failAt]);
-    expect($r['ok'])->toBeFalse();
-    if ($failAt !== 'tool_calls_registry' && $failAt !== 'conversation_reply' && $failAt !== 'agent_tools_profile') {
-        expect(in_array('tool_calls_registry', $r['steps'] ?? [], true))->toBeFalse();
-    }
+    expect($r['ok'])->toBeFalse()
+        ->and($r['steps'])->not->toContain('resolve_identity')
+        ->and($r['steps'])->not->toContain('conversation_reply')
+        ->and($s->bot->calls())->toBe([]);
+    expect($r['tools_reached'])->toBeFalse()
+        ->and($s->registry->invokeCount())->toBe(0);
 });
 
 it('happy: pipeline step resolve_identity executes in order [MSG-003]', function () {
-    $identity = H::identity();
-    $identity->link('42', 'u1');
-    $p = H::processor(['identity' => $identity]);
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42));
-    expect($r['steps'] ?? [])->toContain('resolve_identity');
+    $r = S::happy()->run();
+
+    expect($r['ok'])->toBeTrue()
+        ->and($r['steps'])->toContain('resolve_identity');
 });
 
 it('fail: pipeline aborts before tools when step resolve_identity fails if prior required [MSG-003]', function () {
-    $identity = H::identity();
-    $identity->link('42', 'u1');
-    $p = H::processor(['identity' => $identity]);
-    $failAt = 'resolve_identity';
-    if ($failAt === 'verify_webhook_secret') {
-        $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['secret_valid' => false]);
-        expect($r['tools_reached'] ?? false)->toBeFalse();
+    $s = S::failingAt(S::STEP_FAILURES['resolve_identity']);
 
-        return;
-    }
-    if ($failAt === 'queue_process_update') {
-        $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => 'queue_process_update']);
-        expect($r['tools_reached'] ?? false)->toBeFalse();
+    $r = $s->run();
 
-        return;
-    }
-    $map = [
-        'resolve_identity' => 'identity_unresolved',
-        'map_thread' => 'thread_store_failure',
-        'conversation_ingress' => 'ingress_failure',
-        'agent_tools_profile' => 'profile_missing',
-        'tool_calls_registry' => 'tool_registry_failure',
-        'conversation_reply' => 'reply_failure',
-    ];
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => $map[$failAt] ?? $failAt]);
-    expect($r['ok'])->toBeFalse();
-    if ($failAt !== 'tool_calls_registry' && $failAt !== 'conversation_reply' && $failAt !== 'agent_tools_profile') {
-        expect(in_array('tool_calls_registry', $r['steps'] ?? [], true))->toBeFalse();
-    }
+    // No agent turn and no agent reply; the unlinked user only gets the how-to-link message.
+    expect($r['ok'])->toBeFalse()
+        ->and($r['steps'])->not->toContain('map_thread')
+        ->and($r['steps'])->not->toContain('conversation_reply')
+        ->and(array_column(array_column($s->bot->calls(), 'args'), 'text'))->toBe([ProcessTelegramUpdate::UNLINKED_REPLY]);
+    expect($r['tools_reached'])->toBeFalse()
+        ->and($s->registry->invokeCount())->toBe(0);
 });
 
 it('happy: pipeline step map_thread executes in order [MSG-003]', function () {
-    $identity = H::identity();
-    $identity->link('42', 'u1');
-    $p = H::processor(['identity' => $identity]);
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42));
-    expect($r['steps'] ?? [])->toContain('map_thread');
+    $r = S::happy()->run();
+
+    expect($r['ok'])->toBeTrue()
+        ->and($r['steps'])->toContain('map_thread');
 });
 
 it('fail: pipeline aborts before tools when step map_thread fails if prior required [MSG-003]', function () {
-    $identity = H::identity();
-    $identity->link('42', 'u1');
-    $p = H::processor(['identity' => $identity]);
-    $failAt = 'map_thread';
-    if ($failAt === 'verify_webhook_secret') {
-        $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['secret_valid' => false]);
-        expect($r['tools_reached'] ?? false)->toBeFalse();
+    $s = S::failingAt(S::STEP_FAILURES['map_thread']);
 
-        return;
-    }
-    if ($failAt === 'queue_process_update') {
-        $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => 'queue_process_update']);
-        expect($r['tools_reached'] ?? false)->toBeFalse();
+    $r = $s->run();
 
-        return;
-    }
-    $map = [
-        'resolve_identity' => 'identity_unresolved',
-        'map_thread' => 'thread_store_failure',
-        'conversation_ingress' => 'ingress_failure',
-        'agent_tools_profile' => 'profile_missing',
-        'tool_calls_registry' => 'tool_registry_failure',
-        'conversation_reply' => 'reply_failure',
-    ];
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => $map[$failAt] ?? $failAt]);
-    expect($r['ok'])->toBeFalse();
-    if ($failAt !== 'tool_calls_registry' && $failAt !== 'conversation_reply' && $failAt !== 'agent_tools_profile') {
-        expect(in_array('tool_calls_registry', $r['steps'] ?? [], true))->toBeFalse();
-    }
+    expect($r['ok'])->toBeFalse()
+        ->and($r['steps'])->not->toContain('agent_tools_profile')
+        ->and($r['steps'])->not->toContain('conversation_reply')
+        ->and($s->bot->calls())->toBe([]);
+    expect($r['tools_reached'])->toBeFalse()
+        ->and($s->registry->invokeCount())->toBe(0);
 });
 
 it('happy: pipeline step conversation_ingress executes in order [MSG-003]', function () {
-    $identity = H::identity();
-    $identity->link('42', 'u1');
-    $p = H::processor(['identity' => $identity]);
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42));
-    expect($r['steps'] ?? [])->toContain('conversation_ingress');
+    $r = S::happy()->run();
+
+    expect($r['ok'])->toBeTrue()
+        ->and($r['steps'])->toContain('conversation_ingress');
 });
 
 it('fail: pipeline aborts before tools when step conversation_ingress fails if prior required [MSG-003]', function () {
-    $identity = H::identity();
-    $identity->link('42', 'u1');
-    $p = H::processor(['identity' => $identity]);
-    $failAt = 'conversation_ingress';
-    if ($failAt === 'verify_webhook_secret') {
-        $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['secret_valid' => false]);
-        expect($r['tools_reached'] ?? false)->toBeFalse();
+    $s = S::failingAt(S::STEP_FAILURES['conversation_ingress']);
 
-        return;
-    }
-    if ($failAt === 'queue_process_update') {
-        $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => 'queue_process_update']);
-        expect($r['tools_reached'] ?? false)->toBeFalse();
+    $r = $s->run();
 
-        return;
-    }
-    $map = [
-        'resolve_identity' => 'identity_unresolved',
-        'map_thread' => 'thread_store_failure',
-        'conversation_ingress' => 'ingress_failure',
-        'agent_tools_profile' => 'profile_missing',
-        'tool_calls_registry' => 'tool_registry_failure',
-        'conversation_reply' => 'reply_failure',
-    ];
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => $map[$failAt] ?? $failAt]);
-    expect($r['ok'])->toBeFalse();
-    if ($failAt !== 'tool_calls_registry' && $failAt !== 'conversation_reply' && $failAt !== 'agent_tools_profile') {
-        expect(in_array('tool_calls_registry', $r['steps'] ?? [], true))->toBeFalse();
-    }
+    expect($r['ok'])->toBeFalse()
+        ->and($r['steps'])->not->toContain('tool_calls_registry')
+        ->and($r['steps'])->not->toContain('conversation_reply')
+        ->and($s->bot->calls())->toBe([]);
+    expect($r['tools_reached'])->toBeFalse()
+        ->and($s->registry->invokeCount())->toBe(0);
 });
 
 it('happy: pipeline step agent_tools_profile executes in order [MSG-003]', function () {
-    $identity = H::identity();
-    $identity->link('42', 'u1');
-    $p = H::processor(['identity' => $identity]);
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42));
-    expect($r['steps'] ?? [])->toContain('agent_tools_profile');
+    $r = S::happy()->run();
+
+    expect($r['ok'])->toBeTrue()
+        ->and($r['steps'])->toContain('agent_tools_profile');
 });
 
 it('fail: pipeline aborts before tools when step agent_tools_profile fails if prior required [MSG-003]', function () {
-    $identity = H::identity();
-    $identity->link('42', 'u1');
-    $p = H::processor(['identity' => $identity]);
-    $failAt = 'agent_tools_profile';
-    if ($failAt === 'verify_webhook_secret') {
-        $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['secret_valid' => false]);
-        expect($r['tools_reached'] ?? false)->toBeFalse();
+    $s = S::failingAt(S::STEP_FAILURES['agent_tools_profile']);
 
-        return;
-    }
-    if ($failAt === 'queue_process_update') {
-        $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => 'queue_process_update']);
-        expect($r['tools_reached'] ?? false)->toBeFalse();
+    $r = $s->run();
 
-        return;
-    }
-    $map = [
-        'resolve_identity' => 'identity_unresolved',
-        'map_thread' => 'thread_store_failure',
-        'conversation_ingress' => 'ingress_failure',
-        'agent_tools_profile' => 'profile_missing',
-        'tool_calls_registry' => 'tool_registry_failure',
-        'conversation_reply' => 'reply_failure',
-    ];
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => $map[$failAt] ?? $failAt]);
-    expect($r['ok'])->toBeFalse();
-    if ($failAt !== 'tool_calls_registry' && $failAt !== 'conversation_reply' && $failAt !== 'agent_tools_profile') {
-        expect(in_array('tool_calls_registry', $r['steps'] ?? [], true))->toBeFalse();
-    }
+    expect($r['ok'])->toBeFalse()
+        ->and($r['steps'])->not->toContain('conversation_ingress')
+        ->and($r['steps'])->not->toContain('conversation_reply')
+        ->and($s->bot->calls())->toBe([]);
+    expect($r['tools_reached'])->toBeFalse()
+        ->and($s->registry->invokeCount())->toBe(0);
 });
 
 it('happy: pipeline step tool_calls_registry executes in order [MSG-003]', function () {
-    $identity = H::identity();
-    $identity->link('42', 'u1');
-    $p = H::processor(['identity' => $identity]);
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42));
-    expect($r['steps'] ?? [])->toContain('tool_calls_registry');
+    $r = S::happy()->run();
+
+    expect($r['ok'])->toBeTrue()
+        ->and($r['steps'])->toContain('tool_calls_registry');
 });
 
 it('fail: pipeline aborts before tools when step tool_calls_registry fails if prior required [MSG-003]', function () {
-    $identity = H::identity();
-    $identity->link('42', 'u1');
-    $p = H::processor(['identity' => $identity]);
-    $failAt = 'tool_calls_registry';
-    if ($failAt === 'verify_webhook_secret') {
-        $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['secret_valid' => false]);
-        expect($r['tools_reached'] ?? false)->toBeFalse();
+    $s = S::failingAt(S::STEP_FAILURES['tool_calls_registry']);
 
-        return;
-    }
-    if ($failAt === 'queue_process_update') {
-        $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => 'queue_process_update']);
-        expect($r['tools_reached'] ?? false)->toBeFalse();
+    $r = $s->run();
 
-        return;
-    }
-    $map = [
-        'resolve_identity' => 'identity_unresolved',
-        'map_thread' => 'thread_store_failure',
-        'conversation_ingress' => 'ingress_failure',
-        'agent_tools_profile' => 'profile_missing',
-        'tool_calls_registry' => 'tool_registry_failure',
-        'conversation_reply' => 'reply_failure',
-    ];
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => $map[$failAt] ?? $failAt]);
-    expect($r['ok'])->toBeFalse();
-    if ($failAt !== 'tool_calls_registry' && $failAt !== 'conversation_reply' && $failAt !== 'agent_tools_profile') {
-        expect(in_array('tool_calls_registry', $r['steps'] ?? [], true))->toBeFalse();
-    }
+    expect($r['ok'])->toBeFalse()
+        ->and($r['error'])->toBe('tool_not_in_profile')
+        ->and($r['steps'])->not->toContain('conversation_reply')
+        ->and($s->bot->calls())->toBe([]);
 });
 
 it('happy: pipeline step conversation_reply executes in order [MSG-003]', function () {
-    $identity = H::identity();
-    $identity->link('42', 'u1');
-    $p = H::processor(['identity' => $identity]);
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42));
-    expect($r['steps'] ?? [])->toContain('conversation_reply');
+    $r = S::happy()->run();
+
+    expect($r['ok'])->toBeTrue()
+        ->and($r['steps'])->toContain('conversation_reply');
 });
 
 it('fail: pipeline aborts before tools when step conversation_reply fails if prior required [MSG-003]', function () {
-    $identity = H::identity();
-    $identity->link('42', 'u1');
-    $p = H::processor(['identity' => $identity]);
-    $failAt = 'conversation_reply';
-    if ($failAt === 'verify_webhook_secret') {
-        $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['secret_valid' => false]);
-        expect($r['tools_reached'] ?? false)->toBeFalse();
+    $s = S::failingAt(S::STEP_FAILURES['conversation_reply']);
 
-        return;
-    }
-    if ($failAt === 'queue_process_update') {
-        $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => 'queue_process_update']);
-        expect($r['tools_reached'] ?? false)->toBeFalse();
+    $r = $s->run();
 
-        return;
-    }
-    $map = [
-        'resolve_identity' => 'identity_unresolved',
-        'map_thread' => 'thread_store_failure',
-        'conversation_ingress' => 'ingress_failure',
-        'agent_tools_profile' => 'profile_missing',
-        'tool_calls_registry' => 'tool_registry_failure',
-        'conversation_reply' => 'reply_failure',
-    ];
-    $r = $p->runPipeline(H::telegramUpdate(userId: 42), ['fail_at' => $map[$failAt] ?? $failAt]);
-    expect($r['ok'])->toBeFalse();
-    if ($failAt !== 'tool_calls_registry' && $failAt !== 'conversation_reply' && $failAt !== 'agent_tools_profile') {
-        expect(in_array('tool_calls_registry', $r['steps'] ?? [], true))->toBeFalse();
-    }
+    expect($r['ok'])->toBeFalse()
+        ->and($r['error'])->toStartWith('reply_send_fail')
+        ->and($r['steps'])->not->toContain('conversation_reply')
+        ->and($s->bot->calls())->toBe([]);
 });

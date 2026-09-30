@@ -25,5 +25,11 @@ interface RateLimiter
 
     public function remaining(string $key, int $maxAttempts): int;
 
+    /**
+     * Seconds until the key's current decay window frees; 0 when the key holds no window.
+     * Feeds `error.retry_after` / `Retry-After` on rate_limited (C-007).
+     */
+    public function availableIn(string $key): int;
+
     public function clear(string $key): void;
 }

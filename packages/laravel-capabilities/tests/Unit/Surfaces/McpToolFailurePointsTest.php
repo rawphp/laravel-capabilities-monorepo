@@ -211,3 +211,19 @@ it('happy: mcp tool handle failure integration_disabled returns structured error
     );
     expect($s['error']['code'])->toBe('integration_disabled');
 });
+
+it('happy: StructuredToolResponse::fromResult builds an array for an ok result', function () {
+    $ok = StructuredToolResponse::fromResult(
+        CapabilityResult::ok(['a' => 1]),
+    );
+
+    expect($ok)->toBeArray();
+});
+
+it('fail: StructuredToolResponse::fromResult builds an array for a failure result', function () {
+    $fail = StructuredToolResponse::fromResult(
+        CapabilityResult::failure('forbidden', 'no'),
+    );
+
+    expect($fail)->toBeArray();
+});

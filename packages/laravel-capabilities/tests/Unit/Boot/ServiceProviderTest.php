@@ -5,7 +5,13 @@
 
 declare(strict_types=1);
 
+use Illuminate\Container\Container;
+use Rawphp\Capabilities\Adapters\Ai\AiToolAdapter;
+use Rawphp\Capabilities\Adapters\Ai\AiToolAdapterV1;
 use Rawphp\Capabilities\Adapters\Http\CapabilityController;
+use Rawphp\Capabilities\Adapters\Mcp\McpCredential;
+use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapter;
+use Rawphp\Capabilities\Adapters\Mcp\McpToolAdapterV1;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Boot\CapabilitiesConfig;
 use Rawphp\Capabilities\Boot\SurfaceNames;
@@ -15,17 +21,23 @@ use Rawphp\Capabilities\Contracts\ApprovalGateway;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\Metrics;
+use Rawphp\Capabilities\Contracts\ScopeResolver;
+use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\Capabilities\Observability\InvokeTelemetry;
 use Rawphp\Capabilities\Persistence\ArrayTableGateway;
 use Rawphp\Capabilities\Persistence\DatabaseApprovalStore;
 use Rawphp\Capabilities\Persistence\DatabaseIdempotencyStore;
 use Rawphp\Capabilities\Persistence\TableGateway;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
+use Rawphp\Capabilities\Support\DefaultScopeResolver;
 use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
+use Rawphp\Capabilities\Tests\Fixtures\AdapterHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\BootHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
+use Rawphp\Capabilities\Tests\Fixtures\FakeCapabilityBus;
+use Rawphp\Capabilities\Tests\Fixtures\FakeProviderApp;
 use Rawphp\Capabilities\Tests\Fixtures\HttpHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
@@ -128,6 +140,8 @@ function req048FakeApp(array $capabilitiesConfig = []): object
 
         public function instance(string $abstract, mixed $instance): void
         {
+            // Like Laravel: binding an instance replaces an alias of the same name.
+            unset($this->aliases[$abstract]);
             $this->singletons[$abstract] = $instance;
             $this->resolved[$abstract] = $instance;
         }
@@ -535,8 +549,107 @@ it('happy: provider-wired accept re-authorizes the requester via the default aut
 
     $result = $app->make(ApprovalManager::class)->accept($id, oaaProviderApprover());
 
+    // Looked up twice: once for the accept re-check, once to run as the real requester (L-005).
     expect($result->isOk())->toBeTrue()
-        ->and($looked)->toBe(['7']);
+        ->and($looked)->toBe(['7', '7']);
+});
+
+it('happy: provider-wired approved execution runs as the rehydrated user, not a stub [L-005]', function () {
+    $provider = new class
+    {
+        public function retrieveById(mixed $id): ?object
+        {
+            return new class((string) $id)
+            {
+                public function __construct(public string $id) {}
+
+                public function can(string $ability): bool
+                {
+                    return true;
+                }
+            };
+        }
+    };
+    $guard = new class($provider)
+    {
+        public function __construct(private object $provider) {}
+
+        public function getProvider(): object
+        {
+            return $this->provider;
+        }
+    };
+    $app = req048FakeApp(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+    ]));
+    $app->instance('auth', oaaProviderAuth($guard));
+    $registry = $app->make(CapabilityRegistry::class);
+    $runActors = [];
+    $registry->define('create-invoice')
+        ->input(CreateInvoiceInput::class)
+        ->authorize(static fn (mixed $input, $ctx): bool => $ctx->actor()->can('create'))
+        ->run(function (mixed $input, $ctx) use (&$runActors) {
+            $runActors[] = $ctx->actor();
+
+            return ['ok' => true];
+        })
+        ->register($registry);
+    $row = $app->make(ApprovalManager::class)->request([
+        'capability_name' => 'create-invoice',
+        'requester_actor_type' => 'user',
+        'requester_actor_id' => '7',
+        'original_caller' => 'http',
+        'input_json' => ['customer_id' => 1, 'amount_cents' => 500, 'currency' => 'AUD'],
+    ]);
+
+    $result = $app->make(ApprovalManager::class)->accept((string) $row['id'], oaaProviderApprover());
+
+    expect($result->isOk())->toBeTrue()
+        ->and($runActors)->toHaveCount(1)
+        ->and($runActors[0])->not->toBeInstanceOf(stdClass::class)
+        ->and($runActors[0]->id)->toBe('7');
+});
+
+it('M-301: the host-bound ScopeResolver stamps the row and places the approver, so an in-tenant accept succeeds', function () {
+    $app = req048FakeApp(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+    ]));
+    $app->instance('auth', oaaProviderAuth(oaaRehydratingGuard()));
+    // Host tenancy: user 7 belongs to acme, user 8 to globex. No tenant attributes on the principals.
+    $app->instance(ScopeResolver::class, new DefaultScopeResolver(['user_tenants' => ['7' => 'acme', '8' => 'globex']]));
+
+    $registry = $app->make(CapabilityRegistry::class);
+    $runs = 0;
+    Capability::define('ship-order')
+        ->description('ship an order')
+        ->input(CreateInvoiceInput::class)
+        ->output(CreateInvoiceResult::class)
+        ->authorize(fn () => true)
+        ->approvalPolicy('requester')
+        ->run(function () use (&$runs) {
+            $runs++;
+
+            return new CreateInvoiceResult(invoice_id: 5);
+        })
+        ->register($registry);
+
+    $pending = $registry->invoke('ship-order', PipelineHelpers::validInput(), [
+        'caller' => 'http',
+        'actor' => PipelineHelpers::userActor(7),
+        'needs_approval' => true,
+    ]);
+    $id = (string) $pending->approvalId();
+    $approvals = $app->make(ApprovalManager::class);
+
+    $otherTenant = $approvals->accept($id, PipelineHelpers::userActor(8));
+    $sameTenant = $approvals->accept($id, PipelineHelpers::userActor(7));
+
+    expect($approvals->find($id)['tenant_id'])->toBe('acme')
+        ->and($otherTenant->errorCode())->toBe('forbidden')
+        ->and($sameTenant->isOk())->toBeTrue()
+        ->and($runs)->toBe(1);
 });
 
 // --- D-019: provider-built CapabilityController counts unauthenticated denials on the bound Metrics ---
@@ -554,4 +667,118 @@ it('D-019: container CapabilityController records unauthenticated denials on the
         InvokeTelemetry::METRIC_UNAUTHENTICATED,
         ['route' => 'list', 'auth' => 'none'],
     ))->toBe(1);
+});
+
+// --- L-011: idempotency.header is the one header setting ---
+
+it('happy: the container CapabilityController reads the key from idempotency.header [L-011]', function () {
+    $app = req048FakeApp(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory', 'header' => 'X-Idem'],
+    ]));
+    $registry = $app->make(CapabilityRegistry::class);
+    Capability::define('idem-header')
+        ->description('header wiring')
+        ->input(CreateInvoiceInput::class)
+        ->output(CreateInvoiceResult::class)
+        ->authorize(fn () => true)
+        ->run(fn () => new CreateInvoiceResult(invoice_id: 1))
+        ->register($registry);
+    $bus = new FakeCapabilityBus(backing: $registry);
+    $app->instance(CapabilityBus::class, $bus);
+
+    $app->make(CapabilityController::class)->invoke(HttpHelpers::authedRequest([
+        'method' => 'POST',
+        'jsonBody' => PipelineHelpers::validInput(),
+        'headers' => ['x-idem' => str_repeat('k', 16)],
+    ]), 'idem-header');
+
+    expect($bus->invocations[0]['options']['idempotency_key'] ?? null)->toBe(str_repeat('k', 16));
+});
+
+// --- L-017: tool adapters take require_profile from config ---
+
+it('happy: the container adapters take require_profile from surfaces.agent / surfaces.mcp [L-017]', function () {
+    $strict = req048FakeApp(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+        'surfaces' => [
+            'agent' => ['enabled' => true, 'on_incompatible' => 'disable'],
+            'mcp' => ['enabled' => true, 'on_incompatible' => 'disable', 'auth' => ['user_pat' => true]],
+        ],
+    ]));
+    $relaxed = req048FakeApp(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+        'surfaces' => [
+            'agent' => ['enabled' => true, 'on_incompatible' => 'disable', 'require_profile' => false],
+            'mcp' => ['enabled' => true, 'on_incompatible' => 'disable', 'require_profile' => false, 'auth' => ['user_pat' => true]],
+        ],
+    ]));
+
+    foreach ([$strict, $relaxed] as $app) {
+        expect($app->make(AiToolAdapter::class))->toBeInstanceOf(AiToolAdapterV1::class)
+            ->and($app->make(McpToolAdapter::class))->toBeInstanceOf(McpToolAdapterV1::class);
+    }
+
+    $user = AdapterHelpers::user();
+    expect($strict->make(AiToolAdapter::class)->handle('missing-cap', [], $user)->error['normalized_code'] ?? null)->toBe('profile_required')
+        ->and($strict->make(McpToolAdapter::class)->handle('missing-cap', [], McpCredential::userPat($user))->error['normalized_code'] ?? null)->toBe('profile_required')
+        ->and($relaxed->make(AiToolAdapter::class)->handle('missing-cap', [], $user)->errorCode())->toBe('not_found')
+        ->and($relaxed->make(McpToolAdapter::class)->handle('missing-cap', [], McpCredential::userPat($user))->errorCode())->toBe('not_found');
+});
+
+it('happy: register merges the config defaults and binds resolvable Metrics and Tracer factories', function () {
+    $app = FakeProviderApp::registered();
+
+    expect($app->singletons)->not->toBeEmpty()
+        ->and($app->config->get('capabilities'))->toBeArray()
+        ->and($app->singletons[Metrics::class])->toBeCallable()
+        ->and($app->make(Metrics::class))->toBeInstanceOf(Metrics::class)
+        ->and($app->singletons[Tracer::class])->toBeCallable()
+        ->and($app->make(Tracer::class))->toBeInstanceOf(Tracer::class);
+});
+
+it('happy: boot publishes the config and migrations when running in console', function () {
+    $app = new class extends Container
+    {
+        public function runningInConsole(): bool
+        {
+            return true;
+        }
+    };
+    $app->instance('config', new class(BootHelpers::config([]))
+    {
+        /** @param  array<string, mixed>  $config */
+        public function __construct(private array $config) {}
+
+        public function get(string $key, mixed $default = null): mixed
+        {
+            return $key === 'capabilities' ? $this->config : $default;
+        }
+    });
+
+    if (! function_exists('config_path')) {
+        eval('function config_path($path = "") { return "/tmp/config/".$path; }');
+    }
+    if (! function_exists('database_path')) {
+        eval('function database_path($path = "") { return "/tmp/database/".$path; }');
+    }
+
+    $provider = new class($app) extends CapabilitiesServiceProvider
+    {
+        /** @var list<array{paths: array<string, string>, group: string}> */
+        public array $publishCalls = [];
+
+        /**
+         * @param  array<string, string>  $paths
+         */
+        protected function publishes(array $paths, $group = null): void
+        {
+            $this->publishCalls[] = ['paths' => $paths, 'group' => (string) $group];
+        }
+    };
+    $provider->boot();
+
+    expect(array_column($provider->publishCalls, 'group'))->toBe(['capabilities-config', 'capabilities-migrations']);
 });

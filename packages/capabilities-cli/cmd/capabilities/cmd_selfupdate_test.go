@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -191,5 +192,35 @@ func TestRootHelpListsSelfUpdate(t *testing.T) {
 	h := RootHelp()
 	if !strings.Contains(h, "self-update") {
 		t.Fatalf("root help missing self-update:\n%s", h)
+	}
+}
+
+func TestSelfUpdateTargetsRunningBinaryByDefault(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Skip("os.Executable unavailable")
+	}
+	var target string
+	eng := func(ctx context.Context, opt selfupdate.Options) (*selfupdate.Result, error) {
+		target = opt.TargetPath
+		return &selfupdate.Result{Outcome: selfupdate.OutcomeAlreadyLatest}, nil
+	}
+	code, out, _ := captureSelfUpdate(t, []string{"self-update"}, eng, "")
+	if code != api.ExitOK || target != exe {
+		t.Fatalf("exit %d target %q want %q", code, target, exe)
+	}
+	// No version from the engine: report this binary's own version.
+	if !strings.Contains(out, "("+Version+")") {
+		t.Fatalf("out %q", out)
+	}
+}
+
+func TestSelfUpdateAlreadyLatestFallsBackToCurrentVersion(t *testing.T) {
+	eng := func(ctx context.Context, opt selfupdate.Options) (*selfupdate.Result, error) {
+		return &selfupdate.Result{Outcome: selfupdate.OutcomeAlreadyLatest, CurrentVersion: "9.9.9"}, nil
+	}
+	_, out, _ := captureSelfUpdate(t, []string{"self-update"}, eng, "/tmp/fake-capabilities")
+	if !strings.Contains(out, "(9.9.9)") {
+		t.Fatalf("out %q", out)
 	}
 }

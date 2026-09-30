@@ -2,34 +2,29 @@
 
 declare(strict_types=1);
 
-use Illuminate\Container\Container;
 use Illuminate\Contracts\Auth\Authenticatable;
-use Illuminate\Database\Capsule\Manager as Capsule;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Events\Dispatcher as EventDispatcher;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Facade;
-use Illuminate\Support\Facades\Schema;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\InMemoryRateLimiter;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
 use Rawphp\CapabilitiesAi\Http\ChatController;
-use Rawphp\CapabilitiesAi\Models\Conversation;
-use Rawphp\CapabilitiesAi\Models\Message;
 use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\AlwaysReadyIdempotency;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\ResolveConversationActor;
+use Rawphp\CapabilitiesAi\Tests\Fakes\InMemoryActorLookup;
+use Rawphp\CapabilitiesAi\Tests\Fakes\InMemoryConversationStore;
+use Rawphp\CapabilitiesAi\Tests\Fakes\InMemoryTurnClaim;
 
 class ChatControllerTestUser extends Model
 {
-    protected $table = 'users';
-
     public $timestamps = false;
 
     protected $guarded = [];
@@ -83,28 +78,44 @@ function messageRequest(array $body, ?Authenticatable $user): Request
     return $request;
 }
 
-function bootHttpSqlite(): ArrayProgressStore
+/**
+ * Per-test in-memory rows, the turn claim over them, and host users (no database).
+ *
+ * @return object{store: InMemoryConversationStore, claim: InMemoryTurnClaim, users: InMemoryActorLookup}
+ */
+function httpWorld(bool $reset = false): object
 {
-    $capsule = new Capsule;
-    $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
-    $capsule->setEventDispatcher(new EventDispatcher(new Container));
-    $capsule->setAsGlobal();
-    $capsule->bootEloquent();
-    $app = new Container;
-    $app->instance('db', $capsule->getDatabaseManager());
-    Facade::setFacadeApplication($app);
-    Schema::swap($capsule->getConnection()->getSchemaBuilder());
-    $files = glob(dirname(__DIR__, 3).'/database/migrations/*.php') ?: [];
-    sort($files);
-    foreach ($files as $file) {
-        (require $file)->up();
+    static $world = null;
+    if ($reset || $world === null) {
+        $store = new InMemoryConversationStore;
+        $world = (object) ['store' => $store, 'claim' => new InMemoryTurnClaim($store), 'users' => new InMemoryActorLookup];
     }
-    Schema::create('users', function ($table): void {
-        $table->increments('id');
-        $table->string('name')->nullable();
-    });
 
-    return new ArrayProgressStore;
+    return $world;
+}
+
+beforeEach(function () {
+    httpWorld(reset: true);
+});
+
+function httpConversationService(ArrayProgressStore $progress): ConversationService
+{
+    return new ConversationService(static fn ($j) => null, $progress, store: httpWorld()->store);
+}
+
+function httpTurnService(ArrayProgressStore $progress): TurnService
+{
+    return new TurnService($progress, httpWorld()->store, httpWorld()->claim);
+}
+
+function httpUser(string $name): ChatControllerTestUser
+{
+    return httpWorld()->users->add(new ChatControllerTestUser(['name' => $name]));
+}
+
+function httpProposal(Turn $turn, string $ulid): Proposal
+{
+    return httpWorld()->store->createProposal($turn, $ulid, 'action', [], 'demo.cap', null);
 }
 
 function httpRequestAs(?string $userId): Request
@@ -156,7 +167,7 @@ function httpProposalService(CapabilityBus $bus): ProposalService
     return new ProposalService(
         $bus,
         new AlwaysReadyIdempotency,
-        new ResolveConversationActor(ChatControllerTestUser::class),
+        new ResolveConversationActor(lookup: httpWorld()->users),
         new class implements ToolCatalog
         {
             public function toolsForTurn(string $conversationUlid, string $turnUlid): array
@@ -164,6 +175,7 @@ function httpProposalService(CapabilityBus $bus): ProposalService
                 return [['name' => 'demo.cap']];
             }
         },
+        httpWorld()->store,
     );
 }
 
@@ -175,9 +187,28 @@ function chatRequest(?string $userId, string $method = 'GET', array $params = []
     return $request;
 }
 
+/**
+ * ConversationService over the in-memory store: conversation routes need no database.
+ *
+ * @return array{0: ConversationService, 1: InMemoryConversationStore}
+ */
+function httpConversations(?callable $dispatch = null, int $maxConcurrentTurns = 0): array
+{
+    $store = httpWorld()->store;
+
+    return [
+        new ConversationService(
+            $dispatch ?? static fn ($j) => null,
+            new ArrayProgressStore,
+            maxConcurrentTurns: $maxConcurrentTurns,
+            store: $store,
+        ),
+        $store,
+    ];
+}
+
 it('history returns 200 with messages', function () {
-    $progress = bootHttpSqlite();
-    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    [$conversations] = httpConversations();
     $ids = $conversations->createUserMessage('hello', userId: 'u1');
     $response = (new ChatController)->history(chatRequest('u1'), $ids['conversation_ulid'], $conversations);
 
@@ -186,15 +217,13 @@ it('history returns 200 with messages', function () {
 });
 
 it('history returns 404 when missing', function () {
-    bootHttpSqlite();
-    $conversations = new ConversationService(static fn ($j) => null, new ArrayProgressStore);
+    [$conversations] = httpConversations();
     $response = (new ChatController)->history(chatRequest('u1'), '01MISSINGCONV00000000000', $conversations);
     expect($response->getStatusCode())->toBe(404);
 });
 
 it('history returns 404 for another user\'s conversation', function () {
-    $progress = bootHttpSqlite();
-    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    [$conversations] = httpConversations();
     $ids = $conversations->createUserMessage('secret', userId: 'u1');
     $response = (new ChatController)->history(chatRequest('u2'), $ids['conversation_ulid'], $conversations);
 
@@ -203,30 +232,27 @@ it('history returns 404 for another user\'s conversation', function () {
 });
 
 it('storeMessage owns the conversation by the authenticated user, not the body user_id', function () {
-    $progress = bootHttpSqlite();
-    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    [$conversations, $store] = httpConversations();
     $request = chatRequest('u1', 'POST', ['content' => 'hi', 'user_id' => 'victim']);
     $response = (new ChatController)->storeMessage($request, $conversations);
 
     $ulid = $response->getData(true)['conversation_ulid'];
     expect($response->getStatusCode())->toBe(201)
-        ->and(Conversation::query()->where('ulid', $ulid)->value('user_id'))->toBe('u1');
+        ->and($store->conversation($ulid)->user_id)->toBe('u1');
 });
 
 it('storeMessage returns 404 when appending to another user\'s conversation', function () {
-    $progress = bootHttpSqlite();
-    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    [$conversations, $store] = httpConversations();
     $ids = $conversations->createUserMessage('mine', userId: 'u1');
     $request = chatRequest('u2', 'POST', ['content' => 'intrude', 'conversation_ulid' => $ids['conversation_ulid']]);
 
     expect((new ChatController)->storeMessage($request, $conversations)->getStatusCode())->toBe(404)
-        ->and(Turn::query()->count())->toBe(1);
+        ->and($store->turns)->toHaveCount(1);
 });
 
 it('every chat route returns 401 without an authenticated user and touches nothing', function () {
-    $progress = bootHttpSqlite();
-    $conversations = new ConversationService(static fn ($j) => null, $progress);
-    $turns = new TurnService($progress);
+    [$conversations, $store] = httpConversations();
+    $turns = httpTurnService(new ArrayProgressStore);
     $ids = $conversations->createUserMessage('owned', userId: 'u1');
     $controller = new ChatController;
     $anon = chatRequest(null, 'POST', ['content' => 'x']);
@@ -242,31 +268,32 @@ it('every chat route returns 401 without an authenticated user and touches nothi
 
     foreach ($responses as $response) {
         expect($response->getStatusCode())->toBe(401);
+        expectChatErrorEnvelope($response->getData(true), 'unauthenticated', 'Unauthenticated');
     }
-    expect(Turn::query()->count())->toBe(1)
-        ->and(Turn::query()->value('status'))->toBe(Turn::STATUS_QUEUED);
+    expect($store->turns)->toHaveCount(1)
+        ->and($store->turns[0]->status)->toBe(Turn::STATUS_QUEUED)
+        ->and($store->conversations[0]->status)->toBe('open');
 });
 
 it('showTurn, cancelTurn and turnEvents return 404 for another user\'s turn', function () {
-    $progress = bootHttpSqlite();
-    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    $progress = new ArrayProgressStore;
+    $conversations = httpConversationService($progress);
     $ids = $conversations->createUserMessage('t', userId: 'u1');
-    $turns = new TurnService($progress);
+    $turns = httpTurnService($progress);
     $controller = new ChatController;
     $other = chatRequest('u2');
 
     expect($controller->showTurn($other, $ids['turn_ulid'], $turns)->getStatusCode())->toBe(404)
         ->and($controller->cancelTurn($other, $ids['turn_ulid'], $turns)->getStatusCode())->toBe(404)
         ->and($controller->turnEvents($other, $ids['turn_ulid'], $turns)->getStatusCode())->toBe(404)
-        ->and(Turn::query()->where('ulid', $ids['turn_ulid'])->value('status'))->toBe(Turn::STATUS_QUEUED);
+        ->and(httpWorld()->store->turn($ids['turn_ulid'])->status)->toBe(Turn::STATUS_QUEUED);
 });
 
 it('storeMessage creates a turn and appends to an existing conversation', function () {
-    bootHttpSqlite();
     $dispatched = [];
-    $conversations = new ConversationService(static function ($job) use (&$dispatched): void {
+    [$conversations, $store] = httpConversations(static function ($job) use (&$dispatched): void {
         $dispatched[] = $job;
-    }, new ArrayProgressStore);
+    });
     $controller = new ChatController;
 
     $first = $controller->storeMessage(chatRequest('u1', 'POST', ['content' => 'hi']), $conversations);
@@ -279,25 +306,31 @@ it('storeMessage creates a turn and appends to an existing conversation', functi
     );
     expect($second->getStatusCode())->toBe(201)
         ->and($second->getData(true)['conversation_ulid'])->toBe($conversationUlid)
-        ->and(Conversation::query()->count())->toBe(1)
-        ->and(Turn::query()->count())->toBe(2)
+        ->and($store->conversations)->toHaveCount(1)
+        ->and($store->turns)->toHaveCount(2)
         ->and($dispatched)->toHaveCount(2);
 });
 
 it('storeMessage rejects invalid input with 422 before creating rows or dispatching', function (array $input, string $field) {
-    bootHttpSqlite();
     $dispatched = 0;
-    $conversations = new ConversationService(static function () use (&$dispatched): void {
+    [$conversations, $store] = httpConversations(static function () use (&$dispatched): void {
         $dispatched++;
-    }, new ArrayProgressStore);
+    });
 
     $response = (new ChatController)->storeMessage(chatRequest('u1', 'POST', $input), $conversations);
 
+    $body = $response->getData(true);
     expect($response->getStatusCode())->toBe(422)
-        ->and($response->getData(true)['errors'])->toHaveKey($field)
-        ->and(Conversation::query()->count())->toBe(0)
-        ->and(Message::query()->count())->toBe(0)
-        ->and(Turn::query()->count())->toBe(0)
+        ->and($body['ok'])->toBeFalse()
+        ->and($body['error']['code'])->toBe('validation_failed')
+        ->and($body['error']['message'])->toBe('The given data was invalid.')
+        ->and($body['error']['http_status'])->toBe(422)
+        ->and(array_column($body['error']['violations'], 'field'))->toBe([$field])
+        ->and($body['error']['violations'][0]['message'])->toBeString()->not->toBe('')
+        ->and($body)->not->toHaveKeys(['message', 'errors'])
+        ->and($store->conversations)->toBe([])
+        ->and($store->messages)->toBe([])
+        ->and($store->turns)->toBe([])
         ->and($dispatched)->toBe(0);
 })->with([
     'missing content' => [[], 'content'],
@@ -310,9 +343,52 @@ it('storeMessage rejects invalid input with 422 before creating rows or dispatch
     'non-string conversation_ulid' => [['content' => 'hi', 'conversation_ulid' => ['x']], 'conversation_ulid'],
 ]);
 
+it('storeMessage rejects content longer than max_message_chars with 422 before creating rows', function () {
+    $dispatched = 0;
+    [$conversations, $store] = httpConversations(static function () use (&$dispatched): void {
+        $dispatched++;
+    });
+
+    $response = (new ChatController(maxMessageChars: 5))->storeMessage(chatRequest('u1', 'POST', ['content' => 'sixsix']), $conversations);
+
+    $body = $response->getData(true);
+    expect($response->getStatusCode())->toBe(422)
+        ->and($body['error']['code'])->toBe('validation_failed')
+        ->and($body['error']['violations'])->toBe([
+            ['field' => 'content', 'message' => 'The content field must not be longer than 5 characters.'],
+        ])
+        ->and($store->messages)->toBe([])
+        ->and($dispatched)->toBe(0);
+});
+
+it('storeMessage counts max_message_chars in characters, not bytes', function () {
+    [$conversations, $store] = httpConversations();
+
+    $response = (new ChatController(maxMessageChars: 5))->storeMessage(chatRequest('u1', 'POST', ['content' => 'ééééé']), $conversations);
+
+    expect($response->getStatusCode())->toBe(201)
+        ->and($store->messages)->toHaveCount(1);
+});
+
+it('storeMessage has no length cap when max_message_chars is 0', function () {
+    [$conversations, $store] = httpConversations();
+
+    $response = (new ChatController(maxMessageChars: 0))->storeMessage(chatRequest('u1', 'POST', ['content' => str_repeat('x', 40000)]), $conversations);
+
+    expect($response->getStatusCode())->toBe(201);
+});
+
+it('storeMessage applies the package default max_message_chars', function () {
+    [$conversations] = httpConversations();
+
+    $response = (new ChatController)->storeMessage(chatRequest('u1', 'POST', ['content' => str_repeat('x', ChatController::DEFAULT_MAX_MESSAGE_CHARS + 1)]), $conversations);
+
+    expect(ChatController::DEFAULT_MAX_MESSAGE_CHARS)->toBe(32000)
+        ->and($response->getStatusCode())->toBe(422);
+});
+
 it('storeMessage returns 404 for a well-formed but unknown conversation_ulid', function () {
-    bootHttpSqlite();
-    $conversations = new ConversationService(static fn ($j) => null, new ArrayProgressStore);
+    [$conversations, $store] = httpConversations();
 
     $response = (new ChatController)->storeMessage(
         chatRequest('u1', 'POST', ['content' => 'hi', 'conversation_ulid' => str_repeat('0', 26)]),
@@ -321,14 +397,14 @@ it('storeMessage returns 404 for a well-formed but unknown conversation_ulid', f
 
     expect($response->getStatusCode())->toBe(404)
         ->and($response->getData(true)['error']['message'])->toBe('Conversation not found')
-        ->and(Message::query()->count())->toBe(0);
+        ->and($store->messages)->toBe([]);
 });
 
 it('showTurn and cancelTurn happy path', function () {
-    $progress = bootHttpSqlite();
-    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    $progress = new ArrayProgressStore;
+    $conversations = httpConversationService($progress);
     $ids = $conversations->createUserMessage('t', userId: 'u1');
-    $turns = new TurnService($progress);
+    $turns = httpTurnService($progress);
 
     $show = (new ChatController)->showTurn(chatRequest('u1'), $ids['turn_ulid'], $turns);
     expect($show->getStatusCode())->toBe(200)
@@ -340,35 +416,34 @@ it('showTurn and cancelTurn happy path', function () {
 });
 
 it('cancelTurn returns 409 on illegal transition', function () {
-    $progress = bootHttpSqlite();
-    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    $progress = new ArrayProgressStore;
+    $conversations = httpConversationService($progress);
     $ids = $conversations->createUserMessage('done', userId: 'u1');
-    Turn::query()->where('ulid', $ids['turn_ulid'])->update(['status' => Turn::STATUS_COMPLETED]);
-    $response = (new ChatController)->cancelTurn(chatRequest('u1'), $ids['turn_ulid'], new TurnService($progress));
+    httpWorld()->store->turn($ids['turn_ulid'])->status = Turn::STATUS_COMPLETED;
+    $response = (new ChatController)->cancelTurn(chatRequest('u1'), $ids['turn_ulid'], httpTurnService($progress));
     expect($response->getStatusCode())->toBe(409);
 });
 
 it('turnEvents passes cursor and returns events', function () {
-    $progress = bootHttpSqlite();
-    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    $progress = new ArrayProgressStore;
+    $conversations = httpConversationService($progress);
     $ids = $conversations->createUserMessage('e', userId: 'u1');
     $progress->append($ids['turn_ulid'], ['kind' => 'token', 'data' => ['t' => 1]]);
     $request = chatRequest('u1', 'GET', ['cursor' => 0]);
-    $response = (new ChatController)->turnEvents($request, $ids['turn_ulid'], new TurnService($progress));
+    $response = (new ChatController)->turnEvents($request, $ids['turn_ulid'], httpTurnService($progress));
     expect($response->getStatusCode())->toBe(200)
         ->and($response->getData(true)['events'])->not->toBeEmpty();
 });
 
 it('destroyConversation 409 when active turns and 200 when closed', function () {
-    $progress = bootHttpSqlite();
-    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    [$conversations, $store] = httpConversations();
     $ids = $conversations->createUserMessage('active', userId: 'u1');
     $controller = new ChatController;
 
     expect($controller->destroyConversation(chatRequest('u1'), $ids['conversation_ulid'], $conversations)->getStatusCode())
         ->toBe(409);
 
-    Turn::query()->where('ulid', $ids['turn_ulid'])->update(['status' => Turn::STATUS_COMPLETED]);
+    $store->turn($ids['turn_ulid'])->status = Turn::STATUS_COMPLETED;
     expect($controller->destroyConversation(chatRequest('u2'), $ids['conversation_ulid'], $conversations)->getStatusCode())
         ->toBe(404);
 
@@ -378,9 +453,8 @@ it('destroyConversation 409 when active turns and 200 when closed', function () 
         ->and($ok->getData(true)['closed'] ?? null)->toBeTrue();
 });
 
-it('storeMessage returns 201 with ids, then 429 retryable at the turn ceiling', function () {
-    $progress = bootHttpSqlite();
-    $conversations = new ConversationService(static fn ($j) => null, $progress, maxConcurrentTurns: 1);
+it('storeMessage returns 201 with ids, then a 429 rate_limited envelope at the turn ceiling', function () {
+    [$conversations] = httpConversations(maxConcurrentTurns: 1);
     $controller = new ChatController;
 
     $created = $controller->storeMessage(messageRequest(['content' => 'one'], new ChatControllerAuthUser('u1')), $conversations);
@@ -388,10 +462,14 @@ it('storeMessage returns 201 with ids, then 429 retryable at the turn ceiling', 
         ->and($created->getData(true))->toHaveKey('turn_ulid');
 
     $busy = $controller->storeMessage(messageRequest(['content' => 'two'], new ChatControllerAuthUser('u1')), $conversations);
+    $body = $busy->getData(true);
     expect($busy->getStatusCode())->toBe(429)
-        ->and($busy->getData(true)['outcome'])->toBe('retryable')
-        ->and($busy->getData(true)['message'])->toContain('retry later')
-        ->and($busy->getData(true))->not->toHaveKey('turn_ulid');
+        ->and($body['ok'])->toBeFalse()
+        ->and($body['error']['code'])->toBe('rate_limited')
+        ->and($body['error']['retryable'])->toBeTrue()
+        ->and($body['error']['http_status'])->toBe(429)
+        ->and($body['error']['message'])->toContain('retry later')
+        ->and($body)->not->toHaveKeys(['outcome', 'message', 'turn_ulid']);
 });
 
 it('controller source delegates without Eloquent creates', function () {
@@ -404,22 +482,13 @@ it('controller source delegates without Eloquent creates', function () {
 });
 
 it('acceptProposal maps accepted / approval / retry / failed / refuse / unresolved actor without uncaught exceptions', function () {
-    $progress = bootHttpSqlite();
-    $user = ChatControllerTestUser::query()->create(['name' => 'http-user']);
-    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    $user = httpUser('http-user');
+    $conversations = httpConversationService(new ArrayProgressStore);
     $ids = $conversations->createUserMessage('p', userId: (string) $user->id);
-    $turn = Turn::query()->where('ulid', $ids['turn_ulid'])->firstOrFail();
+    $turn = httpWorld()->store->turn($ids['turn_ulid']);
 
     $makeProposal = static function (string $suffix) use ($turn): Proposal {
-        return Proposal::query()->create([
-            'turn_id' => $turn->id,
-            'conversation_id' => $turn->conversation_id,
-            'ulid' => 'PROP'.strtoupper($suffix).bin2hex(random_bytes(6)),
-            'type' => 'action',
-            'payload' => [],
-            'target_capability' => 'demo.cap',
-            'status' => Proposal::STATUS_PENDING,
-        ]);
+        return httpProposal($turn, 'PROP'.strtoupper($suffix).bin2hex(random_bytes(6)));
     };
 
     $busOk = new class implements CapabilityBus
@@ -528,7 +597,6 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse / unresolv
 
     $rejected = $makeProposal('rjd');
     $rejected->status = Proposal::STATUS_REJECTED;
-    $rejected->save();
     $rej = $controller->acceptProposal(
         $asOwner,
         $rejected->ulid,
@@ -538,7 +606,7 @@ it('acceptProposal maps accepted / approval / retry / failed / refuse / unresolv
         ->and($rej->getData(true)['outcome'])->toBe('refuse');
 
     $orphan = $makeProposal('orp');
-    ChatControllerTestUser::query()->whereKey($user->id)->delete();
+    httpWorld()->users->remove($user);
     $unresolved = $controller->acceptProposal(
         $asOwner,
         $orphan->ulid,
@@ -576,9 +644,9 @@ function expectChatErrorEnvelope(array $body, string $code, string $message): vo
 }
 
 it('not-found branches use the D-018 not_found envelope', function () {
-    $progress = bootHttpSqlite();
-    $conversations = new ConversationService(static fn ($j) => null, $progress);
-    $turns = new TurnService($progress);
+    $progress = new ArrayProgressStore;
+    $conversations = httpConversationService($progress);
+    $turns = httpTurnService($progress);
     $proposals = httpProposalService(new class implements CapabilityBus
     {
         public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
@@ -612,8 +680,8 @@ it('not-found branches use the D-018 not_found envelope', function () {
 });
 
 it('domain conflict branches use the D-018 conflict envelope', function () {
-    $progress = bootHttpSqlite();
-    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    $progress = new ArrayProgressStore;
+    $conversations = httpConversationService($progress);
     $ids = $conversations->createUserMessage('busy', userId: 'u1');
     $controller = new ChatController;
 
@@ -625,8 +693,8 @@ it('domain conflict branches use the D-018 conflict envelope', function () {
         "Conversation {$ids['conversation_ulid']} has queued or running turns",
     );
 
-    Turn::query()->where('ulid', $ids['turn_ulid'])->update(['status' => Turn::STATUS_COMPLETED]);
-    $cancel = $controller->cancelTurn(chatRequest('u1'), $ids['turn_ulid'], new TurnService($progress));
+    httpWorld()->store->turn($ids['turn_ulid'])->status = Turn::STATUS_COMPLETED;
+    $cancel = $controller->cancelTurn(chatRequest('u1'), $ids['turn_ulid'], httpTurnService($progress));
     expect($cancel->getStatusCode())->toBe(409);
     expectChatErrorEnvelope(
         $cancel->getData(true),
@@ -636,8 +704,7 @@ it('domain conflict branches use the D-018 conflict envelope', function () {
 });
 
 it('storeMessage owns the conversation as the authenticated user and ignores body user_id', function () {
-    $progress = bootHttpSqlite();
-    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    [$conversations, $store] = httpConversations();
 
     $response = (new ChatController)->storeMessage(
         messageRequest(['content' => 'hi', 'user_id' => '999'], new ChatControllerAuthUser(7)),
@@ -645,13 +712,11 @@ it('storeMessage owns the conversation as the authenticated user and ignores bod
     );
 
     expect($response->getStatusCode())->toBe(201);
-    $conversation = Conversation::query()->where('ulid', $response->getData(true)['conversation_ulid'])->firstOrFail();
-    expect((string) $conversation->user_id)->toBe('7');
+    expect($store->conversation($response->getData(true)['conversation_ulid'])->user_id)->toBe('7');
 });
 
 it('storeMessage returns 401 without an authenticated user and creates nothing', function () {
-    $progress = bootHttpSqlite();
-    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    [$conversations, $store] = httpConversations();
 
     $response = (new ChatController)->storeMessage(
         messageRequest(['content' => 'hi', 'user_id' => '7'], null),
@@ -659,15 +724,13 @@ it('storeMessage returns 401 without an authenticated user and creates nothing',
     );
 
     expect($response->getStatusCode())->toBe(401)
-        ->and(Conversation::query()->count())->toBe(0)
-        ->and(Message::query()->count())->toBe(0);
+        ->and($store->conversations)->toBe([])
+        ->and($store->messages)->toBe([]);
 });
 
 it('storeMessage returns 404 and appends no message for an int-id user on another user\'s conversation', function () {
-    $progress = bootHttpSqlite();
-    $conversations = new ConversationService(static fn ($j) => null, $progress);
+    [$conversations, $store] = httpConversations();
     $owned = $conversations->createUserMessage('mine', userId: '7');
-    $messagesBefore = Message::query()->count();
 
     $response = (new ChatController)->storeMessage(
         messageRequest(['content' => 'as you', 'conversation_ulid' => $owned['conversation_ulid']], new ChatControllerAuthUser(8)),
@@ -675,7 +738,7 @@ it('storeMessage returns 404 and appends no message for an int-id user on anothe
     );
 
     expect($response->getStatusCode())->toBe(404)
-        ->and(Message::query()->count())->toBe($messagesBefore);
+        ->and($store->messages)->toHaveCount(1);
 
     $ownerReply = (new ChatController)->storeMessage(
         messageRequest(['content' => 'still me', 'conversation_ulid' => $owned['conversation_ulid']], new ChatControllerAuthUser(7)),
@@ -687,19 +750,9 @@ it('storeMessage returns 404 and appends no message for an int-id user on anothe
 
 function seedHttpProposal(?string $ownerId): Proposal
 {
-    $conversations = new ConversationService(static fn ($j) => null, new ArrayProgressStore);
-    $ids = $conversations->createUserMessage('p', userId: $ownerId);
-    $turn = Turn::query()->where('ulid', $ids['turn_ulid'])->firstOrFail();
+    $ids = httpConversationService(new ArrayProgressStore)->createUserMessage('p', userId: $ownerId);
 
-    return Proposal::query()->create([
-        'turn_id' => $turn->id,
-        'conversation_id' => $turn->conversation_id,
-        'ulid' => 'PROP'.strtoupper(bin2hex(random_bytes(8))),
-        'type' => 'action',
-        'payload' => [],
-        'target_capability' => 'demo.cap',
-        'status' => Proposal::STATUS_PENDING,
-    ]);
+    return httpProposal(httpWorld()->store->turn($ids['turn_ulid']), 'PROP'.strtoupper(bin2hex(random_bytes(8))));
 }
 
 function countingBus(): CapabilityBus
@@ -723,8 +776,7 @@ function countingBus(): CapabilityBus
 }
 
 it('acceptProposal and rejectProposal return 401 without an authenticated user and leave the proposal pending', function () {
-    bootHttpSqlite();
-    $owner = ChatControllerTestUser::query()->create(['name' => 'owner']);
+    $owner = httpUser('owner');
     $proposal = seedHttpProposal((string) $owner->id);
     $bus = countingBus();
     $controller = new ChatController;
@@ -732,13 +784,12 @@ it('acceptProposal and rejectProposal return 401 without an authenticated user a
     expect($controller->acceptProposal(httpRequestAs(null), $proposal->ulid, httpProposalService($bus))->getStatusCode())->toBe(401)
         ->and($controller->rejectProposal(httpRequestAs(null), $proposal->ulid, httpProposalService($bus))->getStatusCode())->toBe(401)
         ->and($bus->invokes)->toBe(0)
-        ->and($proposal->fresh()->status)->toBe(Proposal::STATUS_PENDING);
+        ->and(httpWorld()->store->proposal($proposal->ulid)->status)->toBe(Proposal::STATUS_PENDING);
 });
 
 it('acceptProposal and rejectProposal return 404 for another user\'s proposal without invoking the bus or changing status', function () {
-    bootHttpSqlite();
-    $owner = ChatControllerTestUser::query()->create(['name' => 'owner']);
-    $intruder = ChatControllerTestUser::query()->create(['name' => 'intruder']);
+    $owner = httpUser('owner');
+    $intruder = httpUser('intruder');
     $proposal = seedHttpProposal((string) $owner->id);
     $bus = countingBus();
     $controller = new ChatController;
@@ -752,12 +803,11 @@ it('acceptProposal and rejectProposal return 404 for another user\'s proposal wi
         ->and($reject->getStatusCode())->toBe(404)
         ->and($reject->getData(true)['error']['message'])->toBe('Proposal not found')
         ->and($bus->invokes)->toBe(0)
-        ->and($proposal->fresh()->status)->toBe(Proposal::STATUS_PENDING);
+        ->and(httpWorld()->store->proposal($proposal->ulid)->status)->toBe(Proposal::STATUS_PENDING);
 });
 
 it('acceptProposal and rejectProposal return 404 for an ownerless conversation\'s proposal', function () {
-    bootHttpSqlite();
-    $user = ChatControllerTestUser::query()->create(['name' => 'someone']);
+    $user = httpUser('someone');
     $proposal = seedHttpProposal(null);
     $bus = countingBus();
     $controller = new ChatController;
@@ -766,12 +816,11 @@ it('acceptProposal and rejectProposal return 404 for an ownerless conversation\'
     expect($controller->acceptProposal($asUser, $proposal->ulid, httpProposalService($bus))->getStatusCode())->toBe(404)
         ->and($controller->rejectProposal($asUser, $proposal->ulid, httpProposalService($bus))->getStatusCode())->toBe(404)
         ->and($bus->invokes)->toBe(0)
-        ->and($proposal->fresh()->status)->toBe(Proposal::STATUS_PENDING);
+        ->and(httpWorld()->store->proposal($proposal->ulid)->status)->toBe(Proposal::STATUS_PENDING);
 });
 
 it('rejectProposal lets the owner reject, maps missing to 404 and non-pending to 409', function () {
-    bootHttpSqlite();
-    $owner = ChatControllerTestUser::query()->create(['name' => 'owner']);
+    $owner = httpUser('owner');
     $proposal = seedHttpProposal((string) $owner->id);
     $bus = countingBus();
     $controller = new ChatController;
@@ -786,7 +835,6 @@ it('rejectProposal lets the owner reject, maps missing to 404 and non-pending to
 
     $accepted = seedHttpProposal((string) $owner->id);
     $accepted->status = Proposal::STATUS_ACCEPTED;
-    $accepted->save();
     $conflict = $controller->rejectProposal($asOwner, $accepted->ulid, httpProposalService($bus));
     expect($conflict->getStatusCode())->toBe(409);
     expectChatErrorEnvelope(
@@ -797,17 +845,57 @@ it('rejectProposal lets the owner reject, maps missing to 404 and non-pending to
 });
 
 it('acceptProposal and rejectProposal map a proposal deleted after the owner check to 404', function () {
-    bootHttpSqlite();
-    $owner = ChatControllerTestUser::query()->create(['name' => 'owner']);
+    // Delete the row right after the ownership probe so the service lookup races a host delete.
+    $racing = new class extends InMemoryConversationStore
+    {
+        public function proposalOwnedBy(string $proposalUlid, string $ownerId): bool
+        {
+            $owned = parent::proposalOwnedBy($proposalUlid, $ownerId);
+            $this->proposals = [];
+
+            return $owned;
+        }
+    };
+    httpWorld()->store = $racing;
+    httpWorld()->claim = new InMemoryTurnClaim($racing);
+    $owner = httpUser('owner');
     $controller = new ChatController;
     $asOwner = httpRequestAs((string) $owner->id);
-    // Delete the row right after the ownership probe so the service lookup races a host delete.
-    Proposal::getConnectionResolver()->connection()->listen(static function ($query): void {
-        if (str_starts_with($query->sql, 'select exists')) {
-            Proposal::query()->delete();
-        }
-    });
 
     expect($controller->acceptProposal($asOwner, seedHttpProposal((string) $owner->id)->ulid, httpProposalService(countingBus()))->getStatusCode())->toBe(404)
         ->and($controller->rejectProposal($asOwner, seedHttpProposal((string) $owner->id)->ulid, httpProposalService(countingBus()))->getStatusCode())->toBe(404);
+});
+
+it('storeMessage returns a 429 rate_limited envelope when the user is over turns_per_minute', function () {
+    $limiter = new InMemoryRateLimiter;
+    $limiter->hit('rl:ai:user:u1', 60);
+    $dispatched = 0;
+    $conversations = new ConversationService(static function () use (&$dispatched): void {
+        $dispatched++;
+    }, new ArrayProgressStore, turnLimiter: $limiter, turnsPerMinute: 1, store: new InMemoryConversationStore);
+
+    $response = (new ChatController)->storeMessage(chatRequest('u1', 'POST', ['content' => 'hi']), $conversations);
+
+    $body = $response->getData(true);
+    expect($response->getStatusCode())->toBe(429)
+        ->and($body['error']['code'])->toBe('rate_limited')
+        ->and($body['error']['retryable'])->toBeTrue()
+        ->and($dispatched)->toBe(0);
+});
+
+it('storeMessage returns 409 conflict for a closed conversation and creates nothing', function () {
+    [$conversations, $store] = httpConversations();
+    $ids = $conversations->createUserMessage('bye', userId: 'u1');
+    $store->turn($ids['turn_ulid'])->status = Turn::STATUS_COMPLETED;
+    $conversations->destroy($ids['conversation_ulid'], 'u1');
+
+    $response = (new ChatController)->storeMessage(
+        chatRequest('u1', 'POST', ['content' => 'again', 'conversation_ulid' => $ids['conversation_ulid']]),
+        $conversations,
+    );
+
+    expect($response->getStatusCode())->toBe(409)
+        ->and($store->turns)->toHaveCount(1)
+        ->and($store->messages)->toHaveCount(1);
+    expectChatErrorEnvelope($response->getData(true), 'conflict', "Conversation {$ids['conversation_ulid']} is closed");
 });

@@ -275,9 +275,6 @@ func supportPlatform(goos, goarch string) error {
 // ensureWritable checks that the target file can be replaced (parent dir writable).
 func ensureWritable(target string) error {
 	dir := filepath.Dir(target)
-	if dir == "" || dir == "." {
-		dir = "."
-	}
 	info, err := os.Stat(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -476,9 +473,6 @@ func extractBinary(archive []byte) ([]byte, error) {
 // Never leaves a corrupt final binary: rename is atomic on the same filesystem.
 func atomicReplace(target string, data []byte) error {
 	dir := filepath.Dir(target)
-	if dir == "" {
-		dir = "."
-	}
 	tmp, err := os.CreateTemp(dir, ".capabilities-selfupdate-*")
 	if err != nil {
 		return fmt.Errorf("%w: create temp: %v", ErrUnwritable, err)

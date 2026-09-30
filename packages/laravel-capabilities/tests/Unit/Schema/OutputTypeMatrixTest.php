@@ -6,6 +6,7 @@ use Rawphp\Capabilities\Capability;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\DiscoveryHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\LineItemDto;
+use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\TypedOutputArray;
 use Rawphp\Capabilities\Tests\Fixtures\TypedOutputBool;
 use Rawphp\Capabilities\Tests\Fixtures\TypedOutputInt;
@@ -76,7 +77,7 @@ foreach ($types as $type => $cfg) {
             'customer_id' => 1,
             'amount_cents' => 1,
             'currency' => 'USD',
-        ]);
+        ], ['actor' => PipelineHelpers::userActor()]);
         expect($result->isOk())->toBeFalse()
             ->and($result->errorCode())->toBe('output_invalid');
     });
@@ -94,7 +95,7 @@ foreach ($types as $type => $cfg) {
             'customer_id' => 1,
             'amount_cents' => 1,
             'currency' => 'USD',
-        ]);
+        ], ['actor' => PipelineHelpers::userActor()]);
         expect($result->isOk())->toBeTrue();
     });
 }

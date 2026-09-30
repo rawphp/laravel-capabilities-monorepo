@@ -1,0 +1,133 @@
+{
+  "auditor": "cross-cutting-auditor",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-audit2",
+  "stack_summary": {
+    "type": "library monorepo",
+    "php_packages": ["laravel-capabilities (core)", "laravel-capabilities-messaging", "laravel-capabilities-ai"],
+    "go_packages": ["capabilities-cli"],
+    "ci": "github-actions (tests.yml incl. php-compat cells, split-packages.yml)",
+    "static_gates": "Pint + PHPStan level 1 (CI + release.sh); go test only for CLI",
+    "versioning": "coordinated v* tags; siblings require core self.version"
+  },
+  "scanned_files_count": 48,
+  "findings": [
+    {
+      "id": "X-101",
+      "title": "Split mirrors tag and workflow_dispatch trees onto package-remote main",
+      "category": "ci_cd",
+      "severity": "medium",
+      "effort": "small",
+      "impact": ["reliability", "dx"],
+      "locations": [
+        { "file": ".github/workflows/split-packages.yml", "line": 19, "snippet": "on:\n  push:\n    branches: [main]\n    tags: ['v*']\n  workflow_dispatch:" },
+        { "file": ".github/workflows/split-packages.yml", "line": 125, "snippet": "if git -C \"$work\" push origin \"HEAD:main\"; then" },
+        { "file": ".github/workflows/split-packages.yml", "line": 149, "snippet": "if [[ \"$SOURCE_REF_TYPE\" == \"tag\" ]]; then ... git -C \"$work\" tag -f \"$tag\"" },
+        { "file": "docs/versioning.md", "line": 137, "snippet": "\"rawphp/laravel-capabilities\": \"dev-main\"" }
+      ],
+      "current_state": "Every split run clones package-remote main, replaces its tree with the triggering ref's package tree, and pushes it to main. It does this before it tags, whatever the ref. Tag v0.5.3 (351fea0) is on the hotfix branch fix/l004-bug-errors, not on main: it is v0.5.2 plus one fix and lacks 77 main commits (about 4.6k lines under packages/). The logic means its tag run fast-forwarded all four package remotes' main to that older tree. A workflow_dispatch from any branch does the same.",
+      "recommended_state": "Only a run for refs/heads/main advances package-remote main. A tag run builds its sync commit off to the side (parent: remote main, or no parent) and pushes only the tag. workflow_dispatch is limited to main (or it only re-tags).",
+      "rationale": "versioning.md tells app integrators to VCS-require package `dev-main`, so a regressed main reaches consumers. Nothing reverts it until the next monorepo main push, and cancel-in-progress:false queues runs in order, so a tag run queued after a main run leaves main regressed. The split is the only publication path (AGENTS.md ship model), and hotfix tags already exist in history.",
+      "implementation_hint": "In the sync step: `if [[ \"$SOURCE_REF\" == refs/heads/main ]]; then <existing push-to-main loop>; fi`. For tags: `git -C \"$work\" commit ...` on a detached HEAD, then `git -C \"$work\" push origin \"HEAD:refs/tags/${tag}\" --force` without touching main. Add a job-level guard: `if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')` so a dispatch from a feature branch is a no-op."
+    },
+    {
+      "id": "X-102",
+      "title": "Release path out of sync: /release contradicts CHANGELOG gate; --squash fails",
+      "category": "git_workflow",
+      "severity": "medium",
+      "effort": "small",
+      "impact": ["dx", "reliability"],
+      "locations": [
+        { "file": ".claude/commands/release.md", "line": 111, "snippet": "CHANGELOG `[Unreleased]` → dated section is maintainer polish; only edit if the user asked in the same breath." },
+        { "file": ".claude/commands/release.md", "line": 90, "snippet": "./scripts/release.sh --yes --squash patch" },
+        { "file": ".claude/commands/release.md", "line": 71, "snippet": "- gates: `composer test` + `composer test:cli`" },
+        { "file": "scripts/release.sh", "line": 330, "snippet": "CHANGELOG_PROBLEMS=\"$(changelog_problems \"$ROOT\" \"${NEW_TAG#v}\")\"" },
+        { "file": "scripts/release.sh", "line": 349, "snippet": "SQUASH_BASE=\"$CURRENT_TAG\"" },
+        { "file": "scripts/release.sh", "line": 424, "snippet": "elif ! git merge-base --is-ancestor \"$SQUASH_BASE\" HEAD; then fail \"--squash base $SQUASH_BASE is not an ancestor of HEAD\"" },
+        { "file": "docs/versioning.md", "line": 226, "snippet": "Commit and push the promotion first." }
+      ],
+      "current_state": "The X-008 fix made release.sh refuse a real release unless every package CHANGELOG has a `## [X.Y.Z]` section, and versioning.md says to commit and push that promotion first. The /release agent command still calls the promotion optional polish that must not be done unless asked, has no promote-and-push step, and lists stale gates (no Pint/PHPStan). The command's default follow-up `--squash patch` takes the global max tag, v0.5.3, as its base. v0.5.3 was hand-tagged on a hotfix branch outside release.sh (the tag message has no gate block) and is not an ancestor of main, so that invocation hard-fails. The plan also lists 294 'commits since v0.5.3'.",
+      "recommended_state": "/release walks the agent through: promote [Unreleased] to [X.Y.Z] (or 'No changes.') in all four CHANGELOGs, commit, push, then run release.sh. Its gate list defers to `release.sh --help`. release.sh bumps from the global max tag, but takes the range/squash base from the nearest tag reachable from HEAD. versioning.md documents the hotfix path (or forbids it).",
+      "rationale": "The script and its agent wrapper now disagree. An agent following /release fails at the CHANGELOG gate while also being told not to edit CHANGELOGs, and the recommended squash command cannot succeed while the latest tag is off main. The first release after this fix loop will hit both problems.",
+      "implementation_hint": "release.md: replace the step-5 CHANGELOG bullet with a required step 1b. Change line 71 to 'gates: see ./scripts/release.sh --help (Pint, PHPStan, Pest, go test)'. release.sh: `RANGE_TAG=\"$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' HEAD 2>/dev/null || true)\"`, used for commit_count and SQUASH_BASE; keep latest_tag() for NEW_TAG. Add a case to scripts/lib/test-release.sh that tags a side branch above main and asserts --squash uses the reachable tag."
+    },
+    {
+      "id": "X-103",
+      "title": "Spec D-018 envelope is stale vs code: stderr, 10 of 22 codes, no cli_exit",
+      "category": "documentation",
+      "severity": "medium",
+      "effort": "small",
+      "impact": ["maintainability", "dx"],
+      "locations": [
+        { "file": "docs/spec.md", "line": 3090, "snippet": "**Decision:** Every non-success response (and CLI stderr JSON) uses:" },
+        { "file": "docs/spec.md", "line": 3109, "snippet": "| `code` (normative set) | HTTP | CLI exit |" },
+        { "file": "packages/laravel-capabilities/src/Support/ErrorCodeMap.php", "line": 13, "snippet": "private const MAP = [ ... 'self_delete', 'confirmation_failed', 'last_super_admin', 'not_configured', 'not_supported', 'audit_failed', 'not_runnable', 'gone', 'capability_not_in_profile', 'expired' ..." },
+        { "file": "packages/laravel-capabilities/src/Support/CapabilityResult.php", "line": 68, "snippet": "'http_status' => $wire['http_status'], 'cli_exit' => $wire['cli_exit']," },
+        { "file": "packages/capabilities-cli/internal/api/errors.go", "line": 196, "snippet": "// The server's cli_exit wins so codes added on the server keep their exit" },
+        { "file": "packages/capabilities-cli/docs/agents.md", "line": 19, "snippet": "**Stdout is machine; stderr is human** — parse **stdout** envelopes only." }
+      ],
+      "current_state": "D-018 puts the CLI JSON envelope on stderr, lists 10 codes, and shows an error object with no `http_status`, `cli_exit` or `retry_after`. The code has 22 codes in ErrorCodeMap. Since C-002, C-006 and C-007, the CLI prints every structured failure on stdout, exits with the server's `error.cli_exit`, and reports `error.retry_after` on rate_limited. None of that is in the spec.",
+      "recommended_state": "D-018 matches the shipped contract: the envelope goes to stdout (human hints to stderr). ErrorCodeMap is named as the source of truth for the code set, or the table lists all codes. The error object documents `http_status`, `cli_exit` (the CLI's exit authority) and `retry_after`.",
+      "rationale": "AGENTS.md makes docs/spec.md the conflict oracle ('behaviour that conflicts with docs/spec.md is wrong until the spec is intentionally updated'). Right now the oracle says three fixes from this loop are violations, so the next agent may 'correct' the stdout envelope or the cli_exit handling back to the spec.",
+      "implementation_hint": "Edit docs/spec.md D-018: change '(and CLI stderr JSON)' to '(and CLI stdout JSON; stderr is human-only)'. Add http_status/cli_exit/retry_after to the example with one line each. Replace the table heading with 'normative core set; full map = packages/laravel-capabilities/src/Support/ErrorCodeMap.php (pinned by ErrorCodesUserGuideTest)'. Docs only, no code change."
+    },
+    {
+      "id": "X-104",
+      "title": "Package-facing docs still point at tests the split no longer ships",
+      "category": "documentation",
+      "severity": "low",
+      "effort": "small",
+      "impact": ["dx"],
+      "locations": [
+        { "file": "packages/laravel-capabilities/README.md", "line": 155, "snippet": "# from this package (after composer install of dev deps)\n./vendor/bin/pest --filter=PeerSupportMatrix" },
+        { "file": "packages/laravel-capabilities/README.md", "line": 209, "snippet": "[`PeerContractFixtures`](tests/Fixtures/PeerContractFixtures.php)" },
+        { "file": "packages/laravel-capabilities-ai/README.md", "line": 34, "snippet": "## Install (path package) ... composer update rawphp/laravel-capabilities-ai\ncomposer test:ai" },
+        { "file": "packages/laravel-capabilities/docs/user-guide.md", "line": 219, "snippet": "The table is pinned by `tests/Unit/Mcp/AuthProfileCapabilityMatrixTest.php`." },
+        { "file": "packages/laravel-capabilities-ai/README.md", "line": 25, "snippet": "docs/user-guide.md#upgrade-for-hosts-llmclient-tool-rounds" },
+        { "file": "packages/capabilities-cli/docs/user-guide.md", "line": 261, "snippet": "authentication.md#multiple-projects--multi-deployment-profiles" },
+        { "file": "packages/laravel-capabilities/README.md", "line": 51, "snippet": "Sibling packages and thin adapters should depend only on this **allowlist** ... Support\\CapabilityResult / CapabilityContext / CapabilityData" }
+      ],
+      "current_state": "The X-003 fix drops tests/ and phpunit.xml from the split, and package composer.json has no require-dev. The same core README (line 125) says the remote 'ships no tests'. Yet it tells readers to run `./vendor/bin/pest` 'from this package' and links tests/Fixtures/PeerContractFixtures.php, and the AI README's Install section is monorepo-root `composer test:ai`. Some anchors are also broken: AI README lines 25/26/28/123 and AI CHANGELOG lines 105/118/173 use single hyphens where GitHub slugs for headings with ' / ' or ' + ' keep '--', and the CLI user guide line 261 targets a heading that does not exist. The core README's sibling allowlist also leaves out Support\\ErrorCodeMap and Support\\Redactor, which messaging and AI import and their architecture tests allow.",
+      "recommended_state": "Package READMEs and guides only give commands that work on the split remote. Test and fixture references become absolute monorepo URLs or are dropped, the anchors resolve, and the allowlist table matches the architecture tests.",
+      "rationale": "After the split these files are each public repo's front page. AGENTS.md requires package docs to stay self-contained post-split. The broken links sit in the AI 'Upgrade for hosts' table, the main entry point for host upgrades.",
+      "implementation_hint": "Core README: delete the 'from this package' pest block; point the PeerContractFixtures link at https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/packages/laravel-capabilities/tests/Fixtures/PeerContractFixtures.php. AI README: rename the section 'Install' with `composer require rawphp/laravel-capabilities-ai` and leave test runs to the existing monorepo line. Anchors: `#upgrade-for-hosts-llmclient--tool-rounds`, `#upgrade-for-hosts-tool-progress--tool-messages`, `#upgrade-for-hosts-manual-di--constructor--job-handle`, `authentication.md#multi-project--multi-deployment-profiles`. Add ErrorCodeMap and Redactor rows to the allowlist table."
+    },
+    {
+      "id": "X-105",
+      "title": "Monorepo docs drift after the fix loop (threads, D-024, AI missing)",
+      "category": "documentation",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": ["dx", "maintainability"],
+      "locations": [
+        { "file": "README.md", "line": 47, "snippet": "webhooks, identity link/allowlist, threads (process-local today), approval notifiers" },
+        { "file": "AGENTS.md", "line": 19, "snippet": "decisions D-002–D-023" },
+        { "file": "docs/README.md", "line": 43, "snippet": "decisions D-002–D-023" },
+        { "file": "docs/versioning.md", "line": 170, "snippet": "Both Composer packages **must** keep:" },
+        { "file": "docs/versioning.md", "line": 180, "snippet": "| Core | ... | Messaging | ... (no AI row)" },
+        { "file": "docs/versioning.md", "line": 124, "snippet": "VCS repository snippet lists core + messaging only" }
+      ],
+      "current_state": "Messaging's 'Is' cell in the root README still says 'threads (process-local today)', while the next cell and the messaging README say messaging keeps no thread history (L-006 fix 52d1f5e). AGENTS.md and docs/README.md give the decision range as D-002–D-023, but D-024 (host integration contract) is normative and is cited by the core README and IntegrationHealthChecker. versioning.md's branch-alias policy covers 'both' Composer packages and its path/VCS install snippets cover only core and messaging, although the AI package has the same branch-alias and self.version lockstep.",
+      "recommended_state": "The root README matches L-006, the D-range reads D-002–D-024, and versioning.md covers all three Composer packages.",
+      "rationale": "These are the orientation files every new agent session reads first (AGENTS.md 'Essential files'). Small contradictions there send agents to the wrong spec range or leave the AI package out of install and version policy.",
+      "implementation_hint": "README.md:47 remove '(process-local today)'. AGENTS.md:19 and docs/README.md:43 change D-023 to D-024. docs/versioning.md: 'All three Composer packages', add an AI row to the alias table, add the AI path/VCS entries to both snippets."
+    },
+    {
+      "id": "X-106",
+      "title": "Go CI has no gofmt gate (PHP got Pint; CLI already drifted once)",
+      "category": "ci_cd",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": ["maintainability"],
+      "locations": [
+        { "file": ".github/workflows/tests.yml", "line": 102, "snippet": "- name: go test\n        run: go test ./..." },
+        { "file": "scripts/release.sh", "line": 525, "snippet": "composer test:cli" }
+      ],
+      "current_state": "X-006 added Pint and PHPStan gates for PHP. The Go job and the release CLI gate only run `go test ./...`. The fix loop needed a separate commit (2cd5db9 'style: gofmt the CLI package') to clean up drift nobody had caught. The tree is gofmt-clean now (`gofmt -l .` is empty).",
+      "recommended_state": "The Go job fails when `gofmt -l .` prints anything, the Go counterpart of `composer format:test`.",
+      "rationale": "It keeps the PHP and Go formatting gates at parity for almost no CI time. It uses the toolchain's own formatter, not a new tool, and it stops the next round of format-only commits.",
+      "implementation_hint": "In tests.yml go job, before go test: `- name: gofmt\\n  run: test -z \"$(gofmt -l .)\" || { gofmt -l .; exit 1; }`. Optionally add the same check to release.sh run_cli_gates."
+    }
+  ],
+  "notes": "Iteration-1 verification: X-002 (AI LICENSE/SECURITY) fixed. X-003 (split excludes /tests/ and /phpunit.xml, package composer.json has no require-dev/scripts, .gitattributes export-ignore) is correct; the only leftover is docs, now X-104. X-004 (self.version lockstep) is consistent across both siblings, versioning.md and composer.lock; no issue. X-005 now uses guarded class-string constants plus the AI-side CoreHealthProbeTest instead of the recommended inversion. D-024 sanctions core reading capabilities-ai config for health, so it is accepted as deliberate and not re-raised. X-006 (Pint and PHPStan level 1, no baseline, in CI and release.sh) is fixed, with the gofmt gap raised as X-106. X-007 php-compat cells are present (8.2/^11 prefer-lowest, 8.5/^13); their green status could not be checked offline. X-008: the release gate exists, and past tags with no sibling section had no sibling source changes (checked v0.5.0..v0.5.3); the /release wrapper drift is X-102. X-009 labels fixed. X-010 dependabot covers both workflow roots. X-011: inventory gap gate is in CI; ran `report_inventory_gaps.py --fail-on-gaps` (0 gaps) and `tools/tests` (33 OK). Fix commits that changed package src also updated that package's CHANGELOG [Unreleased] (checked commit by commit); the one exception, 87935b7 (X-005), is internal only. Dependency direction: siblings import only Contracts plus allowlisted Support classes. Core refers to siblings only through class_exists/string constants. Undeclared runtime vendor imports: none (Composer\\InstalledVersions and Symfony HttpFoundation come in transitively). X-001 coverage was excluded per run context."
+}

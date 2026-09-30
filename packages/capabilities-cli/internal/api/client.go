@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // AcceptJSON is the default Accept header.
@@ -31,12 +32,12 @@ const (
 // Client is a pure HTTP client for the capability API.
 // It never embeds domain run() logic.
 type Client struct {
-	BaseURL    string
-	Token      string
-	HTTP       *http.Client
-	Accept     string
-	Timeout    time.Duration
-	UserAgent  string
+	BaseURL   string
+	Token     string
+	HTTP      *http.Client
+	Accept    string
+	Timeout   time.Duration
+	UserAgent string
 	// ExtraHeaders are optional; must never be used to claim caller authority.
 	ExtraHeaders map[string]string
 }
@@ -44,24 +45,40 @@ type Client struct {
 // NewClient builds a client with sensible defaults.
 func NewClient(baseURL, token string) *Client {
 	return &Client{
-		BaseURL: strings.TrimRight(baseURL, "/"),
-		Token:   token,
-		HTTP:    &http.Client{Timeout: 30 * time.Second},
-		Accept:  AcceptJSON,
-		Timeout: 30 * time.Second,
+		BaseURL:   strings.TrimRight(baseURL, "/"),
+		Token:     token,
+		HTTP:      &http.Client{Timeout: 30 * time.Second, CheckRedirect: noRedirect},
+		Accept:    AcceptJSON,
+		Timeout:   30 * time.Second,
 		UserAgent: "capabilities-cli/0.2",
 	}
 }
 
+// httpClient returns the transport client with redirects disabled. The
+// capability API has no legitimate redirects, and following one would replay
+// a POST invoke as a GET (the describe route): a false success. The policy is
+// applied to injected clients too, so no caller can opt out by accident.
 func (c *Client) httpClient() *http.Client {
 	if c.HTTP != nil {
-		return c.HTTP
+		hc := *c.HTTP
+		hc.CheckRedirect = noRedirect
+		return &hc
 	}
 	timeout := c.Timeout
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
-	return &http.Client{Timeout: timeout}
+	return &http.Client{Timeout: timeout, CheckRedirect: noRedirect}
+}
+
+func noRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+
+// redirectMessage names the redirect target so the user can fix --base-url.
+func redirectMessage(res *http.Response) string {
+	if loc, err := res.Location(); err == nil {
+		return fmt.Sprintf("HTTP %d: capability API redirected to %s; redirects are not followed. Re-run auth login with --base-url set to that scheme and host", res.StatusCode, loc)
+	}
+	return fmt.Sprintf("HTTP %d: unexpected redirect from capability API; check --base-url", res.StatusCode)
 }
 
 func (c *Client) accept() string {
@@ -125,7 +142,15 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte, extra
 	}
 	out := &Response{StatusCode: res.StatusCode, Header: res.Header, Body: raw}
 	_ = json.Unmarshal(raw, &out.Envelope)
-	if !out.Envelope.OK && out.Envelope.Error != nil {
+	if res.StatusCode >= 300 && res.StatusCode < 400 {
+		out.Err = &StructuredError{
+			Code:       CodeInternal,
+			Message:    redirectMessage(res),
+			HTTPStatus: res.StatusCode,
+			ExitCode:   ExitCode(CodeInternal),
+			Body:       raw,
+		}
+	} else if !out.Envelope.OK && out.Envelope.Error != nil {
 		out.Err = ParseErrorEnvelope(out.Envelope, res.StatusCode, raw)
 	} else if res.StatusCode >= 400 && out.Envelope.Error == nil {
 		// Non-envelope HTTP error → internal-ish mapping by status.
@@ -177,16 +202,12 @@ func humanizeHTTPErrorBody(raw []byte, status int) string {
 	if trim == "" {
 		return fmt.Sprintf("HTTP %d from capability API", status)
 	}
-	// Prefer a compact JSON message field when present.
+	// Prefer a compact JSON message field when present. (A body with an
+	// "error" object never gets here: do parses it as an envelope error.)
 	var probe map[string]any
 	if json.Unmarshal(raw, &probe) == nil {
 		if m, ok := probe["message"].(string); ok && strings.TrimSpace(m) != "" {
 			return strings.TrimSpace(m)
-		}
-		if errObj, ok := probe["error"].(map[string]any); ok {
-			if m, ok := errObj["message"].(string); ok && strings.TrimSpace(m) != "" {
-				return strings.TrimSpace(m)
-			}
 		}
 	}
 	lower := strings.ToLower(trim)
@@ -212,6 +233,8 @@ func codeFromHTTP(status int) string {
 		return CodeNotFound
 	case 409:
 		return CodeConflict
+	case 410:
+		return CodeGone
 	case 422:
 		return CodeValidationFailed
 	case 429:
@@ -219,6 +242,38 @@ func codeFromHTTP(status int) string {
 	default:
 		return CodeInternal
 	}
+}
+
+// CheckPathSegment refuses a user- or catalog-supplied value that is not one
+// safe URL path segment (C-401). Joined unchecked, `approvals/<id>/accept` as a
+// capability name reaches the approval accept route. Percent is refused too:
+// the server decodes the path before matching, so %2F is still a separator.
+// Returns a validation_failed error (exit 2), or nil when the value is safe.
+func CheckPathSegment(kind, s string) *StructuredError {
+	bad := s == "" || s == "." || s == ".."
+	for _, r := range s {
+		if strings.ContainsRune(`/\?#%`, r) || unicode.IsSpace(r) || unicode.IsControl(r) {
+			bad = true
+			break
+		}
+	}
+	if !bad {
+		return nil
+	}
+	return &StructuredError{
+		Code:     CodeValidationFailed,
+		Message:  fmt.Sprintf("invalid %s %q: must be a single path segment (no '/', '\\', '%%', '?', '#', whitespace or control characters, and not '.' or '..')", kind, s),
+		ExitCode: ExitValidation,
+	}
+}
+
+// segmentPath joins prefix + "/" + seg + suffix after CheckPathSegment, so no
+// caller can put an unchecked value into a request path.
+func segmentPath(prefix, kind, seg, suffix string) (string, error) {
+	if se := CheckPathSegment(kind, seg); se != nil {
+		return "", se
+	}
+	return prefix + "/" + seg + suffix, nil
 }
 
 // ListCapabilities GET /capabilities (compact catalog rows; may omit schemas).
@@ -234,12 +289,20 @@ func (c *Client) ListCapabilitiesWithSchemas(ctx context.Context) (*Response, er
 
 // DescribeCapability GET /capabilities/{name}
 func (c *Client) DescribeCapability(ctx context.Context, name string) (*Response, error) {
-	return c.do(ctx, http.MethodGet, PathCapabilities+"/"+name, nil, nil)
+	path, err := segmentPath(PathCapabilities, "capability name", name, "")
+	if err != nil {
+		return nil, err
+	}
+	return c.do(ctx, http.MethodGet, path, nil, nil)
 }
 
 // InvokeCapability POST /capabilities/{name} with Idempotency-Key.
 // key must be non-empty for mutating runs (CLI always sends — D-005).
 func (c *Client) InvokeCapability(ctx context.Context, name string, input json.RawMessage, idempotencyKey string) (*Response, error) {
+	path, err := segmentPath(PathCapabilities, "capability name", name, "")
+	if err != nil {
+		return nil, err
+	}
 	if idempotencyKey == "" {
 		return nil, fmt.Errorf("idempotency key required on invoke")
 	}
@@ -248,7 +311,7 @@ func (c *Client) InvokeCapability(ctx context.Context, name string, input json.R
 	if body == nil {
 		body = json.RawMessage(`{}`)
 	}
-	res, err := c.do(ctx, http.MethodPost, PathCapabilities+"/"+name, body, map[string]string{
+	res, err := c.do(ctx, http.MethodPost, path, body, map[string]string{
 		"Idempotency-Key": idempotencyKey,
 	})
 	if err != nil {
@@ -271,12 +334,20 @@ func (c *Client) InvokeCapability(ctx context.Context, name string, input json.R
 
 // AcceptApproval POST /capabilities/approvals/{id}/accept
 func (c *Client) AcceptApproval(ctx context.Context, id string) (*Response, error) {
-	return c.do(ctx, http.MethodPost, PathApprovals+"/"+id+"/accept", []byte(`{}`), nil)
+	path, err := segmentPath(PathApprovals, "approval id", id, "/accept")
+	if err != nil {
+		return nil, err
+	}
+	return c.do(ctx, http.MethodPost, path, []byte(`{}`), nil)
 }
 
 // RejectApproval POST /capabilities/approvals/{id}/reject
 func (c *Client) RejectApproval(ctx context.Context, id string) (*Response, error) {
-	return c.do(ctx, http.MethodPost, PathApprovals+"/"+id+"/reject", []byte(`{}`), nil)
+	path, err := segmentPath(PathApprovals, "approval id", id, "/reject")
+	if err != nil {
+		return nil, err
+	}
+	return c.do(ctx, http.MethodPost, path, []byte(`{}`), nil)
 }
 
 // Health GET /capabilities/health

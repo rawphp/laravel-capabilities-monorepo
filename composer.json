@@ -11,6 +11,7 @@
         "rawphp/laravel-capabilities-ai": "*@dev"
     },
     "require-dev": {
+        "illuminate/cache": "^11.0|^12.0|^13.0",
         "laravel/pint": "^1.30",
         "pestphp/pest": "^3.0",
         "phpstan/phpstan": "^2.0"
@@ -55,6 +56,7 @@
     "scripts": {
         "format": "pint --config=pint.json packages/laravel-capabilities packages/laravel-capabilities-messaging packages/laravel-capabilities-ai",
         "format:test": "pint --test --config=pint.json packages/laravel-capabilities packages/laravel-capabilities-messaging packages/laravel-capabilities-ai",
+        "analyse": "phpstan analyse --memory-limit=1G --no-progress",
         "test": [
             "@test:core",
             "@test:messaging",
@@ -63,7 +65,16 @@
         "test:core": "pest --configuration=packages/laravel-capabilities/phpunit.xml --colors=always",
         "test:messaging": "pest --configuration=packages/laravel-capabilities-messaging/phpunit.xml --colors=always",
         "test:cli": "cd packages/capabilities-cli && go test ./...",
-        "test:ai": "pest --configuration=packages/laravel-capabilities-ai/phpunit.xml --colors=always"
+        "test:ai": "pest --configuration=packages/laravel-capabilities-ai/phpunit.xml --colors=always",
+        "coverage": [
+            "@coverage:core",
+            "@coverage:messaging",
+            "@coverage:ai"
+        ],
+        "coverage:core": "pest --configuration=packages/laravel-capabilities/phpunit.xml --coverage --min=95",
+        "coverage:messaging": "pest --configuration=packages/laravel-capabilities-messaging/phpunit.xml --coverage --min=95",
+        "coverage:ai": "pest --configuration=packages/laravel-capabilities-ai/phpunit.xml --coverage --min=95",
+        "coverage:cli": "cd packages/capabilities-cli && bash scripts/coverage.sh"
     },
     "minimum-stability": "dev",
     "prefer-stable": true,

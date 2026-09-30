@@ -1,0 +1,370 @@
+{
+  "auditor": "control-plane-auditor",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-analyst-loop/packages/capabilities-cli",
+  "stack_summary": {
+    "control_plane": {
+      "present": true,
+      "language": "go",
+      "path": "packages/capabilities-cli",
+      "notes": "Go product CLI, HTTP client only (D-016)"
+    },
+    "counterpart": "packages/laravel-capabilities src/Http + src/Adapters/Http + routes/capabilities.php"
+  },
+  "scanned_files_count": 38,
+  "findings": [
+    {
+      "id": "C-001",
+      "title": "Implement device-code polling; CLI expects access_token from device start",
+      "category": "wire_contract",
+      "severity": "high",
+      "effort": "medium",
+      "impact": [
+        "reliability",
+        "dx"
+      ],
+      "locations": [
+        {
+          "file": "packages/capabilities-cli/internal/auth/session.go",
+          "line": 50,
+          "snippet": "res, err := client.LoginDevice(ctx, map[string]any{\"client_id\": \"capabilities-cli\"})"
+        },
+        {
+          "file": "packages/capabilities-cli/internal/auth/session.go",
+          "line": 59,
+          "snippet": "token := extractToken(payload); if token == \"\" { return nil, fmt.Errorf(\"device login response missing access_token\") }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Contracts/AuthTokenIssuer.php",
+          "line": 25,
+          "snippet": "Start a device-code flow. public function issueDeviceCode(...): array;"
+        },
+        {
+          "file": "packages/laravel-capabilities/tests/Fixtures/HttpHelpers.php",
+          "line": 189,
+          "snippet": "'device_code' => 'host-device-code', 'user_code' => 'HOST-USER', 'verification_uri' => ..., 'interval' => 5"
+        },
+        {
+          "file": "packages/capabilities-cli/internal/auth/auth_test.go",
+          "line": 69,
+          "snippet": "w.Write([]byte(`{\"ok\":true,\"data\":{\"access_token\":\"device-tok\",\"device_code\":\"d\"}}`))"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Adapters/Http/AuthController.php",
+          "line": 105,
+          "snippet": "$data = $this->issuer->issueDeviceCode($request, $body); return HttpResponse::ok($data, ...)"
+        }
+      ],
+      "current_state": "`capabilities auth login --base-url=URL` (the documented default mode) makes one POST /capabilities/auth/device and requires `access_token` in that response. The core contract says issueDeviceCode *starts* a flow, and the core's own fixture returns the RFC 8628 start shape (device_code, user_code, verification_uri, interval) with no token. The CLI unit test fakes a server that returns a token straight from the device endpoint, so the two sides are each tested against a different contract.",
+      "recommended_state": "The CLI prints user_code + verification_uri, then polls POST /capabilities/auth/token with the device-code grant at `interval` until it gets a token, is denied, or passes `expires_in`. The core documents the pending/slow_down shape in AuthTokenIssuer so hosts can signal it.",
+      "rationale": "Against any host issuer written to the core contract, the default login path always fails with 'device login response missing access_token' (exit 1). The spec lists 'Device-code polling UX on auth routes' (docs/spec.md:3749) as expected. AuthController wraps whatever the issuer returns in ok:true, so today an issuer has no error-envelope way to say 'authorization_pending'. Both sides need to agree on that.",
+      "implementation_hint": "Core: in the AuthTokenIssuer docblock, define issueToken for grant_type=urn:ietf:params:oauth:grant-type:device_code, returning either {access_token,...} or {status:'authorization_pending'|'slow_down'|'access_denied'|'expired_token'}. Unit-test AuthController with the fake issuer. CLI: in LoginDeviceCode, parse data.{device_code,user_code,verification_uri,interval,expires_in}, write the prompt to stderr, and loop on client.LoginToken({grant_type, device_code, client_id}) with an injectable sleeper/clock. Keep the rule that the base URL is written only after a token is obtained. Replace the auth_test.go fake with the core fixture shape plus a pending-then-token sequence."
+    },
+    {
+      "id": "C-002",
+      "title": "Honour server error.cli_exit; CLI remaps 10 server codes to exit 1",
+      "category": "wire_contract",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "reliability",
+        "dx"
+      ],
+      "locations": [
+        {
+          "file": "packages/capabilities-cli/internal/api/errors.go",
+          "line": 31,
+          "snippet": "func ExitCode(code string) int { switch code { ... default: return ExitInternal"
+        },
+        {
+          "file": "packages/capabilities-cli/internal/api/errors.go",
+          "line": 88,
+          "snippet": "type ErrorBody struct { Code ...; Message ...; Violations ...; ApprovalID ...; RequestID ...; Retryable ...; RetryAfter ... } // no cli_exit"
+        },
+        {
+          "file": "packages/capabilities-cli/internal/api/errors.go",
+          "line": 194,
+          "snippet": "ExitCode:   ExitCode(code),"
+        },
+        {
+          "file": "packages/capabilities-cli/internal/api/client.go",
+          "line": 205,
+          "snippet": "func codeFromHTTP(status int) string { ... default: return CodeInternal } // 410, 501 -> internal"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Support/ErrorCodeMap.php",
+          "line": 13,
+          "snippet": "'gone' => [410, cli_exit 5], 'expired' => [410, 5], 'capability_not_in_profile' => [403, 3], 'not_configured' => [501, 5], ..."
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+          "line": 881,
+          "snippet": "code: 'gone',  // invoke after sunset_at"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+          "line": 405,
+          "snippet": "return CapabilityResult::failure('expired', 'Approval has expired.', ['http_status' => 410]);"
+        }
+      ],
+      "current_state": "The core ErrorCodeMap has 20 codes, and every error envelope carries `cli_exit`. The CLI only knows the 10 codes from the original D-018 table, never decodes `error.cli_exit`, and maps every other code to exit 1 (internal). Examples: run after sunset (`gone`) exits 1 instead of 5, `approvals accept` on an expired approval exits 1 instead of 5, a profile refusal (`capability_not_in_profile`) exits 1 instead of 3, and login against an unbound issuer (`not_configured`) exits 1 instead of 5.",
+      "recommended_state": "When the envelope's `cli_exit` is an integer from 1 to 6, the CLI uses it as the process exit code. The local table is only a fallback for non-envelope responses. codeFromHTTP maps 410 to a domain-class code, not internal.",
+      "rationale": "docs/agents.md tells agents to branch on exit codes 1–6, and exit 1 reads as 'internal error, retry later'. Agents will retry sunset capabilities, expired approvals and profile denials that can never succeed. The server already sends the right answer on the wire, and the client drops it. That is two exit tables drifting apart with no shared fixture.",
+      "implementation_hint": "Add `CLIExit *int `json:\"cli_exit\"`` to ErrorBody. In ParseErrorEnvelope, set ExitCode from *CLIExit when 1<=v<=6, otherwise ExitCode(code). Add `case 410: return CodeDomainError`-class handling in codeFromHTTP, or a dedicated code. Add a table-driven Go test that loads a JSON fixture of ErrorCodeMap::MAP (generate it once from PHP into testdata and assert it in a core unit test) so each side fails when the other adds a code."
+    },
+    {
+      "id": "C-003",
+      "title": "Pass --base-url override into domain/verb catalog load",
+      "category": "isolation",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": [
+        "reliability",
+        "security"
+      ],
+      "locations": [
+        {
+          "file": "packages/capabilities-cli/cmd/capabilities/cmd_domain.go",
+          "line": 18,
+          "snippet": "profile, base, args := profileAndBase(args)"
+        },
+        {
+          "file": "packages/capabilities-cli/cmd/capabilities/cmd_domain.go",
+          "line": 19,
+          "snippet": "idx, summaries, code := loadSynthIndex(env, profile)"
+        },
+        {
+          "file": "packages/capabilities-cli/cmd/capabilities/cmd_domain.go",
+          "line": 83,
+          "snippet": "c, err := clientFor(env, st, profile, \"\")"
+        },
+        {
+          "file": "packages/capabilities-cli/cmd/capabilities/cmd_domain.go",
+          "line": 65,
+          "snippet": "return invokeCapability(env, st, profile, base, canonical, ...)"
+        }
+      ],
+      "current_state": "For `capabilities --base-url=B <domain> <verb>`, the synthesis index (domain/verb → canonical name) is built from the profile's stored base URL, not from B. The resolved canonical name is then invoked against B. Every other command (catalog, describe, run, approvals) respects the override.",
+      "recommended_state": "loadSynthIndex takes `base` and passes it to clientFor, so resolution and invoke hit the same deployment.",
+      "rationale": "The CLI is built for one binary across many deployments (profiles plus --base-url). With the override, a domain/verb that exists only on B is reported unknown (exit 5). Worse, when the two deployments map the same domain/verb to different capabilities, the CLI POSTs a canonical name chosen from deployment A's catalog to deployment B, and sends the token to A as well.",
+      "implementation_hint": "Change the signature to `loadSynthIndex(env Env, profile, base string)` and use `clientFor(env, st, profile, base)`. Add a unit test with two httptest servers asserting the catalog GET goes to the override host."
+    },
+    {
+      "id": "C-004",
+      "title": "Invalidate cached describe schema on server schema_version/etag change",
+      "category": "wire_contract",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "reliability",
+        "dx"
+      ],
+      "locations": [
+        {
+          "file": "packages/capabilities-cli/internal/catalog/service.go",
+          "line": 90,
+          "snippet": "if e, ok := s.Cache.Get(name, \"\"); ok { return e, nil, nil }"
+        },
+        {
+          "file": "packages/capabilities-cli/internal/catalog/cache.go",
+          "line": 62,
+          "snippet": "if version != \"\" && e.SchemaVersion != version { return nil, false }  // never exercised by callers"
+        },
+        {
+          "file": "packages/capabilities-cli/internal/run/runner.go",
+          "line": 131,
+          "snippet": "if err := ValidateLocal(schema, opts.InputJSON); err != nil { res.ExitCode = ExitValidation ... return res }"
+        },
+        {
+          "file": "packages/capabilities-cli/cmd/capabilities/cmd_run.go",
+          "line": 148,
+          "snippet": "entry, _, derr := svc.Describe(context.Background(), name)  // flag schema from same cache"
+        },
+        {
+          "file": "packages/capabilities-cli/internal/catalog/service.go",
+          "line": 112,
+          "snippet": "func (s *Service) Refresh(...) { _ = s.Cache.Invalidate(\"\"); list, _, err := s.List(ctx) ... }  // does not populate describe cache"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Schema/CatalogPresenter.php",
+          "line": 77,
+          "snippet": "'schema_version' => $this->aggregateSchemaVersion($capabilities), 'etag' => $this->etag($capabilities),"
+        }
+      ],
+      "current_state": "Describe cache entries have no TTL and are read with an empty version, so a cached input schema is used indefinitely. It is cleared only by `--no-cache`, `catalog --refresh`, re-login or token change. The server sends per-row schema_version and a list etag, and the domain/verb path fetches the live list on every call, but neither value is compared with the cache. The auth-login 'prefetch' only clears the cache.",
+      "recommended_state": "Cached entries are checked against the server's current schema_version for that capability. The domain/verb path already has the live list rows, and `run` can use a cheap list or an ETag/If-None-Match describe. A mismatch refetches.",
+      "rationale": "Local validation and flag parsing fail closed before the network (exit 2). After a server schema change (field renamed, requirement dropped, new property exposed as a flag), a stale cache rejects valid input with exit 2 and 'unknown flag'. docs/agents.md tells agents that exit 2 means their input is wrong, so they fix input instead of refreshing the cache.",
+      "implementation_hint": "In invokeCapability, pass the matching summary.SchemaVersion (from loadSynthIndex) into Service.Describe via a new DescribeVersion(ctx, name, version) that calls Cache.Get(name, version). For `run` without a list, either fetch the compact list or have the core emit an ETag header on describe (HttpResponse headers) and send If-None-Match. As a cheap safety net, on server `validation_failed` after a local pass, invalidate that entry. Also stop calling Describe twice per run (cmd_run.go:148 and runner.go:118) by passing the entry through."
+    },
+    {
+      "id": "C-005",
+      "title": "Verify --token against the API before persisting it over a working profile",
+      "category": "auth_flow",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "reliability",
+        "dx"
+      ],
+      "locations": [
+        {
+          "file": "packages/capabilities-cli/internal/auth/session.go",
+          "line": 22,
+          "snippet": "// Base URL is written only after the token is accepted so a bad login cannot re-point an already-working profile."
+        },
+        {
+          "file": "packages/capabilities-cli/internal/auth/session.go",
+          "line": 31,
+          "snippet": "if err := store.SetBaseURL(profile, baseURL); ... store.SetToken(profile, token)"
+        },
+        {
+          "file": "packages/capabilities-cli/cmd/capabilities/cmd_auth.go",
+          "line": 75,
+          "snippet": "_, _ = svc.Refresh(context.Background())  // 401 swallowed"
+        },
+        {
+          "file": "packages/capabilities-cli/cmd/capabilities/cmd_auth.go",
+          "line": 87,
+          "snippet": "fmt.Fprintf(env.Stdout, \"logged in profile=%s base_url=%s\\n\", profile, base)"
+        }
+      ],
+      "current_state": "LoginWithToken never contacts the server. Its comment says the token was 'accepted', but it writes the base URL and token straight away. The following catalog prefetch drops any 401, so a mistyped or revoked PAT (or the wrong --base-url) prints 'logged in', exits 0, reports logged_in=true in `auth status`, and overwrites the profile's previous working credentials.",
+      "recommended_state": "Before writing anything, `--token` login makes one authenticated GET /capabilities against the normalised base URL. On a structured error it returns that error (unauthenticated gives exit 3) and leaves the profile untouched. This matches the no-clobber guarantee the device and OAuth paths already have.",
+      "rationale": "This is the only login path that works against a host with no AuthTokenIssuer (a bare Sanctum PAT). It is the path agents and CI use, and a silent success there turns into a confusing exit-3 failure on the first real call.",
+      "implementation_hint": "Give LoginWithToken a *api.Client (as LoginDeviceCode has). Normalise baseURL, set client.BaseURL/Token, call ListCapabilities, and if res.Err != nil return res.Err before SetBaseURL/SetToken. Update the comment. Extend session_clobber_test.go with a 401 case for the token path."
+    },
+    {
+      "id": "C-006",
+      "title": "Emit D-018 error envelope on stdout for approvals and catalog failures",
+      "category": "wire_contract",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": [
+        "dx",
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/capabilities-cli/cmd/capabilities/cmd_approvals.go",
+          "line": 56,
+          "snippet": "if res.Err != nil { fmt.Fprintln(env.Stderr, res.Err.Error()); return res.Err.ExitCode }"
+        },
+        {
+          "file": "packages/capabilities-cli/cmd/capabilities/cmd_catalog.go",
+          "line": 45,
+          "snippet": "if se, ok := err.(*api.StructuredError); ok { fmt.Fprintln(env.Stderr, se.Error()); return se.ExitCode }"
+        },
+        {
+          "file": "packages/capabilities-cli/cmd/capabilities/cmd_run.go",
+          "line": 44,
+          "snippet": "// describe: machine envelope on stdout + short stderr line"
+        }
+      ],
+      "current_state": "`run`, `describe` and domain not-found write the server's error envelope to stdout. `approvals accept|reject` and `catalog` write only a stderr line on failure, so stdout is empty. The approval_id, violations and request_id from the server are lost.",
+      "recommended_state": "Every command that received a structured error writes the envelope to stdout (se.Body when present, otherwise writeStructuredErrorStdout), as describe does.",
+      "rationale": "docs/agents.md:19 says 'Stdout is machine; stderr is human — parse stdout envelopes only'. Approval decisions are exactly where an agent needs the machine code (expired, conflict, forbidden).",
+      "implementation_hint": "Extract describe's error branch (cmd_run.go:44-52) into a helper `writeErrorEnvelope(env, se)` and call it from cmdApprovals and cmdCatalog. Add CLI tests asserting stdout JSON with ok:false on a 410 approval and a 401 catalog."
+    },
+    {
+      "id": "C-007",
+      "title": "Send retry_after on pipeline rate_limited so CLI backoff hint works",
+      "category": "wire_contract",
+      "severity": "low",
+      "effort": "small",
+      "impact": [
+        "reliability",
+        "dx"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+          "line": 758,
+          "snippet": "private function rateLimitedResult(string $message) { return CapabilityResult::failure('rate_limited', $message, extra: [... 'retryable' => true]); }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Contracts/RateLimiter.php",
+          "line": 19,
+          "snippet": "tooManyAttempts / hit / remaining / clear  // no availableIn"
+        },
+        {
+          "file": "packages/capabilities-cli/internal/api/client.go",
+          "line": 142,
+          "snippet": "if secs := ParseRetryAfter(res.Header.Get(\"Retry-After\"), time.Now()); secs > 0 { out.Err.RetryAfter = secs }"
+        },
+        {
+          "file": "packages/capabilities-cli/internal/run/runner.go",
+          "line": 190,
+          "snippet": "if apiRes.Err.Code == api.CodeRateLimited && apiRes.Err.RetryAfter > 0 { ... withRetryAfter ... }"
+        }
+      ],
+      "current_state": "The CLI parses `Retry-After` and `error.retry_after` and exposes the wait on stdout (docs/agents.md:81). The core pipeline's own rate_limited envelope sends neither: HttpResponse sets only Content-Type, and the RateLimiter contract cannot report the remaining decay. The hint only reaches the CLI from Laravel's throttle middleware or a proxy.",
+      "recommended_state": "Pipeline rate limits include `retry_after` (seconds) in the error envelope. HttpResponse::fromResult adds a `Retry-After` header on 429 when it is present.",
+      "rationale": "The CLI side of this contract exists and is tested, but the core's main rate-limit path never feeds it, so agents fall back to guessing a backoff.",
+      "implementation_hint": "Add `availableIn(string $key): int` to Contracts\\RateLimiter (Illuminate adapter: RateLimiter::availableIn). Pass the max of the tripped keys into rateLimitedResult as extra['retry_after']. In HttpResponse::fromResult, when status==429 and error.retry_after>0, add header Retry-After. Unit-test both in core. This is a contract change, so note it in the changelog for host implementations."
+    },
+    {
+      "id": "C-008",
+      "title": "Reserve 'self-update' CLI domain on both sides; lists are hand-copied",
+      "category": "structure",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": [
+        "maintainability",
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/capabilities-cli/cmd/capabilities/cli.go",
+          "line": 98,
+          "snippet": "case \"self-update\": return cmdSelfUpdate(env, rest)"
+        },
+        {
+          "file": "packages/capabilities-cli/internal/synth/synth.go",
+          "line": 21,
+          "snippet": "var reservedDomains = map[string]struct{}{ \"auth\", \"catalog\", \"describe\", \"run\", \"mcp\", \"approvals\", \"version\", \"help\" }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Registry/CapabilityDefinition.php",
+          "line": 26,
+          "snippet": "public const RESERVED_CLI_DOMAINS = ['auth','catalog','describe','run','mcp','approvals','version','help'];"
+        }
+      ],
+      "current_state": "`self-update` is a reserved meta-command in the CLI dispatcher but appears in neither reserved list. The core accepts cliDomain 'self-update' (it matches /^[a-z][a-z0-9-]*$/), and the CLI synth index maps it without a reserved_domain error, so the capability can never be reached by domain/verb. The dispatcher silently runs the self-updater instead.",
+      "recommended_state": "Both lists include 'self-update', and a test on each side pins the list to one shared fixture so a new meta-command cannot be added to only one side.",
+      "rationale": "The two copies of the reserved list are what lets the catalog and CLI synthesis disagree. They have already drifted by one entry.",
+      "implementation_hint": "Add 'self-update' to RESERVED_CLI_DOMAINS and reservedDomains. Add a Go test asserting every `case` string in Execute's reserved switch that matches the token pattern is in reservedDomains. Add a small JSON fixture (e.g. docs/contracts/reserved-cli-domains.json) read by both a Pest unit and a Go test."
+    },
+    {
+      "id": "C-009",
+      "title": "Document or detect surfaces.http.prefix; CLI hardcodes /capabilities",
+      "category": "wire_contract",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": [
+        "dx"
+      ],
+      "locations": [
+        {
+          "file": "packages/capabilities-cli/internal/api/client.go",
+          "line": 24,
+          "snippet": "PathCapabilities = \"/capabilities\"  // all paths hardcode the prefix"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Http/RouteTable.php",
+          "line": 79,
+          "snippet": "$prefix = trim((string) ($httpConfig['prefix'] ?? 'capabilities'), '/');"
+        },
+        {
+          "file": "packages/laravel-capabilities/config/capabilities.php",
+          "line": 81,
+          "snippet": "'prefix' => 'capabilities',"
+        }
+      ],
+      "current_state": "The core lets hosts rename the HTTP route prefix. The CLI always appends `/capabilities/...` to --base-url. A host with prefix `api/capabilities` works (base-url `https://host/api`), but any prefix whose last segment is not `capabilities` (e.g. `caps`, `v1/tools`) is unreachable from the product CLI. The user sees a generic 404 not_found (exit 5), and neither package documents the constraint.",
+      "recommended_state": "Either the config comment and CLI docs state that the CLI needs a prefix ending in `capabilities` (with --base-url set to everything before it), or the CLI accepts an API root URL that already includes the prefix.",
+      "rationale": "This is a config knob that silently breaks the only first-party client. The cheapest fix is a documented constraint. Health's api_version cannot help, because the health route sits under the same prefix.",
+      "implementation_hint": "Minimal: add a comment on config 'prefix' and a line in packages/capabilities-cli/docs/authentication.md. Optional: when CheckAPIVersion/health returns a non-envelope 404, add a hint mentioning surfaces.http.prefix."
+    }
+  ],
+  "notes": "Scope: capabilities-cli (auth, catalog, run, approvals, domain/verb dispatch) checked against the core HTTP contract (RouteTable, HttpRouteRegistrar, CapabilityController/AuthController/ApprovalController, HttpResponse, ErrorCodeMap, CatalogPresenter, AuthTokenIssuer). Control-plane categories reconcile/registry_handles/capture_depth/plugin_shape do not apply to a stateless HTTP client; the command dispatch default goes to domain synthesis and then a not_found envelope with exit 5 (no silent no-op). Custom category slugs used: wire_contract, auth_flow. Read for intent: docs/spec.md D-018 (normative 10-code table; the core has since extended ErrorCodeMap, and C-002 treats the server's per-envelope cli_exit as authoritative), spec §4 Product CLI + 'Device-code polling UX on auth routes' (spec.md:3749), primary-checkout .do-work/decisions.md (only UR-level 'cli layer out of scope' entries, no CLI wire tradeoffs recorded). The prior audit (2026-07-31) had no CLI wire findings. Verified OK (not raised): list/describe/invoke/approval/health paths and methods match RouteTable. The auth issuance routes strip auth middleware, as the CLI expects. The idempotency header is compatible even when surfaces.http.idempotency_header is customised (server falls back to Idempotency-Key). include_schemas=1 is parsed. The api_version preflight matches RouteTable::API_VERSION. The success/approval_required (202) envelopes decode correctly. The schema cache is principal-scoped (base_url+token hash). The X-Capabilities-Caller spoof header is stripped. Dropped as too minor: DeprecationWarning parses sunset_at only as YYYY-MM-DD while the core accepts any DateTimeImmutable string (catalog/service.go:175), and the server's post-sunset 'gone' still reaches the user via C-002. self-update refusing Windows is deliberate (selfupdate.go:262). Server-side inconsistency outside CLI scope for the laravel auditor: HttpAuthGate::PROTECTED lists auth_token/auth_device while RouteTable strips auth from them and AuthController never consults the gate."
+}

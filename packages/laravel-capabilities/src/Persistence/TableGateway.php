@@ -53,9 +53,10 @@ interface TableGateway
     /**
      * Conditional update when $where equalities match AND the lease column is free.
      *
-     * Lease is free when the column is null, empty string, or not held past `$nowIso`
-     * (ISO-8601; held means now < lease expiry). Single atomic predicate — no TOCTOU
-     * between read and write (D-006 claimLease).
+     * Lease is free when the column is null or not held past `$nowIso` (ISO-8601; held
+     * means now < lease expiry). In-memory gateways may also treat an empty string as
+     * free; SQL gateways must not compare a timestamp column with `''`. Single atomic
+     * predicate — no TOCTOU between read and write (D-006 claimLease).
      *
      * @param  array<string, mixed>  $where
      * @param  array<string, mixed>  $attributes

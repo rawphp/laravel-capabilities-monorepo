@@ -84,13 +84,32 @@ func parseCapabilityList(res *api.Response) ([]CapabilitySummary, *api.Response,
 	return payload.Data.Capabilities, res, nil
 }
 
-// Describe returns schema for name (cache-aware).
+// Describe returns schema for name (cache-aware). res is nil on a cache hit.
 func (s *Service) Describe(ctx context.Context, name string) (*CacheEntry, *api.Response, error) {
 	if !s.NoCache && s.Cache != nil {
 		if e, ok := s.Cache.Get(name, ""); ok {
 			return e, nil, nil
 		}
 	}
+	return s.fetchDescribe(ctx, name)
+}
+
+// Refresh invalidates cache and re-lists.
+func (s *Service) Refresh(ctx context.Context) ([]CapabilitySummary, error) {
+	if s.Cache != nil {
+		_ = s.Cache.Invalidate("")
+	}
+	list, _, err := s.List(ctx)
+	return list, err
+}
+
+// ForceFetchDescribe skips the cached read and stores the live entry
+// (unless NoCache), replacing a stale one.
+func (s *Service) ForceFetchDescribe(ctx context.Context, name string) (*CacheEntry, *api.Response, error) {
+	return s.fetchDescribe(ctx, name)
+}
+
+func (s *Service) fetchDescribe(ctx context.Context, name string) (*CacheEntry, *api.Response, error) {
 	res, err := s.Client.DescribeCapability(ctx, name)
 	if err != nil {
 		return nil, nil, err
@@ -108,23 +127,6 @@ func (s *Service) Describe(ctx context.Context, name string) (*CacheEntry, *api.
 	return entry, res, nil
 }
 
-// Refresh invalidates cache and re-lists.
-func (s *Service) Refresh(ctx context.Context) ([]CapabilitySummary, error) {
-	if s.Cache != nil {
-		_ = s.Cache.Invalidate("")
-	}
-	list, _, err := s.List(ctx)
-	return list, err
-}
-
-// ForceFetchDescribe bypasses cache.
-func (s *Service) ForceFetchDescribe(ctx context.Context, name string) (*CacheEntry, *api.Response, error) {
-	prev := s.NoCache
-	s.NoCache = true
-	defer func() { s.NoCache = prev }()
-	return s.Describe(ctx, name)
-}
-
 func parseDescribe(res *api.Response) (*CacheEntry, error) {
 	var wrap struct {
 		OK   bool            `json:"ok"`
@@ -137,25 +139,6 @@ func parseDescribe(res *api.Response) (*CacheEntry, error) {
 	var e CacheEntry
 	if err := json.Unmarshal(raw, &e); err != nil {
 		return nil, err
-	}
-	// Map alternate field layouts.
-	var m map[string]any
-	_ = json.Unmarshal(raw, &m)
-	if e.Name == "" {
-		if n, ok := m["name"].(string); ok {
-			e.Name = n
-		}
-	}
-	if e.SchemaVersion == "" {
-		if v, ok := m["schema_version"].(string); ok {
-			e.SchemaVersion = v
-		}
-	}
-	if len(e.InputSchema) == 0 {
-		if is, ok := m["input_schema"]; ok {
-			b, _ := json.Marshal(is)
-			e.InputSchema = b
-		}
 	}
 	if et := res.Header.Get("ETag"); et != "" {
 		e.ETag = strings.Trim(et, `"`)

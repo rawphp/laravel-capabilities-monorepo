@@ -4,7 +4,12 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Adapters\Http\ApprovalController;
+use Rawphp\Capabilities\Adapters\Http\AuthController;
 use Rawphp\Capabilities\Adapters\Http\CapabilityController;
+use Rawphp\Capabilities\Adapters\Http\IlluminateApprovalController;
+use Rawphp\Capabilities\Adapters\Http\IlluminateAuthController;
+use Rawphp\Capabilities\Adapters\Http\IlluminateCapabilityController;
 use Rawphp\Capabilities\Http\RouteTable;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Tests\Fixtures\FakeCapabilityBus;
@@ -72,9 +77,9 @@ it('happy: middleware stack from config applied [HTTP-001]', function () {
         'middleware' => $mw,
     ]);
     foreach ($routes as $route) {
-        // Auth issuance strips auth:* (L-002); capability routes keep full stack.
+        // Auth issuance strips auth:* (L-002) and adds the default throttle (L-018).
         if (RouteTable::isAuthIssuanceRoute($route['key'])) {
-            expect($route['middleware'])->toBe(RouteTable::withoutAuthMiddleware($mw));
+            expect($route['middleware'])->toBe([...RouteTable::withoutAuthMiddleware($mw), RouteTable::DEFAULT_AUTH_THROTTLE]);
         } else {
             expect($route['middleware'])->toBe($mw);
         }
@@ -127,9 +132,23 @@ it('happy: Idempotency-Key header forwarded to registry [D-005]', function () {
         'headers' => ['idempotency-key' => 'key-abc-001'],
     ]), 'create-invoice');
 
-    expect($bus->invocations[0]['options']['idempotency_key'] ?? null)->toBe('key-abc-001')
-        ->and($controller->lastInvokeOptions()['idempotency_key'] ?? null)->toBe('key-abc-001');
+    expect($bus->invocations[0]['options']['idempotency_key'] ?? null)->toBe('key-abc-001');
 });
+
+// L-020: HTTP controllers are container singletons — under Octane they must not keep
+// the previous request's actor/options alive.
+it('HTTP controllers hold no mutable per-request state [L-020]', function (string $class) {
+    foreach ((new ReflectionClass($class))->getProperties() as $property) {
+        expect($property->isReadOnly())->toBeTrue("{$class}::\${$property->getName()} is mutable");
+    }
+})->with([
+    CapabilityController::class,
+    AuthController::class,
+    ApprovalController::class,
+    IlluminateCapabilityController::class,
+    IlluminateAuthController::class,
+    IlluminateApprovalController::class,
+]);
 
 it('fail: malformed JSON returns validation or bad request envelope [HTTP-001]', function () {
     $bus = new FakeCapabilityBus(CapabilityResult::ok(['should' => 'not-run']));

@@ -23,9 +23,6 @@ final class CapabilityController
 {
     use DetectsCaller;
 
-    /** @var array<string, mixed>|null Last options passed to registry invoke (tests). */
-    private ?array $lastInvokeOptions = null;
-
     /**
      * @param  array<string, mixed>  $clientsConfig  config('capabilities.clients')
      * @param  array<string, mixed>  $httpConfig  config('capabilities.surfaces.http')
@@ -37,14 +34,6 @@ final class CapabilityController
         private readonly ?HttpAuthGate $authGate = null,
         private readonly ?Metrics $metrics = null,
     ) {}
-
-    /**
-     * @return array<string, mixed>|null
-     */
-    public function lastInvokeOptions(): ?array
-    {
-        return $this->lastInvokeOptions;
-    }
 
     public function list(HttpRequestContext $request): HttpResponse
     {
@@ -76,7 +65,7 @@ final class CapabilityController
         $caller = $this->resolveCaller($request);
 
         try {
-            $detail = $this->registry->catalog()->describe($name, $request->user);
+            $detail = $this->registry->catalog()->describe($name, $request->user, $caller['caller']);
         } catch (Throwable) {
             return HttpResponse::failure(
                 'not_found',
@@ -125,7 +114,6 @@ final class CapabilityController
             'idempotency_key' => $idempotencyKey,
         ], static fn ($v) => $v !== null);
 
-        $this->lastInvokeOptions = $options;
         $result = $this->registry->invoke($name, $input, $options);
 
         return $this->wireResult($result, $request, $caller);

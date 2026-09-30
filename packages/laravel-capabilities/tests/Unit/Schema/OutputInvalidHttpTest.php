@@ -7,6 +7,7 @@ use Rawphp\Capabilities\Schema\OutputValidator;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
 use Rawphp\Capabilities\Tests\Fixtures\DiscoveryHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
 it('happy: output_invalid is 500-class envelope [D-014]', function () {
     $registry = DiscoveryHelpers::registry();
@@ -20,7 +21,7 @@ it('happy: output_invalid is 500-class envelope [D-014]', function () {
         'customer_id' => 1,
         'amount_cents' => 1,
         'currency' => 'USD',
-    ], ['caller' => 'http']);
+    ], ['caller' => 'http', 'actor' => PipelineHelpers::userActor()]);
 
     $http = (new OutputValidator)->toHttpEnvelope($result);
     expect($http['status'])->toBeGreaterThanOrEqual(500)
@@ -39,7 +40,7 @@ it('fail: output_invalid is not 200 success [D-014]', function () {
         'customer_id' => 1,
         'amount_cents' => 1,
         'currency' => 'USD',
-    ], ['caller' => 'http']);
+    ], ['caller' => 'http', 'actor' => PipelineHelpers::userActor()]);
 
     $http = (new OutputValidator)->toHttpEnvelope($result);
     expect($http['status'])->not->toBe(200)
@@ -58,7 +59,7 @@ it('fail: output_invalid is not silent coercion to partial data [D-014]', functi
         'customer_id' => 1,
         'amount_cents' => 1,
         'currency' => 'USD',
-    ], ['caller' => 'http']);
+    ], ['caller' => 'http', 'actor' => PipelineHelpers::userActor()]);
 
     expect($result->isOk())->toBeFalse()
         ->and($result->data)->toBeNull()

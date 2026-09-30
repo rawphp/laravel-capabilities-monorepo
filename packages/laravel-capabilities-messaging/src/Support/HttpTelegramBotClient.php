@@ -14,11 +14,11 @@ use RuntimeException;
  */
 final class HttpTelegramBotClient implements TelegramBotClient
 {
+    /** Optional Bot API parameters callers may pass; any other payload key is dropped. */
+    private const OPTIONAL_PARAMS = ['message_thread_id', 'reply_markup', 'parse_mode'];
+
     /** @var callable(string, array<string, mixed>, string): array<string, mixed> */
     private $transport;
-
-    /** @var list<array{method: string, args: array<string, mixed>}> */
-    private array $calls = [];
 
     /**
      * @param  (callable(string $method, array<string, mixed> $params, string $token): array<string, mixed>)|null  $transport
@@ -36,10 +36,10 @@ final class HttpTelegramBotClient implements TelegramBotClient
      */
     public function sendMessage(string $chatId, string $text, array $payload = []): array
     {
-        $params = array_merge($payload, [
+        $params = array_merge([
             'chat_id' => $chatId,
             'text' => $text,
-        ]);
+        ], self::optional($payload));
 
         return $this->call('sendMessage', $params);
     }
@@ -50,21 +50,35 @@ final class HttpTelegramBotClient implements TelegramBotClient
      */
     public function editMessageText(string $chatId, string|int $messageId, string $text, array $payload = []): array
     {
-        $params = array_merge($payload, [
+        $params = array_merge([
             'chat_id' => $chatId,
             'message_id' => $messageId,
             'text' => $text,
-        ]);
+        ], self::optional($payload));
 
         return $this->call('editMessageText', $params);
     }
 
-    /**
-     * @return list<array{method: string, args: array<string, mixed>}>
-     */
-    public function calls(): array
+    public function answerCallbackQuery(string $callbackQueryId, string $text = '', array $payload = []): array
     {
-        return $this->calls;
+        $params = ['callback_query_id' => $callbackQueryId];
+        if ($text !== '') {
+            $params['text'] = $text;
+        }
+        if (isset($payload['show_alert'])) {
+            $params['show_alert'] = (bool) $payload['show_alert'];
+        }
+
+        return $this->call('answerCallbackQuery', $params);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private static function optional(array $payload): array
+    {
+        return array_intersect_key($payload, array_flip(self::OPTIONAL_PARAMS));
     }
 
     /**
@@ -79,8 +93,6 @@ final class HttpTelegramBotClient implements TelegramBotClient
                 'TELEGRAM_BOT_TOKEN is required for HttpTelegramBotClient (D-021).'
             );
         }
-
-        $this->calls[] = ['method' => $method, 'args' => $params];
 
         $result = ($this->transport)($method, $params, $token);
         if (! is_array($result)) {

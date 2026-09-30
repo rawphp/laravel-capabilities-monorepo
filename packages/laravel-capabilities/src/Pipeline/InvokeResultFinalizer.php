@@ -2,9 +2,12 @@
 
 namespace Rawphp\Capabilities\Pipeline;
 
+use Illuminate\Contracts\Events\Dispatcher;
 use Rawphp\Capabilities\Events\CapabilityFailed;
 use Rawphp\Capabilities\Events\CapabilityInvoked;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\FailureReporter;
+use Throwable;
 
 /**
  * Finish paths for the invoke pipeline: early exit, failure, approval, replay, wire.
@@ -19,7 +22,29 @@ final class InvokeResultFinalizer
         public InvokeAuditStage $auditStage,
         public IdempotencyGuard $idempotencyGuard,
         public bool $eventsEnabled = true,
+        public ?Dispatcher $events = null,
     ) {}
+
+    /**
+     * Bus event → host listeners (D-010 §5) and the bounded diagnostic window.
+     * Called after run() so listeners never see phantom success; DB-touching listeners
+     * should still use afterCommit().
+     */
+    public function dispatch(object $event): void
+    {
+        if ($this->events === null) {
+            return;
+        }
+
+        // Once run() has committed, a throwing sync listener (or a failed queue push for a
+        // queued one) is the host's failure, not the invoke's: report it and keep the
+        // outcome and the stored idempotency row intact (L-103 / D-010).
+        try {
+            $this->events->dispatch($event);
+        } catch (Throwable $e) {
+            FailureReporter::reportAndCount($e, FailureReporter::LISTENER_FAILED, ['event' => $event::class]);
+        }
+    }
 
     public function finishEarly(CapabilityResult $result, ?InvokeState $state): CapabilityResult
     {
@@ -158,7 +183,8 @@ final class InvokeResultFinalizer
                     'stages' => $state->stages,
                 ],
             );
-            $this->observation->invokedEvents[] = $event;
+            $this->observation->recordInvoked($event);
+            $this->dispatch($event);
         } elseif ($failure !== null) {
             $this->recordFailure(
                 $state->definition->name,
@@ -181,8 +207,8 @@ final class InvokeResultFinalizer
             message: $message,
             caller: $caller,
         );
-        $this->observation->failedEvents[] = $event;
-        $this->observation->logs[] = [
+        $this->observation->recordFailed($event);
+        $this->observation->log([
             'level' => 'error',
             'message' => $message,
             'context' => [
@@ -190,7 +216,10 @@ final class InvokeResultFinalizer
                 'code' => $code,
                 'caller' => $caller,
             ],
-        ];
+        ]);
+        if ($this->eventsEnabled) {
+            $this->dispatch($event);
+        }
     }
 
     private function recordAudit(InvokeState $state, bool $success, ?CapabilityResult $failure = null, bool $force = false): ?CapabilityResult

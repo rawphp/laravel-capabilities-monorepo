@@ -8,6 +8,7 @@ use Rawphp\Capabilities\Contracts\ApprovalStore;
 use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Contracts\Clock;
 use Rawphp\Capabilities\Pipeline\ResolveActor;
+use Rawphp\Capabilities\Pipeline\ResolveTenantFromCaller;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\SystemActor;
 
@@ -31,7 +32,13 @@ final class ApprovalResumer
         private int $leaseSeconds,
         private int $stuckAfterSeconds,
         private bool $atomic,
-    ) {}
+        ?ResolveTenantFromCaller $resolveTenant = null,
+    ) {
+        $this->resolveTenant = $resolveTenant ?? new ResolveTenantFromCaller;
+    }
+
+    /** Same resolver as the row stamp and the accept check (M-301 / D-003). */
+    private ResolveTenantFromCaller $resolveTenant;
 
     /**
      * Resume stuck approved rows (Shape A) or a single id.
@@ -98,14 +105,14 @@ final class ApprovalResumer
 
         // Tenant guard when actor is a user.
         if (! ($actor instanceof SystemActor)) {
-            $tenant = self::tenantOf($actor);
+            $tenant = $this->resolveTenant->tenantOfPrincipal($actor);
             $rowTenant = isset($row['tenant_id']) ? (string) $row['tenant_id'] : '';
             // Unresolved actor tenant on a tenant-scoped row fails closed (D-003).
             if ($rowTenant !== '' && $tenant !== $rowTenant) {
                 return CapabilityResult::failure('forbidden', 'Resume actor tenant mismatch.');
             }
             // Random users without role/requester: deny for decision matrix.
-            if (! $this->policy->allows($row, $actor, $tenant) && ResolveActor::actorId($actor) !== (string) ($row['requester_actor_id'] ?? '')) {
+            if (! $this->policy->forRow($row)->allows($row, $actor, $tenant) && ResolveActor::actorId($actor) !== (string) ($row['requester_actor_id'] ?? '')) {
                 // Requester may force-resume as repair; role holders too via policy.
                 $isRequester = ResolveActor::actorId($actor) === (string) ($row['requester_actor_id'] ?? '');
                 if (! $isRequester) {
@@ -236,14 +243,5 @@ final class ApprovalResumer
         }
 
         $this->audit->write(array_merge(['event' => $event], $payload));
-    }
-
-    private static function tenantOf(object $actor): ?string
-    {
-        if (isset($actor->tenant_id)) {
-            return is_string($actor->tenant_id) ? $actor->tenant_id : (string) $actor->tenant_id;
-        }
-
-        return null;
     }
 }

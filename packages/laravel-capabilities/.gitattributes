@@ -1,0 +1,4 @@
+# Monorepo-only test scaffolding: the suite runs in rawphp/laravel-capabilities-monorepo.
+/tests export-ignore
+/phpunit.xml export-ignore
+/.gitattributes export-ignore

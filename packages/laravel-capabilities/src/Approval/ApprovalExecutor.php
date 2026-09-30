@@ -2,20 +2,23 @@
 
 namespace Rawphp\Capabilities\Approval;
 
+use Illuminate\Contracts\Events\Dispatcher;
 use Rawphp\Capabilities\Contracts\ApprovalStore;
 use Rawphp\Capabilities\Contracts\AuditWriter;
-use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Events\CapabilityApprovalExecuted;
 use Rawphp\Capabilities\Pipeline\ResolveActor;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\FailureReporter;
+use Throwable;
 
 /**
  * Exactly-once approval domain execution (D-006 / P2-004).
  *
- * Owns re-validation, original-actor re-auth, domain executor call, result
- * persistence, and idempotency completion. {@see ApprovalManager} remains the
- * public API for request / accept / reject / resume and delegates here after
- * lease claims.
+ * Owns re-validation, original-actor re-auth, domain executor call and result
+ * persistence. {@see ApprovalManager} remains the public API for request / accept /
+ * reject / resume and delegates here after lease claims. The request's idempotency
+ * key is settled by the pipeline the domain executor runs through (L-102 / L-202),
+ * never written a second time here.
  */
 final class ApprovalExecutor
 {
@@ -27,6 +30,8 @@ final class ApprovalExecutor
      * @var list<object>
      */
     public array $events = [];
+
+    private ?Dispatcher $dispatcher = null;
 
     /**
      * Domain executor: (row, decidedBy) => CapabilityResult|array|mixed
@@ -60,7 +65,6 @@ final class ApprovalExecutor
         ?callable $domainExecutor = null,
         ?callable $revalidator = null,
         ?callable $originalAuthorizer = null,
-        private ?IdempotencyStore $idempotency = null,
         private ?AuditWriter $audit = null,
     ) {
         $this->domainExecutor = $domainExecutor;
@@ -102,14 +106,6 @@ final class ApprovalExecutor
         return $clone;
     }
 
-    public function withIdempotency(?IdempotencyStore $store): self
-    {
-        $clone = clone $this;
-        $clone->idempotency = $store;
-
-        return $clone;
-    }
-
     public function withAudit(?AuditWriter $audit): self
     {
         $clone = clone $this;
@@ -118,18 +114,10 @@ final class ApprovalExecutor
         return $clone;
     }
 
-    public function withStore(ApprovalStore $store): self
+    public function withEventDispatcher(?Dispatcher $dispatcher): self
     {
         $clone = clone $this;
-        $clone->store = $store;
-
-        return $clone;
-    }
-
-    public function withMetrics(ApprovalMetrics $metrics): self
-    {
-        $clone = clone $this;
-        $clone->metrics = $metrics;
+        $clone->dispatcher = $dispatcher;
 
         return $clone;
     }
@@ -155,7 +143,7 @@ final class ApprovalExecutor
         // Re-validation
         $stale = $this->runRevalidation($row);
         if ($stale !== null) {
-            $failed = $this->store->compareAndUpdate($id, $fromStatus, [
+            $this->store->compareAndUpdate($id, $fromStatus, [
                 'status' => ApprovalStateMachine::STATUS_EXECUTED,
                 'result_status' => 'failed',
                 'result_json' => $stale->toArray(),
@@ -163,23 +151,11 @@ final class ApprovalExecutor
                 ...$executor,
             ]);
 
-            // Atomic path may still be pending.
-            if ($failed === null && $fromStatus === ApprovalStateMachine::STATUS_PENDING) {
-                $failed = $this->store->compareAndUpdate($id, ApprovalStateMachine::STATUS_PENDING, [
-                    'status' => ApprovalStateMachine::STATUS_EXECUTED,
-                    'result_status' => 'failed',
-                    'result_json' => $stale->toArray(),
-                    'execution_lease_until' => null,
-                    ...$executor,
-                ]);
-            }
-
             $this->metrics->increment(
                 $via === 'resume' ? 'approvals_resume_total' : 'approvals_accept_total',
                 1,
-                ['result' => $via === 'resume' ? 'stale' : 'stale'],
+                ['result' => 'stale'],
             );
-            $this->metrics->increment('approvals_resume_total', 1, ['result' => 'stale']);
 
             $this->auditWrite('approval.executed', [
                 'approval_id' => $id,
@@ -245,15 +221,22 @@ final class ApprovalExecutor
                 ?? $this->store->update($id, $payload);
         }
 
-        $this->completeIdempotency($row, $result);
-
-        $this->events[] = new CapabilityApprovalExecuted(
+        $executed = new CapabilityApprovalExecuted(
             capability: (string) ($row['capability_name'] ?? ''),
             approvalId: $id,
             via: $via,
             replay: false,
             result: $result->toArray(),
         );
+        $this->events[] = $executed;
+        if ($this->dispatcher !== null) {
+            try {
+                $this->dispatcher->dispatch($executed);
+            } catch (Throwable $e) {
+                // The domain ran and the row says so; a listener cannot undo that (L-103).
+                FailureReporter::reportAndCount($e, FailureReporter::LISTENER_FAILED, ['event' => $executed::class]);
+            }
+        }
 
         $this->auditWrite('approval.executed', [
             'approval_id' => $id,
@@ -327,52 +310,6 @@ final class ApprovalExecutor
     }
 
     /**
-     * @param  array<string, mixed>  $row
-     */
-    private function completeIdempotency(array $row, CapabilityResult $result): void
-    {
-        $key = $row['idempotency_key'] ?? null;
-        if ($key === null || $key === '' || $this->idempotency === null) {
-            return;
-        }
-
-        $tenantId = isset($row['tenant_id']) ? (is_string($row['tenant_id']) ? $row['tenant_id'] : (string) $row['tenant_id']) : null;
-        $actorType = (string) ($row['requester_actor_type'] ?? 'user');
-        $actorId = (string) ($row['requester_actor_id'] ?? '');
-        $capability = (string) ($row['capability_name'] ?? '');
-
-        $existing = $this->idempotency->find($tenantId, $actorType, $actorId, $capability, (string) $key);
-        if ($existing === null) {
-            $this->idempotency->put([
-                'tenant_id' => $tenantId,
-                'actor_type' => $actorType,
-                'actor_id' => $actorId,
-                'capability_name' => $capability,
-                'idempotency_key' => $key,
-                'request_hash' => $row['input_hash'] ?? null,
-                'status' => 'completed',
-                'result_json' => $result->toArray(),
-                'approval_id' => $row['id'] ?? null,
-            ]);
-
-            return;
-        }
-
-        // Same key, different request body: the row belongs to another request (D-005 conflict).
-        $existingHash = $existing['request_hash'] ?? null;
-        $inputHash = $row['input_hash'] ?? null;
-        if ($existingHash !== null && $inputHash !== null && $existingHash !== $inputHash) {
-            return;
-        }
-
-        $this->idempotency->update($tenantId, $actorType, $actorId, $capability, (string) $key, [
-            'status' => 'completed',
-            'result_json' => $result->toArray(),
-            'approval_id' => $row['id'] ?? null,
-        ]);
-    }
-
-    /**
      * @param  array<string, mixed>  $payload
      */
     private function auditWrite(string $event, array $payload): void
@@ -381,6 +318,11 @@ final class ApprovalExecutor
             return;
         }
 
-        $this->audit->write(array_merge(['event' => $event], $payload));
+        // run() has committed and the row is terminal; audit failure is reported, not thrown (L-104).
+        try {
+            $this->audit->write(array_merge(['event' => $event], $payload));
+        } catch (Throwable $e) {
+            FailureReporter::reportAndCount($e, FailureReporter::AUDIT_WRITE_FAILED, ['mode' => 'approval']);
+        }
     }
 }

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Rawphp\Capabilities\Approval\ApprovalManager;
+use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
 use Rawphp\CapabilitiesMessaging\Telegram\CallbackHandler;
 use Rawphp\CapabilitiesMessaging\Tests\Fixtures\MessagingHelpers as H;
 
@@ -36,7 +37,8 @@ it('fail: approver linked under another tenant cannot decide the approval [D-006
 
 it('happy: approver linked under the approval tenant decides it [D-006]', function () {
     $approvals = pendingTenantApproval('ap-tenant-ok', 'tenant-a');
-    $identity = H::identity();
+    // A host user model carries tenant_id, which core's approval policy checks against the row.
+    $identity = new IdentityLinker(H::config(), static fn (string $id, ?string $tenantId): object => (object) ['id' => $id, 'tenant_id' => $tenantId]);
     $identity->link('42', 'u1', 'tenant-a');
     $handler = new CallbackHandler(H::signer(), $identity, $approvals);
 

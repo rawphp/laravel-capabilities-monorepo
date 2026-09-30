@@ -63,7 +63,7 @@ it('fail: ai tool handle failure approval_required does not mutate incorrectly [
         'caps' => [[
             'name' => 'create-invoice',
             'groups' => ['billing'],
-            'approvalPolicy' => 'always',
+            'approvalPolicy' => 'requester_or_role',
             'run' => fn () => new CreateInvoiceResult(invoice_id: 1),
         ]],
     ]);

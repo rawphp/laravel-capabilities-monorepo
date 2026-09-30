@@ -5,9 +5,15 @@
 declare(strict_types=1);
 
 use Rawphp\Capabilities\Adapters\Artisan\ArtisanCapabilityInvoker;
+use Rawphp\Capabilities\Registry\CapabilityDefinition;
+use Rawphp\Capabilities\Registry\CapabilityRegistry;
+use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\InvalidArtisanFlagsException;
 use Rawphp\Capabilities\Support\MissingArtisanActorException;
+use Rawphp\Capabilities\Support\MissingJobTenantException;
+use Rawphp\Capabilities\Support\StubAuthorizer;
 use Rawphp\Capabilities\Support\SystemActor;
+use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\ScopeCallerJobHelpers as H;
 
 it('edge: artisan mutate path when --acting-as=1 [D-002]', function () {
@@ -24,6 +30,7 @@ it('edge: artisan mutate path when --acting-as=1 [D-002]', function () {
         'acting_as' => $parsed['acting_as'],
         'tenant' => 'tenant-a',
         'mutating' => true,
+        'user_resolver' => static fn ($id) => H::user($id, 'tenant-a'),
     ]);
     expect($result->isOk())->toBeTrue()
         ->and($h['registry']->lastState()?->context?->caller())->toBe('artisan');
@@ -111,4 +118,122 @@ it('fail: artisan mutate refused or invalid when --acting-as=1 --system=schedule
     ]))->toThrow(InvalidArtisanFlagsException::class);
 
     expect($h['runCount']->value)->toBe(0);
+});
+
+function artisanInvokerRegistry(): CapabilityRegistry
+{
+    $reg = (new CapabilityRegistry)->withAuthorizer(StubAuthorizer::allow());
+    $reg->register(new CapabilityDefinition(
+        name: 'art.cap',
+        description: 'd',
+        readOnly: false,
+        input: CreateInvoiceInput::class,
+        allowSystemCallers: true,
+        run: static fn () => CapabilityResult::ok(['ok' => true]),
+    ));
+    $reg->register(new CapabilityDefinition(
+        name: 'art.deny-sys',
+        description: 'd',
+        readOnly: true,
+        allowSystemCallers: false,
+        run: static fn () => CapabilityResult::ok([]),
+    ));
+
+    return $reg;
+}
+
+function artisanInvoiceInput(): array
+{
+    return ['customer_id' => 1, 'amount_cents' => 1, 'currency' => 'USD'];
+}
+
+it('fail: artisan mutating run without actor or system throws MissingArtisanActorException', function () {
+    $inv = new ArtisanCapabilityInvoker(artisanInvokerRegistry());
+
+    expect(fn () => $inv->run([
+        'name' => 'art.cap',
+        'input' => artisanInvoiceInput(),
+    ]))->toThrow(MissingArtisanActorException::class);
+});
+
+it('fail: artisan system run is forbidden for a capability that denies system callers', function () {
+    $inv = new ArtisanCapabilityInvoker(artisanInvokerRegistry());
+
+    $sysDenied = $inv->run([
+        'name' => 'art.deny-sys',
+        'system' => 'billing',
+        'tenant' => 't1',
+        'mutating' => false,
+    ]);
+
+    expect($sysDenied->errorCode())->toBe('forbidden');
+});
+
+it('fail: artisan system run with tenancy_required and no tenant throws MissingJobTenantException', function () {
+    $inv = new ArtisanCapabilityInvoker(artisanInvokerRegistry());
+
+    expect(fn () => $inv->run([
+        'name' => 'art.cap',
+        'input' => artisanInvoiceInput(),
+        'system' => 'billing',
+        'tenancy_required' => true,
+    ]))->toThrow(MissingJobTenantException::class);
+});
+
+it('happy: artisan run resolves acting_as through user_resolver', function () {
+    $inv = new ArtisanCapabilityInvoker(artisanInvokerRegistry());
+
+    $withUser = $inv->run([
+        'name' => 'art.cap',
+        'input' => artisanInvoiceInput(),
+        'acting_as' => 42,
+        'tenant' => 't1',
+        'user_resolver' => static fn ($id) => (object) ['id' => $id],
+        'skip_server_rules' => true,
+    ]);
+
+    expect($withUser)->toBeInstanceOf(CapabilityResult::class);
+});
+
+it('fail: artisan run throws RuntimeException when user_resolver finds no user', function () {
+    $inv = new ArtisanCapabilityInvoker(artisanInvokerRegistry());
+
+    expect(fn () => $inv->run([
+        'name' => 'art.cap',
+        'input' => artisanInvoiceInput(),
+        'acting_as' => 99,
+        'user_resolver' => static fn () => null,
+    ]))->toThrow(RuntimeException::class);
+});
+
+it('fail: artisan run refuses acting_as without a user_resolver instead of fabricating a user [D-002 / L-107]', function () {
+    $inv = new ArtisanCapabilityInvoker(artisanInvokerRegistry());
+
+    expect(fn () => $inv->run([
+        'name' => 'art.cap',
+        'input' => artisanInvoiceInput(),
+        'acting_as' => '7',
+        'tenant' => 't1',
+        'skip_server_rules' => true,
+    ]))->toThrow(MissingArtisanActorException::class, 'user_resolver');
+});
+
+it('happy: artisan run executes as a named system actor with a tenant', function () {
+    $inv = new ArtisanCapabilityInvoker(artisanInvokerRegistry());
+
+    $sysOk = $inv->run([
+        'name' => 'art.cap',
+        'input' => artisanInvoiceInput(),
+        'system' => 'ops',
+        'tenant' => 't1',
+        'skip_server_rules' => true,
+    ]);
+
+    expect($sysOk)->toBeInstanceOf(CapabilityResult::class);
+});
+
+it('edge: artisan invoker statics report non-product CLI, a caller string and parsed acting_as', function () {
+    expect(ArtisanCapabilityInvoker::isProductCli())->toBeFalse()
+        ->and(ArtisanCapabilityInvoker::caller())->toBeString()
+        ->and(ArtisanCapabilityInvoker::parseFlags(['acting-as' => '3', 'tenant' => 't']))->toHaveKey('acting_as');
 });

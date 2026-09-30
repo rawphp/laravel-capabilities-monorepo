@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -99,5 +100,13 @@ func TestVersioncommandoutputcontainsversion(t *testing.T) {
 	want := BinaryName + " " + Version
 	if !strings.Contains(out, want) {
 		t.Fatalf("expected %q in version output, got %q", want, out)
+	}
+}
+
+func TestExecuteDefaultsUnsetStreams(t *testing.T) {
+	var out bytes.Buffer
+	code := Execute(Env{Args: []string{"version"}, Stdout: &out, ConfigRoot: t.TempDir()})
+	if code != 0 || out.String() != BinaryName+" "+Version+"\n" {
+		t.Fatalf("exit %d out %q", code, out.String())
 	}
 }

@@ -51,6 +51,7 @@ function req049SqliteConnection(): ConnectionInterface
             result_status text,
             executor_actor_type text,
             executor_actor_id text,
+            approval_policy text,
             decided_by text,
             decided_at text,
             decision_reason text,

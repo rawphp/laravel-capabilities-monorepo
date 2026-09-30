@@ -7,17 +7,21 @@ namespace Rawphp\CapabilitiesAi\Support;
 use InvalidArgumentException;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\Metrics;
+use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
+use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
+use Rawphp\CapabilitiesAi\Contracts\DeadlineAwareLlmClient;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
+use Rawphp\CapabilitiesAi\Contracts\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
-use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
+use Rawphp\CapabilitiesAi\Http\ChatController;
 use Rawphp\CapabilitiesAi\Package;
 use RuntimeException;
 
@@ -121,21 +125,45 @@ final class ContainerBindings
 
         return match ($resolved['resolved']) {
             'fake' => new FakeLlmClient,
-            'anthropic' => new AnthropicLlmClient(
-                apiKey: (string) ($config['llm']['anthropic']['api_key'] ?? ''),
-                model: (string) ($config['llm']['anthropic']['model'] ?? 'claude-sonnet-4-6'),
-                baseUrl: (string) ($config['llm']['anthropic']['base_url'] ?? 'https://api.anthropic.com'),
-                maxTokens: (int) ($config['llm']['anthropic']['max_tokens'] ?? 64000),
-                metrics: $metrics,
-                tracer: $tracer,
-                maxRetries: (int) ($config['llm']['anthropic']['max_retries'] ?? 2),
-            ),
+            'anthropic' => self::makeAnthropicLlmClient($config, $metrics, $tracer),
         };
     }
 
     /**
+     * One Anthropic request must finish inside the turn job (claim_ttl), or the worker is
+     * killed mid-request instead of the turn failing as a retryable timeout.
+     * claim_ttl is also the client's per-call deadline. A turn makes several calls in one job,
+     * so TurnRunner (built with the same claim_ttl) caps later rounds and their 429 retries to
+     * the time left in the turn — see {@see DeadlineAwareLlmClient}.
+     *
      * @param  array<string, mixed>  $config
-     * @param  object|null  $redis  Redis client with rPush/lRange (ext-redis or predis-like)
+     */
+    private static function makeAnthropicLlmClient(array $config, ?Metrics $metrics, ?Tracer $tracer): AnthropicLlmClient
+    {
+        $timeout = (int) ($config['llm']['anthropic']['timeout'] ?? AnthropicLlmClient::DEFAULT_TIMEOUT_SECONDS);
+        $claimTtl = self::claimTtlFromConfig($config);
+        if ($timeout >= $claimTtl) {
+            throw new InvalidArgumentException(
+                "llm.anthropic.timeout ({$timeout}s) must be below claim_ttl ({$claimTtl}s): one request has to fit inside the turn job"
+            );
+        }
+
+        return new AnthropicLlmClient(
+            apiKey: (string) ($config['llm']['anthropic']['api_key'] ?? ''),
+            model: (string) ($config['llm']['anthropic']['model'] ?? 'claude-sonnet-4-6'),
+            baseUrl: (string) ($config['llm']['anthropic']['base_url'] ?? 'https://api.anthropic.com'),
+            maxTokens: (int) ($config['llm']['anthropic']['max_tokens'] ?? 64000),
+            metrics: $metrics,
+            tracer: $tracer,
+            maxRetries: (int) ($config['llm']['anthropic']['max_retries'] ?? 2),
+            timeoutSeconds: $timeout,
+            deadlineSeconds: $claimTtl,
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     * @param  object|null  $redis  Redis client with rPush/lRange/expire (ext-redis or predis-like)
      */
     public static function makeProgressStore(array $config, ?object $redis = null): ProgressStore
     {
@@ -161,7 +189,9 @@ final class ContainerBindings
 
         $prefix = (string) ($config['progress']['redis_key_prefix'] ?? 'capabilities_ai:progress:');
 
-        return new RedisProgressStore($redis, $prefix);
+        $ttl = (int) ($config['progress']['ttl_seconds'] ?? RedisProgressStore::DEFAULT_TTL_SECONDS);
+
+        return new RedisProgressStore($redis, $prefix, $ttl);
     }
 
     /**
@@ -223,6 +253,7 @@ final class ContainerBindings
         ?ConversationContextProvider $context = null,
         ?ToolCatalog $tools = null,
         ?CapabilityBus $bus = null,
+        ConversationStore $store = new EloquentConversationStore,
     ): TurnRunner {
         $maxRounds = (int) ($config['max_tool_rounds'] ?? 8);
         $userModel = $config['user_model'] ?? null;
@@ -240,18 +271,23 @@ final class ContainerBindings
             maxToolRounds: $maxRounds > 0 ? $maxRounds : 8,
             actors: $actors,
             proposalsEnabled: (bool) ($config['proposals']['enabled'] ?? true),
+            store: $store,
+            turnBudgetSeconds: self::claimTtlFromConfig($config),
         );
     }
 
     /**
      * @param  callable(object): mixed  $dispatch
-     * @param  array<string, mixed>  $config  capabilities-ai config slice (optional proposals.enabled, max_concurrent_turns)
+     * @param  array<string, mixed>  $config  capabilities-ai config slice (optional proposals.enabled, max_concurrent_turns, turns_per_minute)
+     * @param  RateLimiter|null  $turnLimiter  core D-013 limiter (host-bound); null = no per-user turn limit
      */
     public static function makeConversationService(
         callable $dispatch,
         ProgressStore $progress,
         int $claimTtl = Package::DEFAULT_CLAIM_TTL,
         array $config = [],
+        ?RateLimiter $turnLimiter = null,
+        ConversationStore $store = new EloquentConversationStore,
     ): ConversationService {
         return new ConversationService(
             $dispatch,
@@ -259,7 +295,36 @@ final class ContainerBindings
             $claimTtl,
             proposalsEnabled: (bool) ($config['proposals']['enabled'] ?? true),
             maxConcurrentTurns: self::maxConcurrentTurnsFromConfig($config),
+            turnLimiter: $turnLimiter,
+            turnsPerMinute: self::turnsPerMinuteFromConfig($config),
+            store: $store,
         );
+    }
+
+    /**
+     * Per-user turns per minute; package default when missing or non-numeric, 0 (off) when negative.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    public static function turnsPerMinuteFromConfig(array $config): int
+    {
+        $raw = $config['turns_per_minute'] ?? ConversationService::DEFAULT_TURNS_PER_MINUTE;
+        $max = is_numeric($raw) ? (int) $raw : ConversationService::DEFAULT_TURNS_PER_MINUTE;
+
+        return max($max, 0);
+    }
+
+    /**
+     * Longest accepted chat message (characters): package default when missing or non-numeric, 0 (no cap) when negative.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    public static function maxMessageCharsFromConfig(array $config): int
+    {
+        $raw = $config['max_message_chars'] ?? ChatController::DEFAULT_MAX_MESSAGE_CHARS;
+        $max = is_numeric($raw) ? (int) $raw : ChatController::DEFAULT_MAX_MESSAGE_CHARS;
+
+        return max($max, 0);
     }
 
     public static function makeProposalService(
@@ -267,6 +332,7 @@ final class ContainerBindings
         IdempotencyReadiness $idempotency,
         ?string $userModel = null,
         ?ToolCatalog $tools = null,
+        ConversationStore $store = new EloquentConversationStore,
     ): ProposalService {
         return new ProposalService(
             $bus,
@@ -275,12 +341,16 @@ final class ContainerBindings
                 is_string($userModel) && $userModel !== '' ? $userModel : null,
             ),
             $tools,
+            $store,
         );
     }
 
-    public static function makeTurnService(ProgressStore $progress): TurnService
-    {
-        return new TurnService($progress);
+    public static function makeTurnService(
+        ProgressStore $progress,
+        ConversationStore $store = new EloquentConversationStore,
+        TurnClaim $claim = new EloquentTurnClaim,
+    ): TurnService {
+        return new TurnService($progress, $store, $claim);
     }
 
     /**

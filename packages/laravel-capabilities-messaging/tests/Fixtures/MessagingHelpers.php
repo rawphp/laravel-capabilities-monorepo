@@ -4,12 +4,19 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesMessaging\Tests\Fixtures;
 
+use Illuminate\Cache\ArrayStore;
+use Illuminate\Cache\Repository;
+use Illuminate\Container\Container;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
+use Illuminate\Contracts\Foundation\CachesConfiguration;
 use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Contracts\ApprovalGateway;
+use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
 use Rawphp\CapabilitiesMessaging\MessagingConfig;
+use Rawphp\CapabilitiesMessaging\MessagingServiceProvider;
 use Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier;
 use Rawphp\CapabilitiesMessaging\Support\FakeQueue;
 use Rawphp\CapabilitiesMessaging\Support\FakeTelegramBotClient;
@@ -95,6 +102,16 @@ final class MessagingHelpers
     }
 
     /**
+     * Test agent turn: replies with the user's text, no tool calls.
+     *
+     * @return callable(array<string, mixed>): array{text: string, tool_calls: list<mixed>}
+     */
+    public static function echoAgent(): callable
+    {
+        return static fn (array $message): array => ['text' => (string) ($message['text'] ?? ''), 'tool_calls' => []];
+    }
+
+    /**
      * @param  array{
      *   config?: MessagingConfig,
      *   identity?: IdentityLinker,
@@ -103,6 +120,7 @@ final class MessagingHelpers
      *   registry?: FakeCapabilityBus,
      *   bot?: FakeTelegramBotClient,
      *   profile_tools?: list<string>,
+     *   pending_replies?: CacheRepository|null,
      * }  $parts
      */
     public static function processor(array $parts = []): ProcessTelegramUpdate
@@ -111,7 +129,7 @@ final class MessagingHelpers
         $identity = $parts['identity'] ?? new IdentityLinker($config);
         $threads = $parts['threads'] ?? new ThreadStore;
         $bot = $parts['bot'] ?? new FakeTelegramBotClient;
-        $adapter = $parts['adapter'] ?? new TelegramAdapter($bot);
+        $adapter = $parts['adapter'] ?? new TelegramAdapter($bot, self::echoAgent());
         $registry = $parts['registry'] ?? new FakeCapabilityBus;
         $tools = $parts['profile_tools'] ?? ['support.ping'];
 
@@ -123,6 +141,8 @@ final class MessagingHelpers
             registry: $registry,
             bot: $bot,
             profileResolver: static fn (string $profile): array => $tools,
+            pendingReplies: $parts['pending_replies'] ?? null,
+            callbacks: $parts['callbacks'] ?? null,
         );
     }
 
@@ -144,14 +164,15 @@ final class MessagingHelpers
 
     /**
      * Concrete manager for tests that seed rows via request/store.
-     * Production messaging depends only on {@see ApprovalGateway}.
+     * Production messaging depends only on {@see ApprovalGateway}. An accepted row runs a stub
+     * executor that succeeds, so an accept tap reports ok unless a test says otherwise.
      */
     public static function approvals(): ApprovalManager
     {
         $clock = new FixedClock(new \DateTimeImmutable('2026-01-15T12:00:00Z'));
         $store = new InMemoryApprovalStore($clock);
 
-        return new ApprovalManager($store, $clock);
+        return new ApprovalManager($store, $clock, executor: static fn (): CapabilityResult => CapabilityResult::ok());
     }
 
     public static function callbackHandler(
@@ -164,6 +185,67 @@ final class MessagingHelpers
             $identity ?? self::identity(),
             $approvals ?? self::approvals(),
         );
+    }
+
+    /**
+     * DB-free container with the messaging provider registered against a fixed config array.
+     * Config reports as cached, so register() skips mergeConfigFrom and the env()-driven file.
+     *
+     * @param  array<string, mixed>  $messagingConfig  value of config('capabilities-messaging')
+     * @param  array<string, mixed>  $otherConfig  other dotted keys (e.g. auth.providers.users.model)
+     * @param  CacheRepository|null  $cache  host cache store (array store by default; share one to model web + worker)
+     */
+    public static function container(array $messagingConfig = [], array $otherConfig = [], ?CacheRepository $cache = null): Container
+    {
+        $app = new class extends Container implements CachesConfiguration
+        {
+            public function configurationIsCached(): bool
+            {
+                return true;
+            }
+
+            public function getCachedConfigPath(): string
+            {
+                return '';
+            }
+
+            public function getCachedServicesPath(): string
+            {
+                return '';
+            }
+
+            public function environment(): string
+            {
+                return 'testing';
+            }
+        };
+        $values = ['capabilities-messaging' => $messagingConfig] + $otherConfig;
+        $app->instance('config', new class($values)
+        {
+            /** @param  array<string, mixed>  $values */
+            public function __construct(private array $values) {}
+
+            public function get(string $key, mixed $default = null): mixed
+            {
+                if (array_key_exists($key, $this->values)) {
+                    return $this->values[$key];
+                }
+                // Dotted lookup into the messaging array (e.g. capabilities-messaging.user_model).
+                $cursor = $this->values;
+                foreach (explode('.', $key) as $segment) {
+                    if (! is_array($cursor) || ! array_key_exists($segment, $cursor)) {
+                        return $default;
+                    }
+                    $cursor = $cursor[$segment];
+                }
+
+                return $cursor;
+            }
+        });
+        $app->instance(CacheRepository::class, $cache ?? new Repository(new ArrayStore));
+        (new MessagingServiceProvider($app))->register();
+
+        return $app;
     }
 
     /**
@@ -190,6 +272,49 @@ final class MessagingHelpers
             'update_id' => $updateId,
             'message' => $message,
         ];
+    }
+
+    /**
+     * A tapped approval button: Telegram `callback_query` update carrying signed callback_data.
+     *
+     * @return array<string, mixed>
+     */
+    public static function callbackUpdate(
+        string $approvalId,
+        string $action = 'accept',
+        string|int $chatId = 100,
+        string|int $userId = 42,
+        int $updateId = 2,
+        ?string $data = null,
+        ?TelegramCallbackSigner $signer = null,
+    ): array {
+        $signer ??= self::signer();
+
+        return [
+            'update_id' => $updateId,
+            'callback_query' => [
+                'id' => 'cbq-'.$updateId,
+                'from' => ['id' => $userId, 'is_bot' => false, 'first_name' => 'Test'],
+                'message' => [
+                    'message_id' => 9,
+                    'chat' => ['id' => $chatId, 'type' => 'private'],
+                ],
+                'data' => $data ?? $signer->encode($signer->sign($approvalId, $action)),
+            ],
+        ];
+    }
+
+    /**
+     * Constructor dependency types of a class — structural proof of what it can call.
+     *
+     * @param  class-string  $class
+     * @return list<string>
+     */
+    public static function constructorTypes(string $class): array
+    {
+        $params = (new \ReflectionClass($class))->getConstructor()?->getParameters() ?? [];
+
+        return array_map(static fn (\ReflectionParameter $p): string => (string) $p->getType()?->getName(), $params);
     }
 
     /**

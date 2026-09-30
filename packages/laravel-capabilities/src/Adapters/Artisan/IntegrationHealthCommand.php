@@ -66,13 +66,7 @@ class IntegrationHealthCommand extends Command
     private function aiConfig(): ?array
     {
         try {
-            $config = $this->laravel->make('config');
-            if (! method_exists($config, 'has') || ! $config->has('capabilities-ai')) {
-                // Fall back: get may still return a published array or empty default.
-                $cfg = $config->get('capabilities-ai', null);
-            } else {
-                $cfg = $config->get('capabilities-ai');
-            }
+            $cfg = $this->laravel->make('config')->get('capabilities-ai');
         } catch (Throwable) {
             return null;
         }
@@ -145,7 +139,7 @@ class IntegrationHealthCommand extends Command
     private function idempotencyReadinessClassCallback(): ?callable
     {
         return function (): ?string {
-            $abstract = 'Rawphp\\CapabilitiesAi\\Contracts\\IdempotencyReadiness';
+            $abstract = IntegrationHealthChecker::AI_IDEMPOTENCY_READINESS;
             try {
                 if (! $this->laravel->bound($abstract)) {
                     return null;
@@ -168,7 +162,7 @@ class IntegrationHealthCommand extends Command
     private function progressStoreReadyCallback(): callable
     {
         return function (): ?bool {
-            $abstract = 'Rawphp\\CapabilitiesAi\\Contracts\\ProgressStoreReadiness';
+            $abstract = IntegrationHealthChecker::AI_PROGRESS_READINESS;
             try {
                 if (! $this->laravel->bound($abstract)) {
                     return null;

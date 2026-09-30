@@ -1,0 +1,715 @@
+{
+  "auditor": "laravel-auditor",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-analyst-loop/packages/laravel-capabilities",
+  "stack_summary": {
+    "laravel": {
+      "present": true,
+      "version": "11.x|12.x|13.x (illuminate/* components; three packages, not a full app)",
+      "php_version": "8.2+",
+      "key_packages": [
+        "illuminate/support",
+        "illuminate/http",
+        "illuminate/routing",
+        "illuminate/console",
+        "illuminate/bus",
+        "illuminate/events",
+        "illuminate/database",
+        "illuminate/validation",
+        "pestphp/pest",
+        "phpstan/phpstan"
+      ]
+    },
+    "frontend": {
+      "framework": "none",
+      "framework_version": null,
+      "inertia_version": null,
+      "typescript": false,
+      "state_library": "none",
+      "ui_library": "none",
+      "build_tool": "unknown",
+      "key_packages": []
+    },
+    "testing": {
+      "backend": "pest",
+      "frontend": "none"
+    },
+    "tooling": {
+      "linter_backend": "none",
+      "linter_frontend": "none",
+      "formatter_frontend": "none",
+      "types_php": "phpstan"
+    },
+    "infrastructure_hints": {
+      "queue_driver": "unknown",
+      "cache_driver": "unknown",
+      "ci": "github-actions (tests.yml, split-packages.yml)",
+      "deploy": "unknown"
+    },
+    "notes": "Monorepo: packages/laravel-capabilities (core bus, ~22.8k LOC), packages/laravel-capabilities-messaging (~3k), packages/laravel-capabilities-ai (~4.5k), packages/capabilities-cli (Go, ~5.5k). No root app/routes/package.json. Unit-test-only policy (no feature/DB tests), >=95% coverage. Design oracle: docs/spec.md (D-002..D-023). Standing decisions: /Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.do-work/decisions.md (primary checkout, untracked).",
+    "control_plane": {
+      "present": true,
+      "language": "go",
+      "path": "packages/capabilities-cli",
+      "notes": "Go product CLI, HTTP client only (D-016)"
+    }
+  },
+  "scanned_files_count": 64,
+  "findings": [
+    {
+      "id": "L-001",
+      "title": "Class-based capabilities never run their own authorize()/needsApproval()",
+      "category": "authorization",
+      "severity": "high",
+      "effort": "medium",
+      "impact": [
+        "security",
+        "reliability",
+        "maintainability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+          "line": 572,
+          "snippet": "$definitionAuth = $definition->authorize; if (is_callable($definitionAuth)) {...} return $this->authorizer->authorize(...)"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Discovery/AttributeDiscoverer.php",
+          "line": 100,
+          "snippet": "authorize: null, run: null,"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+          "line": 898,
+          "snippet": "$handler = new ($definition->handlerClass);"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Contracts/DefinesCapability.php",
+          "line": 13,
+          "snippet": "interface DefinesCapability { // public function authorize(...); needsApproval(...); run(...) }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+          "line": 168,
+          "snippet": "$authorizer = $authorizer ?? StubAuthorizer::deny();"
+        }
+      ],
+      "current_state": "For #[Capability] classes (the canonical D-017 path), the pipeline only calls the handler's run(). The class's authorize() is never invoked: allows() falls through to the global Authorizer, which the provider never binds, so it defaults to StubAuthorizer::deny(). needsApproval() on the class is never read either. Handlers are built with `new`, so constructor dependencies cannot be injected.",
+      "recommended_state": "When a definition has handlerClass, resolve the handler once per invoke through the container. Call its authorize() in stageAuthorize and in authorizes(), and its needsApproval() in stageNeedsApproval, with the same arity rules run() already uses. A handler that implements DefinesCapability but has no authorize() should fail closed at discovery with a clear BootException.",
+      "rationale": "Spec §capability class (docs/spec.md:755-800) makes authorize/needsApproval/run on the class the canonical contract. As written, a host that follows the spec gets every class capability denied (fail-closed but unusable). If the host binds a permissive Authorizer to get unblocked, the per-capability authorize() and approval rules are silently skipped. The suite hides this because PipelineHelpers::harness uses StubAuthorizer::allow() and RunArityTest only checks run().",
+      "implementation_hint": "In InvokePipeline, add `private function handler(CapabilityDefinition $d): ?object` that uses `Container::getInstance()->make($d->handlerClass)` (injectable factory for units) and memoises it on InvokeState. In allows(): `if ($h && method_exists($h,'authorize')) return (bool) $h->authorize($input,$ctx);`. Do the same for needsApproval in stageNeedsApproval. Unit tests: fixture class with authorize() returning false plus registry built with StubAuthorizer::allow() gives forbidden; class needsApproval() returning true gives approval_required; a class with a constructor dependency resolves from a fake container."
+    },
+    {
+      "id": "L-002",
+      "title": "Approval is never requested; per-capability approval policy is ignored",
+      "category": "authorization",
+      "severity": "high",
+      "effort": "medium",
+      "impact": [
+        "security",
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+          "line": 617,
+          "snippet": "$needs = (bool) ($state->options['needs_approval'] ?? false); ... needs_approval_callback ... require_approval"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Registry/CapabilityDefinitionBuilder.php",
+          "line": 208,
+          "snippet": "public function approvalPolicy(?string $policy): self  // no needsApproval() builder method exists"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+          "line": 378,
+          "snippet": "if (! $this->policy->allows($row, $approver, ...))  // global default policy, not the capability's"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+          "line": 638,
+          "snippet": "$record = $this->approvalManager->request([...])  // approval_ttl_hours never passed"
+        }
+      ],
+      "current_state": "Approval is only triggered by invoke options (needs_approval, needs_approval_callback, require_approval). No adapter (HTTP, MCP, AI, job, artisan) sets them, and neither CapabilityDefinition nor the fluent builder can declare needsApproval. At accept time, ApprovalManager applies its single global policy (default requester_or_role), never the capability's approvalPolicy (e.g. 'role:finance'). approvalTtlHours is never passed to request().",
+      "recommended_state": "Make approval part of the definition. Add a needsApproval callable to CapabilityDefinition/Builder (plus class-method support, see L-001) and evaluate it in stageNeedsApproval. Persist the capability's approvalPolicy and TTL on the approval row. Have accept/reject build the ApprovalPolicy from the row's policy, falling back to the global default.",
+      "rationale": "Locked decision in AGENTS.md: governance (authz, approval, audit) is part of the capability on every surface. Today the whole D-006 state machine (store, controllers, resumer, notifiers) cannot be reached from any real surface. A capability that declares approvalPolicy 'role:finance' would let the requester self-approve under the global requester_or_role.",
+      "implementation_hint": "CapabilityDefinition: add `public readonly mixed $needsApproval = null`, plus Builder::needsApproval(callable). In buildApprovalRequired, add 'approval_policy' => $def->approvalPolicy and 'approval_ttl_hours' => $def->approvalTtlHours. In ApprovalManager::accept/reject: `$policy = isset($row['approval_policy']) ? ApprovalPolicy::fromString($row['approval_policy']) : $this->policy;` (add a nullable approval_policy column in a new migration). Unit tests: fluent needsApproval true on the HTTP caller gives approval_required; a role:finance row accepted by the requester without the role gives forbidden."
+    },
+    {
+      "id": "L-003",
+      "title": "Sanctum CLI tokens are always derived as caller=http, never cli",
+      "category": "security",
+      "severity": "high",
+      "effort": "small",
+      "impact": [
+        "security",
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Http/IlluminateHttpBridge.php",
+          "line": 310,
+          "snippet": "if ($authenticated || ...) { if (! isset($credential['adapter']) ...) { $credential['adapter'] = 'http'; } }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Http/CallerDeriver.php",
+          "line": 49,
+          "snippet": "$adapter = $credential['adapter'] ?? ...; if (is_string($adapter)) { ... 'http','api' => 'http' ... return $fromAdapter; }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Http/CallerDeriver.php",
+          "line": 65,
+          "snippet": "$abilities = $credential['token_abilities'] ?? [];  // never reached when adapter is set"
+        },
+        {
+          "file": "packages/laravel-capabilities/tests/Unit/Http/IlluminateHttpBridgeTest.php",
+          "line": 50,
+          "snippet": "->and($ctx->credential['token_abilities'] ?? null)->toBe(['capabilities:cli'])->and($ctx->credential['adapter'] ?? null)->toBe('http');"
+        }
+      ],
+      "current_state": "fromIlluminate() adds adapter='http' to every authenticated credential, including ones that carry token_abilities. CallerDeriver checks adapter before token_abilities, so the configured clients.token_abilities map ('capabilities:cli' => 'cli') never applies on the real HTTP path. The Go CLI deliberately does not send X-Capabilities-Caller (packages/capabilities-cli/internal/api/client.go:84), so CLI requests always run as caller=http.",
+      "recommended_state": "Derive the caller from token abilities first; fall back to adapter=http only when no ability maps. Either stop the bridge injecting adapter when token_abilities is non-empty, or make CallerDeriver treat adapter 'http' as the lowest-precedence fact.",
+      "rationale": "D-022: the caller is derived from the credential class. Because of this bug, surfaces.cli.enabled=false and per-capability surfaces without 'cli' do not block the CLI (it passes the http surface gate at CapabilityRegistry.php:894). A cli-only capability is unreachable from the CLI. Approval, rate-limit and audit logic keyed on the caller also sees the wrong surface. The unit test pins the buggy intermediate state and never composes bridge + deriver.",
+      "implementation_hint": "In IlluminateHttpBridge::buildCredential, set adapter='http' only when `$tokenAbilities === [] && $oauthClientId === null`. Add a unit test that runs IlluminateHttpBridge::fromArray(['authenticated'=>true,'user'=>$u,'token_abilities'=>['capabilities:cli']]) through CapabilityController::resolveCaller() and expects caller 'cli'. Add one more where the CLI token hits a capability with surfaces ['http'] and expects forbidden."
+    },
+    {
+      "id": "L-004",
+      "title": "Invokes without an actor silently run as fabricated user id 1",
+      "category": "security",
+      "severity": "high",
+      "effort": "small",
+      "impact": [
+        "security"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/ResolveActor.php",
+          "line": 40,
+          "snippet": "// Default user principal for in-process / schema unit paths when omitted.\n return self::defaultUser();"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/ResolveActor.php",
+          "line": 45,
+          "snippet": "$user = new stdClass; $user->id = $id; $user->name = 'default-user';"
+        },
+        {
+          "file": "packages/laravel-capabilities/docs/user-guide.md",
+          "line": 107,
+          "snippet": "$registry->invoke('create-invoice', [...], ['caller' => 'http']);  // no actor"
+        }
+      ],
+      "current_state": "If the 'actor' key is absent and caller != job, ResolveActor returns a stdClass with id=1. CapabilityContext::user() returns it as the user, and it drives authorize(), rate-limit keys, idempotency identity and audit. The user guide's basic invoke example omits the actor, and the Capability facade invoke passes whatever options the host gives it.",
+      "recommended_state": "Fail closed: throw 'Actor principal is required' for every caller when no actor/context is given, as already done for job and explicit null. Keep a defaultUser only inside test fixtures (e.g. PipelineHelpers::options()).",
+      "rationale": "D-002 forbids implicit principals. Host code that calls the bus from its own controller or listener without an actor gets an identity it never authenticated, and it is usually the id of the first (admin) user. Any authorize() that checks `$ctx->user() !== null`, or compares ids, passes for that principal. Where authorize calls `$user->can()`, the result is an opaque internal error.",
+      "implementation_hint": "Replace lines 36-40 with `throw new RuntimeException('Actor principal is required (D-002).');`. Move defaultUser() into tests/Fixtures and update the helper options that relied on the implicit default. Fix the user-guide example to pass 'actor' => $request->user(). Unit test: invoke without actor for callers http, cli, mcp and agent returns unauthenticated, and run() is not called."
+    },
+    {
+      "id": "L-005",
+      "title": "Approved execution runs as a stdClass stub, not the requester",
+      "category": "authorization",
+      "severity": "high",
+      "effort": "small",
+      "impact": [
+        "reliability",
+        "security"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+          "line": 596,
+          "snippet": "} else { $actor = new stdClass; $actor->id = $actorId; $actor->tenant_id = $tenantId; }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+          "line": 146,
+          "snippet": "new OriginalActorAuthorizer($registry, static fn (string $type, string $id): ?object => self::authUserOrNull($app, $id))"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/OriginalActorAuthorizer.php",
+          "line": 42,
+          "snippet": "$actor = $this->actor(...);  // real user resolved for the pre-check, then discarded"
+        }
+      ],
+      "current_state": "On accept or resume, OriginalActorAuthorizer loads the real requester through the auth user provider to re-check authorize. executeApproval() then rebuilds a bare stdClass (id, tenant_id) and invokes the pipeline with it. authorize() and run() therefore see a non-User actor: `$actor->can(...)` (the user-guide example) throws, and domain code that reads user attributes breaks.",
+      "recommended_state": "Resolve the requester once through the same resolver OriginalActorAuthorizer uses, and pass that object as the actor to executeApproval. If the requester cannot be resolved, fail closed with a clear code.",
+      "rationale": "D-006 requires the stored invoke to run as the original requester. A stub that looks like a user but is not one turns every approved execution of a normal policy-based capability into an 'internal' failure after the approver has already decided.",
+      "implementation_hint": "Inject a `Closure(string $type, string $id): ?object` user resolver into CapabilityRegistry (or into the ApprovalManager executor closure in the provider), and use it in executeApproval instead of `new stdClass`. Unit test: a fake resolver returns an object with can(); the approved row executes and authorize() receives that same instance."
+    },
+    {
+      "id": "L-006",
+      "title": "Audit is silently off in production; strict mode and approval audit are no-ops",
+      "category": "observability",
+      "severity": "high",
+      "effort": "medium",
+      "impact": [
+        "security",
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokeAuditStage.php",
+          "line": 44,
+          "snippet": "if (! $this->auditEnabled || $this->auditWriter === null || ...) { return null; }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Boot/ContainerBindings.php",
+          "line": 283,
+          "snippet": "$registry->withAuditConfig(...)  // never withAuditWriter / withAuditOutbox"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Boot/ContainerBindings.php",
+          "line": 522,
+          "snippet": "public static function makeAuditLogger(array $config = []): AuditLogger { ... return new AuditLogger; }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Audit/AuditOutbox.php",
+          "line": 1,
+          "snippet": "final class AuditOutbox { private array $rows = []; ...  // in-memory only; capabilities_audit_outbox table never written"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+          "line": 128,
+          "snippet": "ContainerBindings::makeApprovalManager(...)->withExecutor(...)->withOriginalAuthorizer(...)  // no withAudit()"
+        }
+      ],
+      "current_state": "The defaults are audit.enabled=true and driver=database, and the package ships a capabilities_audit_outbox migration. But no production AuditWriter exists (only InMemory and Failing), the provider never injects a bound AuditWriter, and the outbox is a PHP array. Every audit record is dropped, audit.mode=strict / required=true cannot fail, and approval request/decision audit is dropped too. The only signal is a warning in IntegrationHealthChecker:109.",
+      "recommended_state": "Ship a first-party DatabaseAuditWriter (TableGateway on capabilities_audit_outbox) for driver=database. Have the provider inject any bound AuditWriter into both the registry and ApprovalManager. In strict or required mode with no writer, fail at boot (BootGuard) instead of passing silently.",
+      "rationale": "AGENTS.md locked decisions: audit is part of the capability and D-010 defines best_effort vs strict. A governance product whose audit trail is empty by default, with no error, is the worst failure mode: operators believe they have records they do not have.",
+      "implementation_hint": "Add Persistence/DatabaseAuditWriter implements AuditWriter (gateway insert into MigrationCatalog::TABLE_AUDIT_OUTBOX). In makeRegistry, choose the writer by audit.driver (database → DatabaseAuditWriter, log → Log channel writer). In the provider, `if ($app->bound(AuditWriter::class)) $registry->withAuditWriter($app->make(AuditWriter::class))`, and the same for ApprovalManager::withAudit. BootGuard: throw when mode=strict or required=true and the writer would be null. Unit tests with ArrayTableGateway."
+    },
+    {
+      "id": "L-007",
+      "title": "Bus events never reach Laravel's dispatcher and accumulate on the singleton",
+      "category": "queues_events",
+      "severity": "high",
+      "effort": "small",
+      "impact": [
+        "reliability",
+        "performance",
+        "maintainability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokeResultFinalizer.php",
+          "line": 161,
+          "snippet": "$this->observation->invokedEvents[] = $event;"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokeResultFinalizer.php",
+          "line": 184,
+          "snippet": "$this->observation->failedEvents[] = $event; $this->observation->logs[] = [...]"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokeObservation.php",
+          "line": 1,
+          "snippet": "public array $failedEvents = []; public array $invokedEvents = []; ... beginInvoke() never clears them"
+        }
+      ],
+      "current_state": "CapabilityInvoked, CapabilityFailed and CapabilityApproval* are only appended to arrays on InvokeObservation, which is owned by the singleton CapabilityRegistry. No Illuminate Dispatcher is called anywhere in src. beginInvoke() does not reset the arrays, so each invoke keeps its event (including output data) and log lines for the life of the process.",
+      "recommended_state": "Dispatch events through an injected Illuminate\\Contracts\\Events\\Dispatcher when events.enabled is true. Keep in-memory capture only as an opt-in test recorder, or cap and reset it per invoke.",
+      "rationale": "Spec §transactions item 5 (docs/spec.md:2454) says bus events are emitted for app listeners. In queue workers and Octane the arrays grow without bound (memory leak proportional to invokes x output size), and host listeners never fire.",
+      "implementation_hint": "Add an optional `?Dispatcher $events` to InvokeResultFinalizer, bound in makeRegistry from `$app->bound('events')`, and call `$events?->dispatch($event)`. Add `$this->observation->reset()` in beginInvoke() for the event/log arrays, or keep them only while a fake() recorder is active. Unit tests: a fake Dispatcher receives CapabilityInvoked once, and 1000 invokes leave the observation arrays bounded."
+    },
+    {
+      "id": "L-008",
+      "title": "Per-store DB connection config is ignored under a real Laravel container",
+      "category": "configuration",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": [
+        "reliability",
+        "scalability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+          "line": 373,
+          "snippet": "if (method_exists($app, 'bound') && $app->bound(ConnectionInterface::class)) { return $app->make(ConnectionInterface::class); }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+          "line": 384,
+          "snippet": "$connection = $app->make(ConnectionInterface::class);  // unconditional second attempt"
+        },
+        {
+          "file": "packages/laravel-capabilities/config/capabilities.php",
+          "line": 129,
+          "snippet": "'connection' => $env('CAPABILITIES_APPROVAL_CONNECTION', null),"
+        }
+      ],
+      "current_state": "boundConnectionOrNull() returns the container's ConnectionInterface before it looks at approval.connection or idempotency.connection. The Laravel framework aliases ConnectionInterface to 'db.connection', the default connection, so the named-connection branch at lines 392-410 is unreachable in real apps.",
+      "recommended_state": "Check the store-specific connection name first and resolve it through the 'db' manager. Use a bound ConnectionInterface only when no name is configured.",
+      "rationale": "Hosts that point approvals or idempotency at a dedicated connection (primary vs read replica, separate schema) silently write to the default connection. The config comment and README both promise the named connection works.",
+      "implementation_hint": "Reorder: `$name = $storeKey-specific ?? database.connection; if ($name !== null) return $app->make('db')->connection($name);` then fall back to the bound ConnectionInterface. Unit test with a fake container where ConnectionInterface is bound AND db->connection('ledger') returns a different fake: expect the 'ledger' connection for store=approval."
+    },
+    {
+      "id": "L-009",
+      "title": "Uncaught throwables leak messages and strand idempotency keys",
+      "category": "api",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "security",
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+          "line": 201,
+          "snippet": "} catch (Throwable $e) { ... return CapabilityResult::failure(code: 'internal', message: $e->getMessage(), ...); }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+          "line": 596,
+          "snippet": "if (! $this->allows($state->definition, $state->input, $state->context)) {  // authorize exceptions escape to the outer catch"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokeResultFinalizer.php",
+          "line": 40,
+          "snippet": "if ($state->idempotencyKey && ...) { $this->idempotencyGuard->storeResult(...) }  // only on finishFailure, not the outer catch"
+        }
+      ],
+      "current_state": "The outer catch in InvokePipeline::execute() returns $e->getMessage() on the wire and does not report the exception. That covers exceptions from authorize() callables, stores, the rate limiter, output validation and strict audit. A QueryException message includes SQL and bindings. The catch also skips finishFailure, so an idempotency row claimed in stageIdempotencyLookup stays 'processing' and every retry with that key gets 'busy' until the TTL (default 24h) expires.",
+      "recommended_state": "Route the outer catch through the same sanitising as runFailure(): report to ExceptionHandler and return a generic 'Internal error.' message. Then call finishFailure (or mark the idempotency row failed) so a claimed key is released.",
+      "rationale": "D-005 requires stored outcomes. A permanently busy key breaks CLI and agent retries after a transient failure. Leaking SQL text to HTTP, MCP and agent callers is an information-disclosure issue, and a model-facing surface will repeat it verbatim.",
+      "implementation_hint": "In the catch: `$this->reportThrowable($e); $failure = CapabilityResult::failure('internal','Internal error.', meta: [...]); return $this->results()->finishFailure($state, $failure);` (guard against re-throw). Unit tests: an authorize closure that throws RuntimeException('SQLSTATE secret') returns message 'Internal error.'; a second invoke with the same key replays the stored failure instead of returning busy."
+    },
+    {
+      "id": "L-010",
+      "title": "transactions.wrap_run=true does not wrap run() in a transaction",
+      "category": "database",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+          "line": 796,
+          "snippet": "// Domain owns its transaction by default; wrap_run is opt-in (D-010).\n if ($this->wrapRun) { $this->observation->lastRunWasWrapped = true; }"
+        },
+        {
+          "file": "packages/laravel-capabilities/config/capabilities.php",
+          "line": 106,
+          "snippet": "'transactions' => ['wrap_run' => false],"
+        }
+      ],
+      "current_state": "When wrap_run is true, the pipeline sets a flag that tests read (lastRunWasWrapped) but calls run() exactly as it does when the flag is off. No DB::transaction or ConnectionInterface::transaction is ever opened.",
+      "recommended_state": "When wrap_run is true, execute run() (and a synchronous audit write, per spec) inside `$connection->transaction(...)` on an injected connection. Otherwise remove the option from config and spec.",
+      "rationale": "Spec D-010 table (docs/spec.md:2477) promises 'Registry wraps run() (+ optional sync audit) in one DB::transaction'. An app that opts in for atomicity gets none and partial writes commit, while tests pass because they only assert the flag.",
+      "implementation_hint": "Inject `?ConnectionInterface $transactionConnection` into InvokePipeline via makeRegistry. In stageRun: `$state->output = $this->wrapRun && $conn ? $conn->transaction(fn () => $this->executeRun(...)) : $this->executeRun(...)`. Unit test with a mock ConnectionInterface that expects transaction() to be called once, and zero times when wrap_run is false."
+    },
+    {
+      "id": "L-011",
+      "title": "Idempotency config (ttl_hours, header, enabled, warn) never reaches the guard",
+      "category": "configuration",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": [
+        "reliability",
+        "dx"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+          "line": 164,
+          "snippet": "$idempotencyGuard = new IdempotencyGuard($idempotencyStore);  // IdempotencyConfig::defaults()"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+          "line": 494,
+          "snippet": "$this->pipeline->idempotencyGuard = new IdempotencyGuard($store);"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Adapters/Http/CapabilityController.php",
+          "line": 118,
+          "snippet": "$headerName = strtolower((string) ($this->httpConfig['idempotency_header'] ?? 'idempotency-key'));"
+        },
+        {
+          "file": "packages/laravel-capabilities/config/capabilities.php",
+          "line": 155,
+          "snippet": "'idempotency' => ['enabled' => true, 'driver' => ..., 'ttl_hours' => 24, 'header' => 'Idempotency-Key', 'warn_missing_key' => ...]"
+        }
+      ],
+      "current_state": "IdempotencyGuard is always built with IdempotencyConfig::defaults() and SystemClock. idempotency.enabled, ttl_hours, header and warn_missing_key from the published config are never applied. The HTTP controller reads an undocumented surfaces.http.idempotency_header instead of idempotency.header.",
+      "recommended_state": "Build the guard from IdempotencyConfig::fromArray($config['idempotency']) and the registry clock in makeRegistry/withIdempotencyStore. Read the header name from the same config in CapabilityController.",
+      "rationale": "Operators who change the TTL or disable missing-key warnings see no effect. The header setting exists in two places and only the undocumented one works.",
+      "implementation_hint": "Add `withIdempotencyConfig(array)` on CapabilityRegistry that rebuilds the guard with the store, clock and IdempotencyConfig. Call it from ContainerBindings::makeRegistry. Pass idempotency.header into CapabilityController's constructor from the provider. Unit tests: ttl_hours=1 gives expires_at of now+1h, and header 'X-Idem' is honoured."
+    },
+    {
+      "id": "L-012",
+      "title": "Approval store SQL fails on MySQL/Postgres (JSON scope, '' lease compare)",
+      "category": "database",
+      "severity": "high",
+      "effort": "small",
+      "impact": [
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Persistence/DatabaseApprovalStore.php",
+          "line": 33,
+          "snippet": "'scope' => $record['scope'] ?? ($record['tenant_id'] ?? null),"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Boot/ContainerBindings.php",
+          "line": 55,
+          "snippet": "'scope' => 'scope_json',"
+        },
+        {
+          "file": "packages/laravel-capabilities/database/migrations/2026_07_27_000001_create_capabilities_approvals_table.php",
+          "line": 25,
+          "snippet": "$blueprint->json('scope_json')->nullable();"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Persistence/QueryTableGateway.php",
+          "line": 178,
+          "snippet": "->orWhere($physicalLease, '=', '')  // on a TIMESTAMP column"
+        }
+      ],
+      "current_state": "ApprovalManager::request stores the tenant id string as 'scope'. The gateway maps it to the JSON column scope_json and only JSON-encodes arrays or objects, so a tenant such as 'acme' or a UUID is inserted as invalid JSON. claimLease also compares the timestamp column execution_lease_until with ''. PostgreSQL rejects both (invalid json / invalid timestamp input), and MySQL rejects the JSON insert and in strict mode can reject the '' datetime comparison in UPDATE. Unit tests run on SQLite, which accepts both.",
+      "recommended_state": "Always JSON-encode values for *_json columns (or store scope as {'tenant_id': ...}). Drop the '' branch from the lease predicate (the column is a nullable timestamp). Write timestamps in a portable 'Y-m-d H:i:s' UTC form instead of DATE_ATOM, which MariaDB rejects.",
+      "rationale": "approval.store=database is the package default. In any multi-tenant app with non-numeric tenant ids, the first approval request raises a QueryException, and on PostgreSQL every accept fails before it reaches the domain.",
+      "implementation_hint": "QueryTableGateway::encodeValue: `if ($this->isJsonColumn($k)) return json_encode($value, ...)` for scalars too, with decodeValue symmetric. updateWhereLeaseFree: keep only whereNull OR <= now. Unit tests (still DB-free): assert the encoded row for scope 'acme' is the JSON string '\"acme\"', and assert the builder SQL for claimLease via `$query->toSql()` on a grammar-only connection contains no `= ?` with '' binding."
+    },
+    {
+      "id": "L-013",
+      "title": "Atomic approval mode: reject ignores the execution lease; racing accept recurses",
+      "category": "queues_events",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+          "line": 455,
+          "snippet": "$locked = $this->store->claimLease($id, STATUS_PENDING, ...);  // Shape B keeps status pending while run() executes"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+          "line": 470,
+          "snippet": "if ($locked === null) { return $this->accept($id, $approver, $options); }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+          "line": 517,
+          "snippet": "$updated = $this->store->compareAndUpdate($id, STATUS_PENDING, ['status' => STATUS_REJECTED, ...]);  // no lease predicate"
+        }
+      ],
+      "current_state": "With approval.execution=atomic, the row stays 'pending' with an execution lease while run() executes. A concurrent accept fails claimLease and calls accept() again, which sees pending again and loops until the lease clears (up to lease_seconds=120): a hot DB loop with unbounded recursion. A concurrent reject's compareAndUpdate ignores the lease, so it can flip an executing row to 'rejected' after run() has already side-effected. The executor's later pending→executed update then fails.",
+      "recommended_state": "Before retrying, treat a pending row with a live lease as in progress (return conflict/in_progress) and do not recurse. Make reject lease-aware (use updateWhereLeaseFree), or refuse to reject while a lease is held.",
+      "rationale": "D-006 requires single execution plus a consistent terminal state. Atomic mode is a documented config value (approval.execution).",
+      "implementation_hint": "In accept(), check `$row['execution_lease_until'] > now` before claimLease and return failure('conflict', ..., ['in_progress'=>true]). Replace the recursive calls with a single re-read. For reject, use `$this->store->claimLease($id, STATUS_PENDING, $now, [...rejected])`. Unit tests with InMemoryApprovalStore + FixedClock: a held lease gives conflict for both accept and reject, and the executor is not called."
+    },
+    {
+      "id": "L-014",
+      "title": "Approval crash-recovery sweep is never scheduled; resume.* config is inert",
+      "category": "queues_events",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ResumeApprovedApprovals.php",
+          "line": 11,
+          "snippet": "Invoked by a host scheduler ... Core does **not** register a `capabilities:approvals-resume` Artisan command"
+        },
+        {
+          "file": "packages/laravel-capabilities/config/capabilities.php",
+          "line": 133,
+          "snippet": "'resume' => ['enabled' => true, 'every_seconds' => 60, 'grace_seconds' => 30, ...]"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Adapters/Artisan/ArtisanCommandTable.php",
+          "line": 48,
+          "snippet": "'signature' => 'capability:run {name} ...'  // only run + integration-health commands"
+        }
+      ],
+      "current_state": "The default execution=deferred flips a row to 'approved' and then runs it inline. If the process dies in between, only ResumeApprovedApprovals can finish it. Nothing schedules it or exposes a command, and README/user-guide never tell hosts to wire it. resume.enabled=true and every_seconds read as if automatic.",
+      "recommended_state": "When resume.enabled is true, register an Artisan command (capabilities:approvals-resume) and schedule it every every_seconds via callAfterResolving(Schedule::class). Alternatively, fail or warn loudly in integration-health when the command is not scheduled.",
+      "rationale": "The spec (docs/spec.md:1966) makes Shape A plus a scheduled resume job the default package path. Without the scheduler, approved-but-not-executed rows sit in limbo, which is exactly what D-006/P2-004 exists to prevent.",
+      "implementation_hint": "Add Adapters/Artisan/ResumeApprovalsCommand calling ResumeApprovedApprovals::handle(), and add it to ArtisanCommandTable. In boot(): `$this->callAfterResolving(Schedule::class, fn ($s) => $s->command('capabilities:approvals-resume')->everyMinute()->withoutOverlapping())` when resume.enabled. Unit-test the pure registration table and the scheduler callback with a fake Schedule."
+    },
+    {
+      "id": "L-015",
+      "title": "Capability discovery rescans and tokenizes app/Capabilities on every boot",
+      "category": "caching",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "performance",
+        "scalability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+          "line": 429,
+          "snippet": "$this->bootCapabilityDiscovery();"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Discovery/AttributeDiscoverer.php",
+          "line": 127,
+          "snippet": "new RegexIterator(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path)), ...)"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Discovery/AttributeDiscoverer.php",
+          "line": 158,
+          "snippet": "token_get_all($contents)  // per file, per boot"
+        }
+      ],
+      "current_state": "Every application boot (every FPM request, every queue job boot) resolves the CapabilityRegistry singleton with its stores, walks the capabilities directory, reads and tokenizes every PHP file, and reflects each attribute. No manifest or cache exists, unlike Laravel's event/package discovery.",
+      "recommended_state": "Add a capabilities:cache / capabilities:clear command that writes a class map (bootstrap/cache/capabilities.php). When the manifest exists, DefinitionCatalog::discover(classMap: ...) should use it, falling back to scanning in local environments. Hook it into `optimize` via $this->optimizes() on Laravel 11.27+.",
+      "rationale": "The cost grows with the number of capabilities and is paid on requests that never touch the bus. The package already supports classMap discovery (DefinitionCatalog::discover), so the fix is a small wiring change.",
+      "implementation_hint": "CapabilityDiscoveryBoot::run: `$map = DiscoveryManifest::load($path) ?? null; $registry->discover(paths: $paths, classMap: $map ?? [])`. The new command uses AttributeDiscoverer::fromPaths to write the list of class names. Unit tests: with a manifest present, the filesystem iterator is not invoked (inject a fake discoverer); the cache command output round-trips."
+    },
+    {
+      "id": "L-016",
+      "title": "RunCapabilityJob is not a queueable job; dispatch() only builds an object",
+      "category": "queues_events",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "reliability",
+        "dx"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Adapters/RunCapabilityJob.php",
+          "line": 17,
+          "snippet": "final class RunCapabilityJob  // no ShouldQueue, Dispatchable, Queueable, SerializesModels, failed()"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Adapters/RunCapabilityJob.php",
+          "line": 83,
+          "snippet": "public static function dispatch(array $payload): self { self::assertDispatchable($payload); return self::fromPayload($payload); }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Adapters/RunCapabilityJob.php",
+          "line": 205,
+          "snippet": "$resolver = $options['user_resolver'] ?? null; if (! is_callable($resolver)) { throw MissingJobActorException::unresolvableUser(...); }"
+        }
+      ],
+      "current_state": "The default-on job surface is a plain object. Its static dispatch() shadows Laravel's convention but enqueues nothing. If a host pushes it to the Bus, handle() gets $options=[], so every user actingAs throws unresolvableUser. There is no failed() hook and no retry or backoff policy.",
+      "recommended_state": "Implement ShouldQueue with Dispatchable/Queueable/InteractsWithQueue. Resolve users through an injected resolver (the same default as OriginalActorAuthorizer, via the auth provider) instead of $options. Rename the pure helpers (make/runNow) so dispatch() really queues. Add failed() that records the job failure tags.",
+      "rationale": "D-002 and the surfaces table present 'job' as a surface. Hosts will reasonably expect `RunCapabilityJob::dispatch([...])` to queue, and it silently does nothing.",
+      "implementation_hint": "Add `implements ShouldQueue` plus the traits. Make handle(CapabilityRegistry $registry, ?UserResolver $users = null) use container method injection. Move the current pure dispatch() to `static make()`. Unit tests with Bus::fake()-equivalent fakes (Illuminate\\Support\\Testing\\Fakes\\BusFake needs no DB): dispatch pushes one job, handle resolves the user via the fake resolver, and failed() records tags."
+    },
+    {
+      "id": "L-017",
+      "title": "Agent/MCP handle() invokes the full catalog when no profile is active",
+      "category": "authorization",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": [
+        "security"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Adapters/Ai/AiToolAdapterV1.php",
+          "line": 183,
+          "snippet": "$profile = $options['profile'] ?? $this->activeProfile; if ($profile !== null) { ... } return $this->registry->invoke($name, $clean, $invokeOptions);"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Adapters/Mcp/McpToolAdapterV1.php",
+          "line": 217,
+          "snippet": "if ($profile !== null) { return $this->registry->runCapabilityInProfile(...); } return $this->registry->invoke($name, $clean, $invokeOptions);"
+        }
+      ],
+      "current_state": "If handle() is called before register(), or register failed and left activeProfile null, with no options['profile'], the adapters invoke any capability whose surfaces include agent/mcp by name. Tool-list generation refuses a full catalog (ProfileRequiredException), but execution does not apply the same rule.",
+      "recommended_state": "When surfaces.<agent|mcp>.require_profile is true (the default), return failure('not_runnable', normalized_code 'profile_required') if no profile resolves, matching the multi-profile guard McpToolAdapterV1 already has.",
+      "rationale": "D-008: least privilege for model tool calls, and progressive disclosure is not an escape hatch. A model can name a capability that is not in its tool list, and the fail-open fallback executes it (subject only to authorize).",
+      "implementation_hint": "Inject requireProfile into both adapters from config (the provider already builds McpToolAdapterV1). Replace the final `return $this->registry->invoke(...)` with the failure when requireProfile. Unit tests: an unregistered adapter handle('x') gives profile_required and run() is not called; require_profile=false keeps the current behaviour."
+    },
+    {
+      "id": "L-018",
+      "title": "Unauthenticated auth/token and device routes ship without throttling",
+      "category": "security",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": [
+        "security"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Http/RouteTable.php",
+          "line": 105,
+          "snippet": "? self::withoutAuthMiddleware($middleware) : $middleware;  // auth_token/auth_device/oauth_callback"
+        },
+        {
+          "file": "packages/laravel-capabilities/config/capabilities.php",
+          "line": 82,
+          "snippet": "'middleware' => ['api', 'auth:sanctum'],"
+        }
+      ],
+      "current_state": "The package strips auth:sanctum from POST /capabilities/auth/token, /auth/device and GET /auth/callback, which is correct because they issue credentials. It adds no rate limit. On Laravel 11+ the default 'api' group has no throttle unless the host opts in, so these credential-issuing endpoints accept unlimited attempts.",
+      "recommended_state": "Attach a configurable throttle (e.g. surfaces.http.auth_middleware defaulting to ['api','throttle:6,1']) to the unauthenticated auth routes.",
+      "rationale": "Brute-forcing password grants and device codes against the host AuthTokenIssuer is the standard attack on exactly these endpoints. The package owns the route table, so it should own a safe default.",
+      "implementation_hint": "In RouteTable::definitions, for the three auth keys use `$httpConfig['auth_middleware'] ?? [...withoutAuthMiddleware($middleware), 'throttle:capabilities-auth']`, and register a named RateLimiter in the provider. Unit test on RouteTable::definitions shows the auth routes include a throttle entry and list/invoke keep auth:sanctum."
+    },
+    {
+      "id": "L-019",
+      "title": "HTTP describe exposes schemas of capabilities hidden from caller's surface",
+      "category": "api",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": [
+        "security"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Schema/CatalogPresenter.php",
+          "line": 89,
+          "snippet": "public function describe(string $nameOrAlias, mixed $actor = null): array { ... isDiscoverable($actor) ... return $this->fullEntry($definition); }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Adapters/Http/CapabilityController.php",
+          "line": 79,
+          "snippet": "$detail = $this->registry->catalog()->describe($name, $request->user);"
+        }
+      ],
+      "current_state": "list() filters by caller surface and canDiscover, but describe() only checks canDiscover. Any authenticated HTTP user can therefore GET the full input/output JSON Schema of mcp-only or agent-only capabilities by name.",
+      "recommended_state": "Pass the caller into describe() and return not_found when the capability is not in effectiveSurfaces for that caller, matching list().",
+      "rationale": "Discovery should be consistent (D-008/D-003): list and describe must not disagree about what a caller can see.",
+      "implementation_hint": "Change describe(string $name, mixed $actor = null, ?string $caller = null) to apply the same surface filter as list(). Pass $caller['caller'] from CapabilityController::describe. Unit test: an mcp-only capability described via caller http gives not_found."
+    },
+    {
+      "id": "L-020",
+      "title": "Singleton CapabilityController retains the last actor/options across requests",
+      "category": "architecture",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": [
+        "reliability",
+        "maintainability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Adapters/Http/CapabilityController.php",
+          "line": 27,
+          "snippet": "private ?array $lastInvokeOptions = null;  // test hook on a container singleton"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Adapters/Http/CapabilityController.php",
+          "line": 128,
+          "snippet": "$this->lastInvokeOptions = $options;  // includes 'actor' => $request->user"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php",
+          "line": 188,
+          "snippet": "$this->app->singleton(CapabilityController::class, ...)"
+        }
+      ],
+      "current_state": "The controller is a container singleton and stores the last invoke options, including the authenticated user object, purely for tests. Under Octane or other long-lived workers, the previous request's user stays referenced by the next request's controller.",
+      "recommended_state": "Remove the mutable test hook from production code: assert invoke options through a fake CapabilityBus in unit tests, or bind the controller as scoped instead of singleton.",
+      "rationale": "'Singleton service classes holding request state' is a Laravel anti-pattern. It is a cross-request state leak under Octane and keeps request-scoped objects alive.",
+      "implementation_hint": "Delete lastInvokeOptions/lastInvokeOptions(). Tests that read it should use a recording CapabilityBus fake. Use `$this->app->scoped(...)` for the three HTTP controllers."
+    }
+  ],
+  "notes": "Scope: packages/laravel-capabilities only (core bus). Library package, not an app: app-level categories (routes/web, models, FormRequests, policies, factories, seeders, .env.example) do not apply and were skipped. Every finding was verified against current code; prior-audit items L-002/L-003/L-005/L-007/L-008/L-009/L-012 are fixed (AuthTokenIssuer seam, deny-by-default authorizer, random approval ids, atomic updateWhereLeaseFree, cache rate limiter, database idempotency default, auth routes stripped of auth middleware) and are not re-raised. Deliberate tradeoffs respected: unit-only tests (implementation hints use fakes, ArrayTableGateway, and query-builder toSql() inspection, never a real DB). L-012 is a SQL-dialect defect that the SQLite-only unit suite structurally cannot catch; the fix is still unit-testable via encoded-row assertions. D-010 best_effort audit is intended, but L-006 is about audit being off entirely with no writer, not about best_effort semantics. Relationships: L-001 and L-002 together mean no capability can currently request approval from any real surface, so L-005/L-012/L-013/L-014 are latent until L-001/L-002 land; fix L-001/L-002 first, then the approval persistence/execution items. Laravel framework note for L-008: Application::registerCoreContainerAliases aliases ConnectionInterface to 'db.connection' (not present in this monorepo's vendor since only illuminate/* components are installed)."
+}

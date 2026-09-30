@@ -16,6 +16,10 @@ use RuntimeException;
  * A non-empty signed approver_hint binds the buttons to one product principal id:
  * a different linked user clicking a forwarded/leaked callback is forbidden.
  * An empty hint leaves the decision to the approval policy alone.
+ *
+ * A decoded callback_data token carries no approver_hint (64-byte limit): if it does not verify
+ * unbound, it is re-verified with the clicking user's principal id as the hint, so a token bound
+ * to someone else reads as invalid.
  */
 final class CallbackHandler
 {
@@ -24,6 +28,23 @@ final class CallbackHandler
         private readonly IdentityLinker $identity,
         private readonly ?ApprovalGateway $approvals = null,
     ) {}
+
+    /**
+     * Decode a tapped button's `callback_data` token and route it (M-101). A token that does
+     * not parse is `invalid` — the agent never sees it.
+     *
+     * @param  array<string, mixed>  $telegramUser  from callback_query.from
+     * @return array{status: string, result?: CapabilityResult|null, message: string}
+     */
+    public function handleCallbackData(string $callbackData, array $telegramUser): array
+    {
+        $payload = $this->signer->decode($callbackData);
+        if ($payload === null) {
+            return ['status' => 'invalid', 'message' => 'malformed_callback_data'];
+        }
+
+        return $this->handle($payload, $telegramUser);
+    }
 
     /**
      * @param  array<string, mixed>  $callbackPayload  decoded callback_data fields
@@ -38,8 +59,15 @@ final class CallbackHandler
 
         $this->signer->assertSafePayload($callbackPayload);
 
+        $invalid = ['status' => 'invalid', 'message' => 'invalid_signature_or_expired'];
+
+        // Hint-less compact token that does not verify unbound may be bound to the clicking user.
+        $boundToClicker = false;
         if (! $this->signer->verify($callbackPayload)) {
-            return ['status' => 'invalid', 'message' => 'invalid_signature_or_expired'];
+            if (array_key_exists('approver_hint', $callbackPayload)) {
+                return $invalid;
+            }
+            $boundToClicker = true;
         }
 
         $action = strtolower((string) $callbackPayload['action']);
@@ -68,6 +96,12 @@ final class CallbackHandler
             return ['status' => 'forbidden', 'message' => 'unlinked_approver'];
         }
 
+        if ($boundToClicker) {
+            if (! $this->signer->verify($callbackPayload + ['approver_hint' => (string) $this->principalId($user)])) {
+                return $invalid;
+            }
+        }
+
         $approverHint = (string) ($callbackPayload['approver_hint'] ?? '');
         if ($approverHint !== '' && $approverHint !== $this->principalId($user)) {
             return ['status' => 'forbidden', 'message' => 'approver_mismatch'];
@@ -94,6 +128,12 @@ final class CallbackHandler
             ? $this->approvals->accept($approvalId, $user, $options)
             : $this->approvals->reject($approvalId, $user, null, $options);
 
+        if (! $this->decisionApplied($action, $result)) {
+            $code = $result->errorCode() ?? 'failed';
+
+            return ['status' => $this->failureStatus($code, $approvalId), 'result' => $result, 'message' => $code];
+        }
+
         return [
             'status' => 'ok',
             'result' => $result,
@@ -102,6 +142,29 @@ final class CallbackHandler
             'callback_had_input' => array_key_exists('input', $callbackPayload)
                 || array_key_exists('input_json', $callbackPayload),
         ];
+    }
+
+    /**
+     * Core reports a completed reject as the `rejected` failure; anything else not ok means the
+     * tap did not do what its button says (M-202).
+     */
+    private function decisionApplied(string $action, CapabilityResult $result): bool
+    {
+        return $result->isOk() || ($action === 'reject' && $result->errorCode() === 'rejected');
+    }
+
+    /**
+     * `forbidden` before the decision (approval policy) leaves the row pending; `forbidden` after
+     * it (original actor no longer authorized at execution) is a failed run, not the tapper's fault.
+     */
+    private function failureStatus(string $code, string $approvalId): string
+    {
+        return match ($code) {
+            'forbidden' => ($this->approvals?->find($approvalId)['status'] ?? null) === 'pending' ? 'forbidden' : 'failed',
+            'conflict', 'expired' => 'already_handled',
+            'not_found' => 'not_found',
+            default => 'failed',
+        };
     }
 
     /**

@@ -1,0 +1,93 @@
+{
+  "auditor": "control-plane-auditor",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-audit2/packages/capabilities-cli",
+  "stack_summary": {
+    "go_module": "github.com/rawphp/capabilities-cli",
+    "go": "1.24",
+    "role": "product CLI, HTTP client only (D-009, D-016)",
+    "server_contract": "rawphp/laravel-capabilities RouteTable / AuthController / AuthTokenIssuer / HttpResponse / ErrorCodeMap",
+    "testing": "go test (all packages green; go vet clean)"
+  },
+  "scanned_files_count": 36,
+  "findings": [
+    {
+      "id": "C-101",
+      "title": "Stop following HTTP redirects; a 301'd invoke runs describe and exits 0",
+      "category": "wire_contract",
+      "severity": "high",
+      "effort": "small",
+      "impact": ["reliability", "security"],
+      "locations": [
+        { "file": "packages/capabilities-cli/internal/api/client.go", "line": 49, "snippet": "HTTP:      &http.Client{Timeout: 30 * time.Second}," },
+        { "file": "packages/capabilities-cli/internal/api/client.go", "line": 64, "snippet": "return &http.Client{Timeout: timeout}" },
+        { "file": "packages/capabilities-cli/internal/api/client.go", "line": 262, "snippet": "if res.Err == nil && !res.Envelope.OK {" },
+        { "file": "packages/capabilities-cli/internal/auth/store.go", "line": 135, "snippet": "if baseURL == \"\" || !strings.HasPrefix(baseURL, \"http\") {" },
+        { "file": "packages/capabilities-cli/internal/auth/session.go", "line": 43, "snippet": "res, err := client.ListCapabilities(ctx)" },
+        { "file": "packages/laravel-capabilities/src/Http/RouteTable.php", "line": 107, "snippet": "[self::ROUTE_DESCRIBE, 'GET', $prefix.'/{name}', ...]" }
+      ],
+      "current_state": "The API client uses Go's default redirect policy. On a 301/302/303, Go replays a POST as a GET with no body and keeps the Bearer header on the same host. So with `--base-url=http://host` against an HTTPS-only host (nginx/Forge/Cloudflare 301), `run` / domain-verb POST /capabilities/{name} becomes GET /capabilities/{name}. That is the describe route, which returns `{\"ok\":true,...}`. InvokeCapability's fail-closed check passes, and the CLI prints the describe payload and exits 0 without running the capability. `auth login --token` accepts and stores that http:// URL because its verification GET follows the redirect. The token is also sent in cleartext on every first hop.",
+      "recommended_state": "The capability API client never follows redirects. Any 3xx becomes a structured error (exit 1, or a validation exit for login) that names the Location and tells the user to use that URL as --base-url. Login therefore refuses a redirecting base URL before storing it.",
+      "rationale": "This breaks the CLI's core promise: exit 0 plus an ok envelope on stdout means the capability ran (docs/agents.md: agents branch on exit code). Here an agent or script is told a mutating write succeeded when the server only returned catalog metadata. The capability API has no legitimate redirects: every route in RouteTable is terminal. Following them adds no value and turns a method downgrade into a silent false success. Verified with a probe using the same http.Client config: the POST arrived as `GET /capabilities/billing.charge` with the Bearer token and returned 200 with the describe body.",
+      "implementation_hint": "In api.NewClient and in the httpClient() fallback, set `CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }`. In do(), map `300 <= status < 400` to a StructuredError (code internal) with the message `base URL redirected to <Location>; re-run auth login with --base-url=<scheme://host[/path]>`. Add one api test (a 301 on POST invoke gives an error, not ok) and one auth test (LoginWithToken against a 301 stores nothing). Tests that inject env.NewClient get the same policy if they build clients through api.NewClient."
+    },
+    {
+      "id": "C-102",
+      "title": "Validate the profile name before starting device-code / OAuth login",
+      "category": "auth_flow",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": ["reliability", "dx"],
+      "locations": [
+        { "file": "packages/capabilities-cli/internal/auth/session.go", "line": 34, "snippet": "if _, err := profileName(profile); err != nil {  // token path only" },
+        { "file": "packages/capabilities-cli/internal/auth/session.go", "line": 97, "snippet": "func LoginDeviceCode(ctx context.Context, store *Store, client *api.Client, profile, baseURL string, flow DeviceFlow) (*LoginResult, error) {" },
+        { "file": "packages/capabilities-cli/internal/auth/session.go", "line": 158, "snippet": "if err := store.SetBaseURL(profile, normalized); err != nil {" },
+        { "file": "packages/capabilities-cli/internal/auth/session.go", "line": 209, "snippet": "func LoginBrowserOAuth(ctx context.Context, store *Store, client *api.Client, profile, baseURL, code string) (*LoginResult, error) {" },
+        { "file": "packages/capabilities-cli/internal/auth/store.go", "line": 63, "snippet": "return \"\", fmt.Errorf(\"%w %q: use letters, digits, '-' or '_' (e.g. %q)\", ErrInvalidProfile, p, safe)" }
+      ],
+      "current_state": "The C-005 fix added an upfront profileName check to LoginWithToken only. LoginDeviceCode and LoginBrowserOAuth reach the store for the first time after the host has issued a token. With `--profile='my prod'`, the user completes the whole browser approval (up to minutes of polling), and then SetBaseURL fails with ErrInvalidProfile. The issued token is discarded but stays valid on the server.",
+      "recommended_state": "All three login paths reject an invalid profile name before any network call, just as the token path does.",
+      "rationale": "This is a cheap fail-fast that the token path already has. Without it, the interactive device flow wastes the human approval step and leaves an orphaned live credential server-side. There is no revoke route to clean it up.",
+      "implementation_hint": "Move the `profileName(profile)` guard into a shared prelude (or call it at the top of LoginDeviceCode and LoginBrowserOAuth). Add one device_test case: an invalid profile makes zero HTTP calls."
+    },
+    {
+      "id": "C-103",
+      "title": "State the capabilities:cli ability in the AuthTokenIssuer and CLI login contract",
+      "category": "wire_contract",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": ["reliability", "dx"],
+      "locations": [
+        { "file": "packages/laravel-capabilities/src/Contracts/AuthTokenIssuer.php", "line": 30, "snippet": "* 4. Once approved, return the token shape (`access_token`, `token_type`, `expires_in`)." },
+        { "file": "docs/spec.md", "line": 3958, "snippet": "- Auth issuance for CLI always attaches `capabilities:cli` (or registered OAuth client)" },
+        { "file": "packages/laravel-capabilities/config/capabilities.php", "line": 213, "snippet": "'capabilities:cli' => 'cli'," },
+        { "file": "packages/laravel-capabilities/src/Http/IlluminateHttpBridge.php", "line": 343, "snippet": "if ($lower === 'capabilities:cli' || str_contains($lower, 'cli')) {" },
+        { "file": "packages/capabilities-cli/docs/authentication.md", "line": 47, "snippet": "| `--base-url` + `--token` | Verify a PAT / API token with one `GET /capabilities`, then store it |" }
+      ],
+      "current_state": "The spec says CLI auth issuance always attaches `capabilities:cli`, and the server derives caller=cli only from that ability. Otherwise the caller is `http`. Core delegates issuance to the host's AuthTokenIssuer. The device-code contract docblock rewritten for C-001 describes the token shape but never mentions the ability, and the CLI's --token docs say nothing about how to mint the PAT. A host that follows the docblock issues tokens that make the product CLI an `http` caller. Capabilities exposed on `cli` but not `http` then disappear from `catalog` and return not_found on run, with no error explaining why.",
+      "recommended_state": "The AuthTokenIssuer docblock (device and token grants) and the CLI's authentication.md both state that tokens meant for the product CLI must carry the ability mapped to `cli` in `clients.token_abilities` (default `capabilities:cli`). They give the Sanctum one-liner.",
+      "rationale": "The spec rule lives in core's caller derivation, but the only contract a host implements (AuthTokenIssuer) leaves it out. The failure is silent (a filtered catalog) and looks like a missing capability rather than a credential problem. The contract docblock was just rewritten for C-001, so this is the moment to close the gap.",
+      "implementation_hint": "AuthTokenIssuer.php step 4: 'Mint the token with the ability mapped to caller `cli` (default `capabilities:cli`, e.g. `$user->createToken('cli', ['capabilities:cli'])`), or the CLI is treated as an `http` caller.' Mirror this in capabilities-cli/docs/authentication.md under Login modes (--token row) and in docs/troubleshooting.md."
+    },
+    {
+      "id": "C-104",
+      "title": "Drop or fix the post-login 'prefetch'; it caches nothing",
+      "category": "wire_contract",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": ["maintainability", "dx"],
+      "locations": [
+        { "file": "packages/capabilities-cli/cmd/capabilities/cmd_auth.go", "line": 64, "snippet": "// Prefetch schemas into cache (best-effort)." },
+        { "file": "packages/capabilities-cli/cmd/capabilities/cmd_auth.go", "line": 71, "snippet": "_, _ = svc.Refresh(context.Background())" },
+        { "file": "packages/capabilities-cli/internal/catalog/service.go", "line": 98, "snippet": "func (s *Service) Refresh(ctx context.Context) ([]CapabilitySummary, error) {" },
+        { "file": "packages/capabilities-cli/docs/authentication.md", "line": 51, "snippet": "Successful login best-effort prefetches the catalog into that profile’s schema cache." },
+        { "file": "packages/capabilities-cli/docs/user-guide.md", "line": 202, "snippet": "Successful login best-effort prefetches" }
+      ],
+      "current_state": "After every successful login, cmd_auth builds a second client from the raw (unnormalised) --base-url and calls Service.Refresh. Refresh wipes the principal's cache dir and does a GET /capabilities, then discards the result: List never Puts entries, and the compact list has no schemas. For --token login this repeats the GET that LoginWithToken just made. Both docs say the catalog is prefetched into the schema cache, but it is not.",
+      "recommended_state": "Pick one: delete the block and the doc sentence, since the cache is keyed by base URL plus token hash and a new credential already gets an empty cache dir; or make it true with ListWithSchemas and a Put per row. Deleting is the smaller change.",
+      "rationale": "Dead network work plus a false documentation claim. Agents reading the docs may skip describe or expect offline flag help right after login. Iteration 1 recorded this under C-004 ('the auth-login prefetch only clears the cache'), but the fix did not touch it.",
+      "implementation_hint": "Delete cmd_auth.go lines 64-72 (or replace them with a plain `catalog.PrincipalCache(...).Invalidate(\"\")` if clearing on same-token re-login matters). Remove the prefetch sentence from docs/authentication.md:51 and docs/user-guide.md:202."
+    }
+  ],
+  "notes": "Iteration 2, scope packages/capabilities-cli plus its wire contract with core as it is now. Iteration-1 fixes verified as correct and complete (not re-raised): C-001: device-code start + poll against /auth/token with the RFC 8628 grant. The 10 s floor matches core's DEFAULT_AUTH_THROTTLE 'throttle:6,1,capabilities-auth' (device POST + 5 polls fit one 60 s window). slow_down/429 lengthen the interval and a longer Retry-After wins. The core contract (AuthTokenIssuer::DEVICE_POLL_STATUSES, fixture, DeviceCodePollContractTest) and the CLI agree on data.status/data.error. C-002: ParseErrorEnvelope honours error.cli_exit 1..6, and 410 maps to gone. C-003: loadSynthIndex and writeCapabilityHelp take the --base-url override. C-004: a local schema rejection triggers a live re-describe, and a server validation_failed invalidates the cached entry, so stale schemas self-heal both ways. C-005: --token login verifies with GET /capabilities before any write, with a no-clobber test. C-006: approvals/catalog/domain use writeErrorEnvelope. C-007: the core pipeline now sends error.retry_after and a Retry-After header, the CLI prefers the header, and it writes retry_after to stdout for run. C-008: self-update is reserved on both sides and pinned by tests on each side (the lists are still hand-copied, with cross-reference comments; acceptable). C-009: documented in the core config and CLI docs. go vet clean, go test ./... green. C-101 was confirmed with a scratch probe (not in the tree) that used the same http.Client config: a 301 on a POST was replayed as a GET carrying the Bearer header. Checked and not raised: the device flow keeps Authorization off auth routes (empty token), Laravel's throttle 429 (non-envelope JSON plus the Retry-After header) maps to rate_limited, approval_required 202 maps to exit 4, catalog field types match CatalogPresenter (schema_version is a string, nullable successor/sunset_at), flagschema handles ['type','null'] unions, and the api_version preflight tolerates a gated or missing health response. Dropped as polish: CLI-local envelopes (writeNotFound, localFailEnvelope, withRetryAfter fallback) omit cli_exit, alias names never hit the schema cache (Put stores under the canonical name), and the per-invoke health preflight plus the per-domain-command live list are extra round trips (deliberate freshness). Core-side, outside CLI scope, for the laravel auditor if not already covered: HttpAuthGate::PROTECTED still lists auth_token/auth_device, and resolveAuthKind's str_contains($ability,'cli') matches unrelated abilities such as 'client:read'. Categories reconcile, registry_handles, capture_depth and plugin_shape do not apply to a stateless HTTP client. Custom category slugs: wire_contract, auth_flow."
+}

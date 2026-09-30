@@ -4,10 +4,14 @@
 
 declare(strict_types=1);
 
+use Illuminate\Container\Container;
+use Illuminate\Events\Dispatcher;
+use Illuminate\Routing\Router;
 use Rawphp\Capabilities\CapabilitiesServiceProvider;
 use Rawphp\Capabilities\Http\HttpRouteRegistrar;
 use Rawphp\Capabilities\Http\RouteTable;
 use Rawphp\Capabilities\Tests\Fixtures\BootHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\FakeProviderApp;
 
 it('registers every RouteTable action key when http enabled', function () {
     $http = ['enabled' => true, 'prefix' => 'capabilities', 'middleware' => ['api']];
@@ -72,4 +76,64 @@ it('does not include messaging routes in capability HTTP tree', function () {
         expect(str_contains(strtolower($key), 'telegram'))->toBeFalse()
             ->and(str_contains(strtolower($key), 'messaging'))->toBeFalse();
     }
+});
+
+function httpRoutesRealRouter(): Router
+{
+    return new Router(new Dispatcher, new Container);
+}
+
+it('registers every route on a real Illuminate router with its name, controller action, and middleware once', function () {
+    $http = ['enabled' => true, 'prefix' => 'capabilities', 'middleware' => ['api', 'auth:sanctum']];
+    $router = httpRoutesRealRouter();
+
+    $keys = HttpRouteRegistrar::registerInto($http, $router);
+
+    expect($keys)->toBe(HttpRouteRegistrar::registeredKeys($http));
+    foreach (HttpRouteRegistrar::definitions($http) as $def) {
+        $route = $router->getRoutes()->getByName($def['name']);
+        expect($route)->not->toBeNull()
+            ->and($route->uri())->toBe(ltrim($def['uri'], '/'))
+            ->and($route->methods())->toContain($def['method'])
+            ->and($route->getActionName())->toBe($def['uses'][0].'@'.$def['uses'][1])
+            ->and($route->middleware())->toBe($def['middleware']);
+    }
+});
+
+it('rejects a sink that is neither callable nor a router', function () {
+    HttpRouteRegistrar::registerInto(['enabled' => true], new stdClass);
+})->throws(InvalidArgumentException::class, 'Route sink must be callable or expose addRoute().');
+
+it('rejects route actions that are not Controller@method or name an unknown controller', function () {
+    expect(fn () => HttpRouteRegistrar::parseAction('CapabilityController'))
+        ->toThrow(InvalidArgumentException::class, 'expected Controller@method')
+        ->and(fn () => HttpRouteRegistrar::parseAction('BillingController@list'))
+        ->toThrow(InvalidArgumentException::class, 'Unknown capability HTTP controller [BillingController]');
+});
+
+it('provider boot maps RouteTable onto the bound router when http is enabled', function () {
+    $router = httpRoutesRealRouter();
+    $app = FakeProviderApp::registered(BootHelpers::config([
+        'approval' => ['store' => 'memory'],
+        'idempotency' => ['driver' => 'memory'],
+        'audit' => ['driver' => 'memory'],
+    ]), ['router' => $router]);
+
+    $keys = $app->provider->bootHttpRoutes(['enabled' => true, 'prefix' => 'capabilities', 'middleware' => ['api']]);
+
+    expect($keys)->toContain(RouteTable::ROUTE_INVOKE)
+        ->and($router->getRoutes()->count())->toBe(count($keys))
+        ->and($router->getRoutes()->getByName('capabilities.invoke')?->middleware())->toBe(['api'])
+        ->and($app->provider->bootHttpRoutes(['enabled' => false]))->toBe([]);
+});
+
+it('provider boot registers nothing but still reports keys when no usable router is bound', function () {
+    $config = BootHelpers::config(['approval' => ['store' => 'memory'], 'idempotency' => ['driver' => 'memory'], 'audit' => ['driver' => 'memory']]);
+    $http = ['enabled' => true, 'prefix' => 'capabilities'];
+
+    $noRouter = FakeProviderApp::registered($config)->provider->bootHttpRoutes($http);
+    $notARouter = FakeProviderApp::registered($config, ['router' => new stdClass])->provider->bootHttpRoutes($http);
+
+    expect($noRouter)->toBe(HttpRouteRegistrar::registeredKeys($http))
+        ->and($notARouter)->toBe(HttpRouteRegistrar::registeredKeys($http));
 });

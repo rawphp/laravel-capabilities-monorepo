@@ -2,50 +2,50 @@
 
 declare(strict_types=1);
 
-use Illuminate\Container\Container;
-use Illuminate\Database\Capsule\Manager as Capsule;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Illuminate\Events\Dispatcher as EventDispatcher;
-use Illuminate\Support\Facades\Facade;
-use Illuminate\Support\Facades\Schema;
+use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
+use Rawphp\CapabilitiesAi\Tests\Fakes\InMemoryConversationStore;
+use Rawphp\CapabilitiesAi\Tests\Fakes\InMemoryTurnClaim;
 
-function bootTurnServiceSqlite(): ArrayProgressStore
+function turnServiceStore(bool $reset = false): InMemoryConversationStore
 {
-    $capsule = new Capsule;
-    $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
-    $capsule->setEventDispatcher(new EventDispatcher(new Container));
-    $capsule->setAsGlobal();
-    $capsule->bootEloquent();
-    $app = new Container;
-    $app->instance('db', $capsule->getDatabaseManager());
-    Facade::setFacadeApplication($app);
-    Schema::swap($capsule->getConnection()->getSchemaBuilder());
-    $files = glob(dirname(__DIR__, 3).'/database/migrations/*.php') ?: [];
-    sort($files);
-    foreach ($files as $file) {
-        (require $file)->up();
+    static $store = null;
+    if ($reset || $store === null) {
+        $store = new InMemoryConversationStore;
     }
 
-    return new ArrayProgressStore;
+    return $store;
+}
+
+beforeEach(function () {
+    turnServiceStore(reset: true);
+});
+
+function turnServiceFor(ProgressStore $progress): TurnService
+{
+    return new TurnService($progress, turnServiceStore(), new InMemoryTurnClaim(turnServiceStore()));
+}
+
+function turnServiceConversations(ArrayProgressStore $progress): ConversationService
+{
+    return new ConversationService(static fn ($j) => null, $progress, store: turnServiceStore());
 }
 
 function seedQueuedTurn(): array
 {
-    $svc = new ConversationService(static fn ($j) => null, new ArrayProgressStore);
-    $ids = $svc->createUserMessage('seed turn', userId: 'u1');
-    $turn = Turn::query()->where('ulid', $ids['turn_ulid'])->firstOrFail();
+    $ids = turnServiceConversations(new ArrayProgressStore)->createUserMessage('seed turn', userId: 'u1');
 
-    return [$ids, $turn];
+    return [$ids, turnServiceStore()->turn($ids['turn_ulid'])];
 }
 
 it('show returns status and conversation_ulid', function () {
-    $progress = bootTurnServiceSqlite();
+    $progress = new ArrayProgressStore;
     [$ids] = seedQueuedTurn();
-    $service = new TurnService($progress);
+    $service = turnServiceFor($progress);
     $out = $service->show($ids['turn_ulid'], 'u1');
 
     expect($out['turn_ulid'])->toBe($ids['turn_ulid'])
@@ -54,18 +54,17 @@ it('show returns status and conversation_ulid', function () {
 });
 
 it('show throws when turn missing', function () {
-    bootTurnServiceSqlite();
-    (new TurnService(new ArrayProgressStore))->show('01MISSINGTURNULID0000000', 'u1');
+    (turnServiceFor(new ArrayProgressStore))->show('01MISSINGTURNULID0000000', 'u1');
 })->throws(ModelNotFoundException::class);
 
 it('cancel queued turn becomes cancelled and writes progress', function () {
-    $progress = bootTurnServiceSqlite();
+    $progress = new ArrayProgressStore;
     [$ids] = seedQueuedTurn();
-    $service = new TurnService($progress);
+    $service = turnServiceFor($progress);
     $out = $service->cancel($ids['turn_ulid'], 'u1');
 
     expect($out['status'])->toBe(Turn::STATUS_CANCELLED)
-        ->and(Turn::query()->where('ulid', $ids['turn_ulid'])->value('status'))->toBe(Turn::STATUS_CANCELLED);
+        ->and(turnServiceStore()->turn($ids['turn_ulid'])->status)->toBe(Turn::STATUS_CANCELLED);
 
     $events = $progress->since($ids['turn_ulid'], 0);
     $kinds = array_column($events, 'kind');
@@ -73,9 +72,9 @@ it('cancel queued turn becomes cancelled and writes progress', function () {
 });
 
 it('cancel already-cancelled is idempotent', function () {
-    $progress = bootTurnServiceSqlite();
+    $progress = new ArrayProgressStore;
     [$ids] = seedQueuedTurn();
-    $service = new TurnService($progress);
+    $service = turnServiceFor($progress);
     $service->cancel($ids['turn_ulid'], 'u1');
     $out = $service->cancel($ids['turn_ulid'], 'u1');
 
@@ -83,46 +82,101 @@ it('cancel already-cancelled is idempotent', function () {
 });
 
 it('cancel completed throws illegal transition', function () {
-    $progress = bootTurnServiceSqlite();
+    $progress = new ArrayProgressStore;
     [$ids, $turn] = seedQueuedTurn();
     $turn->status = Turn::STATUS_COMPLETED;
-    $turn->save();
-    (new TurnService($progress))->cancel($ids['turn_ulid'], 'u1');
+    (turnServiceFor($progress))->cancel($ids['turn_ulid'], 'u1');
 })->throws(RuntimeException::class);
 
 it('events 404s when turn missing', function () {
-    bootTurnServiceSqlite();
-    (new TurnService(new ArrayProgressStore))->events('01MISSINGTURNULID0000000', 'u1');
+    (turnServiceFor(new ArrayProgressStore))->events('01MISSINGTURNULID0000000', 'u1');
 })->throws(ModelNotFoundException::class);
 
 it('events returns ProgressStore since for existing turn', function () {
-    $progress = bootTurnServiceSqlite();
+    $progress = new ArrayProgressStore;
     [$ids] = seedQueuedTurn();
     $progress->append($ids['turn_ulid'], ['kind' => 'token', 'data' => ['t' => 1]]);
-    $events = (new TurnService($progress))->events($ids['turn_ulid'], 'u1', 0);
+    $events = (turnServiceFor($progress))->events($ids['turn_ulid'], 'u1', 0);
 
     expect($events)->not->toBeEmpty();
 });
 
 it('show, cancel and events hide another owner\'s turn as not found', function (string $method) {
-    $progress = bootTurnServiceSqlite();
+    $progress = new ArrayProgressStore;
     [$ids] = seedQueuedTurn();
 
-    (new TurnService($progress))->{$method}($ids['turn_ulid'], 'u2');
+    (turnServiceFor($progress))->{$method}($ids['turn_ulid'], 'u2');
 })->with(['show', 'cancel', 'events'])->throws(ModelNotFoundException::class);
 
 it('cancel by another owner leaves the turn queued and publishes nothing', function () {
-    $progress = bootTurnServiceSqlite();
+    $progress = new ArrayProgressStore;
     [$ids] = seedQueuedTurn();
 
-    expect(fn () => (new TurnService($progress))->cancel($ids['turn_ulid'], 'u2'))->toThrow(ModelNotFoundException::class)
-        ->and(Turn::query()->where('ulid', $ids['turn_ulid'])->value('status'))->toBe(Turn::STATUS_QUEUED)
+    expect(fn () => (turnServiceFor($progress))->cancel($ids['turn_ulid'], 'u2'))->toThrow(ModelNotFoundException::class)
+        ->and(turnServiceStore()->turn($ids['turn_ulid'])->status)->toBe(Turn::STATUS_QUEUED)
         ->and($progress->since($ids['turn_ulid'], 0))->toBeEmpty();
 });
 
 it('show, cancel and events hide a turn whose conversation has no owner', function (string $method) {
-    $progress = bootTurnServiceSqlite();
-    $ids = (new ConversationService(static fn ($j) => null, $progress))->createUserMessage('ownerless turn');
+    $progress = new ArrayProgressStore;
+    $ids = turnServiceConversations($progress)->createUserMessage('ownerless turn');
 
-    (new TurnService($progress))->{$method}($ids['turn_ulid'], 'u1');
+    (turnServiceFor($progress))->{$method}($ids['turn_ulid'], 'u1');
 })->with(['show', 'cancel', 'events'])->throws(ModelNotFoundException::class);
+
+/**
+ * Claim whose cancel CAS loses to a racing writer that moved the turn to $status first.
+ */
+function racingCancelClaim(string $status): InMemoryTurnClaim
+{
+    return new class(turnServiceStore(), $status) extends InMemoryTurnClaim
+    {
+        public function __construct(private readonly InMemoryConversationStore $rows, private readonly string $status)
+        {
+            parent::__construct($rows);
+        }
+
+        public function cancel(string $turnUlid): bool
+        {
+            $this->rows->turn($turnUlid)->status = $this->status;
+
+            return parent::cancel($turnUlid);
+        }
+    };
+}
+
+it('cancel that loses the race to another cancel is still cancelled', function () {
+    [$ids] = seedQueuedTurn();
+    $progress = new ArrayProgressStore;
+
+    $out = (new TurnService($progress, turnServiceStore(), racingCancelClaim(Turn::STATUS_CANCELLED)))->cancel($ids['turn_ulid'], 'u1');
+
+    expect($out)->toBe(['turn_ulid' => $ids['turn_ulid'], 'status' => Turn::STATUS_CANCELLED])
+        ->and($progress->since($ids['turn_ulid']))->toBe([]);
+});
+
+it('cancel that loses the race to a completion throws illegal transition', function () {
+    [$ids] = seedQueuedTurn();
+
+    (new TurnService(new ArrayProgressStore, turnServiceStore(), racingCancelClaim(Turn::STATUS_COMPLETED)))->cancel($ids['turn_ulid'], 'u1');
+})->throws(RuntimeException::class, 'cannot be cancelled (status=completed)');
+
+it('cancel keeps the turn cancelled and throws when progress append fails', function () {
+    [$ids] = seedQueuedTurn();
+    $progress = new class implements ProgressStore
+    {
+        public function append(string $turnUlid, array $event): void
+        {
+            throw new RuntimeException('redis down');
+        }
+
+        public function since(string $turnUlid, int $cursor = 0): array
+        {
+            return [];
+        }
+    };
+
+    expect(fn () => turnServiceFor($progress)->cancel($ids['turn_ulid'], 'u1'))
+        ->toThrow(RuntimeException::class, 'cancelled in DB but progress append failed: redis down')
+        ->and(turnServiceStore()->turn($ids['turn_ulid'])->status)->toBe(Turn::STATUS_CANCELLED);
+});

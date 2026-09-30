@@ -21,19 +21,21 @@ final class IlluminateHttpBridge
      *
      * @param  Request|array<string, mixed>  $source
      */
-    public static function toRequestContext(Request|array $source): HttpRequestContext
+    public static function toRequestContext(Request|array $source, array $tokenAbilityMap = []): HttpRequestContext
     {
         if ($source instanceof Request) {
-            return self::fromIlluminate($source);
+            return self::fromIlluminate($source, $tokenAbilityMap);
         }
 
-        return self::fromArray($source);
+        return self::fromArray($source, $tokenAbilityMap);
     }
 
     /**
      * Map a real Illuminate request (user from middleware resolver).
+     *
+     * @param  array<string, string>  $tokenAbilityMap  `clients.token_abilities` (ability => caller), the map CallerDeriver reads
      */
-    public static function fromIlluminate(Request $request): HttpRequestContext
+    public static function fromIlluminate(Request $request, array $tokenAbilityMap = []): HttpRequestContext
     {
         $user = $request->user();
         $authenticated = $user !== null;
@@ -85,7 +87,7 @@ final class IlluminateHttpBridge
             credential: $credential,
             method: strtoupper($request->getMethod()),
             path: '/'.ltrim($request->path(), '/'),
-            authKind: self::resolveAuthKind($authenticated, $tokenAbilities),
+            authKind: self::resolveAuthKind($authenticated, $tokenAbilities, $tokenAbilityMap),
         );
     }
 
@@ -100,8 +102,9 @@ final class IlluminateHttpBridge
      * Client-claimed caller/tenant in json or headers are NOT copied into credential.
      *
      * @param  array<string, mixed>  $fixture
+     * @param  array<string, string>  $tokenAbilityMap  `clients.token_abilities` (ability => caller)
      */
-    public static function fromArray(array $fixture): HttpRequestContext
+    public static function fromArray(array $fixture, array $tokenAbilityMap = []): HttpRequestContext
     {
         $user = $fixture['user'] ?? null;
         $user = is_object($user) ? $user : null;
@@ -151,7 +154,7 @@ final class IlluminateHttpBridge
 
         $authKind = $fixture['authKind'] ?? $fixture['auth_kind'] ?? null;
         if (! is_string($authKind) || $authKind === '') {
-            $authKind = self::resolveAuthKind($authenticated, $tokenAbilities);
+            $authKind = self::resolveAuthKind($authenticated, $tokenAbilities, $tokenAbilityMap);
         }
 
         $query = is_array($fixture['query'] ?? null) ? self::stringKeyed($fixture['query']) : [];
@@ -307,7 +310,11 @@ final class IlluminateHttpBridge
             $credential['oauth_client_type'] = $oauthClientType;
         }
 
-        if ($authenticated || $tokenAbilities !== [] || $oauthClientId !== null || $oauthClientType !== null) {
+        // Default adapter=http only for a bare session user. Token abilities / OAuth
+        // facts must reach CallerDeriver unshadowed so e.g. capabilities:cli → cli (D-022);
+        // unmapped abilities or clients still derive http there.
+        $hasClientFacts = $tokenAbilities !== [] || $oauthClientId !== null || $oauthClientType !== null;
+        if ($authenticated && ! $hasClientFacts) {
             if (! isset($credential['adapter']) && ! isset($credential['source']) && ! isset($credential['server_caller'])) {
                 $credential['adapter'] = 'http';
             }
@@ -327,17 +334,29 @@ final class IlluminateHttpBridge
     }
 
     /**
+     * CLI token only for an exact (case-insensitive) match on an ability mapped to `cli` in
+     * `clients.token_abilities` — the same source CallerDeriver reads, so the two classifiers
+     * of one credential agree (L-110). A default map means `capabilities:cli`.
+     *
      * @param  list<string>  $tokenAbilities
+     * @param  array<string, string>  $tokenAbilityMap
      */
-    private static function resolveAuthKind(bool $authenticated, array $tokenAbilities): string
+    private static function resolveAuthKind(bool $authenticated, array $tokenAbilities, array $tokenAbilityMap = []): string
     {
         if (! $authenticated) {
             return HttpAuthGate::AUTH_NONE;
         }
 
+        $cliAbilities = [];
+        foreach ($tokenAbilityMap === [] ? ['capabilities:cli' => 'cli'] : $tokenAbilityMap as $ability => $caller) {
+            if (is_string($caller) && strtolower($caller) === 'cli') {
+                $cliAbilities[] = strtolower((string) $ability);
+            }
+        }
+
         foreach ($tokenAbilities as $ability) {
             $lower = strtolower($ability);
-            if ($lower === 'capabilities:cli' || str_contains($lower, 'cli')) {
+            if (in_array($lower, $cliAbilities, true)) {
                 return HttpAuthGate::AUTH_CLI_TOKEN;
             }
             if ($lower === 'capabilities:api' || $lower === 'api') {

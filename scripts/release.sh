@@ -3,12 +3,12 @@
 #
 # Source of truth for day-to-day work is this monorepo. Publication path:
 #   monorepo tag v*  →  .github/workflows/split-packages.yml
-#     → mirrors packages/* to public remotes (core, messaging, CLI)
+#     → mirrors packages/* to public remotes (core, messaging, AI, CLI)
 #     → capabilities-cli package-owned GoReleaser builds GitHub Release binaries
 #
-# Without --squash this script never force-pushes a branch. Real releases require
-# HEAD == origin/$BRANCH (unless --squash rewrites the tip). Tag push alone is
-# enough to trigger split; branch tip should still match the tagged commit.
+# This script never force-pushes. Real releases require HEAD == origin/$BRANCH
+# (unless --squash folds an unpushed stack and pushes it as a fast-forward). Tag
+# push alone is enough to trigger split; branch tip should still match the tag.
 #
 # Usage:
 #   scripts/release.sh [--dry-run] [--yes] [--skip-php] [--skip-cli]
@@ -20,8 +20,9 @@
 #
 # Flow:
 #   preflight (main/master + clean + fetch tags/branch + HEAD/origin rules) →
-#   version resolve → plan (commits-since / empty-range refuse) →
-#   (confirm if interactive) → optional --squash (soft-reset + force-with-lease) →
+#   version resolve → CHANGELOG readiness (every package has ## [X.Y.Z]) →
+#   plan (commits-since / empty-range refuse) →
+#   (confirm if interactive) → optional --squash (soft-reset + fast-forward push) →
 #   gates → porcelain re-check → tag → push tag (and branch if not already equal)
 # Dry-run stops after gates (no squash rewrite, no tag/push). Confirm is never
 # after gates. Real releases hard-fail if origin/$BRANCH is missing after fetch
@@ -29,15 +30,20 @@
 # unless --allow-empty-range. If tag push fails after create, the local tag is
 # deleted so re-run is clean.
 #
-# --squash: collapse BASE..HEAD into one clean commit (default message
-# "Release $NEW_TAG", override with -m/--message), then
-# git push --force-with-lease origin $BRANCH so origin tip matches.
-# BASE = prior v* tag when one exists; otherwise origin/$BRANCH (first-release /
-# unpushed-stack squash). Never force-pushes tags.
+# --squash: collapse the commits not yet on origin (origin/$BRANCH..HEAD, e.g.
+# the CHANGELOG promotion commit) into one clean commit (default message
+# "Release $NEW_TAG", override with -m/--message), then git push origin $BRANCH
+# as a fast-forward. It never rewrites history already on origin: with nothing
+# unpushed, or no origin/$BRANCH, --squash refuses.
+# The version bump starts from the global max tag, so a hotfix tag cut off this
+# branch is never re-used, but it is never the commit-range base either.
 #
 # Quality gates (when not skipped; skip flags are dry-run only):
-#   1. composer test          (Pest core + messaging)
-#   2. composer test:cli      (go test ./... under packages/capabilities-cli)
+#   1. composer format:test   (Pint)
+#   2. composer analyse       (PHPStan, phpstan.neon)
+#   3. composer test          (Pest core + messaging + AI)
+#   4. gofmt -l               (Go format, under packages/capabilities-cli)
+#   5. composer test:cli      (go test ./... under packages/capabilities-cli)
 #
 # Matches CI: .github/workflows/tests.yml (split is blocked until these are green).
 
@@ -58,23 +64,30 @@ Usage: scripts/release.sh [options] [patch|minor|major|vX.Y.Z]
 
 Quality-gate a Laravel Capabilities monorepo release, create an annotated
 semver tag, and push the tag to origin (triggers package split + CLI release).
-With --squash, also rewrites BASE..HEAD into one clean commit and
-force-with-lease pushes the branch so origin tip matches the tagged tree.
+With --squash, first folds the commits not yet on origin into one clean
+commit and pushes the branch (fast-forward). Never force-pushes.
 
 Options:
   --dry-run            Run preflight + gates; print the tag that would be created
                        (no squash rewrite, no tag, no push, no confirm prompt)
   --yes                Skip the interactive confirmation prompt (agent / CI path)
-  --skip-php           Skip composer test (core + messaging) — ONLY with --dry-run
+  --skip-php           Skip PHP gates (Pint, PHPStan, Pest) — ONLY with --dry-run
   --skip-cli           Skip composer test:cli — ONLY with --dry-run
   --allow-empty-range  Allow release when a prior tag exists and HEAD has zero
                        commits since that tag (default: hard refuse empty range)
-  --squash             Soft-reset BASE..HEAD into one clean commit, then
-                       git push --force-with-lease origin <branch> before gates.
-                       BASE = latest v* tag, or origin/<branch> when no tag yet.
-                       Never force-pushes tags.
+  --squash             Fold origin/<branch>..HEAD (unpushed commits only) into
+                       one clean commit, then git push origin <branch> before
+                       gates. Refuses when nothing is unpushed: history already
+                       on origin is never rewritten.
   -m, --message MSG    Commit message for --squash (default: "Release <tag>")
   -h, --help           Show this help
+
+Quality gates (every real release; skip flags are dry-run only):
+  1. composer format:test   (Pint)
+  2. composer analyse       (PHPStan)
+  3. composer test          (Pest core + messaging + AI)
+  4. gofmt -l               (Go format, packages/capabilities-cli)
+  5. composer test:cli      (go test ./...)
 
 Version argument:
   patch (default)  v0.1.0 → v0.1.1  (first release: v0.1.0)
@@ -88,8 +101,8 @@ Examples:
   scripts/release.sh --dry-run --skip-php --skip-cli
   scripts/release.sh minor
   scripts/release.sh --yes v0.1.0
-  scripts/release.sh --yes --squash -m "First pre-stable monorepo release" v0.1.0
-  scripts/release.sh --yes --squash patch
+  scripts/release.sh --yes patch
+  scripts/release.sh --yes --squash -m "Release v0.6.0" minor   # fold unpushed stack
 EOF
 }
 
@@ -178,8 +191,8 @@ HEAD_SHORT="$(git rev-parse --short HEAD)"
 log "HEAD $HEAD_SHORT on $BRANCH"
 
 # Without --squash, HEAD must already equal origin/$BRANCH so the tagged commit
-# is what package remotes / consumers see after split. With --squash, history is
-# rewritten and force-with-lease pushed so the tip matches before tagging.
+# is what package remotes / consumers see after split. With --squash, the
+# unpushed stack is folded and pushed (fast-forward) so the tip matches.
 if git rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1; then
   ORIGIN_SHA="$(git rev-parse "origin/$BRANCH")"
   if [[ "$ORIGIN_SHA" != "$HEAD_SHA" ]]; then
@@ -189,7 +202,7 @@ if git rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1; then
     if git merge-base --is-ancestor "origin/$BRANCH" "$HEAD_SHA"; then
       if [[ "$SQUASH" -eq 1 ]]; then
         git log --oneline "origin/$BRANCH..HEAD" | head -10
-        log "HEAD is ahead of origin/$BRANCH — --squash will rewrite BASE..HEAD and force-with-lease push"
+        log "HEAD is ahead of origin/$BRANCH — --squash will fold these into one commit and push"
       else
         git log --oneline "origin/$BRANCH..HEAD" | head -10
         fail "HEAD is ahead of origin/$BRANCH — push the branch first (or re-run with --squash)"
@@ -270,6 +283,15 @@ next_version() {
   printf 'v%s.%s.%s' "$major" "$minor" "$patch"
 }
 
+# Max strict vX.Y.Z tag reachable from HEAD. Empty if none. Commit-range base:
+# a tag cut on another branch (hotfix) is not in HEAD's history.
+reachable_tag() {
+  git tag --merged HEAD -l 'v[0-9]*.[0-9]*.[0-9]*' \
+    | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+    | sort -V \
+    | tail -1 || true
+}
+
 # True (exit 0) when $1 is strictly greater than $2 (vX.Y.Z form).
 version_strictly_greater() {
   local candidate="$1" base="$2"
@@ -281,11 +303,51 @@ version_strictly_greater() {
   [[ "$higher" == "$candidate" ]]
 }
 
+# Squash base for branch $1: origin/$1, so --squash folds only commits not yet
+# on origin and the result fast-forwards it. Refuses (exit 1, reason on stderr)
+# when origin/$1 is missing or HEAD has nothing unpushed: pushed history, such
+# as PR merges other branches build on, is never rewritten.
+squash_base() {
+  local branch="$1"
+  if ! git rev-parse --verify -q "origin/$branch" >/dev/null; then
+    printf 'error: --squash needs origin/%s (it folds only commits not yet pushed there)\n' "$branch" >&2
+    return 1
+  fi
+  if [[ "$(git rev-list --count "origin/$branch..HEAD")" -eq 0 ]]; then
+    printf 'error: --squash: no commits ahead of origin/%s. It never rewrites history already on origin; release without --squash\n' "$branch" >&2
+    return 1
+  fi
+  printf 'origin/%s' "$branch"
+}
+
+# Print one line per package CHANGELOG that is not ready for tag $2 (X.Y.Z, no "v"):
+# exactly one "## [Unreleased]" and a "## [X.Y.Z]" section (use "No changes." when
+# a package has none). Empty output means ready. Root is $1.
+changelog_problems() {
+  local root="$1" version="$2" file rel count
+  for file in "$root"/packages/*/CHANGELOG.md; do
+    [[ -f "$file" ]] || continue
+    rel="${file#"$root"/}"
+    count="$(grep -c '^## \[Unreleased\]' "$file" || true)"
+    if [[ "$count" -ne 1 ]]; then
+      printf '%s: %s [Unreleased] sections (expected 1)\n' "$rel" "$count"
+    fi
+    if ! awk -v h="## [${version}]" 'index($0, h) == 1 { found = 1 } END { exit !found }' "$file"; then
+      printf '%s: no ## [%s] section\n' "$rel" "$version"
+    fi
+  done
+}
+
 CURRENT_TAG="$(latest_tag)"
 if [[ -z "$CURRENT_TAG" ]]; then
   log "No existing v* tags — first release"
 else
   log "Latest tag (local+origin max): $CURRENT_TAG"
+fi
+
+RANGE_TAG="$(reachable_tag)"
+if [[ -n "$CURRENT_TAG" && "$RANGE_TAG" != "$CURRENT_TAG" ]]; then
+  log "Latest tag reachable from HEAD: ${RANGE_TAG:-none} (commit range base)"
 fi
 
 NEW_TAG="$(next_version "$CURRENT_TAG" "$BUMP")"
@@ -304,22 +366,26 @@ if git ls-remote --tags --refs origin "refs/tags/$NEW_TAG" 2>/dev/null | grep -q
   fail "tag already exists on origin: $NEW_TAG"
 fi
 
+# Every package CHANGELOG must carry a dated section for this tag (docs/versioning.md
+# "CHANGELOG ↔ tag handoff"). Promote [Unreleased] and push before releasing.
+CHANGELOG_PROBLEMS="$(changelog_problems "$ROOT" "${NEW_TAG#v}")"
+if [[ -n "$CHANGELOG_PROBLEMS" ]]; then
+  printf '%s\n' "$CHANGELOG_PROBLEMS" | sed 's/^/  /' >&2
+  if [[ "$DRY_RUN" -eq 0 ]]; then
+    fail "package CHANGELOGs not ready for $NEW_TAG — add a ## [${NEW_TAG#v}] - YYYY-MM-DD section to each (promote [Unreleased], or \"No changes.\")"
+  fi
+  log "warning: package CHANGELOGs not ready for $NEW_TAG (a real release would refuse)"
+fi
+
 # --- plan (before confirm / gates) --------------------------------------------
 
 if [[ "$SQUASH" -eq 1 && -z "$SQUASH_MESSAGE" ]]; then
   SQUASH_MESSAGE="Release $NEW_TAG"
 fi
 
-# Squash base: prior tag, or origin/$BRANCH for first-release / unpushed stack.
 SQUASH_BASE=""
 if [[ "$SQUASH" -eq 1 ]]; then
-  if [[ -n "$CURRENT_TAG" ]]; then
-    SQUASH_BASE="$CURRENT_TAG"
-  elif git rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1; then
-    SQUASH_BASE="origin/$BRANCH"
-  else
-    fail "--squash needs a base (prior v* tag or origin/$BRANCH) — none available"
-  fi
+  SQUASH_BASE="$(squash_base "$BRANCH")" || exit 1
 fi
 
 log "Release plan"
@@ -328,7 +394,7 @@ printf '  from:    %s\n' "${CURRENT_TAG:-none (first release)}"
 printf '  commit:  %s (%s)\n' "$HEAD_SHORT" "$HEAD_SHA"
 printf '  branch:  %s\n' "$BRANCH"
 if [[ "$SQUASH" -eq 1 ]]; then
-  printf '  remote:  origin (squash: force-with-lease branch, then tag)\n'
+  printf '  remote:  origin (squash: push branch fast-forward, then tag)\n'
 else
   printf '  remote:  origin (tag only — no branch push)\n'
 fi
@@ -340,19 +406,19 @@ if [[ "$SQUASH" -eq 1 ]]; then
 fi
 printf '  gates:\n'
 if [[ "$SKIP_PHP" -eq 0 ]]; then
-  printf '    - php: composer test (core + messaging Pest)\n'
+  printf '    - php: composer format:test + analyse + test (Pint, PHPStan, Pest core + messaging + AI)\n'
 else
   printf '    - php: SKIPPED (--skip-php, dry-run only)\n'
 fi
 if [[ "$SKIP_CLI" -eq 0 ]]; then
-  printf '    - cli: composer test:cli (go test ./...)\n'
+  printf '    - cli: gofmt -l + composer test:cli (go test ./...)\n'
 else
   printf '    - cli: SKIPPED (--skip-cli, dry-run only)\n'
 fi
 printf '  after tag: split-packages.yml → package remotes + CLI GitHub Release\n'
 
 commit_count=0
-RANGE_BASE="${CURRENT_TAG:-}"
+RANGE_BASE="${RANGE_TAG:-}"
 if [[ -n "$RANGE_BASE" ]]; then
   commit_count="$(git rev-list --count "${RANGE_BASE}..HEAD" 2>/dev/null || echo 0)"
   printf '  commits since %s:\n' "$RANGE_BASE"
@@ -373,30 +439,13 @@ if [[ -n "$RANGE_BASE" ]]; then
 else
   printf '  commits: no prior tag — recent history:\n'
   git log --oneline -20 | sed 's/^/    /' || true
-  if [[ "$SQUASH" -eq 1 && -n "$SQUASH_BASE" ]]; then
-    commit_count="$(git rev-list --count "${SQUASH_BASE}..HEAD" 2>/dev/null || echo 0)"
-    printf '  commits since squash base %s: %s\n' "$SQUASH_BASE" "$commit_count"
-  fi
 fi
 
+# Preflight already refused a HEAD that is behind or diverged from origin, so
+# SQUASH_BASE (origin/$BRANCH) is an ancestor of HEAD here.
 if [[ "$SQUASH" -eq 1 ]]; then
-  if ! git merge-base --is-ancestor "$SQUASH_BASE" HEAD 2>/dev/null \
-    && ! git rev-parse --verify "$SQUASH_BASE" >/dev/null 2>&1; then
-    fail "--squash base $SQUASH_BASE is not resolvable"
-  fi
-  # origin/BRANCH is always an ancestor when HEAD is ahead; tag must be ancestor.
-  if [[ "$SQUASH_BASE" == origin/* ]]; then
-    if ! git merge-base --is-ancestor "$SQUASH_BASE" HEAD; then
-      fail "--squash base $SQUASH_BASE is not an ancestor of HEAD"
-    fi
-  elif ! git merge-base --is-ancestor "$SQUASH_BASE" HEAD; then
-    fail "--squash base $SQUASH_BASE is not an ancestor of HEAD"
-  fi
-  squash_count="$(git rev-list --count "${SQUASH_BASE}..HEAD" 2>/dev/null || echo 0)"
-  if [[ "${squash_count}" -eq 0 ]]; then
-    fail "--squash: zero commits since ${SQUASH_BASE} — nothing to squash"
-  fi
-  commit_count="$squash_count"
+  commit_count="$(git rev-list --count "${SQUASH_BASE}..HEAD")"
+  printf '  unpushed commits to fold (%s..HEAD): %s\n' "$SQUASH_BASE" "$commit_count"
 fi
 
 # --- confirm (interactive, before gates; never for dry-run / --yes) -----------
@@ -414,7 +463,7 @@ EOF
     cat <<EOF
   squash: YES — soft-reset ${SQUASH_BASE}..HEAD (${commit_count} commits) into one commit
   message: $SQUASH_MESSAGE
-  branch push: git push --force-with-lease origin $BRANCH (history rewrite)
+  branch push: git push origin $BRANCH (fast-forward; pushed history untouched)
 
 EOF
   else
@@ -427,29 +476,30 @@ EOF
   esac
 fi
 
-# --- optional squash (before gates; tree unchanged, history rewritten) --------
+# --- optional squash (before gates; tree unchanged, unpushed commits folded) ---
 
 if [[ "$SQUASH" -eq 1 ]]; then
   if [[ "$DRY_RUN" -eq 1 ]]; then
     log "Dry-run: would squash ${commit_count} commit(s) since $SQUASH_BASE into one commit"
     printf '  message: %s\n' "$SQUASH_MESSAGE"
-    printf '  then:    git push --force-with-lease origin %s\n' "$BRANCH"
+    printf '  then:    git push origin %s (fast-forward)\n' "$BRANCH"
   else
     if [[ "${commit_count}" -eq 1 ]]; then
       log "Squash: rewording single commit since $SQUASH_BASE"
     else
       log "Squash: collapsing ${commit_count} commits since $SQUASH_BASE into one"
     fi
+    PRE_SQUASH_SHA="$HEAD_SHA"
     git reset --soft "$SQUASH_BASE"
     if git diff --cached --quiet; then
-      fail "--squash produced an empty index after reset to $SQUASH_BASE — nothing to commit"
+      fail "--squash produced an empty index after reset to $SQUASH_BASE — nothing to commit (restore with: git reset --hard $PRE_SQUASH_SHA)"
     fi
     git commit -m "$SQUASH_MESSAGE"
     HEAD_SHA="$(git rev-parse HEAD)"
     HEAD_SHORT="$(git rev-parse --short HEAD)"
-    log "Squashed tip $HEAD_SHORT — force-with-lease push origin/$BRANCH"
-    if ! git push --force-with-lease origin "refs/heads/$BRANCH"; then
-      fail "git push --force-with-lease origin $BRANCH failed — fix remote and re-run (local squash commit is at $HEAD_SHORT)"
+    log "Squashed tip $HEAD_SHORT — push origin/$BRANCH (fast-forward)"
+    if ! git push origin "refs/heads/$BRANCH"; then
+      fail "git push origin $BRANCH failed (origin moved?) — local squash commit is $HEAD_SHORT; restore the original stack with: git reset --hard $PRE_SQUASH_SHA"
     fi
     git fetch origin "$BRANCH" --quiet 2>/dev/null || true
     if git rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1; then
@@ -465,7 +515,7 @@ fi
 # --- quality gates ------------------------------------------------------------
 
 run_php_gates() {
-  log "PHP: composer test (core + messaging)"
+  log "PHP: composer format:test + analyse + test (Pint, PHPStan, Pest core + messaging + AI)"
   if ! command -v composer >/dev/null; then
     fail "composer not found on PATH"
   fi
@@ -474,17 +524,25 @@ run_php_gates() {
   fi
   (
     cd "$ROOT"
+    composer format:test
+    composer analyse
     composer test
   )
 }
 
 run_cli_gates() {
-  log "CLI: composer test:cli (go test ./...)"
+  log "CLI: gofmt -l + composer test:cli (go test ./...)"
   if ! command -v go >/dev/null; then
     fail "go not found on PATH (required for capabilities-cli gates)"
   fi
   if [[ ! -d "$ROOT/packages/capabilities-cli" ]]; then
     fail "packages/capabilities-cli missing"
+  fi
+  local unformatted
+  unformatted="$(cd "$ROOT/packages/capabilities-cli" && gofmt -l .)"
+  if [[ -n "$unformatted" ]]; then
+    printf '%s\n' "$unformatted" | sed 's/^/  /' >&2
+    fail "gofmt: files above need formatting (run gofmt -w in packages/capabilities-cli)"
   fi
   (
     cd "$ROOT"
@@ -521,7 +579,7 @@ EOF
     cat <<EOF
   squash: would soft-reset ${SQUASH_BASE}..HEAD (${commit_count} commits) → one commit
   message: $SQUASH_MESSAGE
-  branch: would git push --force-with-lease origin $BRANCH
+  branch: would git push origin $BRANCH (fast-forward)
 EOF
   fi
   cat <<'EOF'
@@ -551,8 +609,8 @@ fi
 MESSAGE="Release $NEW_TAG
 
 Quality gates:
-  - php: composer test (core + messaging Pest)
-  - cli: composer test:cli (go test ./...)
+  - php: composer format:test + analyse + test (Pint, PHPStan, Pest core + messaging + AI)
+  - cli: gofmt -l + composer test:cli (go test ./...)
 Commit: $HEAD_SHA
 
 Triggers: monorepo tag v* → split-packages.yml → package remotes
@@ -576,11 +634,11 @@ cat <<EOF
 
 Released $NEW_TAG → origin
   commit: $HEAD_SHORT
-  push:   tag $([[ "$SQUASH" -eq 1 ]] && echo "+ branch (force-with-lease squash)" || echo "only")
+  push:   tag $([[ "$SQUASH" -eq 1 ]] && echo "+ branch (squashed unpushed stack, fast-forward)" || echo "only")
 
 Next:
   - GitHub Actions: Tests (via split) → Split packages
-  - Package remotes: rawphp/laravel-capabilities, -messaging, capabilities-cli
+  - Package remotes: rawphp/laravel-capabilities, -messaging, -ai, capabilities-cli
   - CLI binaries: rawphp/capabilities-cli Releases (GoReleaser after tag mirror)
   - Packagist: still human checklist (docs/versioning.md) — not automated here
 EOF

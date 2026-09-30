@@ -6,7 +6,8 @@ use Illuminate\Support\Facades\Schema;
 use Rawphp\Capabilities\Persistence\MigrationCatalog;
 
 /**
- * Audit outbox for async / durable audit writes (D-010). Writer may land later.
+ * Durable audit records (D-010). `audit.driver=database` inserts one `pending` row per
+ * entry via DatabaseAuditWriter; a host drain may forward rows and mark them `completed`.
  */
 return new class extends Migration
 {

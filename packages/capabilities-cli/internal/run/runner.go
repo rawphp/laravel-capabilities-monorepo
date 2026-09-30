@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -29,6 +30,8 @@ type Options struct {
 	Store          *auth.Store
 	Client         *api.Client
 	Catalog        *catalog.Service
+	// Entry is the already-resolved schema; when set Run does not describe again.
+	Entry *catalog.CacheEntry
 	// LastRunPath overrides store path for tests.
 	LastRunPath string
 }
@@ -68,6 +71,12 @@ func Run(ctx context.Context, opts Options) *Result {
 		res.ExitCode = ExitValidation
 		res.Stderr = "capability name required"
 		res.Envelope = localFailEnvelope(api.CodeValidationFailed, res.Stderr, nil)
+		return res
+	}
+	if se := api.CheckPathSegment("capability name", opts.Capability); se != nil {
+		res.ExitCode = ExitValidation
+		res.Stderr = se.Message
+		res.Envelope = localFailEnvelope(api.CodeValidationFailed, se.Message, nil)
 		return res
 	}
 
@@ -111,33 +120,36 @@ func Run(ctx context.Context, opts Options) *Result {
 		}
 	}
 
-	// Schema: cache or fetch
+	// Schema: caller-resolved entry, else cache or fetch
 	var schema []byte
-	if opts.Catalog != nil {
+	entry := opts.Entry
+	if entry == nil && opts.Catalog != nil {
 		opts.Catalog.NoCache = opts.NoCache
-		entry, _, derr := opts.Catalog.Describe(ctx, opts.Capability)
-		if derr == nil && entry != nil {
-			schema = entry.InputSchema
-			if w := catalog.DeprecationWarning(entry, time.Now()); w != "" {
-				res.Deprecation = w
-				res.Stderr = w + "\n"
-			}
-			// Alias resolution is cosmetic; invoke still uses the name the user passed
-			// (server accepts alias or canonical per D-012).
+		if e, _, derr := opts.Catalog.Describe(ctx, opts.Capability); derr == nil {
+			entry = e
 		}
+	}
+	if entry != nil {
+		schema = entry.InputSchema
+		if w := catalog.DeprecationWarning(entry, time.Now()); w != "" {
+			res.Deprecation = w
+			res.Stderr = w + "\n"
+		}
+		// Alias resolution is cosmetic; invoke still uses the name the user passed
+		// (server accepts alias or canonical per D-012).
 	}
 
 	// Local structural validation — fail closed before network.
 	if err := ValidateLocal(schema, opts.InputJSON); err != nil {
 		res.ExitCode = ExitValidation
 		res.HTTPCalled = false
-		if ve, ok := err.(*ValidationError); ok {
-			res.Stderr = ve.Error()
-			res.Envelope = localFailEnvelope(api.CodeValidationFailed, ve.Message, ve.Violations)
-		} else {
-			res.Stderr = err.Error()
-			res.Envelope = localFailEnvelope(api.CodeValidationFailed, err.Error(), nil)
+		res.Stderr = err.Error()
+		msg, viol := err.Error(), []api.Violation(nil)
+		var ve *ValidationError
+		if errors.As(err, &ve) {
+			msg, viol = ve.Message, ve.Violations
 		}
+		res.Envelope = localFailEnvelope(api.CodeValidationFailed, msg, viol)
 		return res
 	}
 
@@ -182,6 +194,11 @@ func Run(ctx context.Context, opts Options) *Result {
 	res.Envelope = apiRes.Body
 	if apiRes.Err != nil {
 		res.ExitCode = apiRes.Err.ExitCode
+		if apiRes.Err.Code == api.CodeValidationFailed && opts.Catalog != nil && opts.Catalog.Cache != nil {
+			// Local schema passed but the server (law) rejected: the cached schema
+			// may be stale, so the next run fetches it live.
+			_ = opts.Catalog.Cache.Invalidate(opts.Capability)
+		}
 		appendStderr(res, apiRes.Err.Error())
 		// Machine envelope on stdout for structured server errors.
 		if len(apiRes.Body) > 0 {

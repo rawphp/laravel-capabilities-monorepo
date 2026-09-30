@@ -1,0 +1,126 @@
+{
+  "run": "2026-09-30-iter7",
+  "findings": [
+    {
+      "id": "X-601",
+      "title": "List every branch break under BREAKING; 2 removals unlisted, 3 filed elsewhere",
+      "category": "documentation",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": [
+        "dx",
+        "maintainability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/CHANGELOG.md",
+          "line": 212,
+          "snippet": "#### Unused public helpers removed / These shipped in 0.5.3 ... (lists isKnown, fromDefaults, evaluatePeer, document, supports only)"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalExecutor.php",
+          "line": 109,
+          "snippet": "withAudit() / withEventDispatcher() remain; withStore() and withMetrics() (v0.5.3 lines 120/128) removed in f86f3b5"
+        },
+        {
+          "file": "packages/laravel-capabilities/CHANGELOG.md",
+          "line": 275,
+          "snippet": "**Contract change:** `Contracts\\RateLimiter` gains `availableIn(string $key): int` ... host implementations must add it  (under ### Changed)"
+        },
+        {
+          "file": "packages/laravel-capabilities/CHANGELOG.md",
+          "line": 527,
+          "snippet": "`lastInvokeOptions()` method is removed  (under ### Fixed (HTTP surface))"
+        },
+        {
+          "file": "packages/laravel-capabilities-ai/CHANGELOG.md",
+          "line": 27,
+          "snippet": "`TurnClaim` is now the interface `Contracts\\TurnClaim` ... `claim()` returns `bool` ... `Support\\DatabaseConnection` is removed  (under ### Added)"
+        }
+      ],
+      "current_state": "Diffing public signatures from 37a0552 to HEAD found five breaks not recorded under a BREAKING heading. Core: ApprovalExecutor::withStore() and ::withMetrics() shipped in v0.5.3 and were removed in f86f3b5 (X-001). No CHANGELOG entry mentions them, and they are missing from the 'Unused public helpers removed' list. Core also adds RateLimiter::availableIn(), a new abstract method that host implementations must add; it sits under '### Changed'. CapabilityController::lastInvokeOptions() is removed, and that sits under '### Fixed (HTTP surface)'. AI: Domain\\TurnClaim changed from a final class to Contracts\\TurnClaim, so `new TurnClaim` now fatals and claim() returns bool instead of ?Turn. Support\\DatabaseConnection was also removed. Both appear only in an '### Added' bullet, while the same section marks other AI breaks 'BREAKING \u2014'.",
+      "recommended_state": "Core 'Changed (BREAKING)' names every removed or newly required public API. That covers the two ApprovalExecutor clones, the RateLimiter::availableIn() contract addition and the lastInvokeOptions() removal, each with a one-line pointer from its current entry. The AI [Unreleased] marks the TurnClaim class-to-interface change and the DatabaseConnection removal 'BREAKING \u2014' in ### Changed, as messaging already does for TelegramBotClient::answerCallbackQuery().",
+      "rationale": "The sweep covered methods/classes removed or changed non-additively between 37a0552 and HEAD in all three PHP packages, plus new methods on host-implementable interfaces. Everything else is either listed (withIdempotency, defaultUser, the five helpers, messaging test scaffolding, ProcessTelegramUpdate $agentRunner, invokeOptions caller, TelegramBotClient contract) or additive (new trailing optional ctor args on TurnRunner, AnthropicLlmClient, ApprovalManager, CapabilityDefinition). These five are the only gaps. Hosts and the release step read the BREAKING headings to write upgrade notes. A host with a custom RateLimiter or a direct `new TurnClaim` fatals on upgrade with nothing under BREAKING to warn them. The withStore()/withMetrics() removal is not recorded anywhere, so it is the same class of gap that X-203 closed for the other five helpers.",
+      "implementation_hint": "Core CHANGELOG: add `Approval\\ApprovalExecutor::withStore()` and `withMetrics()` to '#### Unused public helpers removed' (line 212). Add a short '#### Host contract additions' block under 'Changed (BREAKING)' listing `Contracts\\RateLimiter::availableIn()` (return 0 when unknown) and `Adapters\\Http\\CapabilityController::lastInvokeOptions()` removed, each pointing back to its existing entry. AI CHANGELOG: split the TurnClaim/DatabaseConnection sentence out of the Added bullet into a '- **BREAKING \u2014 `TurnClaim` is an interface:** ...' bullet under ### Changed (new EloquentTurnClaim, claim(): bool, Support\\DatabaseConnection removed). Docs only; no code change."
+    },
+    {
+      "id": "X-602",
+      "title": "Spec D-006 still says the accept re-check authorizes under the current scope",
+      "category": "documentation",
+      "severity": "low",
+      "effort": "trivial",
+      "impact": [
+        "security",
+        "maintainability"
+      ],
+      "locations": [
+        {
+          "file": "docs/spec.md",
+          "line": 2040,
+          "snippet": "4. `authorize()` for the **original actor** under current scope (default)"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/OriginalActorAuthorizer.php",
+          "line": 50,
+          "snippet": "scope: CapabilityScope::fromRow($row),"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+          "line": 774,
+          "snippet": "'scope' => CapabilityScope::fromRow($row),"
+        }
+      ],
+      "current_state": "Since L-401/L-501, the accept/resume re-check and the approved run use the scope stamped on the approval row at request time. The requester is never placed again. The core CHANGELOG describes this correctly: tenant_id is the authority, team/org/scalar attributes come from the scope column, and legacy rows are tenant-only. The spec's D-006 'Re-validation on accept' step 4 still says authorize() runs 'under current scope'. Spec lines 1818 and 1979 ('original caller + scope') are consistent with the code. No spec text says that the requester's current tenant membership is not re-resolved.",
+      "recommended_state": "D-006 step 4 says authorize() runs for the original actor under the scope stamped on the row (tenant_id plus the stored team/organization/scalar attributes), not a fresh resolution of the requester. It also says that membership loss after the request must be caught in authorize(), because the resolver is not consulted again.",
+      "rationale": "docs/spec.md is the repo's conflict oracle (decisions.md: 'docs/spec.md is conflict oracle before changing asserts'). Its step 4 now contradicts the tests L-401/L-501 added. A later agent reconciling code to spec could re-introduce re-resolution, which is the cross-tenant bug L-401 fixed. The note also has a security side: under stamped scope, a requester removed from the row's tenant between request and accept still runs there unless the capability's authorize() checks membership. Hosts should learn that from the spec.",
+      "implementation_hint": "docs/spec.md:2040 \u2192 '4. `authorize()` for the **original actor** under the scope stamped on the approval row (tenant_id + stored team / organization / scalar attributes; legacy rows tenant-only) \u2014 the requester is not re-placed by the ScopeResolver, so check tenant membership in authorize() if losing it should block the run.' Optionally mirror one sentence in the core user guide 'Approval and idempotency (operator view)' bullet."
+    },
+    {
+      "id": "L-601",
+      "title": "Use the stamped scope for untenanted approval rows too; L-501 discards it",
+      "category": "authorization",
+      "severity": "medium",
+      "effort": "trivial",
+      "impact": [
+        "security",
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Support/CapabilityScope.php",
+          "line": 88,
+          "snippet": "if (! is_scalar($tenant) || (string) $tenant === '') { return null; }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+          "line": 774,
+          "snippet": "'scope' => CapabilityScope::fromRow($row),"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+          "line": 769,
+          "snippet": "'job' => ['tenant_id' => $tenantId],"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/OriginalActorAuthorizer.php",
+          "line": 50,
+          "snippet": "scope: CapabilityScope::fromRow($row),"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+          "line": 742,
+          "snippet": "'scope' => $ctx->scope()?->toRow(),"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Support/DefaultScopeResolver.php",
+          "line": 76,
+          "snippet": "$teamId = $this->jobField($partial, 'team_id') ?? $this->stringAttr($partial, 'team_id');"
+        }
+      ],
+      "current_state": "InvokePipeline now stamps the whole resolved scope on every approval row, including rows whose tenant is null. But CapabilityScope::fromRow() returns null whenever the row's tenant_id is empty, and it does so before it reads the stamp. The approved run then re-resolves scope from the requester's current state, and the accept re-check does too. Reproduced against the audit tree with the IdempotencyHelpers harness: a host ScopeResolver that returns tenantId null and teamId from current_team_id stamps scope {tenant_id: null, team_id: 'team-A'}. After the requester switches to team-B, accept() runs the capability with ctx [null, 'team-B']. System requesters on untenanted rows (globalSystem jobs carrying team_id / organization_id) fare no better: executeApproval passes only job ['tenant_id' => null], so DefaultScopeResolver:76 resolves team and organization to null.",
+      "recommended_state": "When the row carries an array stamp, fromRow() rebuilds the scope from it whether or not a tenant is present. The tenant_id column stays the tenant authority, which may be null. Only legacy rows (a string, null or missing stamp) without a tenant return null and resolve at execution time.",
+      "rationale": "L-501's contract, stated in the CHANGELOG and in the test comments, is that what the approver saw on the row is what runs (D-006 step 5: 'run under the original caller + scope'). The untenanted branch breaks that contract for the same reason L-401 and L-501 existed: it trusts a fresh resolution of the requester over the stamp. The default resolver always gives user actors a tenant ('default-tenant'), so the affected hosts are narrower: team-only or org-only hosts whose ScopeResolver leaves tenant null, and globalSystem work with team or org dimensions. For those hosts the approved run executes under the requester's new team, or under no team. A ScopedQueryFactory that narrows by $scope->teamId then reads the wrong team's resources on exactly the path a human signed off. The CHANGELOG line 'rows without a tenant (global system work) resolve scope at execution time as before' assumes that untenanted means unscoped, and the stamp shows that it does not.",
+      "implementation_hint": "In CapabilityScope::fromRow: `$stamped = is_array($row['scope'] ?? null) ? $row['scope'] : null; $tenant = <row tenant_id as ?string, '' => null>; if ($tenant === null && $stamped === null) return null;` then `new self(tenantId: $tenant, teamId: ..., organizationId: ..., attributes: ...)` from the stamp (or `[]` when it is null). Update the 'null tenant' dataset case in tests/Unit/Scope/CapabilityScopeRowTest.php so it expects a scope with tenantId null and teamId 'team-9', and keep 'empty tenant' with scope '' and 'no tenant key' as null. Add a case to ApproverTenantResolutionTest: a host resolver returning tenant null plus a team, with the requester switched to another team, runs under the stamped team on both accept and resume. Fix the CHANGELOG sentence."
+    }
+  ]
+}

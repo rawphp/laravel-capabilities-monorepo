@@ -199,8 +199,7 @@ capabilities auth profiles [--json]
 | OAuth code | `--code=...` |
 | Device code | omit token and code (API-driven device flow) |
 
-`login` always requires `--base-url`. Successful login best-effort prefetches
-catalog schemas into that profile’s cache.
+`login` always requires `--base-url`.
 
 Full detail: **[authentication.md](authentication.md)**.
 
@@ -258,7 +257,7 @@ capabilities auth profiles [--json]
 
 Human output lists profile name, base URL, and logged-in status (**never tokens**). `--json` returns a machine envelope with a `profiles` array. You can still inspect directories under `~/.config/capabilities/profiles/` if needed.
 
-Deep dive: **[authentication.md](authentication.md#multiple-projects--multi-deployment-profiles)**.
+Deep dive: **[authentication.md](authentication.md#multi-project--multi-deployment-profiles)**.
 
 ---
 
@@ -313,7 +312,8 @@ Fetches from `GET /capabilities` via the HTTP client.
 capabilities describe <name> [--json] [--no-cache] [--profile=NAME]
 ```
 
-JSON Schema / description for one capability.
+JSON Schema, description, and `readOnly` / `idempotent` flags for one
+capability. `readOnly` / `idempotent` appear in `--json` only when true.
 
 ### `run` and `<domain> <verb>`
 
@@ -388,11 +388,19 @@ capabilities run <name> \
   [--profile=NAME] [--base-url=URL]
 ```
 
+Local checks use the cached schema. When the cached schema rejects the input,
+the CLI fetches the live schema once and re-checks before exiting **2**, so a
+server-side schema change never blocks valid input. A server `validation_failed`
+drops the cached schema so the next run fetches it fresh.
+
 ### Input merge rules
 
 1. Base body = `--input` / `--input-file` (or `{}`).
-2. Each scalar flag overwrites that key (**flag wins**).
-3. Object/array fields are **JSON-only** (no flag form).
+2. Each scalar flag overwrites that key (**flag wins**). The flag name is the
+   property name with `_` replaced by `-` (`customer_id` → `--customer-id`,
+   `amountCents` → `--amountCents`); `--help` lists the exact flags.
+3. Properties whose flag names collide (`line_no` and `line-no`), `oneOf` /
+   `anyOf` / `allOf` properties, and object/array fields are **JSON-only** (no flag form).
 4. Unknown flags or json-only fields as flags → exit **2**.
 5. All-optional schema may POST `{}`.
 6. Missing required fields → exit **2** (use `--help` for schema).
@@ -414,7 +422,7 @@ Local validation failures exit **2** with no network call.
 ```bash
 capabilities run <name> --input='{"customer_id":1}' --profile=mesoprep
 
-capabilities <domain> <verb> --customer_id=1 --human --profile=mesoprep
+capabilities <domain> <verb> --customer-id=1 --human --profile=mesoprep
 
 capabilities run <name> --retry-last   # after a network failure: same key, same body
 ```
@@ -450,11 +458,12 @@ Full guide: **[agents.md](agents.md)**.
 | 0 | Success **or help/usage** (bare binary, `--help`, bare `approvals`) |
 | 1 | Internal error |
 | 2 | `validation_failed` (also incomplete `approvals accept\|reject`) |
-| 3 | Unauthenticated / forbidden |
+| 3 | Unauthenticated / forbidden / `capability_not_in_profile` |
 | 4 | `approval_required` |
-| 5 | Domain error / conflict / not_found / output_invalid |
+| 5 | Domain error / conflict / not_found / output_invalid / `gone` / `expired` / `not_configured` |
 | 6 | Rate limited |
 
+The server's `error.cli_exit` (1–6) wins when present; this table is the fallback.
 These codes are part of the CLI contract (stable for automation).
 
 ---
@@ -466,8 +475,9 @@ These codes are part of the CLI contract (stable for automation).
 | `auth login requires --base-url` | Pass `--base-url` |
 | Missing base URL on later commands | Re-login or pass `--base-url` |
 | Exit 3 | Wrong/missing token or profile; re-login |
-| Exit 2 before network | Local schema validation — fix JSON or refresh catalog (`--no-cache`) |
+| Exit 2 before network | Local schema validation against the live schema — fix the JSON (a stale cached schema is re-checked automatically) |
 | Exit 4 | Approval required — `approvals accept/reject` |
+| Capability missing from `catalog`, or `run` says `not_found` | Token lacks the `capabilities:cli` ability, so the server treats you as an `http` caller — see [authentication.md](authentication.md#tokens-must-carry-the-cli-ability) |
 | Wrong product’s data | You used the wrong `--profile` |
 | `command not found: capabilities` | Install path not on `PATH` (`~/.local/bin`) |
 | `self-update` not writable | Reinstall via `scripts/install.sh` into a dir you own (`CAPABILITIES_INSTALL_DIR`, default `~/.local/bin`) |

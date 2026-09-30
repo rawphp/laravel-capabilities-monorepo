@@ -10,8 +10,11 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 use Rawphp\Capabilities\Observability\InMemoryMetrics;
 use Rawphp\Capabilities\Observability\InMemoryTracer;
+use Rawphp\CapabilitiesAi\Contracts\DeadlineAwareLlmClient;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
+use Rawphp\CapabilitiesAi\Package;
 use Rawphp\CapabilitiesAi\Support\AnthropicLlmClient;
+use Rawphp\CapabilitiesAi\Support\ContainerBindings;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 use Rawphp\CapabilitiesAi\Support\LlmClientDefaults;
 use Rawphp\CapabilitiesAi\Support\RetryableLlmException;
@@ -169,9 +172,166 @@ it('caps a long Retry-After so one 429 cannot stall the turn', function () {
             ->push(['content' => [['type' => 'text', 'text' => 'ok']]], 200),
     ]);
 
-    (new AnthropicLlmClient('test-key'))->complete([['role' => 'user', 'content' => 'hi']]);
+    (new AnthropicLlmClient('test-key', timeoutSeconds: 30))->complete([['role' => 'user', 'content' => 'hi']]);
 
     Sleep::assertSequence([Sleep::for(60)->seconds()]);
+});
+
+/**
+ * Http::fake that records each attempt's transport timeout, answering from $responses in order.
+ *
+ * @param  list<array{0: array<string, mixed>, 1: int, 2?: array<string, string>}>  $responses
+ * @return ArrayObject<int, int|float>
+ */
+function fakeAnthropicRecordingTimeouts(array $responses): ArrayObject
+{
+    $timeouts = new ArrayObject;
+    Http::fake(function ($request, array $options) use (&$responses, $timeouts) {
+        $timeouts[] = $options['timeout'];
+        [$body, $status, $headers] = array_pad(array_shift($responses), 3, []);
+
+        return Http::response($body, $status, $headers);
+    });
+
+    return $timeouts;
+}
+
+it('sends the full configured timeout while the turn has room for it', function () {
+    bootAnthropicHttp();
+    $timeouts = fakeAnthropicRecordingTimeouts([[['content' => [['type' => 'text', 'text' => 'ok']]], 200]]);
+
+    (new AnthropicLlmClient('test-key'))
+        ->withDeadline(hrtime(true) + Package::DEFAULT_CLAIM_TTL * 1_000_000_000)
+        ->complete([['role' => 'user', 'content' => 'hi']]);
+
+    expect($timeouts->getArrayCopy())->toBe([AnthropicLlmClient::DEFAULT_TIMEOUT_SECONDS]);
+});
+
+it('caps a later round\'s request timeout at what is left of the turn minus a margin', function () {
+    bootAnthropicHttp();
+    $timeouts = fakeAnthropicRecordingTimeouts([[['content' => [['type' => 'text', 'text' => 'ok']]], 200]]);
+
+    // Default 110s timeout, but only 30s of the turn left: the request must end before the job.
+    $content = (new AnthropicLlmClient('test-key'))
+        ->withDeadline(hrtime(true) + 30_000_000_000)
+        ->complete([['role' => 'user', 'content' => 'hi']])['content'];
+
+    expect($content)->toBe('ok')
+        ->and($timeouts)->toHaveCount(1)
+        ->and($timeouts[0])->toBeLessThanOrEqual(28)
+        ->and($timeouts[0])->toBeGreaterThan(25);
+});
+
+it('refuses to send when under the minimum request time is left of the turn', function () {
+    bootAnthropicHttp();
+    Http::fake();
+
+    $client = (new AnthropicLlmClient('test-key'))
+        ->withDeadline(hrtime(true) + (DeadlineAwareLlmClient::MIN_REQUEST_SECONDS - 1) * 1_000_000_000);
+
+    expect(fn () => $client->complete([['role' => 'user', 'content' => 'hi']]))
+        ->toThrow(RetryableLlmException::class, 'turn deadline');
+    Http::assertNothingSent();
+});
+
+it('retries a 429 with a shorter timeout when the full one no longer fits the turn job', function () {
+    bootAnthropicHttp();
+    Sleep::fake();
+    $timeouts = fakeAnthropicRecordingTimeouts([
+        [['error' => ['message' => 'rate limited']], 429, ['retry-after' => '30']],
+        [['content' => [['type' => 'text', 'text' => 'ok']]], 200],
+    ]);
+
+    // Default pairing: 30s wait + a full 110s request would outlast the 120s job; ~88s still fits.
+    $content = (new AnthropicLlmClient('test-key', timeoutSeconds: 110, deadlineSeconds: 120))
+        ->complete([['role' => 'user', 'content' => 'hi']])['content'];
+
+    expect($content)->toBe('ok')
+        ->and($timeouts[0])->toBe(110)
+        ->and($timeouts[1])->toBeLessThanOrEqual(88)
+        ->and($timeouts[1])->toBeGreaterThan(85);
+    Sleep::assertSequence([Sleep::for(30)->seconds()]);
+});
+
+it('stops retrying a 429 when the wait would leave under the minimum request time', function () {
+    bootAnthropicHttp();
+    Sleep::fake();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::sequence()
+            ->push(['error' => ['message' => 'rate limited']], 429, ['retry-after' => '30'])
+            ->push(['content' => [['type' => 'text', 'text' => 'too late']]], 200),
+    ]);
+
+    try {
+        (new AnthropicLlmClient('test-key', timeoutSeconds: 10, deadlineSeconds: 35))
+            ->complete([['role' => 'user', 'content' => 'hi']]);
+        $this->fail('expected RetryableLlmException');
+    } catch (RetryableLlmException $e) {
+        expect($e->status)->toBe(429)
+            ->and($e->retryAfterSeconds)->toBe(30);
+    }
+
+    Http::assertSentCount(1);
+    Sleep::assertNeverSlept();
+});
+
+it('counts the exponential backoff against the turn job deadline too', function () {
+    bootAnthropicHttp();
+    Sleep::fake();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::sequence()
+            ->push(['error' => ['message' => 'rate limited']], 429)
+            ->push(['error' => ['message' => 'rate limited']], 429)
+            ->push(['content' => [['type' => 'text', 'text' => 'too late']]], 200),
+    ]);
+
+    // 12s deadline: after the 1s wait ~11s are left (retry); after the 2s wait under 10s (stop).
+    expect(fn () => (new AnthropicLlmClient('test-key', timeoutSeconds: 10, deadlineSeconds: 12))
+        ->complete([['role' => 'user', 'content' => 'hi']]))
+        ->toThrow(RetryableLlmException::class, 'Anthropic API error: 429');
+
+    Http::assertSentCount(2);
+    Sleep::assertSequence([Sleep::for(1)->seconds()]);
+});
+
+it('stops retrying a 429 that fits the request deadline but not the turn deadline', function () {
+    bootAnthropicHttp();
+    Sleep::fake();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::sequence()
+            ->push(['error' => ['message' => 'rate limited']], 429, ['retry-after' => '5'])
+            ->push(['content' => [['type' => 'text', 'text' => 'too late']]], 200),
+    ]);
+
+    // A 5s wait fits the 120s per-call deadline, but a later round has only 12s of turn left.
+    $client = (new AnthropicLlmClient('test-key', timeoutSeconds: 10, deadlineSeconds: 120))
+        ->withDeadline(hrtime(true) + 12_000_000_000);
+
+    expect(fn () => $client->complete([['role' => 'user', 'content' => 'hi']]))
+        ->toThrow(RetryableLlmException::class, 'Anthropic API error: 429');
+    Http::assertSentCount(1);
+    Sleep::assertNeverSlept();
+});
+
+it('withDeadline returns a copy and leaves the original client unbounded by the turn', function () {
+    bootAnthropicHttp();
+    Sleep::fake();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::sequence()
+            ->push(['error' => ['message' => 'rate limited']], 429, ['retry-after' => '5'])
+            ->push(['content' => [['type' => 'text', 'text' => 'ok']]], 200),
+    ]);
+
+    $client = new AnthropicLlmClient('test-key', timeoutSeconds: 10, deadlineSeconds: 120);
+    $bounded = $client->withDeadline(hrtime(true));
+
+    expect($bounded)->not->toBe($client)
+        ->and($client->complete([['role' => 'user', 'content' => 'hi']])['content'])->toBe('ok');
+    Sleep::assertSequence([Sleep::for(5)->seconds()]);
 });
 
 it('does not retry non-429 errors', function () {
@@ -820,4 +980,234 @@ it('does not record a failure for the empty API key guard (no outbound call)', f
 
     expect($metrics->emissions())->toBe([])
         ->and($tracer->spans())->toBe([]);
+});
+
+it('sends each request with the configured timeout instead of the 30s HTTP client default', function () {
+    bootAnthropicHttp();
+    $seen = [];
+    Http::fake(function ($request, array $options) use (&$seen) {
+        $seen[] = $options['timeout'] ?? null;
+
+        return Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200);
+    });
+
+    (new AnthropicLlmClient('test-key', timeoutSeconds: 95))->complete([['role' => 'user', 'content' => 'hi']]);
+    (new AnthropicLlmClient('test-key'))->complete([['role' => 'user', 'content' => 'hi']]);
+
+    expect($seen)->toBe([95, AnthropicLlmClient::DEFAULT_TIMEOUT_SECONDS])
+        ->and(AnthropicLlmClient::DEFAULT_TIMEOUT_SECONDS)->toBeLessThan(Package::DEFAULT_CLAIM_TTL);
+});
+
+it('makeLlmClient passes llm.anthropic.timeout through to the request', function () {
+    bootAnthropicHttp();
+    $seen = [];
+    Http::fake(function ($request, array $options) use (&$seen) {
+        $seen[] = $options['timeout'] ?? null;
+
+        return Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200);
+    });
+
+    $client = ContainerBindings::makeLlmClient([
+        'llm' => ['driver' => 'anthropic', 'anthropic' => ['api_key' => 'k', 'timeout' => 42]],
+    ]);
+    $client->complete([['role' => 'user', 'content' => 'hi']]);
+
+    expect($seen)->toBe([42]);
+});
+
+it('makeLlmClient gives the client claim_ttl as its retry deadline', function () {
+    bootAnthropicHttp();
+    Sleep::fake();
+    Http::fake([
+        'api.anthropic.com/*' => Http::sequence()
+            ->push(['error' => ['message' => 'rate limited']], 429, ['retry-after' => '30'])
+            ->push(['content' => [['type' => 'text', 'text' => 'ok']]], 200),
+    ]);
+
+    // 30s wait + 110s timeout exceeds the 120s default but fits claim_ttl=300.
+    $client = ContainerBindings::makeLlmClient([
+        'claim_ttl' => 300,
+        'llm' => ['driver' => 'anthropic', 'anthropic' => ['api_key' => 'k', 'timeout' => 110]],
+    ]);
+
+    expect($client->complete([['role' => 'user', 'content' => 'hi']])['content'])->toBe('ok');
+    Sleep::assertSequence([Sleep::for(30)->seconds()]);
+});
+
+it('rejects a non-positive timeout', function () {
+    expect(fn () => new AnthropicLlmClient('test-key', timeoutSeconds: 0))
+        ->toThrow(InvalidArgumentException::class, 'timeout');
+});
+
+/**
+ * Send one complete() through a faked Anthropic endpoint and return the outbound JSON body.
+ *
+ * @param  list<mixed>  $messages
+ * @param  list<mixed>  $tools
+ * @return array{0: array<string, mixed>, 1: string} decoded body + raw JSON (for {} vs [] checks)
+ */
+function anthropicOutbound(array $messages, array $tools = []): array
+{
+    bootAnthropicHttp();
+    Http::fake(['api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200)]);
+
+    (new AnthropicLlmClient('test-key'))->complete($messages, $tools);
+
+    $raw = Http::recorded()[0][0]->body();
+
+    return [json_decode($raw, true, 512, JSON_THROW_ON_ERROR), $raw];
+}
+
+it('lifts system messages into the top-level system prompt and skips empty and non-array rows', function () {
+    [$body] = anthropicOutbound([
+        ['role' => 'system', 'content' => 'You are helpful.'],
+        'not-a-message',
+        ['role' => 'system', 'content' => ''],
+        ['role' => 'system', 'content' => 'Be brief.'],
+        ['role' => 'user', 'content' => 'hi'],
+    ]);
+
+    expect($body['system'])->toBe("You are helpful.\n\nBe brief.")
+        ->and($body['messages'])->toBe([['role' => 'user', 'content' => 'hi']]);
+});
+
+it('omits system and sends a placeholder user turn when only empty rows are given', function () {
+    [$body] = anthropicOutbound([['role' => 'system', 'content' => '']]);
+
+    expect($body)->not->toHaveKey('system')
+        ->and($body['messages'])->toBe([['role' => 'user', 'content' => '(empty)']]);
+});
+
+it('merges consecutive same-role text rows so roles alternate', function () {
+    [$body] = anthropicOutbound([
+        ['role' => 'user', 'content' => "first  \n"],
+        ['role' => 'user', 'content' => 'second'],
+    ]);
+
+    expect($body['messages'])->toBe([['role' => 'user', 'content' => "first\n\nsecond"]]);
+});
+
+it('merges a text row with a block row as one block list, dropping empty text', function () {
+    $image = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/png', 'data' => 'AAAA']];
+
+    [$body] = anthropicOutbound([
+        ['role' => 'user', 'content' => 'look at this'],
+        ['role' => 'user', 'content' => [$image]],
+        ['role' => 'user', 'content' => ''],
+    ]);
+
+    expect($body['messages'])->toHaveCount(1)
+        ->and($body['messages'][0]['content'])->toBe([
+            ['type' => 'text', 'text' => 'look at this'],
+            $image,
+        ]);
+});
+
+it('tool results without a correlation id fall back to tool_call_unknown and JSON-encode structured content', function () {
+    [$body] = anthropicOutbound([
+        ['role' => 'user', 'content' => 'go'],
+        ['role' => 'tool', 'content' => ['ok' => true, 'id' => 7]],
+    ]);
+
+    expect($body['messages'][0]['content'])->toBe([
+        ['type' => 'text', 'text' => 'go'],
+        ['type' => 'tool_result', 'tool_use_id' => 'tool_call_unknown', 'content' => '{"ok":true,"id":7}'],
+    ]);
+});
+
+it('replays assistant tool calls with text, a fallback id and {} input, skipping malformed calls', function () {
+    [$body, $raw] = anthropicOutbound([
+        ['role' => 'user', 'content' => 'go'],
+        [
+            'role' => 'assistant',
+            'content' => 'calling',
+            'tool_calls' => [
+                'garbage',
+                ['name' => 'invoices.create', 'arguments' => 'not-an-object'],
+            ],
+        ],
+    ]);
+
+    expect($body['messages'][1])->toBe([
+        'role' => 'assistant',
+        'content' => [
+            ['type' => 'text', 'text' => 'calling'],
+            ['type' => 'tool_use', 'id' => 'tool_call_unknown', 'name' => AnthropicLlmClient::encodeToolName('invoices.create'), 'input' => []],
+        ],
+    ])->and($raw)->toContain('"input":{}');
+});
+
+it('sends an empty text block for an assistant row with neither text nor tool calls', function () {
+    [$body] = anthropicOutbound([
+        ['role' => 'user', 'content' => 'go'],
+        ['role' => 'assistant', 'content' => ''],
+    ]);
+
+    expect($body['messages'][1])->toBe(['role' => 'assistant', 'content' => [['type' => 'text', 'text' => '']]]);
+});
+
+it('normalizes tool schemas to Anthropic objects and skips unnamed or malformed tool defs', function () {
+    [$body, $raw] = anthropicOutbound(
+        [['role' => 'user', 'content' => 'go']],
+        [
+            'not-a-tool',
+            ['description' => 'nameless'],
+            ['name' => 'no_schema'],
+            ['name' => 'bad_schema', 'parameters' => 'string-schema'],
+            ['name' => 'untyped', 'input_schema' => ['properties' => ['a' => ['type' => 'string']]]],
+            ['name' => 'empty_props', 'parameters' => ['type' => 'object', 'properties' => []]],
+        ],
+    );
+
+    $byName = array_column($body['tools'], null, 'name');
+
+    expect(array_keys($byName))->toBe(['no_schema', 'bad_schema', 'untyped', 'empty_props'])
+        ->and($byName['no_schema']['input_schema'])->toBe(['type' => 'object', 'properties' => []])
+        ->and($byName['no_schema']['description'])->toBe('')
+        ->and($byName['bad_schema']['input_schema'])->toBe(['type' => 'object', 'properties' => []])
+        ->and($byName['untyped']['input_schema'])->toBe(['properties' => ['a' => ['type' => 'string']], 'type' => 'object'])
+        ->and($byName['empty_props']['input_schema'])->toBe(['type' => 'object', 'properties' => []])
+        ->and(substr_count($raw, '"properties":{}'))->toBe(3);
+});
+
+it('ignores non-array content blocks in the Anthropic response', function () {
+    bootAnthropicHttp();
+    Http::fake(['api.anthropic.com/*' => Http::response([
+        'content' => ['stray', ['type' => 'text', 'text' => 'kept']],
+    ], 200)]);
+
+    $out = (new AnthropicLlmClient('test-key'))->complete([['role' => 'user', 'content' => 'hi']]);
+
+    expect($out)->toBe(['content' => 'kept']);
+});
+
+it('LlmClientDefaults keeps host clients off multi-round tools unless they opt in', function () {
+    $host = new class implements LlmClient
+    {
+        use LlmClientDefaults;
+
+        public function complete(array $messages, array $tools = []): array
+        {
+            return ['content' => ''];
+        }
+    };
+
+    expect($host->supportsToolRounds())->toBeFalse();
+});
+
+it('makeLlmClient refuses an anthropic timeout that does not fit inside claim_ttl', function (int $timeout, int $claimTtl) {
+    expect(fn () => ContainerBindings::makeLlmClient([
+        'claim_ttl' => $claimTtl,
+        'llm' => ['driver' => 'anthropic', 'anthropic' => ['api_key' => 'k', 'timeout' => $timeout]],
+    ]))->toThrow(InvalidArgumentException::class, "llm.anthropic.timeout ({$timeout}s) must be below claim_ttl ({$claimTtl}s)");
+})->with([
+    'equal' => [120, 120],
+    'above' => [300, 120],
+    'above a raised ttl' => [601, 600],
+]);
+
+it('makeLlmClient checks the timeout against the package default claim_ttl when unset', function () {
+    expect(fn () => ContainerBindings::makeLlmClient([
+        'llm' => ['driver' => 'anthropic', 'anthropic' => ['api_key' => 'k', 'timeout' => Package::DEFAULT_CLAIM_TTL]],
+    ]))->toThrow(InvalidArgumentException::class, 'must be below claim_ttl');
 });

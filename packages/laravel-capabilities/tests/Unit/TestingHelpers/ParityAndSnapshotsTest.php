@@ -142,6 +142,7 @@ it('happy: assertParity same success class across registry surfaces with mocks [
     $asserted = 0;
     expect($h['registry']->assertParity($h['name'], [
         'input' => CatalogHelpers::input(),
+        'actor' => PipelineHelpers::userActor(),
         'surfaces' => ['agent', 'http', 'cli'],
         'assert' => function ($result) use (&$asserted) {
             expect($result->isOk())->toBeTrue();
@@ -202,6 +203,7 @@ it('edge: assertParity mismatch throws with surface names and result classes [D-
     ]);
     expect(fn () => $h['registry']->assertParity($h['name'], [
         'input' => CatalogHelpers::input(),
+        'actor' => PipelineHelpers::userActor(),
         'surfaces' => ['http', 'mcp'],
     ]))->toThrow(
         ParityAssertionException::class,

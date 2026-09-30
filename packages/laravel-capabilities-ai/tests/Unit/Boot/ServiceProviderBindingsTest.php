@@ -8,33 +8,46 @@ declare(strict_types=1);
  */
 
 use Illuminate\Container\Container;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Http;
 use Rawphp\Capabilities\Contracts\CapabilityBus;
 use Rawphp\Capabilities\Contracts\IdempotencyStore;
 use Rawphp\Capabilities\Contracts\Metrics;
+use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\Capabilities\Contracts\Tracer;
 use Rawphp\Capabilities\Observability\InMemoryMetrics;
 use Rawphp\Capabilities\Observability\InMemoryTracer;
 use Rawphp\Capabilities\Schema\CatalogPresenter;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\InMemoryRateLimiter;
 use Rawphp\CapabilitiesAi\CapabilitiesAiServiceProvider;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
+use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
 use Rawphp\CapabilitiesAi\Contracts\IdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Contracts\LlmClient;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStoreReadiness;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
+use Rawphp\CapabilitiesAi\Contracts\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
-use Rawphp\CapabilitiesAi\Domain\TurnClaim;
+use Rawphp\CapabilitiesAi\Domain\TurnRateLimitedException;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
+use Rawphp\CapabilitiesAi\Domain\TurnService;
+use Rawphp\CapabilitiesAi\Http\ChatController;
 use Rawphp\CapabilitiesAi\Support\AnthropicLlmClient;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
+use Rawphp\CapabilitiesAi\Support\EloquentConversationStore;
+use Rawphp\CapabilitiesAi\Support\EloquentTurnClaim;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
+use Rawphp\CapabilitiesAi\Support\RedisProgressStore;
 use Rawphp\CapabilitiesAi\Support\StoreBoundIdempotencyReadiness;
 use Rawphp\CapabilitiesAi\Support\StoreBoundProgressStoreReadiness;
+use Rawphp\CapabilitiesAi\Tests\Fakes\InMemoryConversationStore;
+use Rawphp\CapabilitiesAi\Tests\Fakes\InMemoryTurnClaim;
 
 function aiFakeBus(): CapabilityBus
 {
@@ -88,7 +101,7 @@ function aiConfigRepo(array $items): object
 /**
  * Minimal Application stand-in that satisfies ServiceProvider constructor + register().
  */
-function bootAiProviderContainer(array $configOverrides = []): Container
+function bootAiProviderContainer(array $configOverrides = [], ?Closure $prebind = null): Container
 {
     $app = new class extends Container
     {
@@ -105,6 +118,9 @@ function bootAiProviderContainer(array $configOverrides = []): Container
     ]));
 
     $app->instance(CapabilityBus::class, aiFakeBus());
+    if ($prebind !== null) {
+        $prebind($app);
+    }
 
     $provider = new CapabilitiesAiServiceProvider($app);
     $provider->register();
@@ -123,12 +139,99 @@ it('resolves TurnRunner from container with fake driver', function () {
         ->and($app->make(TurnClaim::class))->toBeInstanceOf(TurnClaim::class);
 });
 
+it('binds the Eloquent ConversationStore and TurnClaim by default', function () {
+    $app = bootAiProviderContainer();
+
+    expect($app->make(ConversationStore::class))->toBeInstanceOf(EloquentConversationStore::class)
+        ->and($app->make(TurnClaim::class))->toBeInstanceOf(EloquentTurnClaim::class);
+});
+
+it('keeps a host-prebound ConversationStore and TurnClaim and shares them with the services', function () {
+    $store = new InMemoryConversationStore;
+    $claim = new InMemoryTurnClaim($store);
+    $app = bootAiProviderContainer(prebind: static function (Container $app) use ($store, $claim): void {
+        $app->instance(ConversationStore::class, $store);
+        $app->instance(TurnClaim::class, $claim);
+        $app->instance('Illuminate\Contracts\Bus\Dispatcher', new class
+        {
+            public function dispatch(object $job): mixed
+            {
+                return null;
+            }
+        });
+    });
+
+    $ids = $app->make(ConversationService::class)->createUserMessage('hi', userId: 'u1');
+    $cancelled = $app->make(TurnService::class)->cancel($ids['turn_ulid'], 'u1');
+
+    expect($app->make(ConversationStore::class))->toBe($store)
+        ->and($app->make(TurnClaim::class))->toBe($claim)
+        ->and($cancelled['status'])->toBe('cancelled')
+        ->and($store->turn($ids['turn_ulid'])->status)->toBe('cancelled');
+});
+
 it('resolves ConversationService with callable dispatch', function () {
     $app = bootAiProviderContainer();
 
     $service = $app->make(ConversationService::class);
 
     expect($service)->toBeInstanceOf(ConversationService::class);
+});
+
+it('wires a container-bound core RateLimiter into ConversationService (D-013 turns_per_minute)', function () {
+    $app = bootAiProviderContainer(['turns_per_minute' => 1]);
+    $limiter = new InMemoryRateLimiter;
+    $limiter->hit('rl:ai:user:u1', 60);
+    $app->instance(RateLimiter::class, $limiter);
+
+    $service = $app->make(ConversationService::class);
+
+    expect(fn () => $service->createUserMessage('hi', userId: 'u1'))
+        ->toThrow(TurnRateLimitedException::class);
+});
+
+it('resolves ChatController with max_message_chars from config', function () {
+    $app = bootAiProviderContainer(['max_message_chars' => 3]);
+    $request = Request::create('/messages', 'POST', ['content' => 'four']);
+    $request->setUserResolver(static fn () => new class implements Authenticatable
+    {
+        public function getAuthIdentifierName(): string
+        {
+            return 'id';
+        }
+
+        public function getAuthIdentifier(): mixed
+        {
+            return 'u1';
+        }
+
+        public function getAuthPasswordName(): string
+        {
+            return 'password';
+        }
+
+        public function getAuthPassword(): string
+        {
+            return '';
+        }
+
+        public function getRememberToken(): string
+        {
+            return '';
+        }
+
+        public function setRememberToken($value): void {}
+
+        public function getRememberTokenName(): string
+        {
+            return '';
+        }
+    });
+
+    $response = $app->make(ChatController::class)->storeMessage($request, $app->make(ConversationService::class));
+
+    expect($response->getStatusCode())->toBe(422)
+        ->and($response->getData(true)['error']['violations'][0]['message'])->toContain('3 characters');
 });
 
 it('resolves ProposalService with CapabilityBus', function () {
@@ -384,4 +487,142 @@ it('does not overwrite host-prebound ProgressStoreReadiness', function () {
     (new CapabilitiesAiServiceProvider($app))->register();
 
     expect($app->make(ProgressStoreReadiness::class))->toBe($host);
+});
+
+it('refuses to resolve ProposalService when core CapabilityBus is not bound', function () {
+    $app = new class extends Container
+    {
+        public function runningInConsole(): bool
+        {
+            return true;
+        }
+    };
+    $base = require dirname(__DIR__, 3).'/config/capabilities-ai.php';
+    $app->instance('config', aiConfigRepo(['capabilities-ai' => $base]));
+
+    (new CapabilitiesAiServiceProvider($app))->register();
+
+    expect(fn () => $app->make(ProposalService::class))
+        ->toThrow(RuntimeException::class, 'CapabilityBus must be bound (core package) before resolving ProposalService');
+});
+
+it('default dispatch fails loudly when no bus Dispatcher is bound', function () {
+    $store = new InMemoryConversationStore;
+    $app = bootAiProviderContainer(prebind: static function (Container $app) use ($store): void {
+        $app->instance(ConversationStore::class, $store);
+    });
+
+    expect(fn () => $app->make(ConversationService::class)->createUserMessage('hi', userId: 'u1'))
+        ->toThrow(RuntimeException::class, 'No bus dispatcher available');
+});
+
+/**
+ * Native Redis client stand-in (ext-redis / predis shape) that records writes.
+ */
+function aiRecordingRedisClient(): object
+{
+    return new class
+    {
+        /** @var array<string, list<string>> */
+        public array $lists = [];
+
+        public function rPush(string $key, string $value): int
+        {
+            $this->lists[$key][] = $value;
+
+            return count($this->lists[$key]);
+        }
+
+        public function expire(string $key, int $ttl): bool
+        {
+            return true;
+        }
+
+        /** @return list<string> */
+        public function lRange(string $key, int $start, int $end): array
+        {
+            return array_slice($this->lists[$key] ?? [], $start);
+        }
+    };
+}
+
+/**
+ * @param  object|null  $redisManager  bound as 'redis' when not null
+ */
+function aiRedisProgressContainer(?object $redisManager): Container
+{
+    return bootAiProviderContainer(
+        ['progress' => ['driver' => 'redis', 'redis_connection' => 'progress']],
+        static function (Container $app) use ($redisManager): void {
+            if ($redisManager !== null) {
+                $app->instance('redis', $redisManager);
+            }
+        },
+    );
+}
+
+it('redis progress driver writes through the native client behind a Laravel connection wrapper', function () {
+    $client = aiRecordingRedisClient();
+    $wrapper = new class($client)
+    {
+        public function __construct(private object $native) {}
+
+        public function client(): object
+        {
+            return $this->native;
+        }
+    };
+    $manager = new class($wrapper)
+    {
+        public ?string $requested = null;
+
+        public function __construct(private object $wrapper) {}
+
+        public function connection(string $name): object
+        {
+            $this->requested = $name;
+
+            return $this->wrapper;
+        }
+    };
+
+    $store = aiRedisProgressContainer($manager)->make(ProgressStore::class);
+    $store->append('01TURN', ['kind' => 'status', 'data' => ['status' => 'queued']]);
+
+    expect($store)->toBeInstanceOf(RedisProgressStore::class)
+        ->and($manager->requested)->toBe('progress')
+        ->and($client->lists)->toHaveKey('capabilities_ai:progress:01TURN')
+        ->and($store->since('01TURN')[0]['data'])->toBe(['status' => 'queued']);
+});
+
+it('redis progress driver uses the connection itself when it exposes no native client', function () {
+    $connection = aiRecordingRedisClient();
+    $manager = new class($connection)
+    {
+        public function __construct(private object $connection) {}
+
+        public function connection(string $name): object
+        {
+            return $this->connection;
+        }
+    };
+
+    $store = aiRedisProgressContainer($manager)->make(ProgressStore::class);
+    $store->append('01TURN', ['kind' => 'delta', 'data' => 'x']);
+
+    expect($connection->lists['capabilities_ai:progress:01TURN'])->toHaveCount(1);
+});
+
+it('redis progress driver uses a bound client directly when it has no connection() method', function () {
+    $client = aiRecordingRedisClient();
+
+    $store = aiRedisProgressContainer($client)->make(ProgressStore::class);
+    $store->append('01TURN', ['kind' => 'delta', 'data' => 'x']);
+
+    expect($client->lists['capabilities_ai:progress:01TURN'])->toHaveCount(1);
+});
+
+it('redis progress driver fails closed when no redis service is bound (no array fallback)', function () {
+    expect(fn () => aiRedisProgressContainer(null)->make(ProgressStore::class))
+        ->toThrow(RuntimeException::class, 'progress.driver=redis requires a Redis client');
 });

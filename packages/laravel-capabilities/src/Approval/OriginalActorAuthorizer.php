@@ -12,7 +12,7 @@ use Rawphp\Capabilities\Support\SystemActor;
  * Original-actor re-check on accept (spec: re-validation on accept, step 4).
  *
  * Rehydrates the requester recorded on the approval row and re-runs the registry's
- * authorize decision with the stored input under the row's tenant. Fails closed:
+ * authorize decision with the stored input under the row's stamped scope. Fails closed:
  * an unknown capability, unresolvable requester, or unknown caller denies.
  *
  * System requesters rehydrate as {@see SystemActor}; user requesters go through the
@@ -44,11 +44,10 @@ final class OriginalActorAuthorizer
             return false;
         }
 
-        $tenant = self::field($row, 'tenant_id');
         $context = new CapabilityContext(
             caller: $caller,
             actor: $actor,
-            scope: $tenant === '' ? null : new CapabilityScope(tenantId: $tenant),
+            scope: CapabilityScope::fromRow($row),
         );
 
         /** @var array<string, mixed> $input */

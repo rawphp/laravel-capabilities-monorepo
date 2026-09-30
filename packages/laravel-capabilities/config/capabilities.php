@@ -78,8 +78,16 @@ return [
         ],
         'http' => [
             'enabled' => $env('CAPABILITIES_SURFACE_HTTP', true),
+            // Route prefix for the capability HTTP API. The Go product CLI always appends
+            // `/capabilities/...` to its --base-url, so the prefix must END in `capabilities`
+            // (e.g. 'capabilities' → --base-url=https://host, 'api/capabilities' →
+            // --base-url=https://host/api). Any other last segment is unreachable from the CLI.
             'prefix' => 'capabilities',
             'middleware' => ['api', 'auth:sanctum'],
+            // Stack for the unauthenticated auth/token, auth/device and auth/callback routes.
+            // null → `middleware` minus auth:* plus 'throttle:6,1,capabilities-auth'.
+            // Set a list to replace it (e.g. a looser throttle for device-code polling).
+            'auth_middleware' => null,
         ],
         'cli' => [
             'enabled' => $env('CAPABILITIES_SURFACE_CLI', true),

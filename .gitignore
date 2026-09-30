@@ -9,10 +9,7 @@
 *.swp
 .DS_Store
 
-# CLI build artifacts (keep docs; ignore binaries)
-packages/capabilities-cli/dist/*
-!packages/capabilities-cli/dist/.gitkeep
-!packages/capabilities-cli/dist/README.md
+# CLI build artifacts (packages/capabilities-cli/.gitignore ignores dist/)
 packages/capabilities-cli/**/bin/
 *.exe
 
@@ -29,3 +26,4 @@ build/
 # Python bytecode (tools/*.py)
 __pycache__/
 *.pyc
+

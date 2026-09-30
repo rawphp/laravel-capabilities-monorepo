@@ -1,0 +1,60 @@
+{
+ "auditor": "cross-cutting-auditor",
+ "version": "1.0",
+ "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-audit8",
+ "stack_summary": {
+  "laravel": {
+   "present": true,
+   "version": "11.x|12.x|13.x (illuminate/* components; three packages, not a full app)",
+   "php_version": "8.2+",
+   "key_packages": [
+    "illuminate/support",
+    "illuminate/http",
+    "illuminate/routing",
+    "illuminate/console",
+    "illuminate/bus",
+    "illuminate/events",
+    "illuminate/database",
+    "illuminate/validation",
+    "pestphp/pest",
+    "phpstan/phpstan"
+   ]
+  },
+  "frontend": {
+   "framework": "none",
+   "framework_version": null,
+   "inertia_version": null,
+   "typescript": false,
+   "state_library": "none",
+   "ui_library": "none",
+   "build_tool": "unknown",
+   "key_packages": []
+  },
+  "testing": {
+   "backend": "pest",
+   "frontend": "none"
+  },
+  "tooling": {
+   "linter_backend": "none",
+   "linter_frontend": "none",
+   "formatter_frontend": "none",
+   "types_php": "phpstan"
+  },
+  "infrastructure_hints": {
+   "queue_driver": "unknown",
+   "cache_driver": "unknown",
+   "ci": "github-actions (tests.yml, split-packages.yml)",
+   "deploy": "unknown"
+  },
+  "notes": "Monorepo: packages/laravel-capabilities (core bus, ~22.8k LOC), packages/laravel-capabilities-messaging (~3k), packages/laravel-capabilities-ai (~4.5k), packages/capabilities-cli (Go, ~5.5k). No root app/routes/package.json. Unit-test-only policy (no feature/DB tests), >=95% coverage. Design oracle: docs/spec.md (D-002..D-023). Standing decisions: /Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.do-work/decisions.md (primary checkout, untracked).",
+  "control_plane": {
+   "present": true,
+   "language": "go",
+   "path": "packages/capabilities-cli",
+   "notes": "Go product CLI, HTTP client only (D-016)"
+  }
+ },
+ "scanned_files_count": 16,
+ "findings": [],
+ "notes": "Iteration-8 check of the docs/CHANGELOG fixes since iteration 7 (4e48e22..HEAD: 819f93d L-601, 9e41d03 X-601, 17a8914 X-602, 81e6ac4 D-006 L-601 wording). All three are correct and complete. X-601: core CHANGELOG 'Changed (BREAKING)' now lists ApprovalExecutor::withStore()/withMetrics() under 'Unused public helpers removed' (confirmed gone: src/Approval/ApprovalExecutor.php keeps only withDomainExecutor/withRevalidator/withOriginalAuthorizer/withAudit, and store+metrics are constructor args), adds '#### Contracts\\RateLimiter gains availableIn()' (src/Contracts/RateLimiter.php:32, implemented in InMemoryRateLimiter:46 and LaravelCacheRateLimiter:64, read at InvokePipeline:864/868) and '#### CapabilityController::lastInvokeOptions() removed' (no reference left in src/tests/docs). The old Changed and Fixed (HTTP surface) entries now point back to these sections, and nothing is duplicated. AI CHANGELOG: new '### Changed' bullet 'BREAKING — TurnClaim is an interface'. It is accurate: at 37a0552 Domain\\TurnClaim was a final class with claim(): ?Turn; now Contracts\\TurnClaim::claim(): bool (line 24), Support\\EloquentTurnClaim exists, ConversationStore::turn() exists (line 58), and Support\\DatabaseConnection is gone. The Added bullet no longer carries the break and cross-references it. The AI README and user guide already describe the interface. X-602 + L-601: spec D-006 step 4 matches the code. CapabilityScope::fromRow treats the row tenant_id as authority, rebuilds untenanted rows that carry a stamped array with a null tenant, rebuilds bare-string/null legacy scope tenant-only, and returns null only with neither tenant nor array. InvokePipeline:742 stamps $ctx->scope()?->toRow(). OriginalActorAuthorizer:50 and CapabilityRegistry:775 both use fromRow, and ResolveTenantFromCaller:34 returns an explicit 'scope' option before any ScopeResolver call, so 'does not place the requester again' holds. The core CHANGELOG Fixed entry (L-401/L-501/L-601) says the same. Release gate: scripts/release.sh changelog_problems() needs exactly one '## [Unreleased]' plus a '## [X.Y.Z]' per packages/*/CHANGELOG.md. All four files have exactly one [Unreleased]. Running the function against 0.5.4 reports only the expected 'no ## [0.5.4] section' (promotion happens at release time per docs/versioning.md §CHANGELOG ↔ tag handoff), and the pre-stable '## [0.x]' heading does not collide with the index()==1 match. Not raised (cosmetic/pre-existing, not worth a change): break headings differ per package ('Changed (BREAKING)' core, 'Breaking' messaging, 'Breaking (0.x)' CLI, BREAKING bullets under Changed in AI); the InvokePipeline:741 comment cites 'D-006 step 5', which is actually Approval flow step 5 (spec:1819), just above D-006; the AI user guide calls ConversationStore TurnRunner's 'optional last arg' although turnBudgetSeconds/clock now follow it; for legacy rows with neither tenant nor stamp, OriginalActorAuthorizer sees a null scope rather than a resolved one (behaviour unchanged since before L-501)."
+}

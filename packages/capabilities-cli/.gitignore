@@ -1,2 +1,5 @@
 # GoReleaser / local build output — do not track (GoReleaser --clean deletes contents).
 dist/
+
+# `go build` in cmd/capabilities writes the binary next to main.go.
+/cmd/capabilities/capabilities

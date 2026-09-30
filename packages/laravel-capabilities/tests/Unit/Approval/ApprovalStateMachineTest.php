@@ -3,10 +3,13 @@
 declare(strict_types=1);
 
 use Rawphp\Capabilities\Approval\ApprovalCallbackVerifier;
+use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Approval\ApprovalPolicy;
 use Rawphp\Capabilities\Approval\ApprovalStateMachine;
 use Rawphp\Capabilities\Approval\Notifiers\HttpApprovalNotifier;
+use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Tests\Fixtures\ApprovalHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\IdempotencyHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
 it('happy: needsApproval true does not call run and stores pending approval [D-006]', function () {
@@ -280,41 +283,60 @@ it('happy: original caller and scope preserved on execution [D-006]', function (
     expect($r->data['original_caller'] ?? null)->toBe('cli');
 });
 
+// The approved execution runs through the pipeline under the request's own key, which is
+// the one writer of the idempotency row (L-102 / L-202).
+function l202Approver(): object
+{
+    $approver = PipelineHelpers::userActor(7);
+    $approver->tenant_id = 'tenant-1';
+
+    return $approver;
+}
+
 it('happy: idempotency key completed after approval execution [D-005]', function () {
-    $h = ApprovalHelpers::withPending(['record' => ['idempotency_key' => 'k-1']]);
-    $h['manager']->accept((string) $h['row']['id'], ApprovalHelpers::requester());
-    expect($h['idempotency']->find('t-1', 'user', '7', 'create-invoice', 'k-1')['status'] ?? null)->toBe('completed');
+    $h = IdempotencyHelpers::harness();
+    $opts = IdempotencyHelpers::options('http', ['idempotency_key' => 'k-1', 'needs_approval' => true]);
+
+    $pending = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), $opts);
+    $before = $h['store']->find('tenant-1', 'user', '7', $h['name'], 'k-1');
+    $h['registry']->approvals()->accept((string) $pending->approvalId(), l202Approver());
+
+    expect($before['status'])->toBe('pending_approval')
+        ->and($h['store']->find('tenant-1', 'user', '7', $h['name'], 'k-1')['status'])->toBe('completed');
 });
 
 it('happy: approval execution completes a same-hash pending_approval idempotency row [D-005]', function () {
-    $h = ApprovalHelpers::withPending(['record' => ['idempotency_key' => 'k-same', 'input_hash' => 'hash-1']]);
-    $h['idempotency']->put([
-        'tenant_id' => 't-1', 'actor_type' => 'user', 'actor_id' => '7', 'capability_name' => 'create-invoice',
-        'idempotency_key' => 'k-same', 'request_hash' => 'hash-1', 'status' => 'pending_approval',
-    ]);
+    $h = IdempotencyHelpers::harness();
+    $opts = IdempotencyHelpers::options('http', ['idempotency_key' => 'k-same', 'needs_approval' => true]);
 
-    $h['manager']->accept((string) $h['row']['id'], ApprovalHelpers::requester());
+    $pending = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), $opts);
+    $before = $h['store']->find('tenant-1', 'user', '7', $h['name'], 'k-same');
+    $accepted = $h['registry']->approvals()->accept((string) $pending->approvalId(), l202Approver());
 
-    $found = $h['idempotency']->find('t-1', 'user', '7', 'create-invoice', 'k-same');
-    expect($found['status'])->toBe('completed')
-        ->and($found['approval_id'])->toBe($h['row']['id'])
-        ->and($found['result_json']['data']['invoice_id'] ?? null)->toBe(42);
+    $found = $h['store']->find('tenant-1', 'user', '7', $h['name'], 'k-same');
+    expect($accepted->isOk())->toBeTrue()
+        ->and($before['status'])->toBe('pending_approval')
+        ->and($found['status'])->toBe('completed')
+        ->and($found['request_hash'])->toBe($before['request_hash'])
+        ->and($found['approval_id'])->toBe($pending->approvalId())
+        ->and($found['result_json']['data'] ?? null)->toBe($accepted->data);
 });
 
 it('edge: approval execution does not overwrite an idempotency row owned by a different request hash [D-005]', function () {
-    $h = ApprovalHelpers::withPending(['record' => ['idempotency_key' => 'k-reused', 'input_hash' => 'hash-1']]);
+    $h = IdempotencyHelpers::harness();
+    $opts = IdempotencyHelpers::options('http', ['idempotency_key' => 'k-reused', 'needs_approval' => true]);
+    $pending = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), $opts);
     $other = ['ok' => true, 'data' => ['invoice_id' => 7]];
-    $h['idempotency']->put([
-        'tenant_id' => 't-1', 'actor_type' => 'user', 'actor_id' => '7', 'capability_name' => 'create-invoice',
-        'idempotency_key' => 'k-reused', 'request_hash' => 'hash-2', 'status' => 'completed',
-        'result_json' => $other, 'approval_id' => 'other-approval',
+    $h['store']->update('tenant-1', 'user', '7', $h['name'], 'k-reused', [
+        'request_hash' => 'hash-other', 'status' => 'completed', 'result_json' => $other, 'approval_id' => 'other-approval',
     ]);
 
-    $result = $h['manager']->accept((string) $h['row']['id'], ApprovalHelpers::requester());
+    $result = $h['registry']->approvals()->accept((string) $pending->approvalId(), l202Approver());
 
-    $found = $h['idempotency']->find('t-1', 'user', '7', 'create-invoice', 'k-reused');
-    expect($result->isOk())->toBeTrue()
-        ->and($found['request_hash'])->toBe('hash-2')
+    $found = $h['store']->find('tenant-1', 'user', '7', $h['name'], 'k-reused');
+    expect($result->errorCode())->toBe('conflict')
+        ->and($h['runCount']->value)->toBe(0)
+        ->and($found['request_hash'])->toBe('hash-other')
         ->and($found['result_json'])->toBe($other)
         ->and($found['approval_id'])->toBe('other-approval');
 });
@@ -479,4 +501,41 @@ it('edge: approval_required path works for original caller job [D-006]', functio
     $h = PipelineHelpers::harness(['allowSystemCallers' => true]);
     $r = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('job', ['needs_approval' => true]));
     expect($r->isApprovalRequired())->toBeTrue();
+});
+
+it('ApprovalManager assertCanTransition mirrors the state machine table [D-006]', function () {
+    $mgr = ApprovalManager::inMemory(new FixedClock(new DateTimeImmutable('2026-05-02T00:00:00Z')));
+
+    expect($mgr->assertCanTransition(
+        ApprovalStateMachine::STATUS_PENDING,
+        ApprovalStateMachine::STATUS_APPROVED,
+    ))->toBeTrue();
+    expect($mgr->assertCanTransition('nope', 'nope'))->toBeFalse();
+});
+
+it('state machine transition and terminal helpers classify statuses and steps [D-006]', function () {
+    expect(ApprovalStateMachine::canTransition('x', 'y'))->toBeFalse()
+        ->and(ApprovalStateMachine::canTransition(
+            ApprovalStateMachine::STATUS_PENDING,
+            ApprovalStateMachine::STATUS_APPROVED,
+        ))->toBeTrue();
+
+    expect(fn () => ApprovalStateMachine::assertTransition(
+        ApprovalStateMachine::STATUS_EXECUTED,
+        ApprovalStateMachine::STATUS_PENDING,
+    ))->toThrow(InvalidArgumentException::class);
+
+    ApprovalStateMachine::assertTransition(
+        ApprovalStateMachine::STATUS_PENDING,
+        ApprovalStateMachine::STATUS_REJECTED,
+    );
+
+    expect(ApprovalStateMachine::isTerminal(ApprovalStateMachine::STATUS_EXECUTED))->toBeTrue()
+        ->and(ApprovalStateMachine::isTerminal(ApprovalStateMachine::STATUS_PENDING))->toBeFalse()
+        ->and(ApprovalStateMachine::acceptIncludesStep('revalidate'))->toBeBool()
+        ->and(ApprovalStateMachine::resumeIncludesStep('claim_lease'))->toBeBool()
+        ->and(ApprovalStateMachine::revalidationIncludesStep('revalidate'))->toBeBool()
+        ->and(ApprovalStateMachine::acceptSteps())->not->toBeEmpty()
+        ->and(ApprovalStateMachine::resumeSteps())->not->toBeEmpty()
+        ->and(ApprovalStateMachine::revalidationSteps())->not->toBeEmpty();
 });

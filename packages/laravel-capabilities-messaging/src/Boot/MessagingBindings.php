@@ -6,7 +6,10 @@ use Rawphp\Capabilities\Contracts\ApprovalNotifier;
 use Rawphp\Capabilities\Contracts\ConversationIdentity;
 use Rawphp\Capabilities\Contracts\ConversationIngress;
 use Rawphp\Capabilities\Contracts\ConversationReply;
+use Rawphp\CapabilitiesMessaging\Identity\CacheLinkStore;
 use Rawphp\CapabilitiesMessaging\Identity\IdentityLinker;
+use Rawphp\CapabilitiesMessaging\Identity\InMemoryLinkStore;
+use Rawphp\CapabilitiesMessaging\Identity\LinkStore;
 use Rawphp\CapabilitiesMessaging\MessagingConfig;
 use Rawphp\CapabilitiesMessaging\Notifiers\TelegramApprovalNotifier;
 use Rawphp\CapabilitiesMessaging\Support\FakeQueue;
@@ -15,6 +18,7 @@ use Rawphp\CapabilitiesMessaging\Support\HttpTelegramBotClient;
 use Rawphp\CapabilitiesMessaging\Support\LaravelUpdateQueue;
 use Rawphp\CapabilitiesMessaging\Support\TelegramBotClient;
 use Rawphp\CapabilitiesMessaging\Support\UpdateQueue;
+use Rawphp\CapabilitiesMessaging\Telegram\CallbackHandler;
 use Rawphp\CapabilitiesMessaging\Telegram\ProcessTelegramUpdate;
 use Rawphp\CapabilitiesMessaging\Telegram\TelegramAdapter;
 use Rawphp\CapabilitiesMessaging\Telegram\TelegramCallbackSigner;
@@ -29,14 +33,16 @@ use RuntimeException;
  * - queue_driver: auto | laravel | fake  (auto → fake in testing, laravel otherwise)
  * - bot_driver:   auto | http | fake     (auto → fake in testing, http otherwise)
  *
- * L-006 residual: IdentityLinker and ThreadStore remain process-local in-memory.
- * Durable DB-backed identity/thread stores are deferred — not silent.
+ * Link codes and identity links: the container binds {@see CacheLinkStore} (host cache, shared by
+ * web and queue workers); build() has no container and uses {@see InMemoryLinkStore}.
+ * L-006 residual: messaging keeps no thread history (thread ids only) — not silent.
  */
 final class MessagingBindings
 {
     public const L006_RESIDUAL =
-        'L-006 residual: IdentityLinker and ThreadStore are process-local in-memory (not durable). '
-        .'Durable DB-backed identity/thread stores are deferred.';
+        'L-006 residual: messaging keeps no thread history, durable or otherwise; the pipeline '
+        .'passes a chat+topic thread_id and the host AgentTurn owns any conversation memory. '
+        .'Link codes and identity links use the cache-backed LinkStore.';
 
     /**
      * @param  array<string, mixed>  $config
@@ -61,6 +67,7 @@ final class MessagingBindings
             TelegramBotClient::class => $botConcrete,
             UpdateQueue::class => $queueConcrete,
             ThreadStore::class => ThreadStore::class,
+            LinkStore::class => CacheLinkStore::class,
             IdentityLinker::class => IdentityLinker::class,
             ConversationIdentity::class => IdentityLinker::class,
             TelegramCallbackSigner::class => TelegramCallbackSigner::class,
@@ -70,6 +77,7 @@ final class MessagingBindings
             TelegramApprovalNotifier::class => TelegramApprovalNotifier::class,
             ApprovalNotifier::class => TelegramApprovalNotifier::class,
             TelegramWebhookController::class => TelegramWebhookController::class,
+            CallbackHandler::class => CallbackHandler::class,
             ProcessTelegramUpdate::class => ProcessTelegramUpdate::class,
         ];
 
@@ -125,7 +133,6 @@ final class MessagingBindings
      *     queue: UpdateQueue,
      *     threads: ThreadStore,
      *     identity: IdentityLinker,
-     *     signer: TelegramCallbackSigner,
      *     adapter: TelegramAdapter,
      *     notifier: TelegramApprovalNotifier,
      *     webhook: TelegramWebhookController,
@@ -147,13 +154,12 @@ final class MessagingBindings
         $bot = self::makeBot($cfg, $drivers['bot'], $httpTransport);
         $queue = self::makeQueue($drivers['queue'], $queueDispatcher);
 
-        // L-006 residual: identity + threads stay in-memory process-local.
+        // No container here: in-memory link store (the provider binds CacheLinkStore).
         $threads = new ThreadStore;
         $identity = new IdentityLinker($cfg);
-        $secret = $cfg->webhookSecret() ?? 'deferred-unset';
-        $signer = new TelegramCallbackSigner($secret, $cfg->callbackTtlSeconds());
         $adapter = new TelegramAdapter($bot);
-        $notifier = new TelegramApprovalNotifier($cfg, $bot, $signer);
+        // Signs with callbackSecret() on notify — no secret needed to build (D-021).
+        $notifier = new TelegramApprovalNotifier($cfg, $bot);
         $webhook = new TelegramWebhookController($cfg, $queue);
         $processor = new ProcessTelegramUpdate($cfg, $identity, $threads, $adapter, null, $bot);
 
@@ -166,7 +172,6 @@ final class MessagingBindings
             'queue' => $queue,
             'threads' => $threads,
             'identity' => $identity,
-            'signer' => $signer,
             'adapter' => $adapter,
             'notifier' => $notifier,
             'webhook' => $webhook,
@@ -229,6 +234,7 @@ final class MessagingBindings
             TelegramBotClient::class,
             UpdateQueue::class,
             ThreadStore::class,
+            LinkStore::class,
             IdentityLinker::class,
             ConversationIdentity::class,
             TelegramCallbackSigner::class,

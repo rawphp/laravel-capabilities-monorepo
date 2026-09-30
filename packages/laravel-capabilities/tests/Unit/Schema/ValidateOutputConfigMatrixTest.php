@@ -6,6 +6,7 @@ use Rawphp\Capabilities\Capability;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
 use Rawphp\Capabilities\Tests\Fixtures\DiscoveryHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
 $matrix = [
     [true, true, true],
@@ -44,7 +45,7 @@ foreach ($matrix as [$validateOutput, $readOnly, $hasSchema]) {
             $builder->register($registry);
 
             $input = $readOnly ? [] : ['customer_id' => 1, 'amount_cents' => 1, 'currency' => 'USD'];
-            $result = $registry->invoke($name, $input);
+            $result = $registry->invoke($name, $input, ['actor' => PipelineHelpers::userActor()]);
             expect($result->isOk())->toBeTrue();
             expect($registry->get($name)->shouldValidateOutput($validateOutput))->toBeTrue();
         });
@@ -61,7 +62,7 @@ foreach ($matrix as [$validateOutput, $readOnly, $hasSchema]) {
             $builder->output(CreateInvoiceResult::class)->register($registry);
 
             $input = $readOnly ? [] : ['customer_id' => 1, 'amount_cents' => 1, 'currency' => 'USD'];
-            $result = $registry->invoke($name, $input);
+            $result = $registry->invoke($name, $input, ['actor' => PipelineHelpers::userActor()]);
             expect($result->isOk())->toBeFalse()
                 ->and($result->errorCode())->toBe('output_invalid');
         });
@@ -83,7 +84,7 @@ foreach ($matrix as [$validateOutput, $readOnly, $hasSchema]) {
             expect($def->shouldValidateOutput($validateOutput))->toBe($validateOutput && $hasSchema);
 
             $input = $readOnly ? [] : ['customer_id' => 1, 'amount_cents' => 1, 'currency' => 'USD'];
-            $result = $registry->invoke($name, $input);
+            $result = $registry->invoke($name, $input, ['actor' => PipelineHelpers::userActor()]);
             // When skipped, free-form output is allowed through.
             if (! $def->shouldValidateOutput($validateOutput)) {
                 expect($result->isOk())->toBeTrue();

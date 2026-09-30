@@ -44,8 +44,8 @@ Hard invariants shared across packages:
 
 | | |
 |---|---|
-| **Is** | Conversation **ingress** (Telegram first): webhooks, identity link/allowlist, threads (process-local today), approval notifiers; feeds the agent; tools are registry capabilities |
-| **Is not** | Domain `run()` or second write path; full multi-tenant identity product (durable identity/threads still residual L-006); core bus governance; product CLI; general notification platform for non-capability flows |
+| **Is** | Conversation **ingress** (Telegram first): webhooks, identity link/allowlist, threads, approval notifiers; feeds the agent; tools are registry capabilities |
+| **Is not** | Domain `run()` or second write path; full multi-tenant identity product (messaging keeps no thread history — L-006; link codes and links use the host cache); core bus governance; product CLI; general notification platform for non-capability flows |
 
 #### 3. `rawphp/laravel-capabilities-ai`
 
@@ -153,11 +153,16 @@ Tests live **inside each package**, not at the monorepo root. The inventory and 
 
 ```bash
 python3 tools/generate_requirement_stubs.py   # after extending the catalog
-composer test              # core + messaging unit suite
+composer test              # core + messaging + AI unit suites
 composer test:core
 composer test:messaging
 composer test:ai
 composer test:cli          # requires Go
+composer coverage          # core + messaging + AI with the 95% floor (needs pcov or Xdebug)
+composer coverage:cli      # Go tests; 95% floor on the module total
+composer format:test       # Pint (CI gate)
+composer analyse           # PHPStan, phpstan.neon (CI gate)
+python3 tools/report_inventory_gaps.py --fail-on-gaps   # inventory ↔ tests (CI gate)
 ```
 
 See **Package layout** and **Roadmap (indicative)** in `docs/spec.md` for the full `src/` map and phase vs residual status.

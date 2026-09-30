@@ -26,9 +26,8 @@
         "illuminate/database": "^11.0|^12.0|^13.0",
         "illuminate/validation": "^11.0|^12.0|^13.0"
     },
-    "require-dev": {
-        "pestphp/pest": "^3.0",
-        "phpstan/phpstan": "^2.0"
+    "conflict": {
+        "laravel/prompts": "<0.1.15"
     },
     "suggest": {
         "laravel/ai": "Required when surfaces.agent is enabled",
@@ -38,11 +37,6 @@
     "autoload": {
         "psr-4": {
             "Rawphp\\Capabilities\\": "src/"
-        }
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "Rawphp\\Capabilities\\Tests\\": "tests/"
         }
     },
     "extra": {
@@ -58,15 +52,9 @@
             }
         }
     },
-    "scripts": {
-        "test": "pest --configuration=phpunit.xml --colors=always"
-    },
     "minimum-stability": "dev",
     "prefer-stable": true,
     "config": {
-        "sort-packages": true,
-        "allow-plugins": {
-            "pestphp/pest-plugin": true
-        }
+        "sort-packages": true
     }
 }

@@ -29,19 +29,6 @@ final class SchemaSnapshot
     }
 
     /**
-     * @param  array<string, mixed>|null  $inputSchema
-     * @param  array<string, mixed>|null  $outputSchema
-     * @return array{input_schema: array<string, mixed>|null, output_schema: array<string, mixed>|null}
-     */
-    public static function document(?array $inputSchema, ?array $outputSchema): array
-    {
-        return [
-            'input_schema' => $inputSchema,
-            'output_schema' => $outputSchema,
-        ];
-    }
-
-    /**
      * Normalize an in-memory expected value into a full snapshot document.
      *
      * Accepts the envelope `{input_schema, output_schema}`. If only one side is present,

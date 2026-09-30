@@ -31,7 +31,7 @@ it('happy: facade invoke surfaces code forbidden without swallowing [FAC-001]', 
 });
 
 it('happy: facade invoke surfaces code approval_required without swallowing [FAC-001]', function () {
-    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'x']);
+    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     Facade::clearResolvedInstances();
     CapabilityFacade::swap($h['registry']);
     $result = CapabilityFacade::invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http', ['needs_approval' => true]));

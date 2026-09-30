@@ -451,3 +451,15 @@ it('edge: parity dataset deny class for cross-tenant via job [D-003]', function 
     expect($result->isOk())->toBeFalse()->and($result->errorCode())->toBe('forbidden')
         ->and($h['runCount']->value)->toBe(0);
 });
+
+it('InMemoryScopedQueryFactory first returns the tenant row or null when the tenant has none', function () {
+    $factory = new InMemoryScopedQueryFactory;
+    $factory->put('Invoice', [
+        1 => ['tenant_id' => 't1', 'data' => ['n' => 1]],
+        2 => ['tenant_id' => 't2', 'data' => ['n' => 2]],
+    ]);
+    $q = $factory->for(new CapabilityScope(tenantId: 't1'), 'Invoice');
+    expect($q->first()['id'] ?? null)->toBe(1);
+    $q2 = $factory->for(new CapabilityScope(tenantId: 'none'), 'Invoice');
+    expect($q2->first())->toBeNull();
+});

@@ -7,7 +7,6 @@ import (
 
 	"github.com/rawphp/capabilities-cli/internal/api"
 	"github.com/rawphp/capabilities-cli/internal/auth"
-	"github.com/rawphp/capabilities-cli/internal/catalog"
 )
 
 func cmdAuth(env Env, args []string) int {
@@ -38,20 +37,17 @@ func cmdAuth(env Env, args []string) int {
 		jsonOut, rest := flagBool(rest, "--json")
 		_ = rest
 		var err error
+		var result *auth.LoginResult
+		c := api.NewClient(base, "")
+		if env.NewClient != nil {
+			c = env.NewClient(base, "")
+		}
 		if token != "" {
-			_, err = auth.LoginWithToken(st, profile, base, token)
+			result, err = auth.LoginWithToken(context.Background(), st, c, profile, base, token)
 		} else if code != "" {
-			c := api.NewClient(base, "")
-			if env.NewClient != nil {
-				c = env.NewClient(base, "")
-			}
 			_, err = auth.LoginBrowserOAuth(context.Background(), st, c, profile, base, code)
 		} else {
-			c := api.NewClient(base, "")
-			if env.NewClient != nil {
-				c = env.NewClient(base, "")
-			}
-			_, err = auth.LoginDeviceCode(context.Background(), st, c, profile, base)
+			_, err = auth.LoginDeviceCode(context.Background(), st, c, profile, base, auth.DeviceFlow{Prompt: env.Stderr, Sleep: env.Sleep})
 		}
 		if err != nil {
 			se, ok := err.(*api.StructuredError)
@@ -65,21 +61,20 @@ func cmdAuth(env Env, args []string) int {
 			fmt.Fprintln(env.Stderr, se.Error())
 			return se.ExitCode
 		}
-		// Prefetch schemas into cache (best-effort).
-		if tok, e := st.GetToken(profile); e == nil {
-			c := api.NewClient(base, tok)
-			if env.NewClient != nil {
-				c = env.NewClient(base, tok)
-			}
-			svc := &catalog.Service{Client: c, Cache: catalog.PrincipalCache(st.SchemaCacheDir(profile), c)}
-			_, _ = svc.Refresh(context.Background())
+		caller := ""
+		if result != nil {
+			caller = result.Caller
+		}
+		if caller != "" && caller != "cli" {
+			fmt.Fprintf(env.Stderr, "warning: server treats this token as caller %q, not cli; capabilities exposed only to cli will be hidden (mint it with the capabilities:cli ability)\n", caller)
 		}
 		// Never print token.
 		if jsonOut {
-			payload := map[string]any{
-				"ok":   true,
-				"data": map[string]any{"profile": profile, "base_url": base, "logged_in": true},
+			data := map[string]any{"profile": profile, "base_url": base, "logged_in": true}
+			if caller != "" {
+				data["caller"] = caller
 			}
+			payload := map[string]any{"ok": true, "data": data}
 			b, _ := json.MarshalIndent(payload, "", "  ")
 			fmt.Fprintln(env.Stdout, string(b))
 			return api.ExitOK

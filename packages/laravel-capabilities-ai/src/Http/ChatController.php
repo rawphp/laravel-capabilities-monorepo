@@ -10,9 +10,11 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesAi\Domain\AcceptOutcome;
+use Rawphp\CapabilitiesAi\Domain\ConversationClosedException;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnCapacityExceededException;
+use Rawphp\CapabilitiesAi\Domain\TurnRateLimitedException;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
 use RuntimeException;
 
@@ -24,12 +26,23 @@ use RuntimeException;
  * Proposal accept/reject act as the authenticated user only (D-022): no user → 401,
  * another user's (or an ownerless) conversation's proposal → 404, before the service runs.
  *
- * Error branches reuse the core D-018 envelope (same shape as capability invoke).
+ * Every error branch (401, 404, 409, 422, 429) uses the core D-018 envelope (same shape as
+ * capability invoke). Proposal accept results keep their own `outcome` body at any status.
  */
 final class ChatController
 {
     /** Crockford base32; ConversationService mints uppercase hex, a subset. */
     private const ULID_PATTERN = '/^[0-9A-HJKMNP-TV-Z]{26}$/';
+
+    /** capabilities-ai.max_message_chars default: longest accepted user message, in characters. */
+    public const DEFAULT_MAX_MESSAGE_CHARS = 32000;
+
+    /**
+     * @param  int  $maxMessageChars  longest accepted `content` in characters; 0 = no cap
+     */
+    public function __construct(
+        private readonly int $maxMessageChars = self::DEFAULT_MAX_MESSAGE_CHARS,
+    ) {}
 
     public function history(Request $request, string $conversationUlid, ConversationService $conversations): JsonResponse
     {
@@ -56,9 +69,9 @@ final class ChatController
             return $this->unauthenticated();
         }
 
-        $errors = $this->storeMessageErrors($request);
-        if ($errors !== []) {
-            return new JsonResponse(['message' => 'The given data was invalid.', 'errors' => $errors], 422);
+        $violations = $this->storeMessageViolations($request);
+        if ($violations !== []) {
+            return $this->failure('validation_failed', 'The given data was invalid.', ['violations' => $violations]);
         }
 
         try {
@@ -68,34 +81,38 @@ final class ChatController
                 userId: $userId,
                 appId: $request->input('app_id'),
             );
-        } catch (TurnCapacityExceededException $e) {
-            return new JsonResponse(['message' => $e->getMessage(), 'outcome' => AcceptOutcome::KIND_RETRYABLE], 429);
+        } catch (TurnCapacityExceededException|TurnRateLimitedException $e) {
+            return $this->failure('rate_limited', $e->getMessage());
         } catch (ModelNotFoundException) {
             return $this->failure('not_found', 'Conversation not found');
+        } catch (ConversationClosedException $e) {
+            return $this->failure('conflict', $e->getMessage());
         }
 
         return new JsonResponse($ids, 201);
     }
 
     /**
-     * @return array<string, list<string>>
+     * @return list<array{field: string, message: string}>
      */
-    private function storeMessageErrors(Request $request): array
+    private function storeMessageViolations(Request $request): array
     {
-        $errors = [];
+        $violations = [];
 
         $content = $request->input('content');
         if (! is_string($content) || trim($content) === '') {
-            $errors['content'] = ['The content field must be a non-empty string.'];
+            $violations[] = ['field' => 'content', 'message' => 'The content field must be a non-empty string.'];
+        } elseif ($this->maxMessageChars > 0 && mb_strlen($content) > $this->maxMessageChars) {
+            $violations[] = ['field' => 'content', 'message' => "The content field must not be longer than {$this->maxMessageChars} characters."];
         }
 
         $conversationUlid = $request->input('conversation_ulid');
         if ($conversationUlid !== null
             && (! is_string($conversationUlid) || preg_match(self::ULID_PATTERN, $conversationUlid) !== 1)) {
-            $errors['conversation_ulid'] = ['The conversation_ulid field must be a 26-character uppercase ULID.'];
+            $violations[] = ['field' => 'conversation_ulid', 'message' => 'The conversation_ulid field must be a 26-character uppercase ULID.'];
         }
 
-        return $errors;
+        return $violations;
     }
 
     public function showTurn(Request $request, string $turnUlid, TurnService $turns): JsonResponse
@@ -244,12 +261,15 @@ final class ChatController
 
     private function unauthenticated(): JsonResponse
     {
-        return new JsonResponse(['message' => 'Unauthenticated'], 401);
+        return $this->failure('unauthenticated', 'Unauthenticated');
     }
 
-    private function failure(string $code, string $message): JsonResponse
+    /**
+     * @param  array<string, mixed>  $extra  Merged into the error envelope (e.g. violations)
+     */
+    private function failure(string $code, string $message, array $extra = []): JsonResponse
     {
-        $result = CapabilityResult::failure($code, $message);
+        $result = CapabilityResult::failure($code, $message, $extra);
 
         return new JsonResponse($result->toArray(), (int) ($result->error['http_status'] ?? 500));
     }

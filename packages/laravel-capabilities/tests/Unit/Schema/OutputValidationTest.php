@@ -8,6 +8,7 @@ use Rawphp\Capabilities\Schema\OutputValidator;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
 use Rawphp\Capabilities\Tests\Fixtures\DiscoveryHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
 function validInvoiceInput(): array
 {
@@ -26,7 +27,7 @@ it('happy: validate_output true validates declared output after successful run [
         ->run(fn ($in) => new CreateInvoiceResult(invoice_id: 5))
         ->register($registry);
 
-    $result = $registry->invoke('out-valid', validInvoiceInput());
+    $result = $registry->invoke('out-valid', validInvoiceInput(), ['actor' => PipelineHelpers::userActor()]);
     expect($result->isOk())->toBeTrue()
         ->and($result->data->invoice_id)->toBe(5);
 });
@@ -39,7 +40,7 @@ it('fail: invalid output after run emits CapabilityFailed [D-014]', function () 
         ->run(fn ($in) => ['wrong' => true])
         ->register($registry);
 
-    $result = $registry->invoke('out-fail-event', validInvoiceInput());
+    $result = $registry->invoke('out-fail-event', validInvoiceInput(), ['actor' => PipelineHelpers::userActor()]);
     expect($result->isOk())->toBeFalse()
         ->and($registry->failedEvents())->not->toBeEmpty()
         ->and($registry->failedEvents()[0])->toBeInstanceOf(CapabilityFailed::class);
@@ -53,7 +54,7 @@ it('fail: invalid output maps to output_invalid envelope [D-014]', function () {
         ->run(fn ($in) => [])
         ->register($registry);
 
-    $result = $registry->invoke('out-fail-code', validInvoiceInput());
+    $result = $registry->invoke('out-fail-code', validInvoiceInput(), ['actor' => PipelineHelpers::userActor()]);
     expect($result->errorCode())->toBe('output_invalid')
         ->and($result->toArray()['ok'])->toBeFalse();
 });
@@ -66,7 +67,7 @@ it('fail: invalid output is not returned as success to agent tools [D-014]', fun
         ->run(fn ($in) => ['invoice_id' => 'nope'])
         ->register($registry);
 
-    $result = $registry->invoke('out-agent', validInvoiceInput(), ['caller' => 'agent']);
+    $result = $registry->invoke('out-agent', validInvoiceInput(), ['caller' => 'agent', 'actor' => PipelineHelpers::userActor()]);
     $tool = (new OutputValidator)->toToolResult($result);
     expect($tool['ok'])->toBeFalse()->and($tool['is_error'])->toBeTrue();
 });
@@ -79,7 +80,7 @@ it('fail: invalid output is not returned as success to MCP tools [D-014]', funct
         ->run(fn ($in) => ['invoice_id' => null])
         ->register($registry);
 
-    $result = $registry->invoke('out-mcp', validInvoiceInput(), ['caller' => 'mcp']);
+    $result = $registry->invoke('out-mcp', validInvoiceInput(), ['caller' => 'mcp', 'actor' => PipelineHelpers::userActor()]);
     $tool = (new OutputValidator)->toToolResult($result);
     expect($tool['ok'])->toBeFalse()->and($result->errorCode())->toBe('output_invalid');
 });
@@ -100,7 +101,7 @@ it('fail: invalid output is not returned as success to HTTP [D-014]', function (
         ->run(fn ($in) => ['not' => 'valid'])
         ->register($registry2);
 
-    $result = $registry2->invoke('out-http-bad', validInvoiceInput(), ['caller' => 'http']);
+    $result = $registry2->invoke('out-http-bad', validInvoiceInput(), ['caller' => 'http', 'actor' => PipelineHelpers::userActor()]);
     $http = (new OutputValidator)->toHttpEnvelope($result);
     expect($http['status'])->toBe(500)
         ->and($http['body']['ok'])->toBeFalse();
@@ -117,7 +118,7 @@ it('edge: readOnly without output schema may skip when configured [D-014]', func
     $def = $registry->get('ro-skip-out');
     expect($def->shouldValidateOutput(true))->toBeFalse();
 
-    $result = $registry->invoke('ro-skip-out', []);
+    $result = $registry->invoke('ro-skip-out', [], ['actor' => PipelineHelpers::userActor()]);
     expect($result->isOk())->toBeTrue();
 });
 
@@ -130,7 +131,7 @@ it('edge: validate_output false only when explicitly configured [D-014]', functi
         ->register($registry);
 
     expect($registry->validateOutputEnabled())->toBeFalse();
-    $result = $registry->invoke('out-off', validInvoiceInput());
+    $result = $registry->invoke('out-off', validInvoiceInput(), ['actor' => PipelineHelpers::userActor()]);
     // When validate_output is false, invalid shape is not rejected by output stage.
     expect($result->isOk())->toBeTrue();
 });
@@ -144,7 +145,7 @@ it('happy: valid output passes through unchanged [D-014]', function () {
         ->run(fn ($in) => $out)
         ->register($registry);
 
-    $result = $registry->invoke('out-pass', validInvoiceInput());
+    $result = $registry->invoke('out-pass', validInvoiceInput(), ['actor' => PipelineHelpers::userActor()]);
     expect($result->data)->toBe($out);
 });
 
@@ -156,7 +157,7 @@ it('fail: missing required output field fails validation [D-014]', function () {
         ->run(fn ($in) => [])
         ->register($registry);
 
-    $result = $registry->invoke('out-missing', validInvoiceInput());
+    $result = $registry->invoke('out-missing', validInvoiceInput(), ['actor' => PipelineHelpers::userActor()]);
     expect($result->errorCode())->toBe('output_invalid');
 });
 
@@ -168,6 +169,6 @@ it('fail: wrong type in output field fails validation [D-014]', function () {
         ->run(fn ($in) => ['invoice_id' => 'string-not-int'])
         ->register($registry);
 
-    $result = $registry->invoke('out-wrong-type', validInvoiceInput());
+    $result = $registry->invoke('out-wrong-type', validInvoiceInput(), ['actor' => PipelineHelpers::userActor()]);
     expect($result->errorCode())->toBe('output_invalid');
 });

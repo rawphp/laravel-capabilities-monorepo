@@ -10,6 +10,7 @@ Usage:
   python3 tools/report_inventory_gaps.py
   python3 tools/report_inventory_gaps.py --root /path/to/monorepo
   python3 tools/report_inventory_gaps.py --no-pest-list
+  python3 tools/report_inventory_gaps.py --fail-on-gaps   # CI: exit 1 on any gap
 """
 
 from __future__ import annotations
@@ -203,13 +204,18 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Print totals and by-package only (omit individual gap labels).",
     )
+    parser.add_argument(
+        "--fail-on-gaps",
+        action="store_true",
+        help="Exit 1 when any inventory case is unmatched (CI gate).",
+    )
     args = parser.parse_args(argv)
     root = args.root.resolve()
     result = report_gaps(root, use_pest_list=not args.no_pest_list)
     sys.stdout.write(
         format_report(result, show_gaps=not args.summary_only)
     )
-    return 0
+    return 1 if args.fail_on_gaps and result["unmatched"] else 0
 
 
 if __name__ == "__main__":

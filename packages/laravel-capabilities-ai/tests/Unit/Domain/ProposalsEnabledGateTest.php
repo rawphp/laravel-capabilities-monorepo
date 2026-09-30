@@ -2,46 +2,35 @@
 
 declare(strict_types=1);
 
-use Illuminate\Container\Container;
-use Illuminate\Database\Capsule\Manager as Capsule;
-use Illuminate\Events\Dispatcher as EventDispatcher;
-use Illuminate\Support\Facades\Facade;
-use Illuminate\Support\Facades\Schema;
 use Rawphp\CapabilitiesAi\CapabilitiesAiServiceProvider;
 use Rawphp\CapabilitiesAi\Contracts\ConversationContextProvider;
 use Rawphp\CapabilitiesAi\Contracts\ToolCatalog;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
-use Rawphp\CapabilitiesAi\Domain\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
-use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\FakeLlmClient;
 use Rawphp\CapabilitiesAi\Support\ToolSchemaHash;
+use Rawphp\CapabilitiesAi\Tests\Fakes\InMemoryConversationStore;
+use Rawphp\CapabilitiesAi\Tests\Fakes\InMemoryTurnClaim;
 
-function bootProposalsGateSqlite(): void
+/**
+ * Fresh in-memory rows for one gate test (no database).
+ */
+function proposalGateStore(bool $reset = false): InMemoryConversationStore
 {
-    $capsule = new Capsule;
-    $capsule->addConnection([
-        'driver' => 'sqlite',
-        'database' => ':memory:',
-        'prefix' => '',
-    ]);
-    $capsule->setEventDispatcher(new EventDispatcher(new Container));
-    $capsule->setAsGlobal();
-    $capsule->bootEloquent();
-    $app = new Container;
-    $app->instance('db', $capsule->getDatabaseManager());
-    Facade::setFacadeApplication($app);
-    Schema::swap($capsule->getConnection()->getSchemaBuilder());
-    $dir = dirname(__DIR__, 3).'/database/migrations';
-    $files = glob($dir.'/*.php') ?: [];
-    sort($files);
-    foreach ($files as $file) {
-        (require $file)->up();
+    static $store = null;
+    if ($reset || $store === null) {
+        $store = new InMemoryConversationStore;
     }
+
+    return $store;
 }
+
+beforeEach(function () {
+    proposalGateStore(reset: true);
+});
 
 /**
  * @return array{turn_ulid: string, conversation_ulid: string}
@@ -50,7 +39,7 @@ function enqueueProposalGateTurn(string $content = 'hi'): array
 {
     $service = new ConversationService(static function ($job): void {
         // discard
-    }, new ArrayProgressStore);
+    }, new ArrayProgressStore, store: proposalGateStore());
     $ids = $service->createUserMessage($content);
 
     return [
@@ -87,10 +76,10 @@ function proposalFenceContent(): string
 }
 
 it('skips proposal fence extract when proposalsEnabled=false', function () {
-    bootProposalsGateSqlite();
     $seeded = enqueueProposalGateTurn();
     $runner = new TurnRunner(
-        claim: new TurnClaim,
+        claim: new InMemoryTurnClaim(proposalGateStore()),
+        store: proposalGateStore(),
         llm: new FakeLlmClient([['content' => proposalFenceContent()]]),
         progress: new ArrayProgressStore,
         context: emptyContextProvider(),
@@ -99,14 +88,14 @@ it('skips proposal fence extract when proposalsEnabled=false', function () {
         proposalsEnabled: false,
     );
     $runner->run($seeded['turn_ulid']);
-    expect(Proposal::query()->count())->toBe(0);
+    expect(count(proposalGateStore()->proposals))->toBe(0);
 });
 
 it('creates proposal from fence when proposalsEnabled=true', function () {
-    bootProposalsGateSqlite();
     $seeded = enqueueProposalGateTurn();
     $runner = new TurnRunner(
-        claim: new TurnClaim,
+        claim: new InMemoryTurnClaim(proposalGateStore()),
+        store: proposalGateStore(),
         llm: new FakeLlmClient([['content' => proposalFenceContent()]]),
         progress: new ArrayProgressStore,
         context: emptyContextProvider(),
@@ -115,13 +104,12 @@ it('creates proposal from fence when proposalsEnabled=true', function () {
         proposalsEnabled: true,
     );
     $runner->run($seeded['turn_ulid']);
-    expect(Proposal::query()->count())->toBe(1)
-        ->and(Proposal::query()->first()?->target_capability)->toBe('x.y')
-        ->and(Proposal::query()->first()?->status)->toBe(Proposal::STATUS_PENDING);
+    expect(count(proposalGateStore()->proposals))->toBe(1)
+        ->and(proposalGateStore()->proposals[0]->target_capability)->toBe('x.y')
+        ->and(proposalGateStore()->proposals[0]->status)->toBe(Proposal::STATUS_PENDING);
 });
 
 it('stamps the target tool schema hash on a fenced proposal at creation time', function () {
-    bootProposalsGateSqlite();
     $seeded = enqueueProposalGateTurn();
     $tool = ['name' => 'x.y', 'parameters' => ['type' => 'object', 'properties' => ['a' => ['type' => 'integer']]]];
     $tools = new class($tool) implements ToolCatalog
@@ -135,7 +123,8 @@ it('stamps the target tool schema hash on a fenced proposal at creation time', f
         }
     };
     $runner = new TurnRunner(
-        claim: new TurnClaim,
+        claim: new InMemoryTurnClaim(proposalGateStore()),
+        store: proposalGateStore(),
         llm: new FakeLlmClient([['content' => proposalFenceContent()]]),
         progress: new ArrayProgressStore,
         context: emptyContextProvider(),
@@ -144,14 +133,14 @@ it('stamps the target tool schema hash on a fenced proposal at creation time', f
     );
     $runner->run($seeded['turn_ulid']);
 
-    expect(Proposal::query()->first()?->schema_hash)->toBe(ToolSchemaHash::of($tool));
+    expect(proposalGateStore()->proposals[0]->schema_hash)->toBe(ToolSchemaHash::of($tool));
 });
 
 it('leaves schema_hash null when the fenced target is not in the turn tool profile', function () {
-    bootProposalsGateSqlite();
     $seeded = enqueueProposalGateTurn();
     $runner = new TurnRunner(
-        claim: new TurnClaim,
+        claim: new InMemoryTurnClaim(proposalGateStore()),
+        store: proposalGateStore(),
         llm: new FakeLlmClient([['content' => proposalFenceContent()]]),
         progress: new ArrayProgressStore,
         context: emptyContextProvider(),
@@ -160,50 +149,37 @@ it('leaves schema_hash null when the fenced target is not in the turn tool profi
     );
     $runner->run($seeded['turn_ulid']);
 
-    expect(Proposal::query()->count())->toBe(1)
-        ->and(Proposal::query()->first()?->schema_hash)->toBeNull();
+    expect(count(proposalGateStore()->proposals))->toBe(1)
+        ->and(proposalGateStore()->proposals[0]->schema_hash)->toBeNull();
 });
 
-it('history returns empty proposals when service constructed with proposals disabled', function () {
-    bootProposalsGateSqlite();
+it('history returns proposals only when proposals are enabled', function (bool $enabled) {
+    $store = new InMemoryConversationStore;
     $svc = new ConversationService(
         static fn ($j) => null,
         new ArrayProgressStore,
         claimTtl: 120,
-        proposalsEnabled: false,
+        proposalsEnabled: $enabled,
+        store: $store,
     );
     $ids = $svc->createUserMessage('hi', userId: 'u1');
-    $h = $svc->history($ids['conversation_ulid'], 'u1');
-    expect($h)->toHaveKey('proposals')
-        ->and($h['proposals'])->toBe([]);
-});
-
-it('history loads proposals when proposals enabled', function () {
-    bootProposalsGateSqlite();
-    $svc = new ConversationService(
-        static fn ($j) => null,
-        new ArrayProgressStore,
-        claimTtl: 120,
-        proposalsEnabled: true,
-    );
-    $ids = $svc->createUserMessage('hi', userId: 'u1');
-    $turn = Turn::query()->where('ulid', $ids['turn_ulid'])->firstOrFail();
-    $conversation = Conversation::query()->where('ulid', $ids['conversation_ulid'])->firstOrFail();
-    Proposal::query()->create([
-        'turn_id' => $turn->id,
-        'conversation_id' => $conversation->id,
-        'ulid' => strtoupper(bin2hex(random_bytes(13))),
+    $store->addProposal($store->conversation($ids['conversation_ulid']), [
+        'ulid' => 'PROP1',
         'type' => 'action',
-        'payload' => [],
         'target_capability' => 'demo.cap',
         'status' => Proposal::STATUS_PENDING,
     ]);
 
     $h = $svc->history($ids['conversation_ulid'], 'u1');
-    expect($h['proposals'])->toHaveCount(1)
-        ->and($h['proposals'][0]['target_capability'])->toBe('demo.cap')
-        ->and($h['proposals'][0]['status'])->toBe(Proposal::STATUS_PENDING);
-});
+
+    expect($h)->toHaveKey('proposals')
+        ->and($h['proposals'])->toBe($enabled ? [[
+            'ulid' => 'PROP1',
+            'status' => Proposal::STATUS_PENDING,
+            'type' => 'action',
+            'target_capability' => 'demo.cap',
+        ]] : []);
+})->with(['enabled' => [true], 'disabled' => [false]]);
 
 it('proposalsEnabled defaults true and respects config', function () {
     expect(CapabilitiesAiServiceProvider::proposalsEnabled([]))->toBeTrue()
@@ -234,11 +210,11 @@ it('provider bootRoutes gates proposal routes on proposals.enabled', function ()
 
 function runProposalGateTurn(string $content, bool $proposalsEnabled): ArrayProgressStore
 {
-    bootProposalsGateSqlite();
     $seeded = enqueueProposalGateTurn();
     $progress = new ArrayProgressStore;
     $runner = new TurnRunner(
-        claim: new TurnClaim,
+        claim: new InMemoryTurnClaim(proposalGateStore()),
+        store: proposalGateStore(),
         llm: new FakeLlmClient([['content' => $content]]),
         progress: $progress,
         context: emptyContextProvider(),
@@ -252,9 +228,9 @@ function runProposalGateTurn(string $content, bool $proposalsEnabled): ArrayProg
 
 function progressKinds(ArrayProgressStore $progress): array
 {
-    $turnUlid = Turn::query()->value('ulid');
+    $turnUlid = proposalGateStore()->turns[0]->ulid;
 
-    return array_column($progress->since((string) $turnUlid), 'kind');
+    return array_column($progress->since($turnUlid), 'kind');
 }
 
 it('emits proposal_invalid progress when the proposal fence JSON does not decode', function () {
@@ -262,7 +238,7 @@ it('emits proposal_invalid progress when the proposal fence JSON does not decode
 
     $kinds = progressKinds($progress);
 
-    expect(Proposal::query()->count())->toBe(0)
+    expect(count(proposalGateStore()->proposals))->toBe(0)
         ->and($kinds)->toContain('proposal_invalid')
         ->and(end($kinds))->toBe('terminal');
 });

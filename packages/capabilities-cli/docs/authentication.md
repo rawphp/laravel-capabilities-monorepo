@@ -24,7 +24,7 @@ Default config root:
 | Item | Purpose |
 |------|---------|
 | **Profile name** | Isolates credentials per product/deployment (`default` if omitted). Letters, digits, `-` and `_` only; other names are rejected, never rewritten, so two names can't share one token |
-| **Base URL** | Deployment root used by the HTTP client |
+| **Base URL** | Everything before `/capabilities` in the API URL (see below) |
 | **Token** | Bearer credential; server derives `caller: cli` and authorization |
 
 The CLI never embeds product domain logic. Authorization always happens on the
@@ -44,16 +44,58 @@ capabilities auth status [--profile=NAME]
 
 | Flags | Flow |
 |-------|------|
-| `--base-url` + `--token` | Store a PAT / API token directly |
+| `--base-url` + `--token` | Verify a PAT / API token with one `GET /capabilities`, then store it |
 | `--base-url` + `--code` | OAuth authorization-code exchange against the API |
-| `--base-url` only | Device-code login against the API |
+| `--base-url` only | Device-code login against the API (see below) |
 
-`login` **requires** `--base-url`. Successful login best-effort prefetches the
-catalog into that profile’s schema cache.
+`login` **requires** `--base-url`. The CLI never follows HTTP redirects: a
+3xx (for example `http://` redirected to `https://`) fails login with the
+redirect target in the message, so pass the final URL.
+
+### Tokens must carry the `cli` ability
+
+The server treats a request as `caller: cli` only when its token carries the
+ability mapped to `cli` in the server's `clients.token_abilities` config
+(default `capabilities:cli`). Every other bearer token is an `http` caller.
+Capabilities exposed on `cli` but not `http` then drop out of `catalog` and
+return `not_found` on `run`, with no auth error to explain why.
+
+`auth login --token` catches this at login: when the verification response
+names a caller other than `cli`, the token is still stored but stderr warns
+(`warning: server treats this token as caller "http", not cli; …`). Device-code
+and OAuth logins make no verification request, so they do not warn.
+
+Device-code and OAuth tokens come from the host's issuer, which must attach
+that ability. For `--token`, mint the PAT with it. With Sanctum:
+
+```php
+$user->createToken('cli', ['capabilities:cli'])->plainTextToken;
+```
+
+If `catalog` is missing capabilities you expect, check the token's abilities
+first.
+
+### Device-code login
+
+1. `POST /capabilities/auth/device` with `{"client_id":"capabilities-cli"}`
+   returns `device_code`, `user_code`, `verification_uri`, `interval`, `expires_in`.
+2. The CLI prints the `user_code` and `verification_uri` to **stderr** and waits.
+3. Every `interval` seconds (at least 10, because the server throttles auth routes) it polls `POST /capabilities/auth/token`
+   with `{"grant_type":"urn:ietf:params:oauth:grant-type:device_code","device_code":…,"client_id":"capabilities-cli"}`.
+4. A response with `data.access_token` completes the login. While the user has
+   not approved, the host returns `data.status` (or `data.error`) set to
+   `authorization_pending`, or `slow_down` (the CLI adds 5 seconds to the interval).
+   An HTTP 429 also adds 5 seconds, or waits for `Retry-After` when that is longer.
+   `access_denied`, `expired_token`, or reaching `expires_in` (default 10 minutes)
+   exit **3**. Any other response fails closed.
+
+The profile is written only after a token is issued, so a failed or abandoned
+device login never changes a working profile.
 
 A failed login exits with the D-018 code's CLI exit (server `unauthenticated` →
 **3**; local/transport failures → **1**). With `--json`, stdout carries the
-envelope: `{"ok":true,"data":{"profile","base_url","logged_in"}}` on success,
+envelope: `{"ok":true,"data":{"profile","base_url","logged_in"}}` on success
+(plus `caller` after `--token` login when the server reports one),
 `{"ok":false,"error":{"code","message",…}}` on failure. Tokens are never printed.
 
 ### Status & logout
@@ -122,6 +164,18 @@ capabilities jobs schedule --profile=yardpilot --flag=value
 The same flag works on:
 
 `auth` · `catalog` · `describe` · `run` · synthesized `<domain> <verb>` · `approvals`
+
+### What the base URL must be
+
+The CLI always appends `/capabilities/…` to the base URL. The server's route
+prefix (`surfaces.http.prefix`, default `capabilities`) must therefore end in
+the segment `capabilities`, and `--base-url` is everything before it:
+
+| Server prefix | `--base-url` |
+|---------------|--------------|
+| `capabilities` (default) | `https://app.example.com` |
+| `api/capabilities` | `https://app.example.com/api` |
+| `caps`, `v1/tools`, … | Not reachable from the CLI; every call returns `not_found` (exit 5) |
 
 ### Base URL override
 
@@ -194,4 +248,4 @@ Until those exist, pass `--profile=` or use aliases.
 | `auth login requires --base-url` | 2 | Pass `--base-url` |
 | `not authenticated: run capabilities auth login` | 3 | Login for that profile |
 | `missing base URL` | 3 | Re-login with base URL or pass `--base-url` |
-| Server rejects token | 3 | New token / correct profile / correct host |
+| Server rejects token | 3 | New token / correct profile / correct host (`--token` login checks this up front and leaves the profile unchanged) |

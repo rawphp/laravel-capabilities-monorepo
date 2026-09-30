@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
+use Illuminate\Cache\ArrayStore;
+use Illuminate\Cache\Repository;
 use Illuminate\Container\Container;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Foundation\CachesConfiguration;
 use Rawphp\Capabilities\Contracts\ConversationIdentity;
 use Rawphp\Capabilities\Contracts\Metrics;
@@ -82,6 +85,7 @@ function identityMetricsContainer(): Container
             return $default;
         }
     });
+    $app->instance(CacheRepository::class, new Repository(new ArrayStore));
     (new MessagingServiceProvider($app))->register();
 
     return $app;

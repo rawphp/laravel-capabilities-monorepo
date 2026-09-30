@@ -3,6 +3,7 @@
 namespace Rawphp\Capabilities\Registry;
 
 use InvalidArgumentException;
+use Rawphp\Capabilities\Approval\ApprovalPolicy;
 use Rawphp\Capabilities\Audit\AuditLogger;
 use Rawphp\Capabilities\Contracts\SchemaProvider;
 use Rawphp\Capabilities\Support\SystemActor;
@@ -20,6 +21,8 @@ final class CapabilityDefinition
 
     /**
      * Reserved meta-command domains — must never be used as CLI synthesis domains.
+     * Mirrors the product CLI's reserved list (rawphp/capabilities-cli synth);
+     * change both together.
      *
      * @var list<string>
      */
@@ -32,6 +35,7 @@ final class CapabilityDefinition
         'approvals',
         'version',
         'help',
+        'self-update',
     ];
 
     private const CLI_TOKEN_PATTERN = '/^[a-z][a-z0-9-]*$/';
@@ -49,6 +53,7 @@ final class CapabilityDefinition
      * @param  array<string, mixed>|bool|null  $audit
      * @param  list<string>  $idempotencyKeyFields  Input fields hashed into a key when the caller sends none (D-005)
      * @param  callable|null  $authorize
+     * @param  callable|null  $needsApproval  (input, context) => bool; the capability's own approval rule (D-006)
      * @param  callable|null  $run
      */
     public function __construct(
@@ -75,6 +80,7 @@ final class CapabilityDefinition
         public readonly ?string $handlerClass = null,
         public readonly mixed $authorize = null,
         public readonly mixed $run = null,
+        public readonly mixed $needsApproval = null,
         public readonly string $schemaVersion = '1',
         public readonly string $source = 'attribute',
         public readonly mixed $canDiscover = null,
@@ -96,6 +102,10 @@ final class CapabilityDefinition
         self::assertValidCliRouting($this->cliDomain, $this->cliVerb, $name);
         self::assertValidAuditMode($this->audit, $name);
         $this->assertValidIdempotencyKeyFields();
+        if ($this->approvalPolicy !== null) {
+            // Governance typo fails at definition time, never as requester self-approve (L-106).
+            ApprovalPolicy::assertKnown($this->approvalPolicy, sprintf('Capability "%s"', $name));
+        }
     }
 
     public function isMutating(): bool

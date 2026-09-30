@@ -67,3 +67,13 @@ func TestDomainIndex_sorted(t *testing.T) {
 		t.Fatalf("sorted domains: %#v", idx)
 	}
 }
+
+func TestFormatHumanFlat_emptyDeprecatedAndMappingError(t *testing.T) {
+	if got := FormatHumanFlat(nil); got != "(empty catalog)\n" {
+		t.Fatalf("empty: %q", got)
+	}
+	got := FormatHumanFlat([]CapabilitySummary{{Name: "old", Deprecated: true, MappingError: "collision"}})
+	if got != "old (deprecated) [mapping_error=collision]\n" {
+		t.Fatalf("flags: %q", got)
+	}
+}

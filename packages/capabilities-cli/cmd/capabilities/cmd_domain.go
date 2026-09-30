@@ -16,7 +16,7 @@ import (
 func cmdDomainOrUnknown(env Env, domain string, args []string) int {
 	// Resolve profile before catalog load so multi-profile laptops hit the right store.
 	profile, base, args := profileAndBase(args)
-	idx, summaries, code := loadSynthIndex(env, profile)
+	idx, summaries, code := loadSynthIndex(env, profile, base)
 	if code != 0 {
 		return code
 	}
@@ -68,19 +68,17 @@ func cmdDomainOrUnknown(env Env, domain string, args []string) int {
 // loadSynthIndex returns the synthesis index and optional summaries.
 // Prefers env.Index (tests); otherwise loads catalog when authenticated for profile.
 // When unauthenticated, fails closed with exit 3 — never pretends domains are unknown.
-func loadSynthIndex(env Env, profile string) (*synth.Index, []catalog.CapabilitySummary, int) {
+// base is the --base-url override, so resolution and invoke hit the same deployment.
+func loadSynthIndex(env Env, profile, base string) (*synth.Index, []catalog.CapabilitySummary, int) {
 	if env.Index != nil {
 		return env.Index, env.Summaries, 0
-	}
-	if profile == "" {
-		profile = "default"
 	}
 	st := store(env)
 	if err := auth.GuardAuth(st, profile, "catalog"); err != nil {
 		fmt.Fprintln(env.Stderr, err.Error())
 		return nil, nil, api.ExitAuth
 	}
-	c, err := clientFor(env, st, profile, "")
+	c, err := clientFor(env, st, profile, base)
 	if err != nil {
 		fmt.Fprintln(env.Stderr, err.Error())
 		return nil, nil, api.ExitAuth
@@ -89,8 +87,7 @@ func loadSynthIndex(env Env, profile string) (*synth.Index, []catalog.Capability
 	list, _, err := svc.List(context.Background())
 	if err != nil {
 		if se, ok := err.(*api.StructuredError); ok {
-			fmt.Fprintln(env.Stderr, se.Error())
-			return nil, nil, se.ExitCode
+			return nil, nil, writeErrorEnvelope(env, se)
 		}
 		fmt.Fprintln(env.Stderr, err.Error())
 		return nil, nil, api.ExitInternal
@@ -113,7 +110,7 @@ func suggestReservedOrDomain(token string, idx *synth.Index) string {
 		}
 	}
 	// Runnable reserved meta only (mcp is reserved forever as a domain token but not a command).
-	candidates = append(candidates, "auth", "catalog", "describe", "run", "approvals", "version", "help")
+	candidates = append(candidates, "auth", "catalog", "describe", "run", "approvals", "version", "self-update", "help")
 	best, bestDist, bestPrefix := "", 3, -1 // only suggest distance 1–2
 	for _, c := range candidates {
 		cl := strings.ToLower(c)
@@ -204,6 +201,9 @@ func writeDomainHelp(env Env, domain string, idx *synth.Index, summaries []catal
 }
 
 func writeCapabilityHelp(env Env, domain, verb, canonical string, jsonOut bool, profile, base string, noCache bool) int {
+	if code := refuseUnsafeSegment(env, "capability name", canonical); code != api.ExitOK {
+		return code
+	}
 	info := helpfmt.CapabilityInfo{
 		Domain: domain,
 		Verb:   verb,
@@ -218,9 +218,6 @@ func writeCapabilityHelp(env Env, domain, verb, canonical string, jsonOut bool, 
 	} else {
 		// Load schema via describe (auth required).
 		st := store(env)
-		if profile == "" {
-			profile = "default"
-		}
 		if err := auth.GuardAuth(st, profile, "describe"); err != nil {
 			fmt.Fprintln(env.Stderr, err.Error())
 			return api.ExitAuth
@@ -234,16 +231,12 @@ func writeCapabilityHelp(env Env, domain, verb, canonical string, jsonOut bool, 
 		entry, _, err := svc.Describe(context.Background(), canonical)
 		if err != nil {
 			if se, ok := err.(*api.StructuredError); ok {
-				fmt.Fprintln(env.Stderr, se.Error())
-				return se.ExitCode
+				return writeErrorEnvelope(env, se)
 			}
 			fmt.Fprintln(env.Stderr, err.Error())
 			return api.ExitInternal
 		}
-		info.Description = "" // describe wire may not always include description
-		if entry.CLI != nil {
-			// prefer index domain/verb already set
-		}
+		info.Description = entry.Description
 		info.SchemaVersion = entry.SchemaVersion
 		info.Name = entry.Name
 		if entry.Canonical != "" {

@@ -2,6 +2,7 @@
 
 namespace Rawphp\Capabilities\Approval;
 
+use InvalidArgumentException;
 use Rawphp\Capabilities\Pipeline\ResolveActor;
 use Rawphp\Capabilities\Support\SystemActor;
 
@@ -55,6 +56,50 @@ final class ApprovalPolicy
         return $this->policy;
     }
 
+    /**
+     * Is this a policy string the state machine understands? Anything else denies
+     * every approver (L-106) — an authoring typo must never fall open to self-approve.
+     */
+    public static function isKnown(string $policy): bool
+    {
+        if (in_array($policy, [self::REQUESTER, self::REQUESTER_OR_ROLE, self::ANY_STAFF, self::CUSTOM], true)) {
+            return true;
+        }
+
+        return str_starts_with($policy, 'role:') && substr($policy, 5) !== '';
+    }
+
+    /**
+     * @throws InvalidArgumentException when $policy is not one of requester | requester_or_role | any_staff | custom | role:<name>
+     */
+    public static function assertKnown(string $policy, string $context): void
+    {
+        if (! self::isKnown($policy)) {
+            throw new InvalidArgumentException(sprintf(
+                '%s: unknown approval policy "%s" (expected requester, requester_or_role, any_staff, custom or role:<name>).',
+                $context,
+                $policy,
+            ));
+        }
+    }
+
+    /**
+     * The policy that governs one approval row: the capability's declared
+     * `approvalPolicy` stored on the row when present, otherwise this (global) one.
+     * Host role / staff / custom checkers are kept.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    public function forRow(array $row): self
+    {
+        $declared = $row['approval_policy'] ?? null;
+        if (! is_string($declared) || $declared === '' || $declared === $this->policy) {
+            return $this;
+        }
+
+        return new self($declared, $this->customChecker, $this->roleChecker, $this->staffChecker, $this->defaultRole);
+    }
+
     public function isDefaultMultiTenantSafe(): bool
     {
         // Silent "any authenticated user" is not the default in multi-tenant installs.
@@ -92,7 +137,8 @@ final class ApprovalPolicy
             str_starts_with($this->policy, 'role:') => $hasRole,
             $this->policy === self::ANY_STAFF => $isStaff,
             $this->policy === self::CUSTOM || $this->customChecker !== null => $this->runCustom($actor, $row),
-            default => $isRequester || $hasRole,
+            // Unknown policy string: fail closed (L-106).
+            default => false,
         };
     }
 

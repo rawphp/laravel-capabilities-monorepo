@@ -18,15 +18,18 @@ import (
 )
 
 // Reserved domain tokens — always win as meta-commands; never synthesized as domains.
+// Mirrors CapabilityDefinition::RESERVED_CLI_DOMAINS in rawphp/laravel-capabilities;
+// change both together. A test pins every Execute meta-command to this set.
 var reservedDomains = map[string]struct{}{
-	"auth":      {},
-	"catalog":   {},
-	"describe":  {},
-	"run":       {},
-	"mcp":       {},
-	"approvals": {},
-	"version":   {},
-	"help":      {},
+	"auth":        {},
+	"catalog":     {},
+	"describe":    {},
+	"run":         {},
+	"mcp":         {},
+	"approvals":   {},
+	"version":     {},
+	"help":        {},
+	"self-update": {},
 }
 
 // MappingError codes for catalog row enrichment.
@@ -213,16 +216,13 @@ func Build(entries []Entry) *Index {
 	}
 
 	// Collision policy: two+ names for same pair → register neither.
-	for p, cs := range byPair {
+	for _, cs := range byPair {
 		if len(cs) > 1 {
 			for _, c := range cs {
 				row := idx.Rows[c.name]
 				row.MappingError = ErrCollision
 				row.Synthesized = false
-				// Keep domain/verb/mapped_command for agent diagnostics.
-				if row.MappedCommand == "" {
-					row.MappedCommand = p.domain + " " + p.verb
-				}
+				// Keep domain/verb/mapped_command (set above) for agent diagnostics.
 				idx.Rows[c.name] = row
 			}
 			continue
@@ -279,13 +279,6 @@ func (idx *Index) Verbs(domain string) []string {
 	for v := range verbs {
 		out = append(out, v)
 	}
-	return out
-}
-
-// SortedDomainNames returns domain names in lexicographic order.
-func (idx *Index) SortedDomainNames() []string {
-	out := idx.DomainNames()
-	sort.Strings(out)
 	return out
 }
 

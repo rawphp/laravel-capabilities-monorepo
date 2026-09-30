@@ -7,6 +7,7 @@ use Rawphp\Capabilities\Audit\AuditOutbox;
 use Rawphp\Capabilities\Contracts\AuditWriter;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\ErrorCodeMap;
+use Rawphp\Capabilities\Support\FailureReporter;
 use Throwable;
 
 /**
@@ -58,12 +59,18 @@ final class InvokeAuditStage
 
             $this->auditWriter->write($entry);
         } catch (Throwable $e) {
-            if ($state->definition->auditMode($this->auditMode) === 'strict' && $success) {
-                $this->observation->logs[] = [
+            $strict = $state->definition->auditMode($this->auditMode) === 'strict' && $success;
+            // Never silent (D-010 "log error + metric"): the host handler gets the real
+            // exception; the wire never does — a QueryException carries SQL and bound
+            // payload_json (L-104).
+            FailureReporter::reportAndCount($e, FailureReporter::AUDIT_WRITE_FAILED, ['mode' => $strict ? 'strict' : 'best_effort']);
+
+            if ($strict) {
+                $this->observation->log([
                     'level' => 'error',
                     'message' => 'Audit failed in strict mode: '.$e->getMessage(),
                     'context' => ['capability' => $state->definition->name],
-                ];
+                ]);
 
                 // When required, still enqueue for operators even in strict.
                 if ($this->auditRequired) {
@@ -72,7 +79,7 @@ final class InvokeAuditStage
 
                 return CapabilityResult::failure(
                     code: 'audit_failed',
-                    message: 'Audit failed in strict mode: '.$e->getMessage(),
+                    message: 'Audit failed.',
                     extra: array_merge(ErrorCodeMap::wireFields('audit_failed'), [
                         'retryable' => true,
                         'domain_committed' => $state->domainSideEffect,
@@ -85,11 +92,11 @@ final class InvokeAuditStage
                 );
             }
 
-            $this->observation->logs[] = [
+            $this->observation->log([
                 'level' => 'warning',
                 'message' => 'Audit failed (best_effort): '.$e->getMessage(),
                 'context' => ['capability' => $state->definition->name],
-            ];
+            ]);
 
             // best_effort + required (or forced): never silent drop — durable outbox intent.
             if ($this->auditRequired || $force) {

@@ -3,10 +3,13 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/rawphp/capabilities-cli/internal/api"
+	"github.com/rawphp/capabilities-cli/internal/auth"
 	"github.com/rawphp/capabilities-cli/internal/catalog"
 	"github.com/rawphp/capabilities-cli/internal/helpfmt"
 	"github.com/rawphp/capabilities-cli/internal/synth"
@@ -262,5 +265,107 @@ func TestPeelLeadingGlobalFlagsBaseURL(t *testing.T) {
 	joined := strings.Join(got, " ")
 	if !strings.Contains(joined, "--profile=p") || !strings.Contains(joined, "--base-url=https://x") {
 		t.Fatal(joined)
+	}
+}
+
+func TestPeelLeadingGlobalFlagsSpaceSeparatedValues(t *testing.T) {
+	got := peelLeadingGlobalFlags([]string{"--profile", "work", "--base-url", "https://x", "--json", "catalog", "extra"})
+	want := []string{"catalog", "extra", "--json", "--profile=work", "--base-url=https://x"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("got %v want %v", got, want)
+	}
+}
+
+func TestUnknownDomainSuggestsClosestDomain(t *testing.T) {
+	idx := fakeIndex(synth.Entry{Name: "create-invoice", CLI: &synth.CLI{Domain: "invoices", Verb: "create"}})
+	code, _, errb := captureDispatch(t, []string{"invoics"}, idx, nil, nil)
+	if code != api.ExitDomain || !strings.Contains(errb, "did you mean: invoices") {
+		t.Fatalf("exit %d stderr %q", code, errb)
+	}
+}
+
+func TestUnknownVerbHelpIsNotFound(t *testing.T) {
+	idx := fakeIndex(synth.Entry{Name: "create-invoice", CLI: &synth.CLI{Domain: "invoices", Verb: "create"}})
+	code, out, errb := captureDispatch(t, []string{"invoices", "delete", "--help"}, idx, nil, nil)
+	if code != api.ExitDomain || !strings.Contains(errb, "try: capabilities invoices --help") {
+		t.Fatalf("exit %d out %q stderr %q", code, out, errb)
+	}
+}
+
+func TestDomainWithOnlyFlagsShowsDomainHelp(t *testing.T) {
+	idx := fakeIndex(synth.Entry{Name: "create-invoice", CLI: &synth.CLI{Domain: "invoices", Verb: "create"}})
+	code, out, _ := captureDispatch(t, []string{"invoices", "--verbose"}, idx, nil, nil)
+	if code != api.ExitOK || !strings.Contains(out, "invoices — domain capabilities") {
+		t.Fatalf("exit %d out %q", code, out)
+	}
+}
+
+func TestSuggestionEdges(t *testing.T) {
+	if got := suggestReservedOrDomain("  ", nil); got != "" {
+		t.Fatalf("blank token: %q", got)
+	}
+	if got := suggestReservedOrDomain("catalg", nil); got != "catalog" {
+		t.Fatalf("reserved typo: %q", got)
+	}
+	cases := []struct {
+		a, b string
+		want int
+	}{{"", "abc", 3}, {"abc", "", 3}, {"same", "same", 0}, {"kitten", "sitting", 3}}
+	for _, c := range cases {
+		if got := levenshtein(c.a, c.b); got != c.want {
+			t.Fatalf("levenshtein(%q,%q)=%d want %d", c.a, c.b, got, c.want)
+		}
+	}
+	if got := commonPrefixLen("invoices", "inv"); got != 3 {
+		t.Fatalf("commonPrefixLen %d", got)
+	}
+}
+
+func TestRawToMapTreatsMissingOrInvalidSchemaAsEmpty(t *testing.T) {
+	for _, raw := range []string{"", "{", "[1]"} {
+		if got := rawToMap(json.RawMessage(raw)); len(got) != 0 {
+			t.Fatalf("%q: %v", raw, got)
+		}
+	}
+	if got := rawToMap(json.RawMessage(`{"type":"object"}`)); got["type"] != "object" {
+		t.Fatalf("%v", got)
+	}
+}
+
+// With a pre-built index but no inline schema, capability help fetches the
+// schema via describe, so it needs the same auth and reports describe failures.
+func TestCapabilityHelpFetchesSchemaUnderAuth(t *testing.T) {
+	idx := fakeIndex(synth.Entry{Name: "create-invoice", CLI: &synth.CLI{Domain: "invoices", Verb: "create"}})
+	help := func(root string, newClient func(string, string) *api.Client) (int, string, string) {
+		var out, errb bytes.Buffer
+		code := Execute(Env{Args: []string{"invoices", "create", "--help"}, Stdout: &out, Stderr: &errb, ConfigRoot: root, Index: idx, NewClient: newClient})
+		return code, out.String(), errb.String()
+	}
+
+	if code, _, errb := help(t.TempDir(), nil); code != api.ExitAuth || !strings.Contains(errb, "not authenticated") {
+		t.Fatalf("no login: exit %d stderr %q", code, errb)
+	}
+
+	root := t.TempDir()
+	_ = auth.NewStore(root).SetToken("default", "tok")
+	if code, _, errb := help(root, nil); code != api.ExitAuth || !strings.Contains(errb, "missing base URL") {
+		t.Fatalf("no base URL: exit %d stderr %q", code, errb)
+	}
+
+	srv, root := errorServer(t, http.StatusNotFound, `{"ok":false,"error":{"code":"not_found","message":"gone"}}`)
+	code, out, _ := help(root, newClientFactory(srv))
+	if code != api.ExitDomain || stdoutError(t, out)["code"] != api.CodeNotFound {
+		t.Fatalf("describe error: exit %d out %q", code, out)
+	}
+
+	down := func(base, token string) *api.Client {
+		c := api.NewClient(base, token)
+		c.HTTP = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("dial: connection refused")
+		})}
+		return c
+	}
+	if code, _, errb := help(root, down); code != api.ExitInternal || !strings.Contains(errb, "connection refused") {
+		t.Fatalf("transport: exit %d stderr %q", code, errb)
 	}
 }

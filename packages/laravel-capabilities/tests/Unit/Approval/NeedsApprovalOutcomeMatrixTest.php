@@ -2,6 +2,16 @@
 
 declare(strict_types=1);
 
+use Rawphp\Capabilities\Registry\CapabilityDefinition;
+use Rawphp\Capabilities\Registry\CapabilityRegistry;
+use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\CapabilityScope;
+use Rawphp\Capabilities\Support\FixedClock;
+use Rawphp\Capabilities\Support\InMemoryApprovalStore;
+use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
+use Rawphp\Capabilities\Support\StubAuthorizer;
+use Rawphp\Capabilities\Support\SystemActor;
+use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
 it('happy: needsApproval true for agent stores pending [D-006]', function () {
@@ -362,4 +372,73 @@ it('happy: needsApproval false for job continues to rate limit and run [D-006]',
     } else {
         expect($result->isOk())->toBeTrue()->and($h['runCount']->value)->toBe(1);
     }
+});
+
+function needsApprovalRegistry(): CapabilityRegistry
+{
+    $clock = new FixedClock(new DateTimeImmutable('2026-05-01T00:00:00Z'));
+
+    return (new CapabilityRegistry)
+        ->withAuthorizer(StubAuthorizer::allow())
+        ->withClock($clock)
+        ->withIdempotencyStore(new InMemoryIdempotencyStore($clock))
+        ->withApprovalStore(new InMemoryApprovalStore($clock));
+}
+
+it('needs_approval option with an approval policy returns approval_required without running [D-006]', function () {
+    $reg = needsApprovalRegistry();
+    $reg->register(new CapabilityDefinition(
+        name: 'needs-appr',
+        description: 'd',
+        input: CreateInvoiceInput::class,
+        readOnly: false,
+        allowSystemCallers: true,
+        idempotent: CapabilityDefinition::IDEMPOTENT_OPTIONAL,
+        approvalPolicy: 'role:manager',
+        run: static fn () => CapabilityResult::ok(['never' => true]),
+    ));
+
+    $appr = $reg->invoke('needs-appr', [
+        'customer_id' => 1,
+        'amount_cents' => 5,
+        'currency' => 'USD',
+    ], [
+        'caller' => 'http',
+        'actor' => SystemActor::named('s'),
+        'scope' => new CapabilityScope(tenantId: 't'),
+        'skip_server_rules' => true,
+        'needs_approval' => true,
+        'idempotency_key' => str_repeat('n', 16),
+    ]);
+
+    expect($appr->errorCode())->toBe('approval_required');
+});
+
+it('require_approval option with an approval policy returns approval_required [D-006]', function () {
+    $reg = needsApprovalRegistry();
+    $reg->register(new CapabilityDefinition(
+        name: 'needs-appr',
+        description: 'd',
+        input: CreateInvoiceInput::class,
+        readOnly: false,
+        allowSystemCallers: true,
+        idempotent: CapabilityDefinition::IDEMPOTENT_OPTIONAL,
+        approvalPolicy: 'role:manager',
+        run: static fn () => CapabilityResult::ok(['never' => true]),
+    ));
+
+    $appr = $reg->invoke('needs-appr', [
+        'customer_id' => 2,
+        'amount_cents' => 5,
+        'currency' => 'USD',
+    ], [
+        'caller' => 'http',
+        'actor' => SystemActor::named('s'),
+        'scope' => new CapabilityScope(tenantId: 't'),
+        'skip_server_rules' => true,
+        'require_approval' => true,
+        'idempotency_key' => str_repeat('m', 16),
+    ]);
+
+    expect($appr->errorCode())->toBe('approval_required');
 });

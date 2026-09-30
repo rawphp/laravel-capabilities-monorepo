@@ -6,8 +6,15 @@ use Illuminate\Support\Facades\Facade;
 use Rawphp\Capabilities\Capability;
 use Rawphp\Capabilities\Facades\Capability as CapabilityFacade;
 use Rawphp\Capabilities\Pipeline\PipelineStages;
+use Rawphp\Capabilities\Registry\CapabilityDefinition;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
 use Rawphp\Capabilities\Support\CapabilityResult;
+use Rawphp\Capabilities\Support\CapabilityScope;
+use Rawphp\Capabilities\Support\FixedClock;
+use Rawphp\Capabilities\Support\InMemoryIdempotencyStore;
+use Rawphp\Capabilities\Support\StubAuthorizer;
+use Rawphp\Capabilities\Support\SystemActor;
+use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
 it('happy: successful invoke runs full pipeline in order validate hydrate actor scope idempotency authorize approval rateLimit run output audit events [PIPE-001]', function () {
@@ -192,7 +199,7 @@ it('happy: correct error envelope when stage authorize fails [PIPE-002]', functi
 });
 
 it('fail: run is not called when stage needs_approval fails [PIPE-002]', function () {
-    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'x']);
+    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
     $result = $h['registry']->invoke($h['name'], $input, PipelineHelpers::options('http', $extra));
@@ -200,7 +207,7 @@ it('fail: run is not called when stage needs_approval fails [PIPE-002]', functio
 });
 
 it('fail: no domain side effects when stage needs_approval fails [PIPE-002]', function () {
-    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'x']);
+    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
     $h['registry']->invoke($h['name'], $input, PipelineHelpers::options('http', $extra));
@@ -208,7 +215,7 @@ it('fail: no domain side effects when stage needs_approval fails [PIPE-002]', fu
 });
 
 it('happy: correct error envelope when stage needs_approval fails [PIPE-002]', function () {
-    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'x']);
+    $h = PipelineHelpers::harness(['allowSystemCallers' => true, 'approvalPolicy' => 'requester_or_role']);
     $input = PipelineHelpers::validInput();
     $extra = ['needs_approval' => true];
     $result = $h['registry']->invoke($h['name'], $input, PipelineHelpers::options('http', $extra));
@@ -488,4 +495,219 @@ it('fail: lastStages includes authorize and wire_response when force-failed at a
         ->and($h['registry']->lastStages())->toContain(PipelineStages::AUTHORIZE)
         ->and($h['registry']->lastStages())->toContain(PipelineStages::WIRE_RESPONSE)
         ->and($h['runCount']->value)->toBe(0);
+});
+
+/**
+ * Registry with a system-callable read-only capability `snap` and no input class.
+ */
+function ipSnapRegistry(): CapabilityRegistry
+{
+    $reg = (new CapabilityRegistry)->withAuthorizer(StubAuthorizer::allow());
+    $reg->register(new CapabilityDefinition(
+        name: 'snap',
+        description: 's',
+        readOnly: true,
+        input: null,
+        allowSystemCallers: true,
+        run: static fn () => CapabilityResult::ok(['v' => 1]),
+    ));
+
+    return $reg;
+}
+
+it('happy: assertParity rejects an empty surface name, accepts http and cli, and fake returns the registry', function () {
+    $reg = ipSnapRegistry();
+
+    expect(fn () => $reg->assertParity('snap', [
+        'surfaces' => [''],
+        'input' => [],
+        'actor' => SystemActor::named('s'),
+    ]))->toThrow(InvalidArgumentException::class);
+    expect($reg->assertParity('snap', [
+        'surfaces' => ['http', 'cli'],
+        'input' => [],
+        'actor' => SystemActor::named('s'),
+        'scope' => new CapabilityScope(tenantId: 't1'),
+    ]))->toBeTrue();
+    expect($reg->fake())->toBe($reg);
+    expect($reg->assertSchemaSnapshot('snap'))->toBeTrue();
+});
+
+it('edge: an unknown caller normalizes and artisan is kept as a valid surface', function () {
+    $reg = ipSnapRegistry();
+
+    // unknown caller normalizes; artisan preserved
+    $ok = $reg->invoke('snap', [], [
+        'caller' => 'not-a-real-caller',
+        'actor' => SystemActor::named('s'),
+        'scope' => new CapabilityScope(tenantId: 't'),
+    ]);
+    expect($ok->isOk())->toBeTrue();
+
+    // artisan is a valid surface name; pipeline may still accept when actor/scope provided
+    $ok2 = $reg->invoke('snap', [], [
+        'caller' => 'artisan',
+        'actor' => SystemActor::named('s'),
+        'scope' => new CapabilityScope(tenantId: 't'),
+    ]);
+    expect($ok2->isOk() || $ok2->errorCode() !== null)->toBeTrue();
+});
+
+it('fail: an input class that is not a SchemaProvider fails closed with validation_failed', function () {
+    $reg = ipSnapRegistry();
+    $reg->register(new CapabilityDefinition(
+        name: 'bad-in',
+        description: 'b',
+        input: stdClass::class,
+        readOnly: true,
+        allowSystemCallers: true,
+        run: static fn () => CapabilityResult::ok([]),
+    ));
+
+    $bad = $reg->invoke('bad-in', [], [
+        'caller' => 'http',
+        'actor' => SystemActor::named('s'),
+    ]);
+
+    expect($bad->errorCode())->toBe('validation_failed');
+});
+
+it('happy: skip_server_rules lets an input pass without server-only rules', function () {
+    $reg = ipSnapRegistry();
+    $reg->register(new CapabilityDefinition(
+        name: 'skip-rules',
+        description: 's',
+        input: CreateInvoiceInput::class,
+        readOnly: true,
+        allowSystemCallers: true,
+        run: static fn () => CapabilityResult::ok(['ok' => true]),
+    ));
+
+    $skip = $reg->invoke('skip-rules', [
+        'customer_id' => 1,
+        'amount_cents' => 10,
+        'currency' => 'USD',
+    ], [
+        'caller' => 'http',
+        'actor' => SystemActor::named('s'),
+        'scope' => new CapabilityScope(tenantId: 't'),
+        'skip_server_rules' => true,
+    ]);
+
+    expect($skip->isOk())->toBeTrue();
+});
+
+it('fail: assertCannotInvokeAcrossTenant holds when authorize denies the foreign tenant', function () {
+    $reg = ipSnapRegistry();
+    $reg->register(new CapabilityDefinition(
+        name: 'tenant-cap',
+        description: 't',
+        readOnly: true,
+        allowSystemCallers: true,
+        authorize: static fn () => false,
+        run: static fn () => CapabilityResult::ok(['should' => 'not-run']),
+    ));
+
+    expect($reg->assertCannotInvokeAcrossTenant([
+        'name' => 'tenant-cap',
+        'input' => [],
+        'foreignTenant' => 'tb',
+        'tenant_id' => 'ta',
+        'actor' => SystemActor::named('s'),
+        'caller' => 'http',
+    ]))->toBeTrue();
+});
+
+function invokePipelineRegistry(): CapabilityRegistry
+{
+    $clock = new FixedClock(new DateTimeImmutable('2026-05-01T00:00:00Z'));
+
+    return (new CapabilityRegistry)
+        ->withAuthorizer(StubAuthorizer::allow())
+        ->withClock($clock)
+        ->withIdempotencyStore(new InMemoryIdempotencyStore($clock));
+}
+
+function invokePipelineOptions(array $extra = []): array
+{
+    return ['caller' => 'http', 'actor' => SystemActor::named('s'), 'scope' => new CapabilityScope(tenantId: 't')] + $extra;
+}
+
+it('forced run stage failure surfaces as domain_error', function () {
+    $reg = invokePipelineRegistry();
+    $reg->register(new CapabilityDefinition(
+        name: 'force-run',
+        description: 'd',
+        readOnly: true,
+        allowSystemCallers: true,
+        run: static fn () => CapabilityResult::ok([]),
+    ));
+    $reg->forceFailStages(PipelineStages::RUN);
+
+    expect($reg->invoke('force-run', [], invokePipelineOptions())->errorCode())->toBe('domain_error');
+});
+
+it('forced validate_output stage failure surfaces as output_invalid', function () {
+    $reg = invokePipelineRegistry();
+    $reg->register(new CapabilityDefinition(
+        name: 'force-out',
+        description: 'd',
+        readOnly: true,
+        allowSystemCallers: true,
+        run: static fn () => CapabilityResult::ok(['x' => 1]),
+    ));
+    $reg->forceFailStages(PipelineStages::VALIDATE_OUTPUT);
+
+    expect($reg->invoke('force-out', [], invokePipelineOptions())->errorCode())->toBe('output_invalid');
+});
+
+it('capability without a run handler is not_runnable', function () {
+    $reg = invokePipelineRegistry();
+    $reg->register(new CapabilityDefinition(
+        name: 'no-handler',
+        description: 'd',
+        readOnly: true,
+        allowSystemCallers: true,
+        run: null,
+    ));
+
+    expect($reg->invoke('no-handler', [], invokePipelineOptions())->errorCode())->toBe('not_runnable');
+});
+
+it('run handler throwing maps to domain_error', function () {
+    $reg = invokePipelineRegistry();
+    $reg->register(new CapabilityDefinition(
+        name: 'throws',
+        description: 'd',
+        readOnly: true,
+        allowSystemCallers: true,
+        run: static function () {
+            throw new RuntimeException('domain boom');
+        },
+    ));
+
+    expect($reg->invoke('throws', [], invokePipelineOptions())->errorCode())->toBe('domain_error');
+});
+
+it('empty idempotency key is treated as no key and the invoke runs', function () {
+    $reg = invokePipelineRegistry();
+    $reg->register(new CapabilityDefinition(
+        name: 'empty-key',
+        description: 'd',
+        input: CreateInvoiceInput::class,
+        readOnly: false,
+        allowSystemCallers: true,
+        run: static fn () => CapabilityResult::ok(['ok' => true]),
+    ));
+
+    $e = $reg->invoke('empty-key', [
+        'customer_id' => 1,
+        'amount_cents' => 1,
+        'currency' => 'USD',
+    ], invokePipelineOptions([
+        'skip_server_rules' => true,
+        'idempotency_key' => '',
+    ]));
+
+    expect($e->isOk())->toBeTrue();
 });

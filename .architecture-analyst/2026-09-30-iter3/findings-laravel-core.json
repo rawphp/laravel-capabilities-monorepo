@@ -1,0 +1,55 @@
+{
+  "auditor": "laravel-auditor",
+  "version": "1.0",
+  "repo_path": "/Users/tomkaczocha/EA/projects/laravel-capabilities-monorepo/.worktrees/arch-audit3/packages/laravel-capabilities",
+  "stack_summary": {
+    "type": "library monorepo package (core capability bus)",
+    "package": "rawphp/laravel-capabilities",
+    "tree_head": "d460a24",
+    "scope": "packages/laravel-capabilities (core) only"
+  },
+  "scanned_files_count": 64,
+  "findings": [
+    {
+      "id": "L-201",
+      "title": "Isolate approval notifiers and the ApprovalRequested listener after the row is saved",
+      "category": "queues_events",
+      "severity": "medium",
+      "effort": "small",
+      "impact": ["reliability"],
+      "locations": [
+        { "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php", "line": 360, "snippet": "foreach ($this->notifiers as $notifier) { $notifier->notifyPending($row); }" },
+        { "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php", "line": 349, "snippet": "$row = $this->store->put($record);" },
+        { "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php", "line": 760, "snippet": "$this->events?->dispatch($requested);" },
+        { "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php", "line": 228, "snippet": "return $this->finishUncaught($state, $e);" },
+        { "file": "packages/laravel-capabilities/src/Pipeline/IdempotencyGuard.php", "line": 203, "snippet": "if ($status === 'failed') { ... 'action' => 'replay'" },
+        { "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php", "line": 769, "snippet": "'idempotency_key' => $str('idempotency_key', null)," },
+        { "file": "packages/laravel-capabilities-messaging/src/Notifiers/TelegramApprovalNotifier.php", "line": 38, "snippet": "$this->config->requireTelegramSecrets();" }
+      ],
+      "current_state": "Since L-101, bound notifiers really fire. ApprovalManager::request() saves and audits the row, then calls each notifyPending() without a guard. The Telegram notifier rethrows Bot API failures, and it throws for every approval (HTTP/CLI too) when Telegram is enabled without secrets, because the secrets check runs before the chat-id check. The L-103 fix isolated listeners in the finalizer, ApprovalManager and ApprovalExecutor, but it missed the CapabilityApprovalRequested dispatch in buildApprovalRequired. Either throw reaches finishUncaught: the caller gets 'internal', the pending approval row stays, and a keyed invoke's idempotency row is stored as 'failed'.",
+      "recommended_state": "Once the approval row is saved, a notifier or listener failure must not change the outcome. Report it (ExceptionHandler + metric), keep going to the next notifier, and return approval_required as usual. This is the same rule L-103/L-104 set for listeners and audit.",
+      "rationale": "The failure is not only cosmetic. With an Idempotency-Key (the CLI sends one on every run), the L-102 fix runs the accepted execution under that key. The lookup then finds the 'failed' row and replays 'internal', so an approver who accepts the orphan row burns the approval and the capability never runs. Without a key, the client retries after 'internal' and opens a second approval, and both can be accepted, which is a double execution (D-005 retries must not double-apply). A Telegram outage or a half-configured messaging install is enough to trigger it.",
+      "implementation_hint": "ApprovalManager::request(): wrap each `$notifier->notifyPending($row)` in try/catch(Throwable) → FailureReporter::reportAndCount($e, 'approval_notify_failed_total', ['notifier' => $notifier::class]). InvokePipeline::buildApprovalRequired(): send the event through `$this->results()->dispatch($requested)` (the isolating dispatcher) instead of `$this->events?->dispatch()`. Unit tests with InMemoryApprovalStore + InMemoryIdempotencyStore: (1) a notifier whose notifyPending throws → invoke returns approval_required, the key row is pending_approval, and a second notifier is still called; (2) a Dispatcher fake throwing on CapabilityApprovalRequested → same outcome, exception reported once. Optionally, in messaging, move requireTelegramSecrets() after the chat-id early return."
+    },
+    {
+      "id": "L-202",
+      "title": "Remove the approval executor's second idempotency writer (dead in production)",
+      "category": "architecture",
+      "severity": "low",
+      "effort": "small",
+      "impact": ["maintainability", "reliability"],
+      "locations": [
+        { "file": "packages/laravel-capabilities/src/Approval/ApprovalExecutor.php", "line": 233, "snippet": "$this->completeIdempotency($row, $result);" },
+        { "file": "packages/laravel-capabilities/src/Approval/ApprovalExecutor.php", "line": 363, "snippet": "'status' => 'completed', 'result_json' => $result->toArray()," },
+        { "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php", "line": 232, "snippet": "public function withIdempotency(?IdempotencyStore $store): self" },
+        { "file": "packages/laravel-capabilities/src/CapabilitiesServiceProvider.php", "line": 154, "snippet": ")->withExecutor(static function (array $row) use ($app): CapabilityResult {" },
+        { "file": "packages/laravel-capabilities/tests/Unit/Approval/ApprovalStateMachineTest.php", "line": 285, "snippet": "it('happy: idempotency key completed after approval execution [D-005]'" }
+      ],
+      "current_state": "After L-102, the approved execution runs through the pipeline under the row's idempotency key, and the pipeline moves that key from pending_approval to completed or failed. ApprovalExecutor::completeIdempotency still writes the same row a second time, always as status 'completed', even when the result failed. Only ApprovalManager::withIdempotency() enables it, and neither the provider nor ContainerBindings::makeApprovalManager ever calls that, so it never runs in production. The approval idempotency tests (ApprovalStateMachineTest:285, ApprovalCrashRecoveryTest:131) wire it through test helpers, so they prove a path hosts never run.",
+      "recommended_state": "One writer for the idempotency row: the pipeline. Remove withIdempotency/completeIdempotency from ApprovalManager and ApprovalExecutor. Re-point the approval idempotency tests at the registry path (executeApproval under the key → row completed/failed, retry replays).",
+      "rationale": "Two mechanisms for one invariant, only one of them live, is how the L-101/L-102 class of bug arose: tests passed on a manager that production never built. If a host did wire it, it would overwrite the pipeline's 'failed' with 'completed'. A different-hash retry would then get 409 conflict instead of the stored failure replay.",
+      "implementation_hint": "Delete ApprovalExecutor::completeIdempotency and its call, the $idempotency ctor param and withIdempotency on both classes, and the idempotency entries in tests/Fixtures/ApprovalHelpers.php and tests/Support/SharedFakes.php. Rewrite ApprovalStateMachineTest:285-320 and ApprovalCrashRecoveryTest:131 against a registry with InMemoryIdempotencyStore + InMemoryApprovalStore: invoke with key → approval_required; accept → key row status completed; a failing run() → key row status failed. Keep coverage at 95% or above."
+    }
+  ],
+  "notes": "Iteration 3, core scope only, tree d460a24. Read AGENTS.md, the iteration-2 core findings plus the report's L-015/L-109/L-110 baselines, and the full core src diff c82e624..HEAD (34 files), plus the untouched collaborators the fixes call (IdempotencyGuard, InvokeResultFinalizer, ApprovalExecutor, DefinitionCatalog/AttributeDiscoverer, DatabaseApprovalStore/QueryTableGateway column map, CallerDeriver, and the messaging TelegramApprovalNotifier binding, read for impact only). Iteration-2 fix verification: L-101 fixed (one configured manager; the registry re-wraps it, and notifiers and config survive the clone; the event dispatcher still propagates through withEventDispatcher). L-102 fixed (a pending_approval same-hash retry replays the same approval_id; the accepted execution continues through its own row and writes completed/failed under the original key; a crash after run() now replays on resume instead of re-running). L-103 partially fixed: the CapabilityApprovalRequested dispatch is still unguarded (→ L-201). L-104 fixed (reported plus metric, fixed wire message, approval audit guarded). L-105 fixed (executing_approval_id comes only from executeApproval; no untrusted options path; job, AI and MCP adapters build their options explicitly). L-106 fixed (definition-time and config-time assertKnown; default arm denies). L-107 fixed (run() plus the requester resolver; fails closed with no stdClass). L-108 fixed (infrastructure commands registered regardless of the artisan surface). L-015 fixed (manifest via capabilities:cache/clear, optimizes() hook; classes missing from the manifest are skipped). L-109 and L-110 fixed (issuance routes unprotected; authKind uses clients.token_abilities). The M-101 core side is sound: 'messaging' maps to channel_meta_json in the approval column map, so no schema change is needed. The L-101 fix is what makes L-201 reachable. Checked and not raised: authKind lowercases abilities while CallerDeriver matches exactly (contrived mismatch); an empty token_abilities map means default for authKind but none for CallerDeriver (contrived); a rejected or expired approval keeps replaying its approval_required for the idempotency TTL (consistent with key → outcome); a narrow race where an approver taps a Telegram button before finishApprovalRequired stores pending_approval (the key row is still 'processing' → busy; ms window); boot still eagerly builds the registry singleton when the manifest exists (scan cost removed, which was the L-015 ask). Deferred items honoured (sqlite AI tests, required=true process-local outbox, coverage floor). Hints use unit fakes only."
+}

@@ -6,7 +6,7 @@ namespace Rawphp\CapabilitiesAi\Jobs;
 
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
-use Rawphp\CapabilitiesAi\Domain\TurnClaim;
+use Rawphp\CapabilitiesAi\Contracts\TurnClaim;
 use Rawphp\CapabilitiesAi\Domain\TurnRunner;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Package;

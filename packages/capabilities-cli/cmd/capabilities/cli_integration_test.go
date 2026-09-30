@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rawphp/capabilities-cli/internal/api"
 	"github.com/rawphp/capabilities-cli/internal/auth"
@@ -18,8 +22,14 @@ func testAPI(t *testing.T) (*httptest.Server, string) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == api.PathAuthDevice:
-			w.Write([]byte(`{"ok":true,"data":{"access_token":"device-token","device_code":"d"}}`))
+			w.Write([]byte(`{"ok":true,"data":{"device_code":"d","user_code":"HOST-USER","verification_uri":"https://example.test/device","expires_in":600,"interval":5}}`))
 		case r.URL.Path == api.PathAuthToken:
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body["grant_type"] == auth.DeviceCodeGrantType && body["device_code"] == "d" {
+				w.Write([]byte(`{"ok":true,"data":{"access_token":"device-token"}}`))
+				return
+			}
 			w.Write([]byte(`{"ok":true,"data":{"access_token":"oauth-token"}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/capabilities":
 			w.Write([]byte(`{"ok":true,"data":{"capabilities":[{"name":"create-invoice","deprecated":true,"successor":"create-invoice-v2"}]}}`))
@@ -83,9 +93,27 @@ func TestExecuteAuthLoginTokenAndStatusLogout(t *testing.T) {
 func TestExecuteAuthLoginDevice(t *testing.T) {
 	srv, url := testAPI(t)
 	root := t.TempDir()
-	code, _, errb := CaptureExecute([]string{"auth", "login", "--base-url", url}, root, newClientFactory(srv))
+	var out, errb bytes.Buffer
+	var waits []time.Duration
+	code := Execute(Env{
+		Args:       []string{"auth", "login", "--base-url", url},
+		Stdout:     &out,
+		Stderr:     &errb,
+		ConfigRoot: root,
+		NewClient:  newClientFactory(srv),
+		Sleep: func(_ context.Context, d time.Duration) error {
+			waits = append(waits, d)
+			return nil
+		},
+	})
 	if code != 0 {
-		t.Fatal(code, errb)
+		t.Fatal(code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "HOST-USER") || strings.Contains(out.String(), "HOST-USER") {
+		t.Fatalf("user code prompt belongs on stderr: out=%q err=%q", out.String(), errb.String())
+	}
+	if len(waits) != 1 || waits[0] != 10*time.Second {
+		t.Fatalf("waits %v", waits)
 	}
 	st := auth.NewStore(root)
 	tok, err := st.GetToken("default")
@@ -109,7 +137,7 @@ func TestExecuteCatalogDescribeRun(t *testing.T) {
 	factory := newClientFactory(srv)
 	// seed auth
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", url, "tok")
+	seedLogin(t, st, "default", url, "tok")
 
 	code, out, errb := CaptureExecute([]string{"catalog", "--json"}, root, factory)
 	if code != 0 {
@@ -206,7 +234,7 @@ func TestExecuteApprovals(t *testing.T) {
 	srv, url := testAPI(t)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", url, "tok")
+	seedLogin(t, st, "default", url, "tok")
 	code, out, errb := CaptureExecute([]string{"approvals", "accept", "ap1"}, root, newClientFactory(srv))
 	if code != 0 {
 		t.Fatal(code, out, errb)
@@ -263,7 +291,7 @@ func TestExecuteUnknownCommandAuthenticated(t *testing.T) {
 	srv, url := testAPI(t)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", url, "tok")
+	seedLogin(t, st, "default", url, "tok")
 	// Authenticated with empty catalog → unknown domain is exit 5 not_found.
 	code, out, errb := CaptureExecute([]string{"nope"}, root, newClientFactory(srv))
 	if code != api.ExitDomain {
@@ -288,7 +316,7 @@ func TestExecuteRunMissingName(t *testing.T) {
 	srv, url := testAPI(t)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", url, "tok")
+	seedLogin(t, st, "default", url, "tok")
 	code, _, _ := CaptureExecute([]string{"run"}, root, newClientFactory(srv))
 	if code != api.ExitValidation {
 		t.Fatal(code)
@@ -299,7 +327,7 @@ func TestExecuteDescribeMissingName(t *testing.T) {
 	srv, url := testAPI(t)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", url, "tok")
+	seedLogin(t, st, "default", url, "tok")
 	code, _, _ := CaptureExecute([]string{"describe"}, root, newClientFactory(srv))
 	if code != api.ExitValidation {
 		t.Fatal(code)
@@ -326,7 +354,7 @@ func TestExecuteRunServerErrorMapping(t *testing.T) {
 	t.Cleanup(srv.Close)
 	root := t.TempDir()
 	st := auth.NewStore(root)
-	_, _ = auth.LoginWithToken(st, "default", srv.URL, "tok")
+	seedLogin(t, st, "default", srv.URL, "tok")
 	code, _, _ := CaptureExecute([]string{"run", "x", "--input", `{}`}, root, newClientFactory(srv))
 	if code != api.ExitRateLimit {
 		t.Fatal(code)
@@ -374,5 +402,137 @@ func TestExecuteAuthLogoutRejectsCollidingProfileName(t *testing.T) {
 	}
 	if !auth.NewStore(root).HasToken("prod_eu") {
 		t.Fatal("prod_eu token deleted via colliding name")
+	}
+}
+
+func TestCatalogNoCacheAndProfileFlags(t *testing.T) {
+	srv, url := testAPI(t)
+	root := t.TempDir()
+	st := auth.NewStore(root)
+	seedLogin(t, st, "default", url, "tok")
+	code, _, errb := CaptureExecute([]string{"catalog", "--no-cache", "--profile=default", "--base-url=" + url}, root, newClientFactory(srv))
+	if code != 0 {
+		t.Fatal(code, errb)
+	}
+}
+
+// --tenant was removed: the server never read the hint, and DTO schemas
+// (additionalProperties:false) rejected the injected body key. It is now an
+// unknown flag like any other — exit 2 before any POST (D-003: scope is server-derived).
+
+func TestDescribeNoJSON(t *testing.T) {
+	srv, url := testAPI(t)
+	root := t.TempDir()
+	st := auth.NewStore(root)
+	seedLogin(t, st, "default", url, "tok")
+	code, out, errb := CaptureExecute([]string{"describe", "create-invoice"}, root, newClientFactory(srv))
+	if code != 0 {
+		t.Fatal(code, errb)
+	}
+	if !strings.HasPrefix(out, "create-invoice schema_version=1\n") || !strings.Contains(out, `"customer_id"`) {
+		t.Fatal(out)
+	}
+}
+
+func TestStoreDefaultsToUserConfigDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if got := store(Env{}).Root; got != home+"/.config/capabilities" {
+		t.Fatalf("root %q", got)
+	}
+}
+
+func TestCommandsWithTokenButNoBaseURLExitAuth(t *testing.T) {
+	root := t.TempDir()
+	if err := auth.NewStore(root).SetToken("default", "tok"); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"catalog"},
+		{"describe", "create-invoice"},
+		{"run", "create-invoice"},
+		{"approvals", "accept", "ap-1"},
+		{"invoices", "create"},
+		{"invoices", "create", "--help"},
+	} {
+		code, _, errb := CaptureExecute(args, root, nil)
+		if code != api.ExitAuth || !strings.Contains(errb, "missing base URL") {
+			t.Fatalf("%v: exit %d stderr %q", args, code, errb)
+		}
+	}
+}
+
+func TestTransportFailuresExitInternal(t *testing.T) {
+	root := t.TempDir()
+	seedLogin(t, auth.NewStore(root), "default", "https://api.example", "tok")
+	down := func(base, token string) *api.Client {
+		c := api.NewClient(base, token)
+		c.HTTP = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("dial: connection refused")
+		})}
+		return c
+	}
+	for _, args := range [][]string{
+		{"catalog"},
+		{"describe", "create-invoice"},
+		{"approvals", "reject", "ap-1"},
+		{"invoices", "create"},
+	} {
+		code, _, errb := CaptureExecute(args, root, down)
+		if code != api.ExitInternal || !strings.Contains(errb, "connection refused") {
+			t.Fatalf("%v: exit %d stderr %q", args, code, errb)
+		}
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestCatalogFlatAndIncludeSchemasOutputs(t *testing.T) {
+	var query string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query = r.URL.RawQuery
+		w.Write([]byte(`{"ok":true,"data":{"capabilities":[{"name":"invoices.create","input_schema":{"type":"object"}}]}}`))
+	}))
+	t.Cleanup(srv.Close)
+	root := t.TempDir()
+	seedLogin(t, auth.NewStore(root), "default", srv.URL, "tok")
+
+	code, out, errb := CaptureExecute([]string{"catalog", "--flat"}, root, newClientFactory(srv))
+	if code != 0 || out != "invoices.create → invoices create\n" {
+		t.Fatalf("flat: exit %d out %q err %q", code, out, errb)
+	}
+	code, out, errb = CaptureExecute([]string{"catalog", "--json", "--include-schemas"}, root, newClientFactory(srv))
+	if code != 0 || query != "include_schemas=1" || !strings.Contains(out, `"input_schema"`) {
+		t.Fatalf("include-schemas: exit %d query %q out %q err %q", code, query, out, errb)
+	}
+}
+
+func TestDefaultHTTPClientTalksToProfileBaseURL(t *testing.T) {
+	_, url := testAPI(t)
+	root := t.TempDir()
+	seedLogin(t, auth.NewStore(root), "default", url, "tok")
+	code, out, errb := CaptureExecute([]string{"catalog", "--flat"}, root, nil)
+	if code != 0 || !strings.Contains(out, "create-invoice") {
+		t.Fatalf("exit %d out %q err %q", code, out, errb)
+	}
+}
+
+// Token login verifies with one GET /capabilities and stops there: the schema
+// cache is keyed by base URL + token, so there is nothing to prefetch or clear.
+func TestExecuteAuthLoginTokenMakesOneRequest(t *testing.T) {
+	var requests []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		w.Write([]byte(`{"ok":true,"data":{"capabilities":[]}}`))
+	}))
+	t.Cleanup(srv.Close)
+	code, out, errb := CaptureExecute([]string{"auth", "login", "--base-url=" + srv.URL, "--token=pat-1"}, t.TempDir(), newClientFactory(srv))
+	if code != 0 {
+		t.Fatalf("login %d %s %s", code, out, errb)
+	}
+	if len(requests) != 1 || requests[0] != "GET /capabilities" {
+		t.Fatalf("requests: %v", requests)
 	}
 }

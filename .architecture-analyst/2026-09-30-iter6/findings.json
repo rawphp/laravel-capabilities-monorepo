@@ -1,0 +1,57 @@
+{
+  "run": "2026-09-30-iter6",
+  "findings": [
+    {
+      "id": "L-501",
+      "title": "Keep the requester's team/org scope on approved runs; L-401 pins tenant only",
+      "category": "authorization",
+      "severity": "medium",
+      "effort": "small",
+      "impact": [
+        "security",
+        "reliability"
+      ],
+      "locations": [
+        {
+          "file": "packages/laravel-capabilities/src/Registry/CapabilityRegistry.php",
+          "line": 773,
+          "snippet": "'scope' => $tenantId !== null && $tenantId !== '' ? new CapabilityScope(tenantId: $tenantId) : null,"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/ResolveTenantFromCaller.php",
+          "line": 34,
+          "snippet": "if (isset($options['scope']) && $options['scope'] instanceof CapabilityScope) { return $options['scope']; }"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/OriginalActorAuthorizer.php",
+          "line": 51,
+          "snippet": "scope: $tenant === '' ? null : new CapabilityScope(tenantId: $tenant),"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Pipeline/InvokePipeline.php",
+          "line": 739,
+          "snippet": "'tenant_id' => $ctx->tenantId(),"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Approval/ApprovalManager.php",
+          "line": 350,
+          "snippet": "$record['scope'] = $record['tenant_id'] ?? null;"
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Support/DefaultScopeResolver.php",
+          "line": 172,
+          "snippet": "$teamId = is_object($user) && isset($user->current_team_id) ? (string) $user->current_team_id : ..."
+        },
+        {
+          "file": "packages/laravel-capabilities/src/Audit/AuditLogger.php",
+          "line": 53,
+          "snippet": "'team_id' => $ctx->scope()?->teamId,"
+        }
+      ],
+      "current_state": "The L-401 fix makes executeApproval() pass a bare `new CapabilityScope(tenantId: <row tenant>)`, and ResolveTenantFromCaller returns that option without calling the ScopeResolver. teamId, organizationId, attributes and any resolver-attached query factory are all dropped. Before the fix they came from the resolver. Reproduced on the audit tree with the IdempotencyHelpers harness and the default resolver: a user with current_tenant_id=t1, current_team_id=team-9 and current_organization_id=org-3 gets run() ctx [t1, team-9, org-3] on a direct invoke, but [t1, null, null] when the same invoke is approved and accepted. The approval row cannot restore them because buildApprovalRequired stamps only tenant_id, and ApprovalManager copies that string into the `scope` (scope_json) column.",
+      "recommended_state": "An approved run and the original-actor re-check see the scope the request was stamped with: tenant, team and organization (plus JSON-safe attributes), not a tenant-only scope.",
+      "rationale": "A spec rule (D-006 step 5, spec.md:1818) says an approved request runs 'under the original caller + scope + idempotency key'. The package's DefaultScopeResolver and the spec's AppScopeResolver example (spec.md:1619-1622) both fill teamId, and CapabilityContext exposes teamId()/organizationId() for capabilities to use. So a capability that re-resolves resources by team, or a host ScopedQueryFactory that narrows by $scope->teamId, sees null team on exactly the path where a human signed off. That is inconsistent at best. At worst a `when($scope->teamId, ...)` factory drops the team constraint and resolves resources across the whole tenant. The audit row for the approved run also records team_id=null (AuditLogger:53), and authorize() is re-checked under a different scope shape than the original request had. Pinning the tenant (L-401) was right. Pinning only the tenant is the regression.",
+      "implementation_hint": "(1) In InvokePipeline::buildApprovalRequired, stamp `'scope' => ['tenant_id' => $ctx->tenantId(), 'team_id' => $ctx->teamId(), 'organization_id' => $ctx->organizationId()]` (add attributes only if the owner wants them persisted). The scope_json column and both stores already carry `scope`. (2) Add a small `CapabilityScope::fromRow(array $row)` that reads that array, and falls back to `tenant_id` only when the stored scope is a legacy string or null. Use it in CapabilityRegistry::executeApproval (keep the null-tenant rows resolving as today) and in OriginalActorAuthorizer. (3) Unit test: extend ApproverTenantResolutionTest so a requester with current_team_id/current_organization_id sees the same teamId()/organizationId() in run() on accept and resume as on a direct invoke, including after switching tenant (team from the row, not the new tenant)."
+    }
+  ]
+}
