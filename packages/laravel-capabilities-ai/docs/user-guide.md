@@ -209,7 +209,7 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 
 **Cooperative cancel (mid-run):** `TurnService::cancel` CAS-marks the turn cancelled and emits a terminal progress event. `TurnRunner` re-checks the turn before every LLM round and before every tool call, and stops as soon as it is `cancelled`: no further LLM call, no further bus invoke. Its completed/failed writes are compare-and-set on `status=running`, so a cancel that lands at any point is never overwritten and no completed/failed terminal event follows it — the cancelled terminal stands. A tool call already in flight when the cancel lands still finishes (it cannot be recalled) and reports its `tool` event.
 
-Authoritative: `ChatController` + conversation/turn services (see package unit tests). CHANGELOG: [0.5.1 Breaking — Chat HTTP non-proposal routes](../CHANGELOG.md#chat-http-non-proposal-routes-stub--real); owner scoping (401 / 404) and the D-018 envelope are under Unreleased → Changed.
+Authoritative: `ChatController` + conversation/turn services (see package unit tests). CHANGELOG: [0.5.1 Breaking — Chat HTTP non-proposal routes](../CHANGELOG.md#chat-http-non-proposal-routes-stub--real); owner scoping (401 / 404) and the D-018 envelope are under 0.6.0 → Changed.
 
 ## Proposals gate (`proposals.enabled`)
 

@@ -11,6 +11,8 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-30
+
 ### Added
 
 - **Turn-scoped time budget:** new optional `Contracts\DeadlineAwareLlmClient` (extends `LlmClient`: `withDeadline(int $deadlineNs)`, `MIN_REQUEST_SECONDS = 10`), implemented by `AnthropicLlmClient`. `TurnRunner` (new trailing args `turnBudgetSeconds`, default `claim_ttl` via `ContainerBindings::makeTurnRunner`, and an optional monotonic `clock`) fixes the turn deadline when the job starts and hands it to the client, which caps each request's transport timeout (429 retries included) at the time left minus 2s. A round is refused only when under 10s are left: the turn then fails as a `RetryableLlmException` (`error` `retryable: true` + `terminal` `failed`) without calling the client. With the defaults (110s timeout, 120s `claim_ttl`) a multi-round tool turn whose real total time is under `claim_ttl` completes; later rounds just get shorter timeouts. Previously only the first round was protected: the timeout and retry checks measured from the start of each call, so a multi-round turn could outlive its `claim_ttl` job, get the worker killed mid-request and hang until the stale-turn reaper ran. The `llm.anthropic.timeout < claim_ttl` build check is unchanged. **Hosts:** custom `LlmClient`s get no turn budget unless they implement `DeadlineAwareLlmClient`.

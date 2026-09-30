@@ -11,6 +11,8 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-30
+
 ### Breaking
 
 - **`TelegramBotClient::answerCallbackQuery(string $callbackQueryId, string $text = '', array $payload = []): array`**

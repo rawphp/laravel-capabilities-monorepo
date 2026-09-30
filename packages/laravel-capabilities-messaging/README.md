@@ -17,7 +17,7 @@ Requires [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabil
 
 ### Upgrade notes (0.x)
 
-Unreleased, after 0.5.0 (full list: [CHANGELOG.md](CHANGELOG.md) Unreleased):
+0.6.0 (full list: [CHANGELOG.md](CHANGELOG.md) 0.6.0):
 
 - **Bind `Contracts\AgentTurn`** (`toolNames()`, `respond()`, `respondWithResults()`) to get replies. There is no echo default: unbound, a linked user's message gets no reply and `agent_turn_unbound` is logged.
 - **Chat users resolve to your user model** (`user_model`, else `auth.providers.users.model`), not a `LinkedUser` DTO.

@@ -11,6 +11,8 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-30
+
 ### Breaking (0.x)
 
 - **Profile names must be filesystem-safe** — `--profile` accepts letters,
