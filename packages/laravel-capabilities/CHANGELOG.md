@@ -11,6 +11,8 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-30
+
 ### Fixed
 
 - **Security: the host `Authorizer` gate is restored for class capabilities (0.6.0 regression
