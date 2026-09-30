@@ -2743,7 +2743,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/laravel-capabilities",
-                "reference": "300371f05a4b4f06f74e779d90adbf1930fe3a50"
+                "reference": "0e36dace6df1201e9d7314737f5d2d3a034ea169"
             },
             "require": {
                 "illuminate/bus": "^11.0|^12.0|^13.0",
@@ -2755,6 +2755,9 @@
                 "illuminate/support": "^11.0|^12.0|^13.0",
                 "illuminate/validation": "^11.0|^12.0|^13.0",
                 "php": "^8.2"
+            },
+            "conflict": {
+                "laravel/prompts": "<0.1.15"
             },
             "suggest": {
                 "laravel/ai": "Required when surfaces.agent is enabled",

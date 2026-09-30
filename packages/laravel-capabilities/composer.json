@@ -26,6 +26,9 @@
         "illuminate/database": "^11.0|^12.0|^13.0",
         "illuminate/validation": "^11.0|^12.0|^13.0"
     },
+    "conflict": {
+        "laravel/prompts": "<0.1.15"
+    },
     "suggest": {
         "laravel/ai": "Required when surfaces.agent is enabled",
         "laravel/mcp": "Required when surfaces.mcp is enabled",

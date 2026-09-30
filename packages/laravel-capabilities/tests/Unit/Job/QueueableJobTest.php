@@ -40,6 +40,17 @@ function l016Bus(): Dispatcher
             return $this->dispatch($command);
         }
 
+        // Contract methods since illuminate 13; extra (unused) on 11/12.
+        public function dispatchAfterResponse($command, $handler = null)
+        {
+            return $this->dispatch($command);
+        }
+
+        public function chain($jobs = null)
+        {
+            return $this;
+        }
+
         public function hasCommandHandler($command)
         {
             return false;
