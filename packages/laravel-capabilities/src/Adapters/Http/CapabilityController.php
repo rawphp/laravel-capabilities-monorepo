@@ -46,8 +46,9 @@ final class CapabilityController
         $includeSchemas = (bool) ($request->query['include_schemas'] ?? false)
             || (isset($request->query['include']) && str_contains((string) $request->query['include'], 'schemas'));
 
+        // Catalog filters by surface, so it uses the credential surface, as invoke does (D-022).
         $envelope = $this->registry->catalog()->listEnvelope($includeSchemas, [
-            'caller' => $caller['caller'],
+            'caller' => $caller['derived'],
             'actor' => $request->user,
         ]);
 
@@ -66,7 +67,7 @@ final class CapabilityController
         $caller = $this->resolveCaller($request);
 
         try {
-            $detail = $this->registry->catalog()->describe($name, $request->user, $caller['caller']);
+            $detail = $this->registry->catalog()->describe($name, $request->user, $caller['derived']);
         } catch (Throwable) {
             return HttpResponse::failure(
                 'not_found',

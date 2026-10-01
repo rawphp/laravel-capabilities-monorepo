@@ -19,6 +19,7 @@ use Rawphp\Capabilities\Support\InMemoryApprovalStore;
  *     requester_actor_type: string,
  *     requester_actor_id: string,
  *     original_caller: string,
+ *     original_surface: string|null,
  *     input_json: mixed,
  *     input_hash: string|null,
  *     idempotency_key: string|null,

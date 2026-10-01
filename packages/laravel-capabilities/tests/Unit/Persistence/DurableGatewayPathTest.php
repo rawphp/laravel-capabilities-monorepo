@@ -44,6 +44,7 @@ function req049SqliteConnection(): ConnectionInterface
             requester_actor_type text,
             requester_actor_id text,
             original_caller text,
+            original_surface text,
             input_json text,
             input_hash text,
             idempotency_key text,

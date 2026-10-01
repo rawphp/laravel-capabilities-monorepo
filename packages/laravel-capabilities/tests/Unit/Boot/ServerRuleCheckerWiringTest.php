@@ -12,6 +12,7 @@ use Rawphp\Capabilities\Tests\Fixtures\CountingPresenceVerifier;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceInput;
 use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
 use Rawphp\Capabilities\Tests\Fixtures\FakeProviderApp;
+use Rawphp\Capabilities\Tests\Fixtures\OptionalCustomerInput;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 
 it('fail: a booted registry rejects exists when the row is missing [D-004]', function () {
@@ -53,6 +54,56 @@ it('edge: boot without a validation factory leaves server rules unchecked [D-004
     $result = $registry->invoke('create-invoice', PipelineHelpers::validInput(), PipelineHelpers::options());
 
     expect($result->isOk())->toBeTrue()
+        ->and($ran)->toBe(1);
+});
+
+it('happy: an optional field the client left out skips its server-only rules [D-004]', function () {
+    $verifier = new CountingPresenceVerifier(['customers' => 0]);
+    $ran = 0;
+    $registry = bootedRegistry($verifier, $ran);
+    Capability::define('find-customer')
+        ->description('Find a customer')
+        ->input(OptionalCustomerInput::class)
+        ->run(function () use (&$ran) {
+            $ran++;
+
+            return null;
+        })
+        ->register($registry);
+
+    $omitted = $registry->invoke('find-customer', [], PipelineHelpers::options());
+    $sent = $registry->invoke('find-customer', ['customer_id' => 9], PipelineHelpers::options());
+
+    expect($omitted->isOk())->toBeTrue()
+        ->and($sent->errorCode())->toBe('validation_failed')
+        ->and($verifier->calls)->toHaveCount(1)
+        ->and($ran)->toBe(1);
+});
+
+it('happy: an approved request with an omitted optional field still runs [D-004 / D-006]', function () {
+    $verifier = new CountingPresenceVerifier(['customers' => 0]);
+    $ran = 0;
+    $registry = bootedRegistry($verifier, $ran);
+    Capability::define('find-customer')
+        ->description('Find a customer')
+        ->input(OptionalCustomerInput::class)
+        ->needsApproval(fn () => true)
+        ->allowSystemCallers(true)
+        ->run(function () use (&$ran) {
+            $ran++;
+
+            return null;
+        })
+        ->register($registry);
+
+    $requested = $registry->invoke('find-customer', [], PipelineHelpers::options());
+    $row = $registry->approvalStore()?->find((string) $requested->approvalId());
+
+    expect($requested->isApprovalRequired())->toBeTrue()
+        ->and($row['input_json'] ?? null)->toBe([])
+        // System requester: this harness binds no requester resolver.
+        ->and($registry->executeApproval([...(array) $row, 'requester_actor_type' => 'system'])->isOk())->toBeTrue()
+        ->and($verifier->calls)->toBe([])
         ->and($ran)->toBe(1);
 });
 

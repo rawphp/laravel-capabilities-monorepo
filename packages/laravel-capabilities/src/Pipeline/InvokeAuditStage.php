@@ -72,8 +72,9 @@ final class InvokeAuditStage
                     'context' => ['capability' => $state->definition->name],
                 ]);
 
-                // When required, still enqueue for operators even in strict.
-                if ($this->auditRequired) {
+                // When required, still enqueue for operators even in strict. A held
+                // wrap is rolled back next, so there is no success to record.
+                if ($this->auditRequired && ! $state->wrapHeld) {
                     $this->ensureOutbox()->enqueue($entry);
                 }
 

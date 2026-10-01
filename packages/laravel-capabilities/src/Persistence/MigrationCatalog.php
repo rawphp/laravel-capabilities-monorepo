@@ -50,6 +50,7 @@ final class MigrationCatalog
                     'requester_actor_type',
                     'requester_actor_id',
                     'original_caller',
+                    'original_surface',
                     'input_json',
                     'input_hash',
                     'idempotency_key',

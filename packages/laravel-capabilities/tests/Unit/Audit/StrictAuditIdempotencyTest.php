@@ -62,6 +62,32 @@ it('fail: strict audit failure inside wrap_run rolls the domain back and a retry
         ->and($ran ?? 0)->toBe(2);
 });
 
+it('fail: a rolled-back strict wrap does not queue a success audit to the outbox [D-010]', function () {
+    $connection = strictAuditConnection();
+    $h = AuditHelpers::harness([
+        'mode' => 'strict',
+        'required' => true,
+        'fail_audit' => true,
+        'transactions' => ['wrap_run' => true],
+        'transaction_connection' => $connection,
+    ]);
+
+    $result = $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
+
+    expect($result->errorCode())->toBe('audit_failed')
+        ->and($result->error['domain_committed'] ?? null)->toBeFalse()
+        ->and($h['outbox']->all())->toBe([]);
+});
+
+it('fail: strict audit failure without a wrap still queues the committed entry when required [D-010]', function () {
+    $h = AuditHelpers::harness(['mode' => 'strict', 'required' => true, 'fail_audit' => true]);
+
+    $result = $h['registry']->invoke($h['name'], AuditHelpers::input(), AuditHelpers::options());
+
+    expect($result->errorCode())->toBe('audit_failed')
+        ->and($h['outbox']->all())->toHaveCount(1);
+});
+
 it('happy: best_effort audit failure inside wrap_run keeps the domain write [D-010]', function () {
     $connection = strictAuditConnection();
     $h = AuditHelpers::harness([

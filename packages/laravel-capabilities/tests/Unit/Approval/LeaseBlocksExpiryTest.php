@@ -48,6 +48,7 @@ it('fail: a lost execution does not write executed over an expired approval [D-0
         'execution' => ApprovalStateMachine::EXECUTION_ATOMIC,
         'store' => $store,
         'clock' => $h['clock'],
+        'audit' => $h['audit'],
         'executor' => function (array $row) use ($store) {
             $store->update((string) $row['id'], [
                 'status' => ApprovalStateMachine::STATUS_EXPIRED,
@@ -65,4 +66,11 @@ it('fail: a lost execution does not write executed over an expired approval [D-0
         ->and($fresh['result_status'] ?? null)->not->toBe('ok')
         ->and($result->isOk())->toBeFalse()
         ->and($result->errorCode())->toBe('conflict');
+
+    // The domain ran, so the run is audited even though the row could not record it.
+    $executed = array_values(array_filter($h['audit']->all(), fn (array $e) => $e['event'] === 'approval.executed'));
+    expect($executed)->toHaveCount(1)
+        ->and($executed[0]['stored'] ?? null)->toBeFalse()
+        ->and($executed[0]['status'] ?? null)->toBe(ApprovalStateMachine::STATUS_EXPIRED)
+        ->and($executed[0]['result']['data']['invoice_id'] ?? null)->toBe(99);
 });

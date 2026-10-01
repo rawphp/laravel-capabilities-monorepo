@@ -71,12 +71,20 @@ final class IlluminateServerRuleChecker implements ServerRuleChecker
         $kept = [];
 
         foreach ($rules as $field => $fieldRules) {
-            $list = is_array($fieldRules) ? $fieldRules : explode('|', (string) $fieldRules);
+            $list = match (true) {
+                is_array($fieldRules) => $fieldRules,
+                is_string($fieldRules) => explode('|', $fieldRules),
+                default => [$fieldRules],
+            };
             $fieldRulesKept = [];
+            $nullable = false;
             foreach ($list as $rule) {
                 if (is_string($rule)) {
                     $rule = trim($rule);
                     if ($rule === '' || $classifier->isPortable($rule)) {
+                        // nullable changes how Laravel runs the rules that remain.
+                        $nullable = $nullable || strtolower($rule) === 'nullable';
+
                         continue;
                     }
                     $fieldRulesKept[] = $rule;
@@ -94,7 +102,7 @@ final class IlluminateServerRuleChecker implements ServerRuleChecker
             }
 
             if ($fieldRulesKept !== []) {
-                $kept[(string) $field] = $fieldRulesKept;
+                $kept[(string) $field] = $nullable ? ['nullable', ...$fieldRulesKept] : $fieldRulesKept;
             }
         }
 

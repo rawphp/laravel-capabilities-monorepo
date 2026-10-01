@@ -396,11 +396,7 @@ final class InvokePipeline
             return null;
         }
 
-        $data = $state->input instanceof CapabilityData
-            ? $state->input->toArray()
-            : $state->rawInput;
-
-        $violations = $this->serverRuleChecker->check($rules, $data);
+        $violations = $this->serverRuleChecker->check($rules, $state->sentInput());
         if ($violations !== []) {
             return CapabilityResult::failure(
                 code: 'validation_failed',
@@ -766,9 +762,8 @@ final class InvokePipeline
             'requester_actor_type' => ResolveActor::actorType($ctx->actor()),
             'requester_actor_id' => ResolveActor::actorId($ctx->actor()),
             'original_caller' => $state->caller,
-            'input_json' => $state->input instanceof CapabilityData
-                ? $state->input->toArray()
-                : $state->rawInput,
+            'original_surface' => $state->surface,
+            'input_json' => $state->sentInput(),
             'input_hash' => $state->requestHash,
             'idempotency_key' => $state->idempotencyKey,
             // The capability's own governance travels with the row (D-006): who may decide, how long.

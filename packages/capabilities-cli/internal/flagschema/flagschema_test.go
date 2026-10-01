@@ -512,6 +512,34 @@ func TestMergeJSON_preservesIntegersAbove2To53(t *testing.T) {
 	}
 }
 
+func TestMergeJSON_numberFlagsAcceptGoFloatSpellings(t *testing.T) {
+	s, err := FromJSONSchema([]byte(fixtureSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for raw, want := range map[string]string{
+		".5":  `{"rate":0.5}`,
+		"+1":  `{"rate":1}`,
+		"1.":  `{"rate":1}`,
+		"007": `{"rate":7}`,
+		"1e3": `{"rate":1e3}`,
+		"-0":  `{"rate":-0}`,
+	} {
+		got, err := s.MergeJSON(nil, map[string]string{"rate": raw})
+		if err != nil {
+			t.Fatalf("--rate=%s: %v", raw, err)
+		}
+		if string(got) != want {
+			t.Errorf("--rate=%s: got %s want %s", raw, got, want)
+		}
+	}
+	for _, raw := range []string{"NaN", "Inf", "-Inf"} {
+		if _, err := s.MergeJSON(nil, map[string]string{"rate": raw}); !errors.Is(err, ErrInvalidScalar) {
+			t.Errorf("--rate=%s: err %v, want ErrInvalidScalar", raw, err)
+		}
+	}
+}
+
 func TestMerge_baseMustBeAJSONObject(t *testing.T) {
 	s, _ := FromJSONSchema([]byte(fixtureSchema))
 	for _, base := range []string{`[1,2]`, `"text"`, `{`} {
