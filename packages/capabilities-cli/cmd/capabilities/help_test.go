@@ -45,6 +45,19 @@ func TestHelpexitcodestable(t *testing.T) {
 		t.Fatal()
 	}
 }
+func TestHelpTokenStoreIsAFileNotAKeychain(t *testing.T) {
+	root := RootHelp()
+	auth := CommandHelp("auth")
+	for _, h := range []string{root, auth} {
+		if strings.Contains(strings.ToLower(h), "keychain") {
+			t.Fatalf("help still claims a keychain:\n%s", h)
+		}
+	}
+	if !strings.Contains(auth, "0600") || !strings.Contains(auth, ".config/capabilities") {
+		t.Fatalf("auth help must describe the 0600 file under ~/.config/capabilities:\n%s", auth)
+	}
+}
+
 func TestHelpexamplesdonotshowdomainlogic(t *testing.T) {
 	h := RootHelp()
 	if strings.Contains(h, "Eloquent") || strings.Contains(h, "DB::") {

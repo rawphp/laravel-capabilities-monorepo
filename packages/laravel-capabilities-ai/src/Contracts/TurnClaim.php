@@ -29,6 +29,12 @@ interface TurnClaim
     public function isCancelled(string $turnUlid): bool;
 
     /**
+     * True only while this worker still owns a running turn.
+     * A reaper that marked it failed, or a cancel, makes this false.
+     */
+    public function isRunning(string $turnUlid): bool;
+
+    /**
      * running → completed.
      *
      * @param  list<array<string, int>>  $usage

@@ -34,6 +34,9 @@ final class InvokeState
 
     public bool $domainSideEffect = false;
 
+    /** Strict wrap_run left the connection transaction open through audit (D-010). */
+    public bool $wrapHeld = false;
+
     public ?string $approvalId = null;
 
     /** Class handler (D-017), resolved once per invoke and shared by authorize / needsApproval / run. */

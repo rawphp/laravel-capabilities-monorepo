@@ -221,6 +221,74 @@ it('tool call path invokes CapabilityBus exactly once with expected name/payload
         ->and($data['error_code'])->toBeNull();
 });
 
+it('stops further tool invokes once a reaper has failed the running turn', function () {
+    $seeded = enqueueTurnWithUser('use tool');
+    $turnUlid = $seeded['turn_ulid'];
+    $llm = new FakeLlmClient([
+        ['tool_calls' => [
+            ['name' => 'demo.tool', 'arguments' => ['n' => 1]],
+            ['name' => 'demo.other', 'arguments' => ['n' => 2]],
+        ]],
+        ['content' => 'should not run'],
+    ]);
+    $bus = new class($turnUlid) implements CapabilityBus
+    {
+        public int $invokes = 0;
+
+        /** @var list<string> */
+        public array $names = [];
+
+        public function __construct(private string $turnUlid) {}
+
+        public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
+        {
+            $this->invokes++;
+            $this->names[] = $nameOrAlias;
+            turnStore()->turn($this->turnUlid)->forceFill([
+                'status' => Turn::STATUS_FAILED,
+                'error' => 'stale running turn',
+            ]);
+
+            return CapabilityResult::ok(['ok' => true]);
+        }
+
+        public function catalog(): CatalogPresenter
+        {
+            throw new RuntimeException('catalog not used in turn tests');
+        }
+    };
+    $context = new class implements ConversationContextProvider
+    {
+        public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['role' => 'user', 'content' => 'use tool']];
+        }
+    };
+    $tools = new class implements ToolCatalog
+    {
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['name' => 'demo.tool'], ['name' => 'demo.other']];
+        }
+    };
+    $turn = (new TurnRunner(
+        claim: turnClaim(),
+        store: turnStore(),
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        bus: $bus,
+        progress: new ArrayProgressStore,
+        actors: turnActors(),
+    ))->run($turnUlid);
+
+    expect($turn->status)->toBe(Turn::STATUS_FAILED)
+        ->and($turn->error)->toBe('stale running turn')
+        ->and($bus->invokes)->toBe(1)
+        ->and($bus->names)->toBe(['demo.tool'])
+        ->and($llm->callCount)->toBe(1);
+});
+
 it('progress tool events redact sensitive payload keys while the bus receives raw input [D-010]', function () {
     $seeded = enqueueTurnWithUser('use tool');
     $turnUlid = $seeded['turn_ulid'];

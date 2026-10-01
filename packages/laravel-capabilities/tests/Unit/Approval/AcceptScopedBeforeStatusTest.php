@@ -38,6 +38,16 @@ it('happy: authorized approver still replays an executed approval [D-006]', func
     expect($r->meta['approval_replay'] ?? false)->toBeTrue();
 });
 
+it('fail: other-tenant reject on a non-pending approval is forbidden before its status leaks [D-006]', function (string $status) {
+    $h = ApprovalHelpers::harness();
+    $row = ApprovalHelpers::seedStatus($h['manager'], $status);
+
+    $r = $h['manager']->reject((string) $row['id'], ApprovalHelpers::otherTenantUser());
+
+    expect($r->isOk())->toBeFalse()
+        ->and($r->errorCode())->toBe('forbidden');
+})->with('non_pending_statuses');
+
 it('edge: authorized approver still sees terminal status conflicts [D-006]', function (string $status, string $code) {
     $h = ApprovalHelpers::harness();
     $row = ApprovalHelpers::seedStatus($h['manager'], $status);

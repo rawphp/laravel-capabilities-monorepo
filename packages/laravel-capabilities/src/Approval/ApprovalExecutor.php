@@ -207,18 +207,21 @@ final class ApprovalExecutor
         ];
 
         $updated = $this->store->compareAndUpdate($id, $fromStatus, $payload);
+        if ($updated === null && $fromStatus !== ApprovalStateMachine::STATUS_APPROVED) {
+            $updated = $this->store->compareAndUpdate($id, ApprovalStateMachine::STATUS_APPROVED, $payload);
+        }
         if ($updated === null) {
-            // Another worker won — replay stored result.
             $fresh = $this->store->find($id);
             if ($fresh !== null && ($fresh['status'] ?? null) === ApprovalStateMachine::STATUS_EXECUTED) {
-                // Roll back our runCount for lost race after execute? Domain may have double-applied
-                // if executor is not idempotent — D-005 key should protect. Count as attempted.
                 return $this->resultFromRow($fresh, replay: true);
             }
 
-            // Shape B: fromStatus pending already flipped? try approved
-            $updated = $this->store->compareAndUpdate($id, ApprovalStateMachine::STATUS_APPROVED, $payload)
-                ?? $this->store->update($id, $payload);
+            // Expired and rejected are terminal. Do not force executed over them.
+            return CapabilityResult::failure(
+                'conflict',
+                'Approval execution lost the race and was not stored.',
+                ['approval_id' => $id, 'status' => $fresh['status'] ?? null],
+            );
         }
 
         $executed = new CapabilityApprovalExecuted(

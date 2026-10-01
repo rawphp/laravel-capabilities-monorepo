@@ -34,6 +34,11 @@ final class EloquentTurnClaim implements TurnClaim
         return $this->turns()->where('ulid', $turnUlid)->value('status') === Turn::STATUS_CANCELLED;
     }
 
+    public function isRunning(string $turnUlid): bool
+    {
+        return $this->turns()->where('ulid', $turnUlid)->value('status') === Turn::STATUS_RUNNING;
+    }
+
     public function complete(string $turnUlid, array $usage): bool
     {
         return $this->finish($turnUlid, [Turn::STATUS_RUNNING], [
