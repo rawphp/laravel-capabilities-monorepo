@@ -11,6 +11,31 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Fixed
+
+- **Server-only rules validate only the fields the client sent (D-004).** The
+  `IlluminateServerRuleChecker` keeps a field's `nullable`, so a null value skips
+  `exists` and `unique` as it does in Laravel. An omitted optional field is no longer
+  checked as null. Approval rows store only the fields the client sent, so the
+  approved run does not fail on them either. A field whose rule is a single Closure or
+  rule object now validates instead of failing as `internal`.
+- **An approved request re-gates on the surface it came through (D-022).** After an
+  HTTP caller downgrade, the approval row kept only the policy caller, so the approved
+  run was refused on a surface the request had passed. Rows now store
+  `original_surface`. **Hosts:** run the new
+  `add_original_surface_to_capabilities_approvals_table` migration (additive,
+  nullable). Rows without the column gate on `original_caller`, as before.
+- **HTTP catalog list and describe filter on the credential surface (D-022),** the same
+  surface invoke checks. A downgraded client no longer sees capabilities it cannot call.
+- **A lost approval race after the domain ran is audited (D-006).** When the row
+  expired or was rejected during the run, the executor returned `conflict` with no
+  record. It now writes `approval.executed` with `stored: false` and the row status,
+  and counts `result=executed_unstored`.
+- **A rolled-back strict wrap no longer queues a success audit (D-010).** With
+  `audit.required`, a strict audit failure inside a held `wrap_run` transaction put
+  the success entry in the outbox, then rolled the domain back.
+
+
 ## [0.6.1] - 2026-09-30
 
 ### Fixed

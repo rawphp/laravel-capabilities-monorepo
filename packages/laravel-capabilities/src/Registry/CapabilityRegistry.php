@@ -788,6 +788,9 @@ final class CapabilityRegistry implements CapabilityBus
 
         return $this->invoke((string) $str('capability_name', ''), $input, [
             'caller' => $str('original_caller', 'http'),
+            // Gate on the surface the request came through. Rows from before this
+            // column have none, and gate on original_caller (D-022).
+            'derived_caller' => $str('original_surface', null),
             'actor' => $actor,
             'tenant_id' => $tenantId,
             'job' => ['tenant_id' => $tenantId],
@@ -1100,6 +1103,7 @@ final class CapabilityRegistry implements CapabilityBus
                 message: sprintf('Capability "%s" is not invokable via surface "%s".', $definition->name, $surface),
             ));
         }
+        $state->surface = $surface;
 
         // Chat turns keep caller=agent; the global messaging flag still has to allow them.
         if ($this->isMessagingOriginated($options) && ($this->globallyEnabledSurfaces['messaging'] ?? false) !== true) {

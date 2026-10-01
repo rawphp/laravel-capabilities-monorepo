@@ -11,6 +11,14 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Fixed
+
+- **Number flags accept Go float spellings again.** `--price=.5`, `+1`, `1.` and `007`
+  send their float value, as in 0.6.1. Valid JSON numbers keep their literal, so
+  integers above 2^53 are not rounded. `NaN` and `Inf` fail with `ErrInvalidScalar`
+  instead of a JSON encode error.
+
+
 ## [0.6.1] - 2026-09-30
 
 No changes.

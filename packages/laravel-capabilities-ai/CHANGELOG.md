@@ -11,6 +11,14 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Changed
+
+- **`TurnClaim` contract:** adds `isRunning(string $turnUlid): bool`, which the runner
+  checks before each tool call so a reaped or cancelled turn stops. Drops
+  `isCancelled()`, which nothing called. **Hosts** with their own `TurnClaim`
+  implement `isRunning()` and may delete `isCancelled()`.
+
+
 ## [0.6.1] - 2026-09-30
 
 No changes.

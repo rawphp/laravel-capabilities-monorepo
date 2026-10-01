@@ -4,6 +4,7 @@ namespace Rawphp\Capabilities\Pipeline;
 
 use Rawphp\Capabilities\Registry\CapabilityDefinition;
 use Rawphp\Capabilities\Support\CapabilityContext;
+use Rawphp\Capabilities\Support\CapabilityData;
 use Rawphp\Capabilities\Support\CapabilityResult;
 
 /**
@@ -39,6 +40,9 @@ final class InvokeState
 
     public ?string $approvalId = null;
 
+    /** Surface the invoke was gated on; differs from caller after an HTTP downgrade (D-022). */
+    public ?string $surface = null;
+
     /** Class handler (D-017), resolved once per invoke and shared by authorize / needsApproval / run. */
     public ?object $handler = null;
 
@@ -53,6 +57,19 @@ final class InvokeState
         public readonly array $options = [],
         public readonly ?string $requestId = null,
     ) {}
+
+    /**
+     * Coerced input for the fields the client sent. toArray() also carries omitted
+     * optionals as null, and Laravel rules such as exists would run on those (D-004).
+     *
+     * @return array<string, mixed>
+     */
+    public function sentInput(): array
+    {
+        return $this->input instanceof CapabilityData
+            ? array_intersect_key($this->input->toArray(), $this->rawInput)
+            : $this->rawInput;
+    }
 
     public function mark(string $stage): void
     {

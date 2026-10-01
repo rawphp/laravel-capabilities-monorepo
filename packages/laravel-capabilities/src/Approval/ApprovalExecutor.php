@@ -216,7 +216,22 @@ final class ApprovalExecutor
                 return $this->resultFromRow($fresh, replay: true);
             }
 
-            // Expired and rejected are terminal. Do not force executed over them.
+            // Expired and rejected are terminal. Do not force executed over them, but
+            // the domain did run: audit it so the side effect is not invisible.
+            $this->auditWrite('approval.executed', [
+                'approval_id' => $id,
+                'result' => $result->toArray(),
+                'replay' => false,
+                'via' => $via,
+                'stored' => false,
+                'status' => $fresh['status'] ?? null,
+            ]);
+            $this->metrics->increment(
+                $via === 'resume' ? 'approvals_resume_total' : 'approvals_accept_total',
+                1,
+                ['result' => 'executed_unstored'],
+            );
+
             return CapabilityResult::failure(
                 'conflict',
                 'Approval execution lost the race and was not stored.',

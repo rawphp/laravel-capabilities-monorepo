@@ -24,11 +24,6 @@ interface TurnClaim
     public function claim(string $turnUlid, string $owner): bool;
 
     /**
-     * Cooperative cancel probe: true once the turn was cancelled.
-     */
-    public function isCancelled(string $turnUlid): bool;
-
-    /**
      * True only while this worker still owns a running turn.
      * A reaper that marked it failed, or a cancel, makes this false.
      */

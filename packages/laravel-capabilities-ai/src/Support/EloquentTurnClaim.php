@@ -29,11 +29,6 @@ final class EloquentTurnClaim implements TurnClaim
         ]);
     }
 
-    public function isCancelled(string $turnUlid): bool
-    {
-        return $this->turns()->where('ulid', $turnUlid)->value('status') === Turn::STATUS_CANCELLED;
-    }
-
     public function isRunning(string $turnUlid): bool
     {
         return $this->turns()->where('ulid', $turnUlid)->value('status') === Turn::STATUS_RUNNING;

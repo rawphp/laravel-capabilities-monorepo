@@ -2098,8 +2098,9 @@ capability_approvals
   status                  # pending|approved|rejected|expired|executed
   scope / tenant_id
   requester_actor_type + requester_actor_id
-  original_caller         # agent|mcp|http|cli|…
-  input_json              # canonical validated input at request time
+  original_caller         # agent|mcp|http|cli|… (policy caller)
+  original_surface        # surface the request was gated on; the approved run re-gates on it (D-022)
+  input_json              # validated input for the fields the client sent
   input_hash
   idempotency_key         # nullable; D-005
   result_json             # set on executed

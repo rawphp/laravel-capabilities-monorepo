@@ -93,7 +93,7 @@ it('completes and fails only a running turn, storing usage and finished_at', fun
         ->and(claimTurnRow('T-cancelled')->status)->toBe(Turn::STATUS_CANCELLED);
 });
 
-it('records usage whatever the status and probes cancellation', function () {
+it('records usage whatever the status and probes a running turn', function () {
     $claim = bootTurnClaimSqlite();
     seedClaimTurn('T1', ['status' => Turn::STATUS_CANCELLED]);
     seedClaimTurn('T2');
@@ -103,9 +103,6 @@ it('records usage whatever the status and probes cancellation', function () {
     seedClaimTurn('T3', ['status' => Turn::STATUS_RUNNING]);
 
     expect(claimTurnRow('T1')->only(['status', 'usage']))->toBe(['status' => Turn::STATUS_CANCELLED, 'usage' => [['latency_ms' => 3]]])
-        ->and($claim->isCancelled('T1'))->toBeTrue()
-        ->and($claim->isCancelled('T2'))->toBeFalse()
-        ->and($claim->isCancelled('MISSING'))->toBeFalse()
         ->and($claim->isRunning('T3'))->toBeTrue()
         ->and($claim->isRunning('T1'))->toBeFalse()
         ->and($claim->isRunning('T2'))->toBeFalse()

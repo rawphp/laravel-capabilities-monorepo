@@ -34,6 +34,7 @@ final class DatabaseApprovalStore implements ApprovalStore
             'requester_actor_type' => (string) ($record['requester_actor_type'] ?? ''),
             'requester_actor_id' => (string) ($record['requester_actor_id'] ?? ''),
             'original_caller' => (string) ($record['original_caller'] ?? ''),
+            'original_surface' => $record['original_surface'] ?? null,
             'input_json' => $record['input_json'] ?? null,
             'input_hash' => $record['input_hash'] ?? null,
             'idempotency_key' => $record['idempotency_key'] ?? null,

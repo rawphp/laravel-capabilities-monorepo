@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -364,6 +366,9 @@ func (s *Schema) MergeJSON(baseJSON []byte, flags map[string]string) ([]byte, er
 	return json.Marshal(m)
 }
 
+// jsonNumber is the JSON number grammar (RFC 8259 §6).
+var jsonNumber = regexp.MustCompile(`^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$`)
+
 func parseScalar(f *Field, raw string) (any, error) {
 	// Prefer enum validation when present.
 	if len(f.Enum) > 0 {
@@ -377,11 +382,16 @@ func parseScalar(f *Field, raw string) (any, error) {
 		}
 		return n, nil
 	case "number":
-		if _, err := strconv.ParseFloat(raw, 64); err != nil {
+		n, err := strconv.ParseFloat(raw, 64)
+		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
 			return nil, fmt.Errorf("%w: --%s expects number, got %q", ErrInvalidScalar, f.FlagName, raw)
 		}
-		// Keep the literal. float64 rewrites integers above 2^53 before POST.
-		return json.Number(raw), nil
+		// Keep a JSON literal as typed. float64 rewrites integers above 2^53 before POST.
+		// Go spellings JSON lacks (.5, +1, 007) still send their float value.
+		if jsonNumber.MatchString(raw) {
+			return json.Number(raw), nil
+		}
+		return n, nil
 	case "boolean":
 		switch strings.ToLower(raw) {
 		case "true", "":

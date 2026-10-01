@@ -88,3 +88,32 @@ it('evaluates closure rules that JSON Schema cannot carry [D-004]', function () 
         ['field' => 'memo', 'message' => 'Memo is refused.'],
     ]);
 });
+
+it('happy: a nullable field left null skips exists, as Laravel does [D-004]', function () {
+    $verifier = new CountingPresenceVerifier(['customers' => 0]);
+    $checker = new IlluminateServerRuleChecker(CountingPresenceVerifier::factory($verifier));
+
+    expect($checker->check(
+        ['customer_id' => ['nullable', 'integer', 'exists:customers,id']],
+        ['customer_id' => null],
+    ))->toBe([])
+        ->and($verifier->calls)->toBe([])
+        ->and($checker->check(
+            ['customer_id' => 'nullable|exists:customers,id'],
+            ['customer_id' => 9],
+        ))->toBe([
+            ['field' => 'customer_id', 'message' => 'The selected customer id is invalid.'],
+        ]);
+});
+
+it('evaluates a single rule object that is not wrapped in a list [D-004]', function () {
+    $checker = new IlluminateServerRuleChecker(CountingPresenceVerifier::factory());
+
+    expect($checker->check([
+        'memo' => function (string $attribute, mixed $value, Closure $fail): void {
+            $fail('Memo is refused.');
+        },
+    ], ['memo' => 'nope']))->toBe([
+        ['field' => 'memo', 'message' => 'Memo is refused.'],
+    ]);
+});
