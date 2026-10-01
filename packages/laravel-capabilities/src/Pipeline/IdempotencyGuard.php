@@ -326,6 +326,27 @@ final class IdempotencyGuard
     }
 
     /**
+     * Drop a processing claim after wrap_run rolled the domain back, so a retry
+     * can execute again. A stored failed row would replay forever (D-010).
+     */
+    public function releaseClaim(CapabilityDefinition $definition, CapabilityContext $context, string $key): void
+    {
+        if (! $this->config->enabled || $this->store === null || $key === '' || ! $definition->shouldUseIdempotency()) {
+            return;
+        }
+
+        $actor = $context->actor();
+        $this->store->update(
+            $context->tenantId(),
+            ResolveActor::actorType($actor),
+            ResolveActor::actorId($actor),
+            $definition->name,
+            $key,
+            ['expires_at' => $this->clock->now()->modify('-1 second')->format(DATE_ATOM)],
+        );
+    }
+
+    /**
      * @param  array<string, mixed>  $row
      */
     public function isExpired(array $row): bool

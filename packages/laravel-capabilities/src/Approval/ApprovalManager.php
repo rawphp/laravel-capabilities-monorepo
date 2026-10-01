@@ -484,13 +484,14 @@ final class ApprovalManager implements ApprovalGateway
             return CapabilityResult::failure('not_found', 'Approval not found.');
         }
 
+        // Scope before status, same as accept: a terminal row must not leak to an out-of-policy caller.
+        if (! $this->policy->forRow($row)->allows($row, $approver, $this->approverTenant($approver, $options))) {
+            return CapabilityResult::failure('forbidden', 'Approver is not authorized for this approval.');
+        }
+
         $blocked = $this->notRejectable($row);
         if ($blocked !== null) {
             return $blocked;
-        }
-
-        if (! $this->policy->forRow($row)->allows($row, $approver, $this->approverTenant($approver, $options))) {
-            return CapabilityResult::failure('forbidden', 'Approver is not authorized for this approval.');
         }
 
         if ($this->leaseHeld($row)) {

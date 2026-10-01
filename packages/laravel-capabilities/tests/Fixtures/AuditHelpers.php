@@ -65,6 +65,7 @@ final class AuditHelpers
             transactionsConfig: $opts['transactions'] ?? ['wrap_run' => false],
             eventsConfig: $opts['events'] ?? ['enabled' => true],
             auditOutbox: $outbox,
+            clock: $fakes->clock,
         );
 
         if (isset($opts['throw_on_audit'])) {

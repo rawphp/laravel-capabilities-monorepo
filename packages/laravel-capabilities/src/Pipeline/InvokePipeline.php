@@ -189,21 +189,29 @@ final class InvokePipeline
             // ── run ─────────────────────────────────────────────────────
             $early = $this->stageRun($state, $forced);
             if ($early !== null) {
+                $this->settleOpenWrap($state, commit: false);
+
                 return $this->results()->finishFailure($state, $early, afterRun: true);
             }
 
             // ── post-run ────────────────────────────────────────────────
             $early = $this->stageValidateOutput($state, $forced);
             if ($early !== null) {
+                // Output checks run after the domain call. A held wrap commits here
+                // so an invalid output does not pretend the domain write vanished.
+                $this->settleOpenWrap($state, commit: true);
+
                 return $this->results()->finishFailure($state, $early, afterRun: true, outputInvalid: true);
+            }
+
+            if ($state->definition->auditMode($this->auditStage->auditMode) === 'strict') {
+                return $this->finishStrict($state);
             }
 
             $this->stageStoreIdempotency($state);
             $auditFailure = $this->stageRecordAudit($state, success: true);
 
-            // Strict audit failure after successful domain run: surface error without
-            // rolling back domain-owned commits (D-010 footgun when domain already committed).
-            // Listeners see the same outcome the caller does.
+            // best_effort: audit failure still returns the domain success (D-010).
             if ($auditFailure !== null) {
                 $this->results()->emitEvents($state, success: false, failure: $auditFailure);
 
@@ -212,29 +220,13 @@ final class InvokePipeline
 
             $this->results()->emitEvents($state, success: true);
 
-            $successMeta = [
-                'request_id' => $state->requestId,
-                'capability' => $state->definition->name,
-                'idempotent_replay' => false,
-                'stages' => $state->stages,
-            ];
-            if ($state->definition->deprecated) {
-                $successMeta['deprecated'] = true;
-                $successMeta['deprecation_warning'] = sprintf(
-                    'Capability "%s" is deprecated%s.',
-                    $state->definition->name,
-                    $state->definition->successor ? '; use '.$state->definition->successor : '',
-                );
-                if ($state->definition->successor !== null) {
-                    $successMeta['successor'] = $state->definition->successor;
-                }
-            }
-
             return $this->results()->wireResponse($state, CapabilityResult::success(
                 $state->output,
-                $successMeta,
+                $this->successMeta($state),
             ));
         } catch (Throwable $e) {
+            $this->settleOpenWrap($state, commit: false);
+
             return $this->finishUncaught($state, $e);
         }
     }
@@ -957,9 +949,22 @@ final class InvokePipeline
             $handler = $this->handler($state);
             if ($this->wrapRun && $this->transactionConnection !== null) {
                 $this->observation->lastRunWasWrapped = true;
-                $state->output = $this->transactionConnection->transaction(
-                    fn (): mixed => $this->executeRun($state->definition, $state->input, $state->context, $handler),
-                );
+                if ($this->holdWrapForAudit($state)) {
+                    // Keep the transaction open until strict audit succeeds or rolls it back.
+                    $this->transactionConnection->beginTransaction();
+                    $state->wrapHeld = true;
+                    try {
+                        $state->output = $this->executeRun($state->definition, $state->input, $state->context, $handler);
+                    } catch (Throwable $e) {
+                        $this->settleOpenWrap($state, commit: false);
+
+                        return $this->runFailure($e);
+                    }
+                } else {
+                    $state->output = $this->transactionConnection->transaction(
+                        fn (): mixed => $this->executeRun($state->definition, $state->input, $state->context, $handler),
+                    );
+                }
             } else {
                 $state->output = $this->executeRun($state->definition, $state->input, $state->context, $handler);
             }
@@ -1016,7 +1021,115 @@ final class InvokePipeline
         return null;
     }
 
-    private function stageStoreIdempotency(InvokeState $state): void
+    /**
+     * Strict mode records audit before a completed idempotency row. A failure
+     * with no open wrap stores audit_failed so a retry replays the error.
+     * An open wrap rolls the domain back and releases the processing claim (D-010).
+     */
+    private function finishStrict(InvokeState $state): CapabilityResult
+    {
+        $auditFailure = $this->stageRecordAudit($state, success: true);
+        if ($auditFailure !== null) {
+            if ($state->wrapHeld) {
+                $this->settleOpenWrap($state, commit: false);
+                $this->releaseIdempotencyClaim($state);
+                $auditFailure = $this->uncommittedAuditFailure($state, $auditFailure);
+            } else {
+                $this->stageStoreIdempotency($state, $auditFailure);
+            }
+
+            $this->results()->emitEvents($state, success: false, failure: $auditFailure);
+
+            return $this->results()->wireResponse($state, $auditFailure);
+        }
+
+        $this->settleOpenWrap($state, commit: true);
+        $this->stageStoreIdempotency($state);
+        $this->results()->emitEvents($state, success: true);
+
+        return $this->results()->wireResponse($state, CapabilityResult::success(
+            $state->output,
+            $this->successMeta($state),
+        ));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function successMeta(InvokeState $state): array
+    {
+        $successMeta = [
+            'request_id' => $state->requestId,
+            'capability' => $state->definition->name,
+            'idempotent_replay' => false,
+            'stages' => $state->stages,
+        ];
+        if ($state->definition->deprecated) {
+            $successMeta['deprecated'] = true;
+            $successMeta['deprecation_warning'] = sprintf(
+                'Capability "%s" is deprecated%s.',
+                $state->definition->name,
+                $state->definition->successor ? '; use '.$state->definition->successor : '',
+            );
+            if ($state->definition->successor !== null) {
+                $successMeta['successor'] = $state->definition->successor;
+            }
+        }
+
+        return $successMeta;
+    }
+
+    private function holdWrapForAudit(InvokeState $state): bool
+    {
+        return $state->definition->auditMode($this->auditStage->auditMode) === 'strict'
+            && $this->auditStage->auditEnabled
+            && $this->auditStage->auditWriter !== null
+            && $state->definition->shouldAudit();
+    }
+
+    private function settleOpenWrap(InvokeState $state, bool $commit): void
+    {
+        if (! $state->wrapHeld || $this->transactionConnection === null) {
+            return;
+        }
+
+        if ($commit) {
+            $this->transactionConnection->commit();
+        } else {
+            $this->transactionConnection->rollBack();
+            $state->domainSideEffect = false;
+        }
+
+        $state->wrapHeld = false;
+    }
+
+    private function releaseIdempotencyClaim(InvokeState $state): void
+    {
+        if ($state->idempotencyKey === null || $state->idempotencyKey === '' || $state->context === null) {
+            return;
+        }
+
+        $this->idempotencyGuard->releaseClaim($state->definition, $state->context, $state->idempotencyKey);
+    }
+
+    private function uncommittedAuditFailure(InvokeState $state, CapabilityResult $failure): CapabilityResult
+    {
+        $extra = array_diff_key($failure->error ?? [], array_flip(['code', 'message']));
+        $extra['domain_committed'] = false;
+
+        return CapabilityResult::failure(
+            code: 'audit_failed',
+            message: (string) ($failure->error['message'] ?? 'Audit failed.'),
+            extra: $extra,
+            meta: array_merge($failure->meta, [
+                'domain_side_effect' => false,
+                'request_id' => $state->requestId,
+                'stages' => $state->stages,
+            ]),
+        );
+    }
+
+    private function stageStoreIdempotency(InvokeState $state, ?CapabilityResult $result = null): void
     {
         $state->mark(PipelineStages::STORE_IDEMPOTENCY);
         // Also record alias for inventory scenarios that use store_idempotency_result.
@@ -1030,7 +1143,7 @@ final class InvokePipeline
 
         /** @var CapabilityContext $ctx */
         $ctx = $state->context;
-        $result = CapabilityResult::success($state->output);
+        $result ??= CapabilityResult::success($state->output);
         $this->idempotencyGuard->storeResult(
             $state->definition,
             $ctx,

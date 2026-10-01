@@ -1089,9 +1089,11 @@ final class CapabilityRegistry implements CapabilityBus
             ));
         }
 
-        // Surface gate (PIPE-005): capability not invokable as that surface.
+        // Surface gate (PIPE-005). A header downgrade changes policy caller, not
+        // which surface is open. HTTP passes derived_caller for that gate (D-022).
         $effective = $definition->effectiveSurfaces($this->globallyEnabledSurfaces);
-        $surface = $caller === 'artisan' ? 'artisan' : $caller;
+        $surfaceCaller = $this->surfaceCaller($caller, $options);
+        $surface = $surfaceCaller === 'artisan' ? 'artisan' : $surfaceCaller;
         if (! in_array($surface, $effective, true)) {
             return $this->pipeline->finishGateDeny($state, CapabilityResult::failure(
                 code: 'forbidden',
@@ -1108,6 +1110,23 @@ final class CapabilityRegistry implements CapabilityBus
         }
 
         return $this->pipeline->execute($state, $forced);
+    }
+
+    /**
+     * Credential-derived surface when HTTP split it from the policy caller.
+     * Absent or unknown values keep the policy caller, so in-process adapters
+     * that only set caller are unchanged. Tool JSON cannot set this key.
+     *
+     * @param  array<string, mixed>  $options
+     */
+    private function surfaceCaller(string $caller, array $options): string
+    {
+        $derived = $options['derived_caller'] ?? null;
+        if (! is_string($derived) || ! in_array($derived, CapabilityContext::CALLERS, true)) {
+            return $caller;
+        }
+
+        return $derived;
     }
 
     public function failedEvents(): array

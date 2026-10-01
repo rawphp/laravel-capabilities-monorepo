@@ -6,6 +6,7 @@ use ArrayAccess;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Events\Dispatcher as EventDispatcher;
+use Illuminate\Contracts\Validation\Factory as ValidationFactory;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\ServiceProvider;
 use Rawphp\Capabilities\Adapters\Ai\AiToolAdapter;
@@ -58,6 +59,8 @@ use Rawphp\Capabilities\Observability\LogFallbackMetrics;
 use Rawphp\Capabilities\Persistence\DatabaseAuditWriter;
 use Rawphp\Capabilities\Persistence\TableGateway;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
+use Rawphp\Capabilities\Schema\IlluminateServerRuleChecker;
+use Rawphp\Capabilities\Schema\ServerRuleChecker;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\DefaultScopeResolver;
 use Rawphp\Capabilities\Support\IlluminateRateLimitCache;
@@ -214,6 +217,7 @@ class CapabilitiesServiceProvider extends ServiceProvider
                 $rateLimiter,
                 $this->auditWriterOrNull($app, $config),
                 approvalManager: $approval,
+                serverRuleChecker: self::serverRuleCheckerOrNull($app),
             );
 
             // A host-bound Authorizer gates every invoke. Read on every authorize decision, not here:
@@ -484,6 +488,28 @@ class CapabilitiesServiceProvider extends ServiceProvider
         $user = is_object($users) && method_exists($users, 'retrieveById') ? $users->retrieveById($id) : null;
 
         return is_object($user) ? $user : null;
+    }
+
+    /**
+     * Server-only rules run when the host has a validation factory (D-004).
+     * Without one, the registry keeps the pass-through checker.
+     */
+    private static function serverRuleCheckerOrNull(object $app): ?ServerRuleChecker
+    {
+        if (! method_exists($app, 'bound') || ! $app->bound(ValidationFactory::class)) {
+            return null;
+        }
+
+        $factory = $app->make(ValidationFactory::class);
+        if (! $factory instanceof ValidationFactory) {
+            throw new \UnexpectedValueException(sprintf(
+                'The container binding for %s resolved to %s, which does not implement it.',
+                ValidationFactory::class,
+                get_debug_type($factory),
+            ));
+        }
+
+        return new IlluminateServerRuleChecker($factory);
     }
 
     /**
