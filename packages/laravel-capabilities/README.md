@@ -263,7 +263,7 @@ php artisan vendor:publish --tag=capabilities-migrations
 php artisan migrate
 ```
 
-Migrations are published, not auto-loaded: after upgrading the package, re-run `vendor:publish --tag=capabilities-migrations` and `migrate` to pick up new ones (for example the approval `executor_actor_*` and `approval_policy` columns).
+Migrations are published, not auto-loaded: after upgrading the package, re-run `vendor:publish --tag=capabilities-migrations` and `migrate` to pick up new ones (for example the approval `executor_actor_*`, `approval_policy` and `original_surface` columns).
 
 **Production default path:** leave `TableGateway` unbound; with `approval.store` / `idempotency.driver` = `database`, factories construct `QueryTableGateway` per table. Missing connection → boot/factory failure (no silent `ArrayTableGateway`).
 

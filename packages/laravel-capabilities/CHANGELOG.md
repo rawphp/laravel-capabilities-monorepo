@@ -11,30 +11,44 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-01
+
+### Changed
+
+- **Server-only rules are enforced when the host binds a validation factory (D-004).**
+  `exists`, `unique`, Closures and rule objects in a DTO's `rules()` now run through
+  Laravel's validator before `run()`, and a failure returns `validation_failed`. Earlier
+  versions skipped them. Boot without a factory still skips them. Only the fields the
+  client sent are checked, and a field's `nullable` is kept, so a `null` value skips
+  `exists` and `unique` as it does in Laravel. A rule given as a single Closure or rule
+  object works too. **Hosts:** a request that passed before can now fail these rules.
+  Check your DTO `rules()` before upgrading.
+- **Approval rows store `original_surface` and only the fields the client sent
+  (D-006 / D-022).** The approved run re-gates on the surface the request came through
+  and passes the same server-only rules. **Hosts:** run the new
+  `add_original_surface_to_capabilities_approvals_table` migration (additive,
+  nullable). Rows without the column gate on `original_caller`.
+
 ### Fixed
 
-- **Server-only rules validate only the fields the client sent (D-004).** The
-  `IlluminateServerRuleChecker` keeps a field's `nullable`, so a null value skips
-  `exists` and `unique` as it does in Laravel. An omitted optional field is no longer
-  checked as null. Approval rows store only the fields the client sent, so the
-  approved run does not fail on them either. A field whose rule is a single Closure or
-  rule object now validates instead of failing as `internal`.
-- **An approved request re-gates on the surface it came through (D-022).** After an
-  HTTP caller downgrade, the approval row kept only the policy caller, so the approved
-  run was refused on a surface the request had passed. Rows now store
-  `original_surface`. **Hosts:** run the new
-  `add_original_surface_to_capabilities_approvals_table` migration (additive,
-  nullable). Rows without the column gate on `original_caller`, as before.
-- **HTTP catalog list and describe filter on the credential surface (D-022),** the same
-  surface invoke checks. A downgraded client no longer sees capabilities it cannot call.
-- **A lost approval race after the domain ran is audited (D-006).** When the row
-  expired or was rejected during the run, the executor returned `conflict` with no
-  record. It now writes `approval.executed` with `stored: false` and the row status,
-  and counts `result=executed_unstored`.
-- **A rolled-back strict wrap no longer queues a success audit (D-010).** With
-  `audit.required`, a strict audit failure inside a held `wrap_run` transaction put
-  the success entry in the outbox, then rolled the domain back.
-
+- **Security: an HTTP caller downgrade no longer opens other surfaces (D-022).**
+  `X-Capabilities-Caller: job` (or `agent`) on an HTTP credential tightens the policy
+  caller, but the credential decides which surface may run. Invoke, catalog list,
+  describe and the approved run all gate on the credential surface.
+- **Security: a profile with `only` no longer exposes capabilities outside the profile
+  (D-008).** An empty intersection of the profile and `only` now stays empty.
+- **Security: reject checks the approval policy before it reports a terminal status,**
+  so a caller from another tenant cannot learn an approval's status by naming its id.
+- **Approval execution races (D-006).** A live execution lease blocks expiry, including
+  `expirePending()`. The executor never writes `executed` over an `expired` or
+  `rejected` row. It returns `conflict` and, because the domain already ran, writes
+  `approval.executed` with `stored: false` and counts `result=executed_unstored`.
+- **Strict audit (D-010).** A strict audit failure is stored as `audit_failed`, and a
+  retry with the same idempotency key replays it. Inside `wrap_run` the domain write
+  rolls back, the processing claim is released so a retry can run, and no success entry
+  goes to the outbox. `best_effort` keeps the write.
+- **HTTP accepts `idempotency_key` in the JSON body (D-005).** It is a wire key and is
+  removed from capability input. The `Idempotency-Key` header wins.
 
 ## [0.6.1] - 2026-09-30
 

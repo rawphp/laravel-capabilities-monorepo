@@ -11,13 +11,20 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-01
+
 ### Changed
 
-- **`TurnClaim` contract:** adds `isRunning(string $turnUlid): bool`, which the runner
-  checks before each tool call so a reaped or cancelled turn stops. Drops
+- **`TurnClaim` contract:** adds `isRunning(string $turnUlid): bool` and drops
   `isCancelled()`, which nothing called. **Hosts** with their own `TurnClaim`
   implement `isRunning()` and may delete `isCancelled()`.
 
+### Fixed
+
+- **A reaped turn stops calling tools.** `TurnRunner` checks the turn is still
+  `running` before each model round and each tool call. Once the stale-turn reaper marks
+  it failed, or it is cancelled, the next bus invoke does not happen. A call already in
+  flight still finishes.
 
 ## [0.6.1] - 2026-09-30
 

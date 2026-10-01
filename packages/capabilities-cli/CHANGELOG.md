@@ -11,13 +11,17 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-01
+
 ### Fixed
 
-- **Number flags accept Go float spellings again.** `--price=.5`, `+1`, `1.` and `007`
-  send their float value, as in 0.6.1. Valid JSON numbers keep their literal, so
-  integers above 2^53 are not rounded. `NaN` and `Inf` fail with `ErrInvalidScalar`
-  instead of a JSON encode error.
-
+- **Integers above 2^53 keep their exact digits.** `--input` JSON and number flags no
+  longer pass through `float64` before the POST.
+- **Number flags accept Go float spellings.** `--price=.5`, `+1`, `1.` and `007` send
+  their float value. `NaN` and `Inf` fail with `ErrInvalidScalar` instead of a JSON
+  encode error.
+- **Help text** says the token is stored in a mode 0600 file under
+  `~/.config/capabilities`, not the keychain.
 
 ## [0.6.1] - 2026-09-30
 
