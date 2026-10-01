@@ -32,7 +32,6 @@ use Rawphp\Capabilities\Persistence\MigrationCatalog;
 use Rawphp\Capabilities\Persistence\QueryTableGateway;
 use Rawphp\Capabilities\Persistence\TableGateway;
 use Rawphp\Capabilities\Registry\CapabilityRegistry;
-use Rawphp\Capabilities\Schema\ServerRuleChecker;
 use Rawphp\Capabilities\Support\DefaultScopeResolver;
 use Rawphp\Capabilities\Support\InMemoryApprovalStore;
 use Rawphp\Capabilities\Support\InMemoryAuditWriter;
@@ -269,7 +268,6 @@ final class ContainerBindings
         ?RateLimiter $rateLimiter = null,
         ?AuditWriter $auditWriter = null,
         ?ApprovalManager $approvalManager = null,
-        ?ServerRuleChecker $serverRuleChecker = null,
     ): CapabilityRegistry {
         $full = $config === [] ? CapabilitiesConfig::defaults() : $config;
         // Validate drivers/modes early (fail closed) using the shared resolve path.
@@ -340,10 +338,6 @@ final class ContainerBindings
         $toolSurface = self::toolSurfaceConfigFromSurfaces((array) ($full['surfaces'] ?? []));
         if ($toolSurface !== []) {
             $registry->withToolSurfaceConfig($toolSurface);
-        }
-
-        if ($serverRuleChecker !== null) {
-            $registry->withServerRuleChecker($serverRuleChecker);
         }
 
         return $registry;

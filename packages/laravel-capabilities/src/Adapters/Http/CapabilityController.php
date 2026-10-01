@@ -10,7 +10,6 @@ use Rawphp\Capabilities\Http\HttpAuthGate;
 use Rawphp\Capabilities\Http\HttpRequestContext;
 use Rawphp\Capabilities\Http\HttpResponse;
 use Rawphp\Capabilities\Http\RouteTable;
-use Rawphp\Capabilities\Idempotency\WireKeyResolver;
 use Rawphp\Capabilities\Observability\InvokeTelemetry;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Throwable;
@@ -106,15 +105,11 @@ final class CapabilityController
         }
 
         $headerName = strtolower((string) ($this->httpConfig['idempotency_header'] ?? 'idempotency-key'));
-        $headerKey = $request->header($headerName) ?? $request->idempotencyKey();
-        $idempotencyKey = WireKeyResolver::http($headerKey, $input);
-        unset($input['idempotency_key']);
+        $idempotencyKey = $request->header($headerName) ?? $request->idempotencyKey();
 
-        // caller is the applied claim (policy). derived_caller is the credential
-        // surface and is set only here, never from the JSON body (D-022).
+        // Never trust body caller / X-Capabilities-Caller alone (D-022).
         $options = array_filter([
             'caller' => $caller['caller'],
-            'derived_caller' => $caller['derived'],
             'actor' => $request->user,
             'idempotency_key' => $idempotencyKey,
         ], static fn ($v) => $v !== null);

@@ -38,11 +38,6 @@ class InMemoryTurnClaim implements TurnClaim
         return $this->find($turnUlid)?->status === Turn::STATUS_CANCELLED;
     }
 
-    public function isRunning(string $turnUlid): bool
-    {
-        return $this->find($turnUlid)?->status === Turn::STATUS_RUNNING;
-    }
-
     public function complete(string $turnUlid, array $usage): bool
     {
         return $this->finish($turnUlid, [Turn::STATUS_RUNNING], ['status' => Turn::STATUS_COMPLETED, 'usage' => $usage]);

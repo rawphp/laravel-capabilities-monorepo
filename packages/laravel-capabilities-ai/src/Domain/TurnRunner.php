@@ -90,8 +90,8 @@ final class TurnRunner
             $toolCallCount = 0;
             $replied = false;
             while ($rounds < $this->maxToolRounds) {
-                // Stop once the turn has left running: cancel, or a reaper that marked it failed.
-                if (! $this->claim->isRunning($turnUlid)) {
+                // Cooperative cancel: no further LLM call once the owner cancelled.
+                if ($this->claim->isCancelled($turnUlid)) {
                     return $this->stopped($turn, $usage);
                 }
                 if ($llm instanceof DeadlineAwareLlmClient
@@ -165,8 +165,8 @@ final class TurnRunner
                 ];
 
                 foreach ($normalizedCalls as $call) {
-                    // A cancel or reap that landed mid-round stops the next bus invoke.
-                    if (! $this->claim->isRunning($turnUlid)) {
+                    // Cancel means stop acting for the user: no bus invoke after it, even mid-round.
+                    if ($this->claim->isCancelled($turnUlid)) {
                         return $this->stopped($turn, $usage);
                     }
                     $name = (string) ($call['name'] ?? '');

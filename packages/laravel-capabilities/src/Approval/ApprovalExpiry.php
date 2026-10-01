@@ -41,14 +41,9 @@ final class ApprovalExpiry
             return $row;
         }
 
-        // claimLease fails while a Shape B run still holds the row. compareAndUpdate
-        // would expire that in-flight approval and let the executor overwrite it.
-        $updated = $this->store->claimLease(
-            $id,
-            ApprovalStateMachine::STATUS_PENDING,
-            $this->clock->now()->format(DATE_ATOM),
-            ['status' => ApprovalStateMachine::STATUS_EXPIRED],
-        );
+        $updated = $this->store->compareAndUpdate($id, ApprovalStateMachine::STATUS_PENDING, [
+            'status' => ApprovalStateMachine::STATUS_EXPIRED,
+        ]);
 
         if ($updated !== null) {
             $this->auditWrite('approval.expired', ['approval_id' => $id]);

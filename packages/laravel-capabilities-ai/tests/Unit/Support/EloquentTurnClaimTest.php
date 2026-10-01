@@ -100,16 +100,10 @@ it('records usage whatever the status and probes cancellation', function () {
 
     $claim->recordUsage('T1', [['latency_ms' => 3]]);
 
-    seedClaimTurn('T3', ['status' => Turn::STATUS_RUNNING]);
-
     expect(claimTurnRow('T1')->only(['status', 'usage']))->toBe(['status' => Turn::STATUS_CANCELLED, 'usage' => [['latency_ms' => 3]]])
         ->and($claim->isCancelled('T1'))->toBeTrue()
         ->and($claim->isCancelled('T2'))->toBeFalse()
-        ->and($claim->isCancelled('MISSING'))->toBeFalse()
-        ->and($claim->isRunning('T3'))->toBeTrue()
-        ->and($claim->isRunning('T1'))->toBeFalse()
-        ->and($claim->isRunning('T2'))->toBeFalse()
-        ->and($claim->isRunning('MISSING'))->toBeFalse();
+        ->and($claim->isCancelled('MISSING'))->toBeFalse();
 });
 
 it('failUnclaimed only fails turns that are still queued', function () {

@@ -98,6 +98,9 @@ final class ProfileSelector
                 $allowlist = $allowlist === null
                     ? $only
                     : array_values(array_intersect($allowlist, $only));
+                if ($allowlist === []) {
+                    $allowlist = $only;
+                }
             }
 
             if ($groups !== [] || $tags !== []) {

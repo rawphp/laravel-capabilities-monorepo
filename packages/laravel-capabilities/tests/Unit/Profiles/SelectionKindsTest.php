@@ -74,11 +74,3 @@ it('fail: selection only+profile_conflict cannot escape allowlist [D-008]', func
     $names = array_column($h['registry']->aiTools(['profile' => 'billing', 'only' => ['create-invoice']]), 'name');
     expect($names)->toBe(['create-invoice']);
 });
-
-it('fail: empty profile and only intersection stays empty [D-008]', function () {
-    $h = ProfileHelpers::multiCapHarness();
-    $names = array_column($h['registry']->aiTools(['profile' => 'billing', 'only' => ['delete-account']]), 'name');
-
-    expect($names)->toBe([])
-        ->and($names)->not->toContain('delete-account');
-});

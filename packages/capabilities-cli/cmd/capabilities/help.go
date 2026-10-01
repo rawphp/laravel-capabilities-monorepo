@@ -17,7 +17,7 @@ USAGE:
   capabilities <domain> <verb> [flags]
 
 RESERVED COMMANDS:
-  auth         Login / logout / status (token file, mode 0600)
+  auth         Login / logout / status (keychain token store)
   catalog      List capabilities from the remote HTTP API
   describe     Show JSON Schema for a capability
   run          Validate locally, send Idempotency-Key, POST invoke
@@ -77,7 +77,7 @@ USAGE:
   capabilities auth status [--profile=NAME] [--json]
   capabilities auth list [--json]            list profiles (never prints tokens)
 
-Tokens are stored in a file (mode 0600) under ~/.config/capabilities — never printed to stdout by default.
+Tokens are stored in the OS config/keychain dir — never printed to stdout by default.
   --json   D-018 envelope (login: result or {ok:false,error}; status: one profile; list: {profiles:[…]}) — never includes tokens
 `
 	case "catalog":

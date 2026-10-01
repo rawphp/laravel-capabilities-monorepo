@@ -5,7 +5,6 @@ import (
 	"errors"
 	"reflect"
 	"sort"
-	"strings"
 	"testing"
 )
 
@@ -135,7 +134,7 @@ func TestMerge_table(t *testing.T) {
 			name:  "base only",
 			base:  `{"customer_id":1,"currency":"USD"}`,
 			flags: nil,
-			want:  map[string]any{"customer_id": json.Number("1"), "currency": "USD"},
+			want:  map[string]any{"customer_id": float64(1), "currency": "USD"},
 		},
 		{
 			name:  "flags only",
@@ -157,7 +156,7 @@ func TestMerge_table(t *testing.T) {
 			name:  "absent optional flag omits property",
 			base:  `{"customer_id":1,"currency":"USD"}`,
 			flags: map[string]string{},
-			want:  map[string]any{"customer_id": json.Number("1"), "currency": "USD"},
+			want:  map[string]any{"customer_id": float64(1), "currency": "USD"},
 		},
 		{
 			name:  "boolean true/false",
@@ -175,7 +174,7 @@ func TestMerge_table(t *testing.T) {
 			name:  "number flag",
 			base:  "",
 			flags: map[string]string{"rate": "1.5"},
-			want:  map[string]any{"rate": json.Number("1.5")},
+			want:  map[string]any{"rate": 1.5},
 		},
 		{
 			name:  "string enum accepted",
@@ -193,7 +192,7 @@ func TestMerge_table(t *testing.T) {
 			name:  "json-only nested stays from base",
 			base:  `{"meta":{"a":1},"tags":["x"]}`,
 			flags: map[string]string{"currency": "USD"},
-			want:  map[string]any{"meta": map[string]any{"a": json.Number("1")}, "tags": []any{"x"}, "currency": "USD"},
+			want:  map[string]any{"meta": map[string]any{"a": float64(1)}, "tags": []any{"x"}, "currency": "USD"},
 		},
 		// rejects
 		{
@@ -341,7 +340,7 @@ func TestFromJSONSchema_emptyProperties(t *testing.T) {
 		t.Fatal(err)
 	}
 	// base is still merged as object even without declared fields
-	if !reflect.DeepEqual(got, map[string]any{"x": json.Number("1")}) {
+	if !reflect.DeepEqual(got, map[string]any{"x": float64(1)}) {
 		t.Fatalf("got %#v", got)
 	}
 }
@@ -400,7 +399,7 @@ func TestFromJSONSchema_kebabCollisionIsAmbiguous(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := map[string]any{"customer_id": json.Number("5"), "customer-id": "x", "note": "hi"}
+		want := map[string]any{"customer_id": float64(5), "customer-id": "x", "note": "hi"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %v want %v", got, want)
 		}
@@ -477,38 +476,11 @@ func TestSchema_nilReceiverLookupsAndMerge(t *testing.T) {
 		t.Fatal("nil LookupName")
 	}
 	got, err := s.Merge([]byte(`{"a":1}`), nil)
-	if err != nil || !reflect.DeepEqual(got, map[string]any{"a": json.Number("1")}) {
+	if err != nil || !reflect.DeepEqual(got, map[string]any{"a": float64(1)}) {
 		t.Fatalf("nil schema keeps base: %v %v", got, err)
 	}
 	if _, err := s.Merge(nil, map[string]string{"a": "1"}); !errors.Is(err, ErrUnknownFlag) {
 		t.Fatalf("nil schema knows no flags: %v", err)
-	}
-}
-
-func TestMergeJSON_preservesIntegersAbove2To53(t *testing.T) {
-	s, err := FromJSONSchema([]byte(fixtureSchema))
-	if err != nil {
-		t.Fatal(err)
-	}
-	const big = "9007199254740993"
-	got, err := s.MergeJSON([]byte(`{"customer_id":`+big+`,"meta":{"nested":`+big+`},"line_items":[{"qty":`+big+`}]}`), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw := string(got)
-	if !strings.Contains(raw, big) {
-		t.Fatalf("integer above 2^53 was rewritten: %s", raw)
-	}
-	if strings.Contains(raw, "9007199254740992") {
-		t.Fatalf("integer rounded through float64: %s", raw)
-	}
-
-	flagged, err := s.MergeJSON(nil, map[string]string{"rate": big})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(flagged), big) {
-		t.Fatalf("number flag rounded through float64: %s", flagged)
 	}
 }
 

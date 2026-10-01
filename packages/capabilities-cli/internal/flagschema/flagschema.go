@@ -4,10 +4,8 @@
 package flagschema
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"sort"
 	"strconv"
 	"strings"
@@ -300,8 +298,8 @@ func (s *Schema) LookupName(propertyName string) (*Field, bool) {
 func (s *Schema) Merge(baseJSON []byte, flags map[string]string) (map[string]any, error) {
 	out := map[string]any{}
 	if len(baseJSON) > 0 {
-		base, err := decodeJSONUseNumber(baseJSON)
-		if err != nil {
+		var base any
+		if err := json.Unmarshal(baseJSON, &base); err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrInvalidBaseJSON, err)
 		}
 		obj, ok := base.(map[string]any)
@@ -337,24 +335,6 @@ func (s *Schema) Merge(baseJSON []byte, flags map[string]string) (map[string]any
 	return out, nil
 }
 
-// decodeJSONUseNumber decodes one JSON value and keeps numbers as json.Number
-// so integers above 2^53 survive a later marshal.
-func decodeJSONUseNumber(raw []byte) (any, error) {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	var v any
-	if err := dec.Decode(&v); err != nil {
-		return nil, err
-	}
-	if err := dec.Decode(new(any)); err != io.EOF {
-		if err == nil {
-			return nil, fmt.Errorf("trailing data")
-		}
-		return nil, err
-	}
-	return v, nil
-}
-
 // MergeJSON is Merge returning marshaled JSON bytes.
 func (s *Schema) MergeJSON(baseJSON []byte, flags map[string]string) ([]byte, error) {
 	m, err := s.Merge(baseJSON, flags)
@@ -377,11 +357,11 @@ func parseScalar(f *Field, raw string) (any, error) {
 		}
 		return n, nil
 	case "number":
-		if _, err := strconv.ParseFloat(raw, 64); err != nil {
+		n, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
 			return nil, fmt.Errorf("%w: --%s expects number, got %q", ErrInvalidScalar, f.FlagName, raw)
 		}
-		// Keep the literal. float64 rewrites integers above 2^53 before POST.
-		return json.Number(raw), nil
+		return n, nil
 	case "boolean":
 		switch strings.ToLower(raw) {
 		case "true", "":
