@@ -7,6 +7,7 @@ use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Approval\ApprovalPolicy;
 use Rawphp\Capabilities\Approval\ApprovalStateMachine;
 use Rawphp\Capabilities\Approval\Notifiers\HttpApprovalNotifier;
+use Rawphp\Capabilities\Support\CapabilityFailure;
 use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Tests\Fixtures\ApprovalHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\IdempotencyHelpers;
@@ -303,6 +304,26 @@ it('happy: idempotency key completed after approval execution [D-005]', function
 
     expect($before['status'])->toBe('pending_approval')
         ->and($h['store']->find('tenant-1', 'user', '7', $h['name'], 'k-1')['status'])->toBe('completed');
+});
+
+it('edge: a rate_limited approved execution keeps the approval link and opens no second approval [D-005]', function () {
+    $h = IdempotencyHelpers::harness(['run' => function () {
+        throw CapabilityFailure::rateLimited('Slow down.', 60);
+    }]);
+    // The store and the guard must read one clock for a released key to expire.
+    $h['registry']->withClock($h['clock']);
+    $opts = IdempotencyHelpers::options('http', ['idempotency_key' => 'k-limited', 'needs_approval' => true]);
+
+    $pending = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), $opts);
+    $executed = $h['registry']->approvals()->accept((string) $pending->approvalId(), l202Approver());
+    $retry = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), $opts);
+
+    $found = $h['store']->find('tenant-1', 'user', '7', $h['name'], 'k-limited');
+    expect($executed->errorCode())->toBe('rate_limited')
+        ->and($found['status'])->toBe('failed')
+        ->and($found['approval_id'])->toBe($pending->approvalId())
+        ->and($retry->errorCode())->toBe('rate_limited')
+        ->and($retry->approvalId())->toBeNull();
 });
 
 it('happy: approval execution completes a same-hash pending_approval idempotency row [D-005]', function () {

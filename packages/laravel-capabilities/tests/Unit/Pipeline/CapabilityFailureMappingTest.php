@@ -213,19 +213,58 @@ it('carries constructor extra through the pipeline beside the code\'s wire field
         ->and($response->body['error']['hint'])->toBe('Ask for a new one.');
 });
 
-it('does not replay a rate_limited refusal: a retry under the same key runs again', function () {
+/**
+ * @param  Closure(): mixed  $run
+ * @return array{registry: mixed, name: string, opts: array<string, mixed>}
+ */
+function wrappedIdempotentHarness(Closure $run, string $key): array
+{
+    $capsule = new Manager;
+    $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
+
+    $h = AuditHelpers::harness([
+        'transactions' => ['wrap_run' => true],
+        'transaction_connection' => $capsule->getConnection(),
+        'run' => $run,
+    ]);
+    // The store and the guard must read one clock for a released key to expire.
+    $h['registry']->withClock($h['fakes']->clock);
+
+    return [
+        'registry' => $h['registry'],
+        'name' => $h['name'],
+        'opts' => AuditHelpers::options('http', ['idempotency_key' => $key]),
+    ];
+}
+
+it('replays a rate_limited thrown from an unwrapped run(): its writes may have committed', function () {
     $runs = 0;
     $h = PipelineHelpers::harness(['run' => function () use (&$runs) {
         $runs++;
 
-        throw CapabilityFailure::rateLimited('Too many wrong emails.', 600);
+        throw CapabilityFailure::rateLimited('Provider busy.', 60);
     }]);
-    // The store and the guard must read one clock for a released key to expire.
     $h['registry']->withClock($h['fakes']->clock);
-    $opts = PipelineHelpers::options('http', ['idempotency_key' => 'check-email-1']);
+    $opts = PipelineHelpers::options('http', ['idempotency_key' => 'charge-1']);
 
     $first = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), $opts);
     $second = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), $opts);
+
+    expect($first->errorCode())->toBe('rate_limited')
+        ->and($second->errorCode())->toBe('rate_limited')
+        ->and($runs)->toBe(1);
+});
+
+it('frees the key after a rate_limited under wrap_run rolled back: a retry runs again', function () {
+    $runs = 0;
+    $h = wrappedIdempotentHarness(function () use (&$runs) {
+        $runs++;
+
+        throw CapabilityFailure::rateLimited('Too many wrong emails.', 600);
+    }, 'check-email-1');
+
+    $first = $h['registry']->invoke($h['name'], AuditHelpers::input(), $h['opts']);
+    $second = $h['registry']->invoke($h['name'], AuditHelpers::input(), $h['opts']);
 
     expect($first->errorCode())->toBe('rate_limited')
         ->and($second->errorCode())->toBe('rate_limited')
@@ -233,22 +272,19 @@ it('does not replay a rate_limited refusal: a retry under the same key runs agai
         ->and($runs)->toBe(2);
 });
 
-it('lets a retry under the same key succeed once run() stops refusing', function () {
+it('lets a wrapped retry under the same key succeed once run() stops refusing', function () {
     $runs = 0;
-    $h = PipelineHelpers::harness(['run' => function () use (&$runs) {
+    $h = wrappedIdempotentHarness(function () use (&$runs) {
         if (++$runs === 1) {
             throw CapabilityFailure::rateLimited('Slow down.', 60);
         }
 
         return new CreateInvoiceResult(invoice_id: 42);
-    }]);
-    // The store and the guard must read one clock for a released key to expire.
-    $h['registry']->withClock($h['fakes']->clock);
-    $opts = PipelineHelpers::options('http', ['idempotency_key' => 'check-email-2']);
+    }, 'check-email-2');
 
-    $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), $opts);
-    $retry = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), $opts);
-    $replay = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), $opts);
+    $h['registry']->invoke($h['name'], AuditHelpers::input(), $h['opts']);
+    $retry = $h['registry']->invoke($h['name'], AuditHelpers::input(), $h['opts']);
+    $replay = $h['registry']->invoke($h['name'], AuditHelpers::input(), $h['opts']);
 
     expect($retry->isOk())->toBeTrue()
         ->and($replay->isOk())->toBeTrue()

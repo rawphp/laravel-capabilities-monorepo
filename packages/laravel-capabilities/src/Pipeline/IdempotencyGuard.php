@@ -326,8 +326,35 @@ final class IdempotencyGuard
     }
 
     /**
-     * Drop a processing claim after wrap_run rolled the domain back, so a retry
-     * can execute again. A stored failed row would replay forever (D-010).
+     * Settle a failed invoke's key. A rate_limited refusal frees the key, so the
+     * retry after Retry-After runs, when no domain write can have survived it
+     * ($domainUnchanged) and no approval owns the row. Every other failure is
+     * stored and replays for the TTL (D-005).
+     *
+     * @return bool whether the failure was stored
+     */
+    public function settleFailure(
+        CapabilityDefinition $definition,
+        CapabilityContext $context,
+        string $key,
+        string $requestHash,
+        CapabilityResult $result,
+        bool $domainUnchanged,
+    ): bool {
+        if ($domainUnchanged && $result->errorCode() === 'rate_limited' && ! $this->approvalOwns($definition, $context, $key)) {
+            $this->releaseClaim($definition, $context, $key);
+
+            return false;
+        }
+
+        $this->storeResult($definition, $context, $key, $requestHash, $result);
+
+        return true;
+    }
+
+    /**
+     * Drop a processing claim no domain write survived (wrap_run rolled back, or
+     * run() never ran), so a retry can execute again (D-010).
      */
     public function releaseClaim(CapabilityDefinition $definition, CapabilityContext $context, string $key): void
     {
@@ -344,6 +371,28 @@ final class IdempotencyGuard
             $key,
             ['expires_at' => $this->clock->now()->modify('-1 second')->format(DATE_ATOM)],
         );
+    }
+
+    /**
+     * A pending_approval row stays linked to its approval: freeing it would let a
+     * retry open a second approval for the same request (L-102 / L-202).
+     */
+    private function approvalOwns(CapabilityDefinition $definition, CapabilityContext $context, string $key): bool
+    {
+        if ($this->store === null) {
+            return false;
+        }
+
+        $actor = $context->actor();
+        $row = $this->store->find(
+            $context->tenantId(),
+            ResolveActor::actorType($actor),
+            ResolveActor::actorId($actor),
+            $definition->name,
+            $key,
+        );
+
+        return is_array($row) && ($row['approval_id'] ?? null) !== null;
     }
 
     /**
