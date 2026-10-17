@@ -11,17 +11,22 @@ use RuntimeException;
  */
 final class CapabilityFailure extends RuntimeException
 {
+    // Not $code: Exception::$code is an int.
+    private readonly string $failureCode;
+
     /**
      * @param  array<string, mixed>  $extra  merged into the error envelope (e.g. retry_after)
      */
     public function __construct(
-        private readonly string $failureCode,
+        string $code,
         string $message,
         private readonly array $extra = [],
     ) {
-        if (! ErrorCodeMap::isKnown($failureCode)) {
-            throw new InvalidArgumentException(sprintf('Unknown capability error code "%s".', $failureCode));
+        if (! ErrorCodeMap::isKnown($code)) {
+            throw new InvalidArgumentException(sprintf('Unknown capability error code "%s".', $code));
         }
+
+        $this->failureCode = $code;
 
         parent::__construct($message);
     }
