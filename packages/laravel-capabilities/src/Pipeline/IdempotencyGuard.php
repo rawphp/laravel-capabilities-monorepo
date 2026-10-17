@@ -268,7 +268,7 @@ final class IdempotencyGuard
     }
 
     /**
-     * @param  array<string, mixed>  $payload
+     * @return bool whether a row was written
      */
     public function storeResult(
         CapabilityDefinition $definition,
@@ -277,14 +277,14 @@ final class IdempotencyGuard
         string $requestHash,
         CapabilityResult $result,
         ?string $approvalId = null,
-    ): void {
+    ): bool {
         if (! $this->config->enabled || $this->store === null || ! $definition->shouldUseIdempotency()) {
-            return;
+            return false;
         }
 
         // Never persist under an illegal key — policy should have rejected earlier.
         if (! IdempotencyKey::isValid($key)) {
-            return;
+            return false;
         }
 
         $actor = $context->actor();
@@ -323,6 +323,8 @@ final class IdempotencyGuard
             'created_at' => $createdAt,
             'expires_at' => $expiresAt,
         ]);
+
+        return true;
     }
 
     /**

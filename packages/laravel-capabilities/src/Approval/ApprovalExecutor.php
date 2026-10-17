@@ -196,6 +196,11 @@ final class ApprovalExecutor
         $result = $raw instanceof CapabilityResult
             ? $raw
             : CapabilityResult::ok($raw);
+        // Approved runs skip the pipeline rate limit (L-105), so this came from run(). The
+        // row below is terminal: accepting again only replays it, so it is not retryable.
+        if ($result->errorCode() === 'rate_limited') {
+            $result = $result->withoutRetry();
+        }
 
         $resultStatus = $result->isOk() ? 'ok' : 'failed';
         $payload = [

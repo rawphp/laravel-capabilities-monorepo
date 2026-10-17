@@ -169,6 +169,23 @@ final class CapabilityResult
     }
 
     /**
+     * The same failure, marked not retryable and without retry_after. For a refusal that
+     * is stored and replayed, where retrying the same key or approval can only replay it.
+     */
+    public function withoutRetry(): self
+    {
+        if ($this->ok || $this->error === null) {
+            return $this;
+        }
+
+        $error = $this->error;
+        $error['retryable'] = false;
+        unset($error['retry_after']);
+
+        return new self(ok: false, data: null, error: $error, meta: $this->meta);
+    }
+
+    /**
      * Whether a non-ok result is a hard refuse (auth/profile/runnability).
      * Success is never hard refuse. Callers map these to terminal refuse outcomes.
      */

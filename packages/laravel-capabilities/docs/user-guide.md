@@ -430,6 +430,21 @@ Notes:
 - Retryable is a default. A result may override `retryable`, `http_status`, or `cli_exit` explicitly, so clients should read the fields on the error rather than hard-code this table.
 - Unknown codes fall back to HTTP `500`, CLI exit `1`, not retryable.
 
+### Refusing from `run()`
+
+Any exception `run()` throws becomes `domain_error` (422) with its message. A missing model becomes `not_found`, and an `Error` or a database exception becomes a reported `internal`. To refuse with 409 or 429, throw `CapabilityFailure`:
+
+```php
+use Rawphp\Capabilities\Support\CapabilityFailure;
+
+throw CapabilityFailure::conflict('Walkthrough is already published.');      // conflict, 409
+throw CapabilityFailure::rateLimited('Daily publish limit reached.', 3600);  // rate_limited, 429, retryable
+```
+
+The message goes to the caller as written. `rateLimited()` takes an optional `retryAfter` in seconds. When it is 1 or more, it is sent as `error.retry_after`, and HTTP repeats it as the `Retry-After` header. In every other way the failure is handled like `domain_error`: `transactions.wrap_run` rolls the write back, audit records the failure, and an idempotency key replays it. These two are the only codes a capability can throw, because the other codes belong to the pipeline.
+
+A stored `rate_limited` is spent. When the call carries an idempotency key, or runs an accepted approval, the refusal is stored, and retrying that key or accepting that approval again only replays it. So in those two cases the failure says `retryable: false` and sends no `retry_after` or `Retry-After`. To try again later, send a new idempotency key or request a new approval.
+
 ## Testing helpers (D-020)
 
 On registry and `Capability` facade:
