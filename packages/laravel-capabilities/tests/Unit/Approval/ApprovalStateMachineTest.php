@@ -7,6 +7,7 @@ use Rawphp\Capabilities\Approval\ApprovalManager;
 use Rawphp\Capabilities\Approval\ApprovalPolicy;
 use Rawphp\Capabilities\Approval\ApprovalStateMachine;
 use Rawphp\Capabilities\Approval\Notifiers\HttpApprovalNotifier;
+use Rawphp\Capabilities\Pipeline\PipelineStages;
 use Rawphp\Capabilities\Support\CapabilityFailure;
 use Rawphp\Capabilities\Support\FixedClock;
 use Rawphp\Capabilities\Tests\Fixtures\ApprovalHelpers;
@@ -324,6 +325,27 @@ it('edge: a rate_limited approved execution keeps the approval link and opens no
         ->and($found['approval_id'])->toBe($pending->approvalId())
         ->and($retry->errorCode())->toBe('rate_limited')
         ->and($retry->approvalId())->toBeNull();
+});
+
+it('edge: an approved execution refused before run() keeps its approval row and opens no second approval [D-005]', function () {
+    $h = IdempotencyHelpers::harness();
+    // The store and the guard must read one clock for a released key to expire.
+    $h['registry']->withClock($h['clock']);
+    $opts = IdempotencyHelpers::options('http', ['idempotency_key' => 'k-refused', 'needs_approval' => true]);
+
+    $pending = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), $opts);
+    $h['registry']->forceFailStages(PipelineStages::RATE_LIMIT);
+    $executed = $h['registry']->approvals()->accept((string) $pending->approvalId(), l202Approver());
+    $retry = $h['registry']->invoke($h['name'], IdempotencyHelpers::inputA(), $opts);
+
+    $found = $h['store']->find('tenant-1', 'user', '7', $h['name'], 'k-refused');
+    expect($executed->errorCode())->toBe('rate_limited')
+        ->and($h['runCount']->value)->toBe(0)
+        ->and($found['status'])->toBe('failed')
+        ->and($found['approval_id'])->toBe($pending->approvalId())
+        ->and($retry->errorCode())->toBe('rate_limited')
+        ->and($retry->approvalId())->toBeNull()
+        ->and($h['fakes']->approvals->findByStatus(ApprovalStateMachine::STATUS_PENDING))->toHaveCount(0);
 });
 
 it('happy: approval execution completes a same-hash pending_approval idempotency row [D-005]', function () {
