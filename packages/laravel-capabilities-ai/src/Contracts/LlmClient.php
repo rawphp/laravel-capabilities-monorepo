@@ -54,7 +54,7 @@ interface LlmClient
      * @return array{
      *     content?: string,
      *     tool_calls?: list<array{id?: string, name?: string, arguments?: mixed, input?: mixed}>,
-     *     usage?: array{input_tokens?: int, output_tokens?: int}
+     *     usage?: array{input_tokens?: int, output_tokens?: int, cache_creation_input_tokens?: int, cache_read_input_tokens?: int}
      * }
      *         When `tool_calls` is non-empty, each entry SHOULD include non-empty `id`
      *         (required for multi-round correlation; FakeLlmClient always normalizes it).

@@ -31,7 +31,10 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   string as before. `complete()` usage now includes `cache_creation_input_tokens` and
   `cache_read_input_tokens` when the response carries them (omitted, not zero, when it
   does not), and `capabilities_ai_llm_tokens_total` counts them under
-  `type=cache_creation` and `type=cache_read`. Messages and tools are not cached.
+  `type=cache_creation` and `type=cache_read`. The per-round `usage` stored on the turn
+  row still holds only `input_tokens` and `output_tokens`. Messages and tools are not
+  cached. Hosts behind an Anthropic-compatible proxy (`base_url`) that only accepts a
+  string `system` should set `CAPABILITIES_AI_ANTHROPIC_CACHE_SYSTEM=false`.
 
 ## [0.8.0] - 2026-10-17
 
