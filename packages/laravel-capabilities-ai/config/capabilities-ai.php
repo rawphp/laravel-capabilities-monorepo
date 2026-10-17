@@ -62,6 +62,12 @@ return [
             'model' => $env('CAPABILITIES_AI_ANTHROPIC_MODEL', 'claude-opus-5-5'),
             'base_url' => $env('CAPABILITIES_AI_ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
             /**
+             * output_config.effort: low | medium | high | xhigh | max. Unset (or an empty env
+             * value) leaves it out of the request, so the model default applies (medium on
+             * Opus 5.5). Any other value makes the anthropic LlmClient refuse to build.
+             */
+            'effort' => $env('CAPABILITIES_AI_ANTHROPIC_EFFORT'),
+            /**
              * Host-parity ceiling (was hard-coded 1024; truncated long coach replies). A ceiling,
              * not a target: requests are non-streaming, so the reply a turn can actually get is
              * whatever the model writes within `timeout` — a longer one fails the turn as a

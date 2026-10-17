@@ -11,6 +11,18 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Added
+
+- **Anthropic effort level:** new config key `llm.anthropic.effort`
+  (`CAPABILITIES_AI_ANTHROPIC_EFFORT`, default `null`) and `AnthropicLlmClient`
+  constructor parameter `?string $effort = null`, wired through
+  `ContainerBindings::makeAnthropicLlmClient`. When set, each request sends
+  `output_config: {effort: <value>}`; when `null`, `output_config` is omitted and the
+  model default applies (`medium` on Opus 5.5). Allowed values are `low`, `medium`,
+  `high`, `xhigh` and `max`. Any other value throws `InvalidArgumentException` from the
+  constructor, so a misconfigured host fails when the container builds the client, not
+  on the first turn.
+
 ## [0.8.0] - 2026-10-17
 
 ### Changed
