@@ -131,7 +131,14 @@ final class TurnRunner
                 // per-capability surface narrowing and agent approval rules apply.
                 // Missing/invalid user_id fails closed (never ResolveActor::defaultUser).
                 $actor = $this->actors->resolve($conversation->user_id);
-                $invokeOptions = $this->actors->invokeOptions($actor, ResolveConversationActor::CALLER_AGENT);
+                // `agent` becomes CapabilityContext::agent(), so a tool can attach what it writes to
+                // this turn. Set by the runner only; tool call input never reaches it.
+                $invokeOptions = $this->actors->invokeOptions($actor, ResolveConversationActor::CALLER_AGENT, [
+                    'agent' => [
+                        'conversation_ulid' => $conversation->ulid,
+                        'turn_ulid' => $turnUlid,
+                    ],
+                ]);
 
                 // Normalize ids first so assistant tool_use and role=tool share the same id.
                 $normalizedCalls = [];

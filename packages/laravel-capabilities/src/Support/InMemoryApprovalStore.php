@@ -58,6 +58,7 @@ final class InMemoryApprovalStore implements ApprovalStore
             'execution_attempt' => (int) ($record['execution_attempt'] ?? 0),
             'approved_at' => $record['approved_at'] ?? null,
             'messaging' => $record['messaging'] ?? null,
+            'agent_json' => $record['agent_json'] ?? null,
             'created_at' => isset($record['created_at']) ? (string) $record['created_at'] : $now,
             'updated_at' => isset($record['updated_at']) ? (string) $record['updated_at'] : $now,
         ];

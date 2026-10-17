@@ -51,9 +51,16 @@ final class DatabaseApprovalStore implements ApprovalStore
             'execution_attempt' => (int) ($record['execution_attempt'] ?? 0),
             'approved_at' => $record['approved_at'] ?? null,
             'messaging' => $record['messaging'] ?? null,
+            'agent_json' => $record['agent_json'] ?? null,
             'created_at' => isset($record['created_at']) ? (string) $record['created_at'] : $now,
             'updated_at' => isset($record['updated_at']) ? (string) $record['updated_at'] : $now,
         ];
+
+        // Only agent-originated rows need the agent_json column, so a table from before
+        // its migration still takes every other approval.
+        if ($row['agent_json'] === null) {
+            unset($row['agent_json']);
+        }
 
         return $this->table->insert($row);
     }

@@ -61,6 +61,7 @@ function req049SqliteConnection(): ConnectionInterface
             execution_attempt integer default 0,
             approved_at text,
             channel_meta_json text,
+            agent_json text,
             created_at text,
             updated_at text
         )
@@ -159,8 +160,9 @@ it('DurableGateway path: QueryTableGateway-backed stores survive process-restart
         'status' => 'pending',
         'requester_actor_type' => 'user',
         'requester_actor_id' => '1',
-        'original_caller' => 'http',
+        'original_caller' => 'agent',
         'tenant_id' => 't1',
+        'agent_json' => ['conversation_ulid' => 'c1', 'turn_ulid' => 't1'],
     ]);
     $idem->put([
         'tenant_id' => 't1',
@@ -195,6 +197,8 @@ it('DurableGateway path: QueryTableGateway-backed stores survive process-restart
 
     expect($reloadedApproval->find($approval['id']))->not->toBeNull()
         ->and($reloadedApproval->find($approval['id'])['status'] ?? null)->toBe('pending')
+        ->and($reloadedApproval->find($approval['id'])['agent_json'] ?? null)
+        ->toBe(['conversation_ulid' => 'c1', 'turn_ulid' => 't1'])
         ->and($reloadedIdem->find('t1', 'user', '1', 'create-invoice', 'retry-key-1')['status'] ?? null)
         ->toBe('completed')
         ->and($reloadedIdem->find('t1', 'user', '1', 'create-invoice', 'retry-key-1')['result_json'] ?? null)

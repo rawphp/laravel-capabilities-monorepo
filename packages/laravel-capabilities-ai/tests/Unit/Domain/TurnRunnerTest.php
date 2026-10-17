@@ -431,6 +431,90 @@ it('lifts tool arg idempotency_key into bus options and strips it from capabilit
     expect($payloads)->toBe([['x' => 1], ['x' => 2], ['x' => 3]]);
 });
 
+/**
+ * Run one tool-using turn against a recording bus; the second round ends it with text.
+ *
+ * @param  list<array<string, mixed>>  $toolCalls
+ * @return array{bus: object, turn_ulid: string, conversation_ulid: string}
+ */
+function runToolTurn(array $toolCalls): array
+{
+    $turnUlid = enqueueTurnWithUser('use tools')['turn_ulid'];
+    $bus = recordingBus();
+    $runner = new TurnRunner(
+        claim: turnClaim(),
+        store: turnStore(),
+        llm: new FakeLlmClient([
+            ['tool_calls' => $toolCalls],
+            ['content' => 'done'],
+        ]),
+        context: new class implements ConversationContextProvider
+        {
+            public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+            {
+                return [['role' => 'user', 'content' => 'use tools']];
+            }
+        },
+        tools: new class implements ToolCatalog
+        {
+            public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+            {
+                return [['name' => 'demo.tool']];
+            }
+        },
+        bus: $bus,
+        progress: new ArrayProgressStore,
+        actors: turnActors(),
+    );
+
+    $runner->run($turnUlid);
+
+    return [
+        'bus' => $bus,
+        'turn_ulid' => $turnUlid,
+        'conversation_ulid' => (string) turnStore()->turn($turnUlid)->conversation?->ulid,
+    ];
+}
+
+it('tool invokes carry the conversation and turn ulid as the agent option', function () {
+    $run = runToolTurn([['name' => 'demo.tool', 'arguments' => ['x' => 1]]]);
+
+    expect($run['bus']->invokes)->toBe(1)
+        ->and($run['conversation_ulid'])->not->toBe('')
+        ->and($run['bus']->lastOptions['agent'] ?? null)->toBe([
+            'conversation_ulid' => $run['conversation_ulid'],
+            'turn_ulid' => $run['turn_ulid'],
+        ])
+        ->and($run['bus']->lastOptions['caller'] ?? null)->toBe(ResolveConversationActor::CALLER_AGENT)
+        ->and($run['bus']->lastOptions['agent_turn_tool_calls'] ?? null)->toBe(1);
+});
+
+it('every tool call in one round carries the same turn ulid', function () {
+    $run = runToolTurn([
+        ['name' => 'demo.tool', 'arguments' => ['x' => 1]],
+        ['name' => 'demo.tool', 'arguments' => ['x' => 2]],
+    ]);
+
+    expect($run['bus']->invokes)->toBe(2)
+        ->and(array_column(array_column($run['bus']->allOptions, 'agent'), 'turn_ulid'))
+        ->toBe([$run['turn_ulid'], $run['turn_ulid']]);
+});
+
+it('a tool payload carrying agent or turn ulid keys does not override the agent option', function () {
+    $input = [
+        'agent' => ['conversation_ulid' => 'forged-conversation', 'turn_ulid' => 'forged-turn'],
+        'conversation_ulid' => 'forged-conversation',
+        'turn_ulid' => 'forged-turn',
+    ];
+    $run = runToolTurn([['name' => 'demo.tool', 'arguments' => $input]]);
+
+    expect($run['bus']->lastOptions['agent'] ?? null)->toBe([
+        'conversation_ulid' => $run['conversation_ulid'],
+        'turn_ulid' => $run['turn_ulid'],
+    ])
+        ->and($run['bus']->lastInput)->toBe($input);
+});
+
 it('tool call path fails closed when conversation has no user_id', function () {
     $turnUlid = enqueueTurn('use tool'); // no userId
     $bus = recordingBus();
