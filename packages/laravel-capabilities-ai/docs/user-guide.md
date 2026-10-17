@@ -55,7 +55,7 @@ A tool the agent invokes can read the conversation and turn that called it from 
 
 `TurnRunner` sets both ulids on every tool invoke it sends. They come from the runner, not from the model: a tool argument named `agent`, `conversation_ulid` or `turn_ulid` stays ordinary input and never changes them. Invokes from any other surface (HTTP, MCP, CLI, jobs, proposal accept) have `$ctx->agent() === null`.
 
-A tool that needs approval runs later, when an approver accepts. The approval row keeps both ulids, so the approved run sees the same `$ctx->agent()`. This needs core's `add_agent_json_to_capabilities_approvals_table` migration. Until a host runs it, the approval still queues, but the approved run has `$ctx->agent() === null`.
+A tool that needs approval runs later, when an approver accepts. The approval row keeps both ulids, so the approved run sees the same `$ctx->agent()`. Run core's `add_agent_json_to_capabilities_approvals_table` migration before deploying: without it, an approval an agent tool requests fails on the missing column. Rows from before the column run with `$ctx->agent() === null`.
 
 ### Upgrade for hosts (manual DI / constructor / job handle)
 

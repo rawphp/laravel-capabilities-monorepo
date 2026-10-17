@@ -2,7 +2,6 @@
 
 namespace Rawphp\Capabilities\Persistence;
 
-use Illuminate\Database\Connection;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -78,9 +77,6 @@ final class QueryTableGateway implements TableGateway
     /** @var array<string, true> */
     private readonly array $timestampColumnSet;
 
-    /** @var array<string, bool> physical column => present, looked up once */
-    private array $columnPresent = [];
-
     /** @var array<string, string> physical => logical */
     private readonly array $reverseColumnMap;
 
@@ -122,21 +118,6 @@ final class QueryTableGateway implements TableGateway
     public function tableName(): string
     {
         return $this->table;
-    }
-
-    /**
-     * Whether the table has the column behind a logical key. Looked up once per gateway,
-     * so a store can leave out a column whose migration has not run yet. A connection
-     * without a schema builder is assumed to have it.
-     */
-    public function hasColumn(string $logical): bool
-    {
-        $physical = $this->physicalColumn($logical);
-        if (! $this->connection instanceof Connection) {
-            return true;
-        }
-
-        return $this->columnPresent[$physical] ??= $this->connection->getSchemaBuilder()->hasColumn($this->table, $physical);
     }
 
     public function insert(array $row): array
