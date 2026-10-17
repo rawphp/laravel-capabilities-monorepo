@@ -63,13 +63,18 @@ final class InvokeResultFinalizer
     ): CapabilityResult {
         // Store idempotency failure when key present and after start of processing.
         if ($state->idempotencyKey && $state->context && $state->hasStage(PipelineStages::IDEMPOTENCY_LOOKUP) && ! $state->idempotentReplay) {
-            $this->idempotencyGuard->storeResult(
+            // A rate_limited thrown from run() is stored like any failure, so the key is
+            // spent: retrying it only replays the refusal. Say so instead of retry_after.
+            $stored = $afterRun && $result->errorCode() === 'rate_limited' ? $result->withoutRetry() : $result;
+            if ($this->idempotencyGuard->storeResult(
                 $state->definition,
                 $state->context,
                 $state->idempotencyKey,
                 (string) $state->requestHash,
-                $result,
-            );
+                $stored,
+            )) {
+                $result = $stored;
+            }
             if (! $state->hasStage(PipelineStages::STORE_IDEMPOTENCY)) {
                 $state->mark(PipelineStages::STORE_IDEMPOTENCY);
             }

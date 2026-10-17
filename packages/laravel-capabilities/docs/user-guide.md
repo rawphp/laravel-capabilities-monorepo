@@ -443,6 +443,8 @@ throw CapabilityFailure::rateLimited('Daily publish limit reached.', 3600);  // 
 
 The message goes to the caller as written. `rateLimited()` takes an optional `retryAfter` in seconds. When it is 1 or more, it is sent as `error.retry_after`, and HTTP repeats it as the `Retry-After` header. In every other way the failure is handled like `domain_error`: `transactions.wrap_run` rolls the write back, audit records the failure, and an idempotency key replays it. These two are the only codes a capability can throw, because the other codes belong to the pipeline.
 
+A stored `rate_limited` is spent. When the call carries an idempotency key, or runs an accepted approval, the refusal is stored, and retrying that key or accepting that approval again only replays it. So in those two cases the failure says `retryable: false` and sends no `retry_after` or `Retry-After`. To try again later, send a new idempotency key or request a new approval.
+
 ## Testing helpers (D-020)
 
 On registry and `Capability` facade:

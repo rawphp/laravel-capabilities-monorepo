@@ -983,11 +983,9 @@ final class InvokePipeline
         }
 
         if ($e instanceof CapabilityFailure) {
-            return CapabilityResult::failure(
-                code: $e->errorCode,
-                message: $e->getMessage(),
-                extra: $e->retryAfter > 0 ? ['retry_after' => $e->retryAfter] : [],
-            );
+            return $e->errorCode === 'rate_limited'
+                ? $this->rateLimitedResult($e->getMessage(), $e->retryAfter ?? 0)
+                : CapabilityResult::failure(code: $e->errorCode, message: $e->getMessage());
         }
 
         // QueryException is a PDOException.

@@ -2,6 +2,7 @@
 
 // A run() may refuse with conflict (409) or rate_limited (429) by throwing CapabilityFailure.
 // Everything else matches a thrown domain exception: rollback, audit, idempotency.
+// A stored rate_limited (idempotency key or approval row) is spent: it is not retryable.
 
 declare(strict_types=1);
 
@@ -134,7 +135,7 @@ it('happy: audit records a thrown conflict as a failure with its code, like a do
         ]);
 });
 
-it('happy: idempotency stores a thrown rate_limited and replays it without running again', function () {
+it('happy: an idempotency key stores a thrown rate_limited as spent, so neither answer says retry', function () {
     $runs = 0;
     $h = AuditHelpers::harness(['run' => function () use (&$runs) {
         $runs++;
@@ -146,10 +147,55 @@ it('happy: idempotency stores a thrown rate_limited and replays it without runni
     $second = $h['registry']->invoke($h['name'], AuditHelpers::input(), $options);
 
     expect($first->errorCode())->toBe('rate_limited')
+        ->and($first->error['retryable'])->toBeFalse()
+        ->and($first->error)->not->toHaveKey('retry_after')
         ->and($second->errorCode())->toBe('rate_limited')
-        ->and($second->error['retry_after'])->toBe(30)
+        ->and($second->error['http_status'])->toBe(429)
+        ->and($second->error['retryable'])->toBeFalse()
+        ->and($second->error)->not->toHaveKey('retry_after')
         ->and($second->meta['idempotent_replay'] ?? null)->toBeTrue()
         ->and($runs)->toBe(1);
+});
+
+it('happy: an approval whose run throws rateLimited is spent: the row and every accept say not retryable', function () {
+    $runs = 0;
+    $h = PipelineHelpers::harness(['run' => function () use (&$runs) {
+        $runs++;
+        throw CapabilityFailure::rateLimited('Daily publish limit reached.', 3600);
+    }]);
+    $approver = PipelineHelpers::userActor(7);
+    $approver->tenant_id = 't-1';
+
+    $pending = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), PipelineHelpers::options('http', ['needs_approval' => true]));
+    $accepted = $h['registry']->approvals()->accept((string) $pending->approvalId(), $approver);
+    $again = $h['registry']->approvals()->accept((string) $pending->approvalId(), $approver);
+    $row = $h['fakes']->approvals->find((string) $pending->approvalId());
+
+    expect($accepted->errorCode())->toBe('rate_limited')
+        ->and($accepted->error['retryable'])->toBeFalse()
+        ->and($accepted->error)->not->toHaveKey('retry_after')
+        ->and($row['result_status'])->toBe('failed')
+        ->and($row['result_json']['error']['retryable'])->toBeFalse()
+        ->and($row['result_json']['error'])->not->toHaveKey('retry_after')
+        ->and($again->errorCode())->toBe('rate_limited')
+        ->and($again->error['retryable'])->toBeFalse()
+        ->and($again->error)->not->toHaveKey('retry_after')
+        ->and($runs)->toBe(1);
+});
+
+it('happy: HTTP sends no Retry-After for a thrown rateLimited stored under an idempotency key', function () {
+    $h = HttpHelpers::harness(['run' => fn () => throw CapabilityFailure::rateLimited('Slow down.', 45)]);
+
+    $res = $h['controller']->invoke(HttpHelpers::authedRequest([
+        'method' => 'POST',
+        'jsonBody' => PipelineHelpers::validInput(),
+        'headers' => ['idempotency-key' => 'capability-failure-http-1'],
+    ]), $h['name']);
+
+    expect($res->status)->toBe(429)
+        ->and($res->body['error']['retryable'])->toBeFalse()
+        ->and($res->body['error'])->not->toHaveKey('retry_after')
+        ->and($res->headers)->not->toHaveKey('Retry-After');
 });
 
 it('happy: HTTP invoke returns 409 with the conflict envelope for a thrown conflict', function () {
