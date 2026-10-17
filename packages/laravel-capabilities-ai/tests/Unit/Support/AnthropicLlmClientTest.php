@@ -65,7 +65,49 @@ it('reports input/output token usage from the Anthropic response', function () {
 
     $out = (new AnthropicLlmClient('test-key'))->complete([['role' => 'user', 'content' => 'hi']]);
 
-    expect($out['usage'] ?? null)->toBe(['input_tokens' => 42, 'output_tokens' => 9]);
+    expect($out['usage'] ?? null)->toBe(['input_tokens' => 42, 'output_tokens' => 9, 'cache_read_input_tokens' => 0]);
+});
+
+it('passes both prompt cache token counts through usage as ints', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'content' => [['type' => 'text', 'text' => 'hi']],
+            'usage' => [
+                'input_tokens' => 12,
+                'output_tokens' => 9,
+                'cache_creation_input_tokens' => 30000,
+                'cache_read_input_tokens' => 25000,
+            ],
+        ], 200),
+    ]);
+
+    $out = (new AnthropicLlmClient('test-key'))->complete([['role' => 'user', 'content' => 'hi']]);
+
+    expect($out['usage'] ?? null)->toBe([
+        'input_tokens' => 12,
+        'output_tokens' => 9,
+        'cache_creation_input_tokens' => 30000,
+        'cache_read_input_tokens' => 25000,
+    ]);
+});
+
+it('omits the prompt cache token counts from usage when the response carries none', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'content' => [['type' => 'text', 'text' => 'hi']],
+            'usage' => ['input_tokens' => 42, 'output_tokens' => 9],
+        ], 200),
+    ]);
+
+    $out = (new AnthropicLlmClient('test-key'))->complete([['role' => 'user', 'content' => 'hi']]);
+
+    expect($out['usage'] ?? null)->toBe(['input_tokens' => 42, 'output_tokens' => 9])
+        ->and($out['usage'])->not->toHaveKey('cache_creation_input_tokens')
+        ->and($out['usage'])->not->toHaveKey('cache_read_input_tokens');
 });
 
 it('omits usage when the Anthropic response carries none', function () {
@@ -585,6 +627,12 @@ it('multi-round: tools advertised then tool_result then final text', function ()
         $sequence++;
         $body = $request->data();
 
+        expect($body['system'] ?? null)->toBe([[
+            'type' => 'text',
+            'text' => 'You are a demo agent.',
+            'cache_control' => ['type' => 'ephemeral'],
+        ]]);
+
         if ($sequence === 1) {
             $tools = $body['tools'] ?? [];
             expect($tools)->not->toBeEmpty()
@@ -646,7 +694,10 @@ it('multi-round: tools advertised then tool_result then final text', function ()
     ]];
 
     $first = $client->complete(
-        [['role' => 'user', 'content' => 'use the tool']],
+        [
+            ['role' => 'system', 'content' => 'You are a demo agent.'],
+            ['role' => 'user', 'content' => 'use the tool'],
+        ],
         $tools,
     );
 
@@ -654,6 +705,7 @@ it('multi-round: tools advertised then tool_result then final text', function ()
 
     $second = $client->complete(
         [
+            ['role' => 'system', 'content' => 'You are a demo agent.'],
             ['role' => 'user', 'content' => 'use the tool'],
             [
                 'role' => 'assistant',
@@ -972,6 +1024,54 @@ it('records latency, token usage and an ok span around a successful call', funct
         ]);
 });
 
+it('counts prompt cache tokens under their own type when the response carries them', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'content' => [['type' => 'text', 'text' => 'ok']],
+            'usage' => [
+                'input_tokens' => 12,
+                'output_tokens' => 45,
+                'cache_creation_input_tokens' => 3000,
+                'cache_read_input_tokens' => 2500,
+            ],
+        ], 200),
+    ]);
+
+    $metrics = new InMemoryMetrics;
+    $client = new AnthropicLlmClient('test-key', model: 'claude-test', metrics: $metrics);
+    $client->complete([['role' => 'user', 'content' => 'hi']]);
+
+    $labels = ['provider' => 'anthropic', 'model' => 'claude-test'];
+
+    expect($metrics->get(AnthropicLlmClient::METRIC_TOKENS, $labels + ['type' => 'cache_creation']))->toBe(3000)
+        ->and($metrics->get(AnthropicLlmClient::METRIC_TOKENS, $labels + ['type' => 'cache_read']))->toBe(2500)
+        ->and($metrics->get(AnthropicLlmClient::METRIC_TOKENS, $labels + ['type' => 'input']))->toBe(12);
+});
+
+it('emits no prompt cache counters when the usage block has no cache fields', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'content' => [['type' => 'text', 'text' => 'ok']],
+            'usage' => ['input_tokens' => 12, 'output_tokens' => 45],
+        ], 200),
+    ]);
+
+    $metrics = new InMemoryMetrics;
+    $client = new AnthropicLlmClient('test-key', model: 'claude-test', metrics: $metrics);
+    $client->complete([['role' => 'user', 'content' => 'hi']]);
+
+    $types = array_map(
+        fn (array $e) => $e['labels']['type'] ?? null,
+        array_filter($metrics->emissions(), fn (array $e) => $e['name'] === AnthropicLlmClient::METRIC_TOKENS),
+    );
+
+    expect(array_values($types))->toBe(['input', 'output']);
+});
+
 it('skips token counters when the response carries no usage block', function () {
     bootAnthropicHttp();
 
@@ -1121,19 +1221,19 @@ it('rejects a non-positive timeout', function () {
  * @param  list<mixed>  $tools
  * @return array{0: array<string, mixed>, 1: string} decoded body + raw JSON (for {} vs [] checks)
  */
-function anthropicOutbound(array $messages, array $tools = []): array
+function anthropicOutbound(array $messages, array $tools = [], ?AnthropicLlmClient $client = null): array
 {
     bootAnthropicHttp();
     Http::fake(['api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200)]);
 
-    (new AnthropicLlmClient('test-key'))->complete($messages, $tools);
+    ($client ?? new AnthropicLlmClient('test-key'))->complete($messages, $tools);
 
     $raw = Http::recorded()[0][0]->body();
 
     return [json_decode($raw, true, 512, JSON_THROW_ON_ERROR), $raw];
 }
 
-it('lifts system messages into the top-level system prompt and skips empty and non-array rows', function () {
+it('lifts system messages into one cached system block and skips empty and non-array rows', function () {
     [$body] = anthropicOutbound([
         ['role' => 'system', 'content' => 'You are helpful.'],
         'not-a-message',
@@ -1142,16 +1242,51 @@ it('lifts system messages into the top-level system prompt and skips empty and n
         ['role' => 'user', 'content' => 'hi'],
     ]);
 
-    expect($body['system'])->toBe("You are helpful.\n\nBe brief.")
+    expect($body['system'])->toBe([[
+        'type' => 'text',
+        'text' => "You are helpful.\n\nBe brief.",
+        'cache_control' => ['type' => 'ephemeral'],
+    ]])
         ->and($body['messages'])->toBe([['role' => 'user', 'content' => 'hi']]);
 });
 
-it('omits system and sends a placeholder user turn when only empty rows are given', function () {
-    [$body] = anthropicOutbound([['role' => 'system', 'content' => '']]);
+it('sends the joined system prompt as a plain string when system caching is off', function () {
+    [$body] = anthropicOutbound([
+        ['role' => 'system', 'content' => 'You are helpful.'],
+        ['role' => 'system', 'content' => 'Be brief.'],
+        ['role' => 'user', 'content' => 'hi'],
+    ], client: new AnthropicLlmClient('test-key', cacheSystem: false));
+
+    expect($body['system'])->toBe("You are helpful.\n\nBe brief.");
+});
+
+it('adds cache_control to the system prompt only, not to messages or tools', function () {
+    [, $raw] = anthropicOutbound([
+        ['role' => 'system', 'content' => 'You are helpful.'],
+        ['role' => 'user', 'content' => 'hi'],
+    ], [['name' => 'demo.tool', 'description' => 'Demo']]);
+
+    expect(substr_count($raw, 'cache_control'))->toBe(1);
+});
+
+it('omits system and sends a placeholder user turn when only empty rows are given', function (bool $cacheSystem) {
+    [$body] = anthropicOutbound(
+        [['role' => 'system', 'content' => '']],
+        client: new AnthropicLlmClient('test-key', cacheSystem: $cacheSystem),
+    );
 
     expect($body)->not->toHaveKey('system')
         ->and($body['messages'])->toBe([['role' => 'user', 'content' => '(empty)']]);
-});
+})->with(['caching on' => [true], 'caching off' => [false]]);
+
+it('sends no system key without a system message in either caching mode', function (bool $cacheSystem) {
+    [$body] = anthropicOutbound(
+        [['role' => 'user', 'content' => 'hi']],
+        client: new AnthropicLlmClient('test-key', cacheSystem: $cacheSystem),
+    );
+
+    expect($body)->not->toHaveKey('system');
+})->with(['caching on' => [true], 'caching off' => [false]]);
 
 it('merges consecutive same-role text rows so roles alternate', function () {
     [$body] = anthropicOutbound([

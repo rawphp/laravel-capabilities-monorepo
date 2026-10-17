@@ -288,6 +288,84 @@ it('makeLlmClient anthropic with an invalid effort fails at build', function () 
     ]));
 })->throws(InvalidArgumentException::class, "Anthropic effort 'turbo' is not one of: low, medium, high, xhigh, max");
 
+it('package config defaults llm.anthropic.cache_system to true', function () {
+    $anthropic = aiConfig()['llm']['anthropic'];
+
+    expect($anthropic)->toHaveKey('cache_system')
+        ->and($anthropic['cache_system'])->toBeTrue();
+});
+
+it('package config reads llm.anthropic.cache_system from the environment', function (string $value, bool $expected) {
+    putenv("CAPABILITIES_AI_ANTHROPIC_CACHE_SYSTEM={$value}");
+
+    try {
+        expect(aiConfig()['llm']['anthropic']['cache_system'])->toBe($expected);
+    } finally {
+        putenv('CAPABILITIES_AI_ANTHROPIC_CACHE_SYSTEM');
+    }
+})->with([
+    'false' => ['false', false],
+    '0' => ['0', false],
+    'true' => ['true', true],
+    '1' => ['1', true],
+]);
+
+it('makeLlmClient wires anthropic cache_system from config into the system payload', function (?bool $cacheSystem, mixed $expected) {
+    $app = new Container;
+    Facade::setFacadeApplication($app);
+    $app->singleton('http', fn () => new Factory);
+    Http::swap(new Factory);
+
+    Http::fake([
+        'example.test/*' => Http::response([
+            'content' => [
+                ['type' => 'text', 'text' => 'ok'],
+            ],
+        ], 200),
+    ]);
+
+    $anthropic = ['api_key' => 'test-key', 'base_url' => 'https://example.test'];
+    if ($cacheSystem !== null) {
+        $anthropic['cache_system'] = $cacheSystem;
+    }
+
+    $client = ContainerBindings::makeLlmClient(aiConfig([
+        'llm' => ['driver' => 'anthropic', 'anthropic' => $anthropic],
+    ]));
+
+    $client->complete([
+        ['role' => 'system', 'content' => 'Manifest.'],
+        ['role' => 'user', 'content' => 'hi'],
+    ]);
+
+    Http::assertSentCount(1);
+    Http::assertSent(fn ($request) => ($request->data()['system'] ?? null) === $expected);
+})->with([
+    'package default' => [null, [['type' => 'text', 'text' => 'Manifest.', 'cache_control' => ['type' => 'ephemeral']]]],
+    'on' => [true, [['type' => 'text', 'text' => 'Manifest.', 'cache_control' => ['type' => 'ephemeral']]]],
+    'off' => [false, 'Manifest.'],
+]);
+
+it('makeLlmClient anthropic caches the system prompt when the config omits cache_system', function () {
+    $app = new Container;
+    Facade::setFacadeApplication($app);
+    $app->singleton('http', fn () => new Factory);
+    Http::swap(new Factory);
+
+    Http::fake(['example.test/*' => Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200)]);
+
+    $client = ContainerBindings::makeLlmClient([
+        'llm' => ['driver' => 'anthropic', 'anthropic' => ['api_key' => 'test-key', 'base_url' => 'https://example.test']],
+    ]);
+
+    $client->complete([
+        ['role' => 'system', 'content' => 'Manifest.'],
+        ['role' => 'user', 'content' => 'hi'],
+    ]);
+
+    Http::assertSent(fn ($request) => is_array($request->data()['system'] ?? null));
+});
+
 it('makeProgressStore returns ArrayProgressStore for array driver', function () {
     $store = ContainerBindings::makeProgressStore(aiConfig(['progress' => ['driver' => 'array']]));
 
