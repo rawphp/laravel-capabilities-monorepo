@@ -26,6 +26,7 @@ use Rawphp\Capabilities\Schema\OutputValidator;
 use Rawphp\Capabilities\Schema\ServerRuleChecker;
 use Rawphp\Capabilities\Support\CapabilityContext;
 use Rawphp\Capabilities\Support\CapabilityData;
+use Rawphp\Capabilities\Support\CapabilityFailure;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Support\ErrorCodeMap;
 use Rawphp\Capabilities\Support\FailureReporter;
@@ -972,12 +973,21 @@ final class InvokePipeline
 
     /**
      * Bug-class errors are reported and hidden; missing models are not_found;
+     * a CapabilityFailure keeps its code and message;
      * anything else is a deliberate domain throw and keeps its message (L-004).
      */
     private function runFailure(Throwable $e): CapabilityResult
     {
         if ($e instanceof ModelNotFoundException) {
             return CapabilityResult::failure(code: 'not_found', message: 'Not found.');
+        }
+
+        if ($e instanceof CapabilityFailure) {
+            return CapabilityResult::failure(
+                code: $e->errorCode,
+                message: $e->getMessage(),
+                extra: $e->retryAfter === null ? [] : ['retry_after' => $e->retryAfter],
+            );
         }
 
         // QueryException is a PDOException.
