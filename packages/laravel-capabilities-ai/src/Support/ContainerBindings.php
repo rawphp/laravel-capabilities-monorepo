@@ -158,6 +158,7 @@ final class ContainerBindings
             maxRetries: (int) ($config['llm']['anthropic']['max_retries'] ?? 2),
             timeoutSeconds: $timeout,
             deadlineSeconds: $claimTtl,
+            effort: isset($config['llm']['anthropic']['effort']) ? (string) $config['llm']['anthropic']['effort'] : null,
         );
     }
 

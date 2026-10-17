@@ -64,6 +64,9 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
      */
     private const DEADLINE_MARGIN_SECONDS = 2;
 
+    /** Values the API accepts for output_config.effort. */
+    private const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+
     /** Absolute turn deadline (hrtime ns) from withDeadline(); null = per-call deadline only. */
     private ?int $turnDeadlineNs = null;
 
@@ -78,9 +81,16 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
         private readonly int $timeoutSeconds = self::DEFAULT_TIMEOUT_SECONDS,
         /** Whole complete() call, 429 waits included, must end this long after it starts (claim_ttl). */
         private readonly int $deadlineSeconds = Package::DEFAULT_CLAIM_TTL,
+        /** output_config.effort; null omits it and the model uses its own default. */
+        private readonly ?string $effort = null,
     ) {
         if ($this->timeoutSeconds <= 0) {
             throw new InvalidArgumentException('Anthropic timeout must be a positive number of seconds');
+        }
+        if ($this->effort !== null && ! in_array($this->effort, self::EFFORTS, true)) {
+            throw new InvalidArgumentException(
+                "Anthropic effort '{$this->effort}' is not one of: ".implode(', ', self::EFFORTS)
+            );
         }
     }
 
@@ -171,6 +181,10 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
 
         if ($tools !== []) {
             $payload['tools'] = $this->mapTools($tools);
+        }
+
+        if ($this->effort !== null) {
+            $payload['output_config'] = ['effort' => $this->effort];
         }
 
         try {

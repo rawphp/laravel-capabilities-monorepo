@@ -60,6 +60,7 @@ Key defaults (`config/capabilities-ai.php`):
 | `llm.driver` | `fake` (set `CAPABILITIES_AI_LLM_DRIVER=anthropic` or bind `LlmClient` for production) — `fake` outside testing throws unless `CAPABILITIES_AI_ALLOW_UNSAFE=1` |
 | `llm.anthropic.api_key` | `ANTHROPIC_API_KEY` |
 | `llm.anthropic.model` | `claude-opus-5-5` (`CAPABILITIES_AI_ANTHROPIC_MODEL`) |
+| `llm.anthropic.effort` | `null` (`CAPABILITIES_AI_ANTHROPIC_EFFORT`) — sent as `output_config.effort`: `low`, `medium`, `high`, `xhigh` or `max`. `null` (unset or empty env) omits it, so the model default applies (`medium` on Opus 5.5). Any other value makes the anthropic `LlmClient` refuse to build (`InvalidArgumentException`) |
 | `llm.anthropic.base_url` | `https://api.anthropic.com` (`CAPABILITIES_AI_ANTHROPIC_BASE_URL`) |
 | `llm.anthropic.max_tokens` | `64000` (`CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS`) — a ceiling, not a target. Requests are non-streaming, so a turn only gets what the model writes within `llm.anthropic.timeout`; a reply that needs longer fails the turn as a retryable timeout. For very long replies raise `timeout` and `claim_ttl` together |
 | `llm.anthropic.max_retries` | `2` (`CAPABILITIES_AI_ANTHROPIC_MAX_RETRIES`) — Anthropic 429 retries per request; waits `Retry-After` seconds (capped at 60) or 1s, 2s, 4s…; `0` disables. A retry runs with its `timeout` capped to what is left of the turn's `claim_ttl` (counted from the job start, across all rounds) and is skipped when the wait would leave under 10s; the 429 then fails the turn as retryable |
