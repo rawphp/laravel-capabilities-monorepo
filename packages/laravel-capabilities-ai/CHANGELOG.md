@@ -13,6 +13,8 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Changed
 
+#### Anthropic default model: Opus 5.5
+
 - **Breaking for hosts on package defaults: the default Anthropic model is now
   `claude-opus-5-5`** (Claude Opus 5.5; was `claude-sonnet-4-6`). Changed in
   `config/capabilities-ai.php` (`llm.anthropic.model`), the `AnthropicLlmClient`
