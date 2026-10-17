@@ -9,7 +9,6 @@ use Rawphp\Capabilities\Http\HttpResponse;
 use Rawphp\Capabilities\Support\CapabilityFailure;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Tests\Fixtures\AuditHelpers;
-use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\RecordingExceptionHandler;
 
@@ -213,31 +212,7 @@ it('carries constructor extra through the pipeline beside the code\'s wire field
         ->and($response->body['error']['hint'])->toBe('Ask for a new one.');
 });
 
-/**
- * @param  Closure(): mixed  $run
- * @return array{registry: mixed, name: string, opts: array<string, mixed>}
- */
-function wrappedIdempotentHarness(Closure $run, string $key): array
-{
-    $capsule = new Manager;
-    $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
-
-    $h = AuditHelpers::harness([
-        'transactions' => ['wrap_run' => true],
-        'transaction_connection' => $capsule->getConnection(),
-        'run' => $run,
-    ]);
-    // The store and the guard must read one clock for a released key to expire.
-    $h['registry']->withClock($h['fakes']->clock);
-
-    return [
-        'registry' => $h['registry'],
-        'name' => $h['name'],
-        'opts' => AuditHelpers::options('http', ['idempotency_key' => $key]),
-    ];
-}
-
-it('replays a rate_limited thrown from an unwrapped run(): its writes may have committed', function () {
+it('replays a rate_limited thrown from run(): its writes may have committed', function () {
     $runs = 0;
     $h = PipelineHelpers::harness(['run' => function () use (&$runs) {
         $runs++;
@@ -255,40 +230,30 @@ it('replays a rate_limited thrown from an unwrapped run(): its writes may have c
         ->and($runs)->toBe(1);
 });
 
-it('frees the key after a rate_limited under wrap_run rolled back: a retry runs again', function () {
+it('replays a rate_limited thrown under wrap_run: writes outside the transaction may have survived', function () {
+    $capsule = new Manager;
+    $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
     $runs = 0;
-    $h = wrappedIdempotentHarness(function () use (&$runs) {
-        $runs++;
+    $h = AuditHelpers::harness([
+        'transactions' => ['wrap_run' => true],
+        'transaction_connection' => $capsule->getConnection(),
+        'run' => function () use (&$runs) {
+            $runs++;
 
-        throw CapabilityFailure::rateLimited('Too many wrong emails.', 600);
-    }, 'check-email-1');
+            throw CapabilityFailure::rateLimited('Provider busy.', 60);
+        },
+    ]);
+    $h['registry']->withClock($h['fakes']->clock);
+    $opts = AuditHelpers::options('http', ['idempotency_key' => 'charge-2']);
 
-    $first = $h['registry']->invoke($h['name'], AuditHelpers::input(), $h['opts']);
-    $second = $h['registry']->invoke($h['name'], AuditHelpers::input(), $h['opts']);
+    $first = $h['registry']->invoke($h['name'], AuditHelpers::input(), $opts);
+    $wrapped = $h['registry']->lastRunWasWrapped();
+    $second = $h['registry']->invoke($h['name'], AuditHelpers::input(), $opts);
 
     expect($first->errorCode())->toBe('rate_limited')
+        ->and($wrapped)->toBeTrue()
         ->and($second->errorCode())->toBe('rate_limited')
-        ->and($second->error['retry_after'])->toBe(600)
-        ->and($runs)->toBe(2);
-});
-
-it('lets a wrapped retry under the same key succeed once run() stops refusing', function () {
-    $runs = 0;
-    $h = wrappedIdempotentHarness(function () use (&$runs) {
-        if (++$runs === 1) {
-            throw CapabilityFailure::rateLimited('Slow down.', 60);
-        }
-
-        return new CreateInvoiceResult(invoice_id: 42);
-    }, 'check-email-2');
-
-    $h['registry']->invoke($h['name'], AuditHelpers::input(), $h['opts']);
-    $retry = $h['registry']->invoke($h['name'], AuditHelpers::input(), $h['opts']);
-    $replay = $h['registry']->invoke($h['name'], AuditHelpers::input(), $h['opts']);
-
-    expect($retry->isOk())->toBeTrue()
-        ->and($replay->isOk())->toBeTrue()
-        ->and($runs)->toBe(2);
+        ->and($runs)->toBe(1);
 });
 
 it('still maps a plain RuntimeException to domain_error', function () {

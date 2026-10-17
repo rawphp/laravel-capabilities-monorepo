@@ -326,10 +326,10 @@ final class IdempotencyGuard
     }
 
     /**
-     * Settle a failed invoke's key. A rate_limited refusal frees the key, so the
-     * retry after Retry-After runs, when no domain write can have survived it
-     * ($domainUnchanged) and no approval owns the row. Every other failure is
-     * stored and replays for the TTL (D-005).
+     * Settle a failed invoke's key. A rate_limited refusal from before run()
+     * ($beforeRun) frees the key, so the retry after Retry-After runs, unless an
+     * approval owns the row. Every other failure is stored and replays for the
+     * TTL: a run() that threw may have written outside any transaction (D-005).
      *
      * @return bool whether the failure was stored
      */
@@ -339,9 +339,9 @@ final class IdempotencyGuard
         string $key,
         string $requestHash,
         CapabilityResult $result,
-        bool $domainUnchanged,
+        bool $beforeRun,
     ): bool {
-        if ($domainUnchanged && $result->errorCode() === 'rate_limited' && ! $this->approvalOwns($definition, $context, $key)) {
+        if ($beforeRun && $result->errorCode() === 'rate_limited' && ! $this->approvalOwns($definition, $context, $key)) {
             $this->releaseClaim($definition, $context, $key);
 
             return false;
@@ -353,8 +353,8 @@ final class IdempotencyGuard
     }
 
     /**
-     * Drop a processing claim no domain write survived (wrap_run rolled back, or
-     * run() never ran), so a retry can execute again (D-010).
+     * Drop a processing claim so a retry can execute again: after wrap_run rolled
+     * back a strict audit failure (D-010), or a refusal from before run().
      */
     public function releaseClaim(CapabilityDefinition $definition, CapabilityContext $context, string $key): void
     {

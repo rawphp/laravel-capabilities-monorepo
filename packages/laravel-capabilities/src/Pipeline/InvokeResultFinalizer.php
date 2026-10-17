@@ -69,8 +69,7 @@ final class InvokeResultFinalizer
                 $state->idempotencyKey,
                 (string) $state->requestHash,
                 $result,
-                // A wrapped run() that threw was rolled back.
-                domainUnchanged: ! $state->runCalled || $this->observation->lastRunWasWrapped,
+                beforeRun: ! $state->runCalled,
             );
             if ($stored && ! $state->hasStage(PipelineStages::STORE_IDEMPOTENCY)) {
                 $state->mark(PipelineStages::STORE_IDEMPOTENCY);

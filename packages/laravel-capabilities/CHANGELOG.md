@@ -24,10 +24,10 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ### Fixed
 
-- **A `rate_limited` refusal that wrote nothing no longer replays for the idempotency key's
-  lifetime.** When the rate limiter refused before `run()`, or `run()` threw under `wrap_run` and
-  rolled back, the key is freed, so a retry under the same key after `Retry-After` runs again.
-  A refusal from an unwrapped `run()` or an approved execution is stored and replays as before.
+- **The rate limiter's refusal no longer replays for the idempotency key's lifetime.** A
+  `rate_limited` from the limiter, before `run()`, frees the key, so a retry under the same key
+  after `Retry-After` runs. A `rate_limited` thrown from `run()`, or one on a key an approval
+  owns, is stored and replays as before.
 
 ## [0.9.0] - 2026-10-17
 

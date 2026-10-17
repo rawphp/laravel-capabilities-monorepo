@@ -1,7 +1,7 @@
 <?php
 
-// A rate_limited refusal frees its key only when no domain write can have
-// survived and no approval owns the row; every other failure is stored (D-005).
+// A rate_limited refusal frees its key only when it came before run() and no
+// approval owns the row; every other failure is stored (D-005).
 
 declare(strict_types=1);
 
@@ -30,19 +30,19 @@ function settleHarness(string $key): array
     return ['guard' => $guard, 'store' => $store, 'definition' => $definition, 'context' => $context, 'hash' => $hash];
 }
 
-it('frees a processing claim on rate_limited when the domain is unchanged', function () {
+it('frees a processing claim on a rate_limited refusal from before run()', function () {
     $h = settleHarness('settle-free');
 
-    $stored = $h['guard']->settleFailure($h['definition'], $h['context'], 'settle-free', $h['hash'], settleRateLimited(), domainUnchanged: true);
+    $stored = $h['guard']->settleFailure($h['definition'], $h['context'], 'settle-free', $h['hash'], settleRateLimited(), beforeRun: true);
 
     expect($stored)->toBeFalse()
         ->and($h['guard']->lookup($h['definition'], $h['context'], 'settle-free', $h['hash'])['action'])->toBe('continue');
 });
 
-it('stores rate_limited when a domain write may have survived', function () {
+it('stores rate_limited thrown from run(): it may have written', function () {
     $h = settleHarness('settle-written');
 
-    $stored = $h['guard']->settleFailure($h['definition'], $h['context'], 'settle-written', $h['hash'], settleRateLimited(), domainUnchanged: false);
+    $stored = $h['guard']->settleFailure($h['definition'], $h['context'], 'settle-written', $h['hash'], settleRateLimited(), beforeRun: false);
 
     expect($stored)->toBeTrue()
         ->and($h['store']->find('tenant-1', 'user', '1', 'create-invoice', 'settle-written')['status'])->toBe('failed');
@@ -52,7 +52,7 @@ it('stores rate_limited on a row an approval owns, keeping the link', function (
     $h = settleHarness('settle-approval');
     $h['guard']->storeResult($h['definition'], $h['context'], 'settle-approval', $h['hash'], CapabilityResult::approvalRequired('appr-1'));
 
-    $stored = $h['guard']->settleFailure($h['definition'], $h['context'], 'settle-approval', $h['hash'], settleRateLimited(), domainUnchanged: true);
+    $stored = $h['guard']->settleFailure($h['definition'], $h['context'], 'settle-approval', $h['hash'], settleRateLimited(), beforeRun: true);
 
     $row = $h['store']->find('tenant-1', 'user', '1', 'create-invoice', 'settle-approval');
     expect($stored)->toBeTrue()
@@ -60,7 +60,7 @@ it('stores rate_limited on a row an approval owns, keeping the link', function (
         ->and($row['approval_id'])->toBe('appr-1');
 });
 
-it('stores every other failure even when the domain is unchanged', function () {
+it('stores every other failure, even from before run()', function () {
     $h = settleHarness('settle-domain');
 
     $stored = $h['guard']->settleFailure(
@@ -69,7 +69,7 @@ it('stores every other failure even when the domain is unchanged', function () {
         'settle-domain',
         $h['hash'],
         CapabilityResult::failure(code: 'domain_error', message: 'Nope.'),
-        domainUnchanged: true,
+        beforeRun: true,
     );
 
     expect($stored)->toBeTrue()
