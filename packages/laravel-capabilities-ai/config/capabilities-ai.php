@@ -68,6 +68,12 @@ return [
              */
             'effort' => $env('CAPABILITIES_AI_ANTHROPIC_EFFORT'),
             /**
+             * Send the system prompt as one cache_control (ephemeral) block, so a long
+             * manifest is billed once per session instead of once per turn. Prompts under
+             * Anthropic's minimum cacheable length are sent the same way and not cached.
+             */
+            'cache_system' => filter_var($env('CAPABILITIES_AI_ANTHROPIC_CACHE_SYSTEM', true), FILTER_VALIDATE_BOOLEAN),
+            /**
              * Host-parity ceiling (was hard-coded 1024; truncated long coach replies). A ceiling,
              * not a target: requests are non-streaming, so the reply a turn can actually get is
              * whatever the model writes within `timeout` — a longer one fails the turn as a
