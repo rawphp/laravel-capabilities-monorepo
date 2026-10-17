@@ -1,0 +1,23 @@
+# do-work loop config for the Laravel Capabilities monorepo (/dw-init)
+tracker:
+  backend: github
+  project: rawphp/laravel-capabilities-monorepo
+models:
+  default: claude-opus-5-5
+  checker: claude-fable-5-1
+gates:
+  check: composer format:test && composer analyse && composer test
+
+# Read by the /factory skill and softfac. One GitHub issue in, one draft pull request out.
+# Same three PHP gates as .github/workflows/tests.yml and scripts/release.sh (coverage floors stay in CI).
+factory:
+  instructors: [tomkaczocha, rawphp]
+  base: main
+  provision:
+    - composer install --no-interaction --prefer-dist --no-progress
+  gate:
+    - composer format:test
+    - composer analyse
+    - composer test
+  limits: { minutes: 90, gate_retries: 2 }
+  autonomy: pr
