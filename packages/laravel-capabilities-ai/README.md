@@ -24,7 +24,7 @@ Requires [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabil
 | **Upgrade (chat HTTP non-proposal routes)** | [docs/user-guide.md#upgrade-for-hosts-chat-http-non-proposal-routes](docs/user-guide.md#upgrade-for-hosts-chat-http-non-proposal-routes) · [CHANGELOG 0.5.1 Breaking](CHANGELOG.md#chat-http-non-proposal-routes-stub--real) (history / showTurn / cancelTurn / turnEvents / destroyConversation; **404** / **409**; `routes.enabled`) |
 | **Upgrade (LlmClient / tool rounds)** | [docs/user-guide.md#upgrade-for-hosts-llmclient--tool-rounds](docs/user-guide.md#upgrade-for-hosts-llmclient--tool-rounds) · [CHANGELOG 0.5.1 Breaking](CHANGELOG.md#llmclient-supportstoolrounds-compile--runtime) |
 | **Upgrade (tool progress + tool messages)** | [docs/user-guide.md#upgrade-for-hosts-tool-progress--tool-messages](docs/user-guide.md#upgrade-for-hosts-tool-progress--tool-messages) · [CHANGELOG 0.5.1 Breaking](CHANGELOG.md#tool-progress--tool-role-message-content) |
-| **Upgrade (Anthropic default model ID)** | [docs/user-guide.md#upgrade-for-hosts-anthropic-default-model-id](docs/user-guide.md#upgrade-for-hosts-anthropic-default-model-id) · [CHANGELOG 0.5.1 Breaking](CHANGELOG.md#anthropic-default-model-id) |
+| **Upgrade (Anthropic default model ID)** | [docs/user-guide.md#upgrade-for-hosts-anthropic-default-model-id](docs/user-guide.md#upgrade-for-hosts-anthropic-default-model-id) · [CHANGELOG Unreleased](CHANGELOG.md#anthropic-default-model-opus-55) · [CHANGELOG 0.5.1 Breaking (history)](CHANGELOG.md#anthropic-default-model-id) |
 | **Upgrade (manual DI / constructor / job handle)** | [docs/user-guide.md#upgrade-for-hosts-manual-di--constructor--job-handle](docs/user-guide.md#upgrade-for-hosts-manual-di--constructor--job-handle) · [CHANGELOG 0.5.1 Breaking](CHANGELOG.md#manual-di--constructor--job-handle) |
 | Core package | [rawphp/laravel-capabilities](https://github.com/rawphp/laravel-capabilities) |
 | Messaging sibling | [rawphp/laravel-capabilities-messaging](https://github.com/rawphp/laravel-capabilities-messaging) |
@@ -59,7 +59,7 @@ Key defaults (`config/capabilities-ai.php`):
 | `progress.ttl_seconds` | `86400` (`CAPABILITIES_AI_PROGRESS_TTL`) — Redis progress key lifetime after a turn's last event |
 | `llm.driver` | `fake` (set `CAPABILITIES_AI_LLM_DRIVER=anthropic` or bind `LlmClient` for production) — `fake` outside testing throws unless `CAPABILITIES_AI_ALLOW_UNSAFE=1` |
 | `llm.anthropic.api_key` | `ANTHROPIC_API_KEY` |
-| `llm.anthropic.model` | `claude-sonnet-4-6` (`CAPABILITIES_AI_ANTHROPIC_MODEL`) |
+| `llm.anthropic.model` | `claude-opus-5-5` (`CAPABILITIES_AI_ANTHROPIC_MODEL`) |
 | `llm.anthropic.base_url` | `https://api.anthropic.com` (`CAPABILITIES_AI_ANTHROPIC_BASE_URL`) |
 | `llm.anthropic.max_tokens` | `64000` (`CAPABILITIES_AI_ANTHROPIC_MAX_TOKENS`) — a ceiling, not a target. Requests are non-streaming, so a turn only gets what the model writes within `llm.anthropic.timeout`; a reply that needs longer fails the turn as a retryable timeout. For very long replies raise `timeout` and `claim_ttl` together |
 | `llm.anthropic.max_retries` | `2` (`CAPABILITIES_AI_ANTHROPIC_MAX_RETRIES`) — Anthropic 429 retries per request; waits `Retry-After` seconds (capped at 60) or 1s, 2s, 4s…; `0` disables. A retry runs with its `timeout` capped to what is left of the turn's `claim_ttl` (counted from the job start, across all rounds) and is skipped when the wait would leave under 10s; the 429 then fails the turn as retryable |

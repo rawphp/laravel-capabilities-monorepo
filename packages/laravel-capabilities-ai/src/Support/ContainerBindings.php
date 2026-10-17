@@ -150,7 +150,7 @@ final class ContainerBindings
 
         return new AnthropicLlmClient(
             apiKey: (string) ($config['llm']['anthropic']['api_key'] ?? ''),
-            model: (string) ($config['llm']['anthropic']['model'] ?? 'claude-sonnet-4-6'),
+            model: (string) ($config['llm']['anthropic']['model'] ?? 'claude-opus-5-5'),
             baseUrl: (string) ($config['llm']['anthropic']['base_url'] ?? 'https://api.anthropic.com'),
             maxTokens: (int) ($config['llm']['anthropic']['max_tokens'] ?? 64000),
             metrics: $metrics,

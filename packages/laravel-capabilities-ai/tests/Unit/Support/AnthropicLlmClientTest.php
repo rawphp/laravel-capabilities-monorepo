@@ -746,6 +746,29 @@ it('outbound payload uses max_tokens 64000 by default (host parity)', function (
     });
 });
 
+it('outbound payload uses model claude-opus-5-5 by default', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'content' => [
+                ['type' => 'text', 'text' => 'ok'],
+            ],
+        ], 200),
+    ]);
+
+    $client = new AnthropicLlmClient('test-key');
+    $client->complete([
+        ['role' => 'user', 'content' => 'hi'],
+    ]);
+
+    Http::assertSent(function ($request) {
+        $body = $request->data();
+
+        return ($body['model'] ?? null) === 'claude-opus-5-5';
+    });
+});
+
 it('constructor max_tokens override is sent in outbound payload', function () {
     bootAnthropicHttp();
 

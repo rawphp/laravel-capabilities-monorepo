@@ -69,7 +69,7 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
 
     public function __construct(
         private readonly string $apiKey,
-        private readonly string $model = 'claude-sonnet-4-6',
+        private readonly string $model = 'claude-opus-5-5',
         private readonly string $baseUrl = 'https://api.anthropic.com',
         private readonly int $maxTokens = 64000,
         private readonly ?Metrics $metrics = null,
