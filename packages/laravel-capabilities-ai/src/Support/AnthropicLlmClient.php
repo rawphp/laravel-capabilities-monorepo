@@ -28,6 +28,10 @@ use Throwable;
  * Observability (D-019): optional core Metrics/Tracer record latency, token
  * usage (response `usage`) and failures around the outbound call only.
  *
+ * Prompt caching: with $cacheSystem the joined system prompt goes out as one text
+ * block marked cache_control ephemeral, so a long manifest is billed once per session
+ * rather than once per turn. Usage and metrics report the cache write/read counts.
+ *
  * Deadline: $deadlineSeconds after the call started, or the turn deadline TurnRunner
  * passes via withDeadline() when that is sooner. Each request's transport timeout is
  * $timeoutSeconds capped at the time left minus DEADLINE_MARGIN_SECONDS, and no request
@@ -83,6 +87,8 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
         private readonly int $deadlineSeconds = Package::DEFAULT_CLAIM_TTL,
         /** output_config.effort; null omits it and the model uses its own default. */
         private readonly ?string $effort = null,
+        /** Send the system prompt as one cache_control block; false sends the plain string. */
+        private readonly bool $cacheSystem = true,
     ) {
         if ($this->timeoutSeconds <= 0) {
             throw new InvalidArgumentException('Anthropic timeout must be a positive number of seconds');
@@ -176,7 +182,10 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
             'messages' => $merged !== [] ? $merged : [['role' => 'user', 'content' => '(empty)']],
         ];
         if ($systemParts !== []) {
-            $payload['system'] = implode("\n\n", $systemParts);
+            $system = implode("\n\n", $systemParts);
+            $payload['system'] = $this->cacheSystem
+                ? [['type' => 'text', 'text' => $system, 'cache_control' => ['type' => 'ephemeral']]]
+                : $system;
         }
 
         if ($tools !== []) {
@@ -245,6 +254,11 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
                 'input_tokens' => (int) ($json['usage']['input_tokens'] ?? 0),
                 'output_tokens' => (int) ($json['usage']['output_tokens'] ?? 0),
             ];
+            foreach (['cache_creation_input_tokens', 'cache_read_input_tokens'] as $key) {
+                if (isset($json['usage'][$key])) {
+                    $out['usage'][$key] = (int) $json['usage'][$key];
+                }
+            }
         }
 
         return $out;
@@ -312,7 +326,12 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
         }
 
         $usage = [];
-        foreach (['input' => 'input_tokens', 'output' => 'output_tokens'] as $type => $key) {
+        foreach ([
+            'input' => 'input_tokens',
+            'output' => 'output_tokens',
+            'cache_creation' => 'cache_creation_input_tokens',
+            'cache_read' => 'cache_read_input_tokens',
+        ] as $type => $key) {
             $count = data_get($response->json(), 'usage.'.$key);
             if (is_int($count)) {
                 $usage[$key] = $count;
