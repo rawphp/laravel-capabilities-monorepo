@@ -53,6 +53,14 @@ it('accepts any mapped code through the constructor', function () {
         ->and($e->extra())->toBe(['hint' => 'ask again']);
 });
 
+it('takes code, message and extra as named arguments', function () {
+    $e = new CapabilityFailure(code: 'conflict', message: 'Already closed.', extra: ['state' => 'closed']);
+
+    expect($e->code())->toBe('conflict')
+        ->and($e->getMessage())->toBe('Already closed.')
+        ->and($e->extra())->toBe(['state' => 'closed']);
+});
+
 it('refuses a code that ErrorCodeMap does not know at construction', function () {
     new CapabilityFailure('teapot', 'I am a teapot.');
 })->throws(InvalidArgumentException::class, 'teapot');
