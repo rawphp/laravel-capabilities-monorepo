@@ -18,8 +18,9 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   the approval row did not store it. Rows now store `agent_json`, and the approved run
   gets the same `agent()` as the request. **Hosts:** run the new
   `add_agent_json_to_capabilities_approvals_table` migration (additive, nullable). Until
-  it runs, approvals requested by an agent tool fail on the missing column; approvals
-  from other surfaces are unaffected. Rows without it run with `agent()` null, as before.
+  it runs, approvals still queue: the database store leaves the agent turn out, reports
+  the missing column to the exception handler, and the approved run gets `agent()` null,
+  as before.
 
 ## [0.9.0] - 2026-10-17
 
