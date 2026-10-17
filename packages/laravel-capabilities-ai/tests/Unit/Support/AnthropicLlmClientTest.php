@@ -792,6 +792,63 @@ it('constructor max_tokens override is sent in outbound payload', function () {
     });
 });
 
+it('omits output_config from the outbound payload when effort is null', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'content' => [
+                ['type' => 'text', 'text' => 'ok'],
+            ],
+        ], 200),
+    ]);
+
+    $client = new AnthropicLlmClient('test-key');
+    $client->complete([
+        ['role' => 'user', 'content' => 'hi'],
+    ]);
+
+    Http::assertSentCount(1);
+    Http::assertSent(function ($request) {
+        return ! array_key_exists('output_config', $request->data());
+    });
+});
+
+it('sends the configured effort verbatim as output_config.effort', function (string $effort) {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'content' => [
+                ['type' => 'text', 'text' => 'ok'],
+            ],
+        ], 200),
+    ]);
+
+    $client = new AnthropicLlmClient('test-key', effort: $effort);
+    $client->complete([
+        ['role' => 'user', 'content' => 'hi'],
+    ]);
+
+    Http::assertSentCount(1);
+    Http::assertSent(function ($request) use ($effort) {
+        $body = $request->data();
+
+        return ($body['output_config'] ?? null) === ['effort' => $effort]
+            && ! array_key_exists('thinking', $body);
+    });
+})->with(['low', 'medium', 'high', 'xhigh', 'max']);
+
+it('refuses to build with an effort outside the allowed list', function (string $effort) {
+    bootAnthropicHttp();
+    Http::fake();
+
+    expect(fn () => new AnthropicLlmClient('test-key', effort: $effort))
+        ->toThrow(InvalidArgumentException::class, "Anthropic effort '{$effort}' is not one of: low, medium, high, xhigh, max");
+
+    Http::assertNothingSent();
+})->with(['turbo', '', 'HIGH', 'minimal']);
+
 it('passes multimodal user content blocks through to Messages API (vision)', function () {
     bootAnthropicHttp();
 

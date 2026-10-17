@@ -205,6 +205,88 @@ it('makeLlmClient wires anthropic max_retries from config (default 2, 0 disables
     'disabled' => [0, 1],
 ]);
 
+it('package config defaults llm.anthropic.effort to null', function () {
+    $anthropic = aiConfig()['llm']['anthropic'];
+
+    expect($anthropic)->toHaveKey('effort')
+        ->and($anthropic['effort'])->toBeNull();
+});
+
+it('makeLlmClient wires anthropic effort from config into outbound payload', function () {
+    $app = new Container;
+    Facade::setFacadeApplication($app);
+    $app->singleton('http', fn () => new Factory);
+    Http::swap(new Factory);
+
+    Http::fake([
+        'example.test/*' => Http::response([
+            'content' => [
+                ['type' => 'text', 'text' => 'ok'],
+            ],
+        ], 200),
+    ]);
+
+    $client = ContainerBindings::makeLlmClient(aiConfig([
+        'llm' => [
+            'driver' => 'anthropic',
+            'anthropic' => [
+                'api_key' => 'test-key',
+                'base_url' => 'https://example.test',
+                'effort' => 'low',
+            ],
+        ],
+    ]));
+
+    $client->complete([['role' => 'user', 'content' => 'hi']]);
+
+    Http::assertSent(function ($request) {
+        return ($request->data()['output_config'] ?? null) === ['effort' => 'low'];
+    });
+});
+
+it('makeLlmClient anthropic sends no output_config with the package default effort', function () {
+    $app = new Container;
+    Facade::setFacadeApplication($app);
+    $app->singleton('http', fn () => new Factory);
+    Http::swap(new Factory);
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'content' => [
+                ['type' => 'text', 'text' => 'ok'],
+            ],
+        ], 200),
+    ]);
+
+    $client = ContainerBindings::makeLlmClient(aiConfig([
+        'llm' => [
+            'driver' => 'anthropic',
+            'anthropic' => [
+                'api_key' => 'test-key',
+            ],
+        ],
+    ]));
+
+    $client->complete([['role' => 'user', 'content' => 'hi']]);
+
+    Http::assertSentCount(1);
+    Http::assertSent(function ($request) {
+        return ! array_key_exists('output_config', $request->data());
+    });
+});
+
+it('makeLlmClient anthropic with an invalid effort fails at build', function () {
+    ContainerBindings::makeLlmClient(aiConfig([
+        'llm' => [
+            'driver' => 'anthropic',
+            'anthropic' => [
+                'api_key' => 'test-key',
+                'effort' => 'turbo',
+            ],
+        ],
+    ]));
+})->throws(InvalidArgumentException::class, "Anthropic effort 'turbo' is not one of: low, medium, high, xhigh, max");
+
 it('makeProgressStore returns ArrayProgressStore for array driver', function () {
     $store = ContainerBindings::makeProgressStore(aiConfig(['progress' => ['driver' => 'array']]));
 
