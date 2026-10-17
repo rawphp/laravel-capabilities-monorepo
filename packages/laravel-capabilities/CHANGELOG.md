@@ -16,11 +16,11 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 - **An approved request keeps the agent turn that asked (D-006).** A tool the agent called
   that needed approval ran with `CapabilityContext::agent()` null once accepted, because
   the approval row did not store it. Rows now store `agent_json`, and the approved run
-  gets the same `agent()` as the request. **Hosts:** run the new
-  `add_agent_json_to_capabilities_approvals_table` migration (additive, nullable). Until
-  it runs, approvals still queue: the database store leaves the agent turn out, reports
-  the missing column to the exception handler, and the approved run gets `agent()` null,
-  as before.
+  gets the same `agent()` as the request. **Hosts:** publish and run the new
+  `add_agent_json_to_capabilities_approvals_table` migration (additive, nullable)
+  **before** deploying this version. Without it, approvals requested by an agent tool fail
+  on the missing column; approvals from other surfaces are unaffected. Rows from before
+  the column run with `agent()` null.
 
 - **`run()` can refuse with `conflict` (409) or `rate_limited` (429).** Throw
   `CapabilityFailure::conflict($message)` or

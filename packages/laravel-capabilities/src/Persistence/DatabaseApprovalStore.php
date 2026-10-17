@@ -4,8 +4,6 @@ namespace Rawphp\Capabilities\Persistence;
 
 use Rawphp\Capabilities\Contracts\ApprovalStore;
 use Rawphp\Capabilities\Contracts\Clock;
-use Rawphp\Capabilities\Support\FailureReporter;
-use RuntimeException;
 
 /**
  * Production-oriented ApprovalStore using a {@see TableGateway} (D-006).
@@ -58,16 +56,8 @@ final class DatabaseApprovalStore implements ApprovalStore
             'updated_at' => isset($record['updated_at']) ? (string) $record['updated_at'] : $now,
         ];
 
-        // agent_json needs the add_agent_json migration. Until it runs, every approval still
-        // queues: the row goes in without the agent turn, and the approved run gets agent()
-        // null, as before the column existed. An agent turn dropped this way is reported.
-        if ($row['agent_json'] !== null && $this->table instanceof QueryTableGateway && ! $this->table->hasColumn('agent_json')) {
-            FailureReporter::report(new RuntimeException(
-                'capabilities_approvals has no agent_json column, so this approval was queued without its agent turn. '
-                .'Publish and run the add_agent_json_to_capabilities_approvals_table migration.'
-            ));
-            $row['agent_json'] = null;
-        }
+        // Only agent-originated rows need the agent_json column, so a table from before
+        // its migration still takes every other approval.
         if ($row['agent_json'] === null) {
             unset($row['agent_json']);
         }
