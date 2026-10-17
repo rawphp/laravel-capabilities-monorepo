@@ -65,7 +65,7 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
     private const DEADLINE_MARGIN_SECONDS = 2;
 
     /** Values the API accepts for output_config.effort. */
-    public const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+    private const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 
     /** Absolute turn deadline (hrtime ns) from withDeadline(); null = per-call deadline only. */
     private ?int $turnDeadlineNs = null;
