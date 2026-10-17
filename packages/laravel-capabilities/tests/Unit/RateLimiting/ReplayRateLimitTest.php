@@ -51,3 +51,27 @@ it('replay counts toward the per-capability rate limit [D-013]', function () {
         ->and($hammer->errorCode())->toBe('rate_limited')
         ->and($h['runCount']->value)->toBe(1);
 });
+
+it('a fresh key refused by the rate limit is not stored: the next turn runs under it [D-013]', function () {
+    $h = RateLimitHelpers::harness([
+        'max_tool_calls' => 2,
+        'per_min' => 1000,
+        'per_cap' => 1000,
+        'idempotent' => 'optional',
+        'name' => 'refused-key-freed',
+    ]);
+    // The store and the guard must read one clock for a released key to expire.
+    $h['registry']->withClock($h['fakes']->clock);
+    $opts = fn (int $calls) => RateLimitHelpers::options('agent', [
+        'idempotency_key' => 'refused-key-1',
+        'agent_turn_tool_calls' => $calls,
+    ]);
+
+    $refused = $h['registry']->invoke($h['name'], RateLimitHelpers::input(), $opts(3));
+    $nextTurn = $h['registry']->invoke($h['name'], RateLimitHelpers::input(), $opts(1));
+
+    expect($refused->errorCode())->toBe('rate_limited')
+        ->and($nextTurn->isOk())->toBeTrue()
+        ->and($nextTurn->isReplay())->toBeFalse()
+        ->and($h['runCount']->value)->toBe(1);
+});

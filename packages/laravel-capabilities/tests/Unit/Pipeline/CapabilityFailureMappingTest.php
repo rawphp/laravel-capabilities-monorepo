@@ -9,6 +9,7 @@ use Rawphp\Capabilities\Http\HttpResponse;
 use Rawphp\Capabilities\Support\CapabilityFailure;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\Capabilities\Tests\Fixtures\AuditHelpers;
+use Rawphp\Capabilities\Tests\Fixtures\CreateInvoiceResult;
 use Rawphp\Capabilities\Tests\Fixtures\PipelineHelpers;
 use Rawphp\Capabilities\Tests\Fixtures\RecordingExceptionHandler;
 
@@ -64,6 +65,14 @@ it('takes code, message and extra as named arguments', function () {
 it('refuses a code that ErrorCodeMap does not know at construction', function () {
     new CapabilityFailure('teapot', 'I am a teapot.');
 })->throws(InvalidArgumentException::class, 'teapot');
+
+it('refuses approval_required, which only the approval gate may produce', function () {
+    new CapabilityFailure('approval_required', 'Needs sign-off.');
+})->throws(InvalidArgumentException::class, 'approval_required');
+
+it('refuses extra keys that would override the code\'s wire fields', function (string $key) {
+    new CapabilityFailure('conflict', 'Closed.', [$key => 200]);
+})->throws(InvalidArgumentException::class)->with(['http_status', 'cli_exit', 'retryable']);
 
 it('maps a thrown conflict to 409 conflict with the message kept, unreported', function () {
     $reporter = RecordingExceptionHandler::bind();
@@ -190,6 +199,60 @@ it('stores the new code for idempotent replay', function () {
         ->and($second->errorCode())->toBe('conflict')
         ->and($second->error['http_status'])->toBe(409)
         ->and($runs)->toBe(1);
+});
+
+it('carries constructor extra through the pipeline beside the code\'s wire fields', function () {
+    $result = invokeFailing(new CapabilityFailure('gone', 'Link expired.', ['hint' => 'Ask for a new one.']));
+    $response = HttpResponse::fromResult($result);
+
+    expect($result->errorCode())->toBe('gone')
+        ->and($result->error['hint'])->toBe('Ask for a new one.')
+        ->and($result->error['http_status'])->toBe(410)
+        ->and($result->error['cli_exit'])->toBe(5)
+        ->and($response->status)->toBe(410)
+        ->and($response->body['error']['hint'])->toBe('Ask for a new one.');
+});
+
+it('does not replay a rate_limited refusal: a retry under the same key runs again', function () {
+    $runs = 0;
+    $h = PipelineHelpers::harness(['run' => function () use (&$runs) {
+        $runs++;
+
+        throw CapabilityFailure::rateLimited('Too many wrong emails.', 600);
+    }]);
+    // The store and the guard must read one clock for a released key to expire.
+    $h['registry']->withClock($h['fakes']->clock);
+    $opts = PipelineHelpers::options('http', ['idempotency_key' => 'check-email-1']);
+
+    $first = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), $opts);
+    $second = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), $opts);
+
+    expect($first->errorCode())->toBe('rate_limited')
+        ->and($second->errorCode())->toBe('rate_limited')
+        ->and($second->error['retry_after'])->toBe(600)
+        ->and($runs)->toBe(2);
+});
+
+it('lets a retry under the same key succeed once run() stops refusing', function () {
+    $runs = 0;
+    $h = PipelineHelpers::harness(['run' => function () use (&$runs) {
+        if (++$runs === 1) {
+            throw CapabilityFailure::rateLimited('Slow down.', 60);
+        }
+
+        return new CreateInvoiceResult(invoice_id: 42);
+    }]);
+    // The store and the guard must read one clock for a released key to expire.
+    $h['registry']->withClock($h['fakes']->clock);
+    $opts = PipelineHelpers::options('http', ['idempotency_key' => 'check-email-2']);
+
+    $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), $opts);
+    $retry = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), $opts);
+    $replay = $h['registry']->invoke($h['name'], PipelineHelpers::validInput(), $opts);
+
+    expect($retry->isOk())->toBeTrue()
+        ->and($replay->isOk())->toBeTrue()
+        ->and($runs)->toBe(2);
 });
 
 it('still maps a plain RuntimeException to domain_error', function () {

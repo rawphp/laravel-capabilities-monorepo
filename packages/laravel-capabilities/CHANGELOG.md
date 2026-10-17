@@ -18,8 +18,15 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   `::rateLimited($message, $retryAfter)`, or `new CapabilityFailure($code, $message, $extra)`)
   and every surface returns that code instead of `domain_error`: `conflict` is HTTP 409 and
   CLI exit 5, `rate_limited` is HTTP 429 with `Retry-After` and CLI exit 6. The failure is not
-  reported to the exception handler. A code missing from `ErrorCodeMap` throws
-  `InvalidArgumentException` at construction.
+  reported to the exception handler. Construction throws `InvalidArgumentException` for a code
+  missing from `ErrorCodeMap`, for `approval_required`, and for `http_status`, `cli_exit` or
+  `retryable` in `$extra`.
+
+### Fixed
+
+- **A `rate_limited` refusal no longer replays for the idempotency key's lifetime.** It is not
+  stored; the key is freed, so a retry under the same key after `Retry-After` runs again. This
+  covers the pre-run rate limiter as well as `run()`.
 
 ## [0.9.0] - 2026-10-17
 

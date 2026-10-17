@@ -982,7 +982,7 @@ final class InvokePipeline
             return CapabilityResult::failure(
                 code: $e->code(),
                 message: $e->getMessage(),
-                extra: array_merge(ErrorCodeMap::wireFields($e->code()), $e->extra()),
+                extra: $e->extra(),
             );
         }
 

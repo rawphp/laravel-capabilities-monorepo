@@ -63,13 +63,19 @@ final class InvokeResultFinalizer
     ): CapabilityResult {
         // Store idempotency failure when key present and after start of processing.
         if ($state->idempotencyKey && $state->context && $state->hasStage(PipelineStages::IDEMPOTENCY_LOOKUP) && ! $state->idempotentReplay) {
-            $this->idempotencyGuard->storeResult(
-                $state->definition,
-                $state->context,
-                $state->idempotencyKey,
-                (string) $state->requestHash,
-                $result,
-            );
+            if ($result->errorCode() === 'rate_limited') {
+                // A refusal that says "retry after N seconds" must not replay for the
+                // key's TTL: free the key so the retry runs again.
+                $this->idempotencyGuard->releaseClaim($state->definition, $state->context, $state->idempotencyKey);
+            } else {
+                $this->idempotencyGuard->storeResult(
+                    $state->definition,
+                    $state->context,
+                    $state->idempotencyKey,
+                    (string) $state->requestHash,
+                    $result,
+                );
+            }
             if (! $state->hasStage(PipelineStages::STORE_IDEMPOTENCY)) {
                 $state->mark(PipelineStages::STORE_IDEMPOTENCY);
             }
