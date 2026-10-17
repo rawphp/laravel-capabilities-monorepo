@@ -772,6 +772,8 @@ final class InvokePipeline
             // Where the request came from, so a chat notifier can put the buttons in that
             // conversation (M-101 / D-006 step 4); null for HTTP / CLI / job requests.
             'messaging' => $ctx->messaging(),
+            // The agent turn that asked, so the approved run's context names it too.
+            'agent_json' => $ctx->agent(),
         ]);
 
         $state->approvalId = (string) $record['id'];

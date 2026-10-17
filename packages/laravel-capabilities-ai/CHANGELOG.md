@@ -19,8 +19,8 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   called it. A host tool can attach what it writes to that turn. The values come from
   the runner; tool arguments with those names stay ordinary input. Invokes from other
   surfaces are unchanged (`$context->agent()` stays `null`). A tool that needs approval
-  gets `null` when the approved run executes, because the approval row does not store
-  the ulids.
+  gets the same ulids when the approved run executes; that needs core's
+  `add_agent_json_to_capabilities_approvals_table` migration.
 
 ## [0.9.0] - 2026-10-17
 

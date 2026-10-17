@@ -2111,6 +2111,7 @@ capability_approvals
   execution_lease_until   # Shape A: resume claim; null when free
   execution_attempt       # Shape A: increment on each resume claim
   messaging               # nullable { channel, chat_id, message_id }
+  agent_json              # nullable { conversation_ulid, turn_ulid }; the approved run's CapabilityContext::agent()
   created_at, updated_at
 ```
 

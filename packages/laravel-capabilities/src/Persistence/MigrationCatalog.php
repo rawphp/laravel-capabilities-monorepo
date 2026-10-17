@@ -67,6 +67,7 @@ final class MigrationCatalog
                     'execution_attempt',
                     'approved_at',
                     'channel_meta_json',
+                    'agent_json',
                     'created_at',
                     'updated_at',
                 ],

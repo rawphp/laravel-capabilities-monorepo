@@ -800,6 +800,9 @@ final class CapabilityRegistry implements CapabilityBus
             // resolves now (D-003 / D-006, L-401 / L-501). Untenanted rows run under their
             // stamp too (L-601); only legacy rows with neither tenant nor stamp resolve anew.
             'scope' => CapabilityScope::fromRow($row),
+            // The agent turn that asked, as CapabilityContext::agent(). Null for other
+            // surfaces and for rows from before the column.
+            'agent' => is_array($row['agent_json'] ?? null) ? $row['agent_json'] : null,
             // Decision already made: the needs-approval gate must not re-request (D-006).
             'executing_approval_id' => (string) $str('id', ''),
             // Run under the original key so it moves pending_approval → completed/failed and

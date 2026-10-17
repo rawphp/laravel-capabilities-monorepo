@@ -35,6 +35,7 @@ use Rawphp\Capabilities\Support\InMemoryApprovalStore;
  *     execution_attempt: int,
  *     approved_at: string|null,
  *     messaging: mixed,
+ *     agent_json: mixed,
  *     created_at: string,
  *     updated_at: string
  * }
