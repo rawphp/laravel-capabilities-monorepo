@@ -87,7 +87,7 @@ Authoritative behaviour: `TurnRunner` + `LlmClient` interface / `LlmClientDefaul
 
 ### Upgrade for hosts (Anthropic default model ID)
 
-Package default Anthropic model ID is now **`claude-opus-5-5`** (Claude Opus 5.5; was `claude-sonnet-4-6`) in `config/capabilities-ai.php` (`CAPABILITIES_AI_ANTHROPIC_MODEL`), the `AnthropicLlmClient` constructor and the `ContainerBindings::makeAnthropicLlmClient` fallback. Hosts on package defaults hit a different model at runtime (behaviour, cost, latency). To keep the previous model, pin it with `CAPABILITIES_AI_ANTHROPIC_MODEL=claude-sonnet-4-6`, or pass constructor `model: 'claude-sonnet-4-6'` when constructing `AnthropicLlmClient` directly. See [CHANGELOG Unreleased](../CHANGELOG.md#anthropic-default-model-opus-55).
+Package default Anthropic model ID is now **`claude-opus-5-5`** (Claude Opus 5.5; was `claude-sonnet-4-6`) in `config/capabilities-ai.php` (`CAPABILITIES_AI_ANTHROPIC_MODEL`), the `AnthropicLlmClient` constructor and the `ContainerBindings::makeAnthropicLlmClient` fallback. Hosts on package defaults hit a different model at runtime (behaviour, cost, latency). To keep the previous model, pin it with `CAPABILITIES_AI_ANTHROPIC_MODEL=claude-sonnet-4-6`, or pass constructor `model: 'claude-sonnet-4-6'` when constructing `AnthropicLlmClient` directly. See [CHANGELOG 0.8.0](../CHANGELOG.md#anthropic-default-model-opus-55).
 
 ## Progress
 

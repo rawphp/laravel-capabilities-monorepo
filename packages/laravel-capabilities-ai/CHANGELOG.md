@@ -11,6 +11,8 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-17
+
 ### Changed
 
 #### Anthropic default model: Opus 5.5
