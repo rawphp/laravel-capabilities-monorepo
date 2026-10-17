@@ -128,3 +128,20 @@ it('happy: isHardRefuse follows ErrorCodeMap for refuse codes [RES-001]', functi
     expect(CapabilityResult::failure('domain_error', 'nope')->isHardRefuse())->toBeFalse();
     expect(ErrorCodeMap::isHardRefuse('unknown_xyz'))->toBeFalse();
 });
+
+it('edge: withoutRetry drops retryable and retry_after but keeps the code and wire status', function () {
+    $limited = CapabilityResult::failure('rate_limited', 'Slow down.', ['retry_after' => 30], ['request_id' => 'req-9']);
+    $ok = CapabilityResult::ok(['done' => true]);
+
+    $spent = $limited->withoutRetry();
+
+    expect($spent->errorCode())->toBe('rate_limited')
+        ->and($spent->error['message'])->toBe('Slow down.')
+        ->and($spent->error['http_status'])->toBe(429)
+        ->and($spent->error['retryable'])->toBeFalse()
+        ->and($spent->error)->not->toHaveKey('retry_after')
+        ->and($spent->meta)->toBe(['request_id' => 'req-9'])
+        ->and($spent->isRetryable())->toBeFalse()
+        ->and($limited->error['retry_after'])->toBe(30)
+        ->and($ok->withoutRetry())->toBe($ok);
+});

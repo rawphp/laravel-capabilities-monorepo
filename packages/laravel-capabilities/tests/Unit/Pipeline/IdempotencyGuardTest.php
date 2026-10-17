@@ -88,7 +88,7 @@ it('happy: lookup walks continue, busy, replay and conflict as a request is stor
     expect($guard->lookup($optional, $ctx, $validKey, $hash)['action'])->toBe('busy');
 
     // complete then replay
-    $guard->storeResult($optional, $ctx, $validKey, $hash, CapabilityResult::ok(['done' => true]));
+    expect($guard->storeResult($optional, $ctx, $validKey, $hash, CapabilityResult::ok(['done' => true])))->toBeTrue();
     $replay = $guard->lookup($optional, $ctx, $validKey, $hash);
     expect($replay['action'])->toBe('replay')->and($replay['result']->isOk())->toBeTrue();
 
@@ -132,10 +132,9 @@ it('edge: storeResult is a no-op for an invalid key or a none-policy capability'
     ['guard' => $guard, 'ctx' => $ctx, 'optional' => $optional, 'hash' => $hash] = $h;
     $none = new CapabilityDefinition(name: 'ro', description: 'd', readOnly: true, idempotent: CapabilityDefinition::IDEMPOTENT_NONE);
 
-    $guard->storeResult($optional, $ctx, '!!', $hash, CapabilityResult::ok([]));
-    $guard->storeResult($none, $ctx, str_repeat('a', 16), $hash, CapabilityResult::ok([]));
-
-    expect($guard->lookup($optional, $ctx, str_repeat('a', 16), $hash)['action'])->toBe('continue');
+    expect($guard->storeResult($optional, $ctx, '!!', $hash, CapabilityResult::ok([])))->toBeFalse()
+        ->and($guard->storeResult($none, $ctx, str_repeat('a', 16), $hash, CapabilityResult::ok([])))->toBeFalse()
+        ->and($guard->lookup($optional, $ctx, str_repeat('a', 16), $hash)['action'])->toBe('continue');
 });
 
 it('edge: isExpired treats blank and unparsable expiry as live and compares real dates', function () {
