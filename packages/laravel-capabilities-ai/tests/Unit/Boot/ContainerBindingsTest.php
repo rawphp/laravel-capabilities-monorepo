@@ -239,6 +239,7 @@ it('makeLlmClient wires anthropic effort from config into outbound payload', fun
 
     $client->complete([['role' => 'user', 'content' => 'hi']]);
 
+    Http::assertSentCount(1);
     Http::assertSent(function ($request) {
         return ($request->data()['output_config'] ?? null) === ['effort' => 'low'];
     });

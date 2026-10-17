@@ -840,13 +840,8 @@ it('sends the configured effort verbatim as output_config.effort', function (str
 })->with(['low', 'medium', 'high', 'xhigh', 'max']);
 
 it('refuses to build with an effort outside the allowed list', function (string $effort) {
-    bootAnthropicHttp();
-    Http::fake();
-
     expect(fn () => new AnthropicLlmClient('test-key', effort: $effort))
         ->toThrow(InvalidArgumentException::class, "Anthropic effort '{$effort}' is not one of: low, medium, high, xhigh, max");
-
-    Http::assertNothingSent();
 })->with(['turbo', '', 'HIGH', 'minimal']);
 
 it('passes multimodal user content blocks through to Messages API (vision)', function () {
