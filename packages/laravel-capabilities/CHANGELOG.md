@@ -11,6 +11,8 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-18
+
 ### Added
 
 - **An approved request keeps the agent turn that asked (D-006).** A tool the agent called

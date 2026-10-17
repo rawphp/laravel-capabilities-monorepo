@@ -11,6 +11,10 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-18
+
+No changes.
+
 ## [0.9.0] - 2026-10-17
 
 No changes.
