@@ -11,6 +11,16 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Added
+
+- **`run()` can refuse with a specific error code.** Throw
+  `Rawphp\Capabilities\Support\CapabilityFailure` (`::conflict($message)`,
+  `::rateLimited($message, $retryAfter)`, or `new CapabilityFailure($code, $message, $extra)`)
+  and every surface returns that code instead of `domain_error`: `conflict` is HTTP 409 and
+  CLI exit 5, `rate_limited` is HTTP 429 with `Retry-After` and CLI exit 6. The failure is not
+  reported to the exception handler. A code missing from `ErrorCodeMap` throws
+  `InvalidArgumentException` at construction.
+
 ## [0.9.0] - 2026-10-17
 
 No changes.

@@ -430,6 +430,20 @@ Notes:
 - Retryable is a default. A result may override `retryable`, `http_status`, or `cli_exit` explicitly, so clients should read the fields on the error rather than hard-code this table.
 - Unknown codes fall back to HTTP `500`, CLI exit `1`, not retryable.
 
+### Refusing from `run()` with a specific code
+
+Any exception that `run()` throws becomes `domain_error` (422) with its message, except a missing model (`not_found`) and bug-class errors (`internal`). To refuse with another code from the table, throw `Rawphp\Capabilities\Support\CapabilityFailure`:
+
+```php
+use Rawphp\Capabilities\Support\CapabilityFailure;
+
+throw CapabilityFailure::conflict('Session is already closed.');            // 409, CLI exit 5
+throw CapabilityFailure::rateLimited('Too many wrong emails.', retryAfter: 600); // 429, Retry-After: 600, CLI exit 6
+throw new CapabilityFailure('gone', 'This link has expired.', ['hint' => 'Ask for a new one.']);
+```
+
+Every surface returns that code, HTTP status, CLI exit and retryable default; values in the third argument are merged into `error`. The failure is not reported to the exception handler, and the rest of the pipeline treats it like any other `run()` failure: an open `wrap_run` transaction rolls back, and audit, idempotency replay and failure events carry the new code. A code that is not in this table throws `InvalidArgumentException` when the exception is constructed.
+
 ## Testing helpers (D-020)
 
 On registry and `Capability` facade:
