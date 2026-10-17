@@ -11,6 +11,15 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Added
+
+- **Turn ulid for tools:** every tool invoke from `TurnRunner` now passes
+  `agent => ['conversation_ulid' => …, 'turn_ulid' => …]` to `CapabilityBus::invoke()`,
+  so `$context->agent()` inside the capability names the conversation and turn that
+  called it. A host tool can attach what it writes to that turn. The values come from
+  the runner; tool arguments with those names stay ordinary input. Invokes from other
+  surfaces are unchanged (`$context->agent()` stays `null`).
+
 ## [0.9.0] - 2026-10-17
 
 ### Added

@@ -41,6 +41,20 @@ The ALTER is idempotent (no-op if the column already exists). Greenfield install
 
 `TurnRunner` (tool invokes) and `ProposalService` (accept) resolve the conversation’s Laravel user and pass that user as **`actor`** on every `CapabilityBus::invoke`. Tool invokes use **`caller=agent`** (D-022): `CAPABILITIES_SURFACE_AGENT=false` stops them, and a capability whose `surfaces` omit `agent` is refused. Proposal accept uses **`caller=job`**. Missing or unresolvable `conversation.user_id` fails closed. Tool invokes carry `idempotency_key` only when the model passes it as a tool argument (D-005); the key is stripped from capability input. Proposal accept always sets `proposal:{ulid}`.
 
+### Tools: which turn called me
+
+A tool the agent invokes can read the conversation and turn that called it from `CapabilityContext::agent()`:
+
+```php
+->run(function (SeekInput $input, CapabilityContext $ctx): SeekResult {
+    $turnUlid = $ctx->agent()['turn_ulid'] ?? null;                 // null outside an agent turn
+    $conversationUlid = $ctx->agent()['conversation_ulid'] ?? null;
+    // attach what the tool writes to $turnUlid
+})
+```
+
+`TurnRunner` sets both ulids on every tool invoke. They come from the runner, not from the model: a tool argument named `agent`, `conversation_ulid` or `turn_ulid` stays ordinary input and never changes them. Invokes from any other surface (HTTP, MCP, CLI, jobs, proposal accept) have `$ctx->agent() === null`.
+
 ### Upgrade for hosts (manual DI / constructor / job handle)
 
 Hosts that construct AI runtime services with `new` (or jobs without container method injection) must match current required constructor / handle signatures. Preferred path: **`CapabilitiesAiServiceProvider` + `ContainerBindings`** — resolve from the container; manual construction is advanced.
