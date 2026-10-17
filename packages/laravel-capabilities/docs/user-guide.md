@@ -430,6 +430,19 @@ Notes:
 - Retryable is a default. A result may override `retryable`, `http_status`, or `cli_exit` explicitly, so clients should read the fields on the error rather than hard-code this table.
 - Unknown codes fall back to HTTP `500`, CLI exit `1`, not retryable.
 
+### Refusing from `run()`
+
+Any exception `run()` throws becomes `domain_error` (422) with its message. A missing model becomes `not_found`, and an `Error` or a database exception becomes a reported `internal`. To refuse with 409 or 429, throw `CapabilityFailure`:
+
+```php
+use Rawphp\Capabilities\Support\CapabilityFailure;
+
+throw CapabilityFailure::conflict('Walkthrough is already published.');      // conflict, 409
+throw CapabilityFailure::rateLimited('Daily publish limit reached.', 3600);  // rate_limited, 429, retryable
+```
+
+The message goes to the caller as written. `rateLimited()` takes an optional `retryAfter` in seconds. When given, it is sent as `error.retry_after`, and HTTP repeats it as the `Retry-After` header. Otherwise the failure is handled like `domain_error`: `transactions.wrap_run` rolls the write back, audit records the failure, and an idempotency key replays it. These two are the only codes a capability can throw, because the other codes belong to the pipeline.
+
 ## Testing helpers (D-020)
 
 On registry and `Capability` facade:

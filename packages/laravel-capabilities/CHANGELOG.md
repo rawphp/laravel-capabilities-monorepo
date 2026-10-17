@@ -11,6 +11,15 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Added
+
+- **`run()` can refuse with `conflict` (409) or `rate_limited` (429).** Throw
+  `CapabilityFailure::conflict($message)` or
+  `CapabilityFailure::rateLimited($message, $retryAfter)`. The failure keeps its code and
+  message on every surface. `retryAfter` is sent as `error.retry_after` and, on HTTP, as
+  `Retry-After`. Rollback under `wrap_run`, audit and idempotency treat it like a thrown
+  `domain_error`.
+
 ## [0.9.0] - 2026-10-17
 
 No changes.
