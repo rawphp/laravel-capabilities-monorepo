@@ -73,6 +73,15 @@ it('happy: a thrown rateLimited with retryAfter carries retry_after seconds', fu
         ->and($result->error['retry_after'])->toBe(30);
 });
 
+it('edge: a thrown rateLimited with a retryAfter below 1 sends no retry_after, like a pipeline rate_limited', function () {
+    $zero = capabilityFailureInvoke(CapabilityFailure::rateLimited('Slow down.', 0));
+    $negative = capabilityFailureInvoke(CapabilityFailure::rateLimited('Slow down.', -5));
+
+    expect($zero->errorCode())->toBe('rate_limited')
+        ->and($zero->error)->not->toHaveKey('retry_after')
+        ->and($negative->error)->not->toHaveKey('retry_after');
+});
+
 it('fail: a conflict thrown under wrap_run rolls the domain write back', function () {
     $connection = capabilityFailureConnection();
     $h = AuditHelpers::harness([

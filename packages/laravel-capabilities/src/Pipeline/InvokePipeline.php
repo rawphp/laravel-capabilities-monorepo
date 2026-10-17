@@ -986,7 +986,7 @@ final class InvokePipeline
             return CapabilityResult::failure(
                 code: $e->errorCode,
                 message: $e->getMessage(),
-                extra: $e->retryAfter === null ? [] : ['retry_after' => $e->retryAfter],
+                extra: $e->retryAfter > 0 ? ['retry_after' => $e->retryAfter] : [],
             );
         }
 

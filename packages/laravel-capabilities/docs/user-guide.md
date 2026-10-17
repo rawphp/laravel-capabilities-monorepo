@@ -441,7 +441,7 @@ throw CapabilityFailure::conflict('Walkthrough is already published.');      // 
 throw CapabilityFailure::rateLimited('Daily publish limit reached.', 3600);  // rate_limited, 429, retryable
 ```
 
-The message goes to the caller as written. `rateLimited()` takes an optional `retryAfter` in seconds. When given, it is sent as `error.retry_after`, and HTTP repeats it as the `Retry-After` header. Otherwise the failure is handled like `domain_error`: `transactions.wrap_run` rolls the write back, audit records the failure, and an idempotency key replays it. These two are the only codes a capability can throw, because the other codes belong to the pipeline.
+The message goes to the caller as written. `rateLimited()` takes an optional `retryAfter` in seconds. When it is 1 or more, it is sent as `error.retry_after`, and HTTP repeats it as the `Retry-After` header. In every other way the failure is handled like `domain_error`: `transactions.wrap_run` rolls the write back, audit records the failure, and an idempotency key replays it. These two are the only codes a capability can throw, because the other codes belong to the pipeline.
 
 ## Testing helpers (D-020)
 
