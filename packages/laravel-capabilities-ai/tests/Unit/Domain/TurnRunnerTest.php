@@ -1785,8 +1785,13 @@ it('completes in one round when the model writes text and calls one terminal too
         ->and($run['turn']->usage)->toHaveCount(1)
         ->and($run['invoked']->getArrayCopy())->toBe(['session.seek'])
         ->and($kinds)->toBe(['status', 'tool', 'terminal'])
-        ->and($run['events'][1]['data']['name'])->toBe('session.seek')
-        ->and($run['events'][1]['data']['ok'])->toBeTrue()
+        ->and($run['events'][1]['data'])->toBe([
+            'name' => 'session.seek',
+            'payload' => ['at' => 750],
+            'ok' => true,
+            'error_code' => null,
+            'tool_call_id' => 'fake_tool_1_1',
+        ])
         ->and($run['events'][2]['data'])->toBe(['status' => Turn::STATUS_COMPLETED]);
 });
 
@@ -1886,4 +1891,17 @@ it('keeps the two-round behaviour when no tool definition sets terminal', functi
     expect($run['llm']->callCount)->toBe(2)
         ->and($run['replies'])->toBe(['Done.'])
         ->and($run['turn']->usage)->toHaveCount(2);
+});
+
+it('keeps the two-round behaviour when a tool definition sets terminal false', function () {
+    $run = runTerminalTurn(
+        [['name' => 'session.seek', 'terminal' => false]],
+        [
+            ['content' => 'Jumping.', 'tool_calls' => [['name' => 'session.seek', 'arguments' => []]]],
+            ['content' => 'Done.'],
+        ],
+    );
+
+    expect($run['llm']->callCount)->toBe(2)
+        ->and($run['replies'])->toBe(['Done.']);
 });
