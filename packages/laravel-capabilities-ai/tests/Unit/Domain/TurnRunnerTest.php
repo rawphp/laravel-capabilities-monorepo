@@ -1905,3 +1905,36 @@ it('keeps the two-round behaviour when a tool definition sets terminal false', f
     expect($run['llm']->callCount)->toBe(2)
         ->and($run['replies'])->toBe(['Done.']);
 });
+
+it('goes to another round when a non-terminal tool comes before a terminal one', function () {
+    $run = runTerminalTurn(
+        [['name' => 'session.lookup'], ['name' => 'session.seek', 'terminal' => true]],
+        [
+            ['content' => 'Checking.', 'tool_calls' => [
+                ['name' => 'session.lookup', 'arguments' => []],
+                ['name' => 'session.seek', 'arguments' => []],
+            ]],
+            ['content' => 'Here it is.'],
+        ],
+    );
+
+    expect($run['llm']->callCount)->toBe(2)
+        ->and($run['replies'])->toBe(['Here it is.']);
+});
+
+it('goes to another round when a failed terminal tool comes before one that succeeds', function () {
+    $run = runTerminalTurn(
+        [['name' => 'session.note', 'terminal' => true], ['name' => 'session.seek', 'terminal' => true]],
+        [
+            ['content' => 'Noted and jumping.', 'tool_calls' => [
+                ['name' => 'session.note', 'arguments' => []],
+                ['name' => 'session.seek', 'arguments' => []],
+            ]],
+            ['content' => 'I could not save the note.'],
+        ],
+        failing: ['session.note'],
+    );
+
+    expect($run['llm']->callCount)->toBe(2)
+        ->and($run['replies'])->toBe(['I could not save the note.']);
+});
