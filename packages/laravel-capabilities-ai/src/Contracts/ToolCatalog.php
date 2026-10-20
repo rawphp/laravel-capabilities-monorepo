@@ -10,7 +10,10 @@ namespace Rawphp\CapabilitiesAi\Contracts;
 interface ToolCatalog
 {
     /**
-     * @return list<array{name: string, description?: string, parameters?: array<string, mixed>}>
+     * `terminal` (default false) marks a fire-and-forget tool: a round whose text is non-empty
+     * and whose calls are all terminal and all ok is the turn's reply, with no further round.
+     *
+     * @return list<array{name: string, description?: string, parameters?: array<string, mixed>, terminal?: bool}>
      */
     public function toolsForTurn(string $conversationUlid, string $turnUlid): array;
 }

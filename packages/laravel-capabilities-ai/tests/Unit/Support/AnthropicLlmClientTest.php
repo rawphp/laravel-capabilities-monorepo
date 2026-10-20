@@ -550,6 +550,28 @@ it('maps package tool defs to Anthropic tools with input_schema and parses tool_
     });
 });
 
+it('maps a tool definition carrying terminal to the same Anthropic tool as one without it', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200),
+    ]);
+
+    $tool = [
+        'name' => 'session.seek',
+        'description' => 'Seek the session',
+        'parameters' => ['type' => 'object', 'properties' => ['at' => ['type' => 'integer']]],
+    ];
+    $client = new AnthropicLlmClient('test-key');
+    $client->complete([['role' => 'user', 'content' => 'seek']], [$tool]);
+    $client->complete([['role' => 'user', 'content' => 'seek']], [$tool + ['terminal' => true]]);
+
+    $sent = Http::recorded()->map(fn (array $pair) => $pair[0]->data()['tools'] ?? null)->all();
+    expect($sent)->toHaveCount(2)
+        ->and($sent[1])->toBe($sent[0])
+        ->and(array_keys($sent[1][0]))->toBe(['name', 'description', 'input_schema']);
+});
+
 it('encodes dotted capability names for Anthropic wire and decodes tool_use back', function () {
     bootAnthropicHttp();
 

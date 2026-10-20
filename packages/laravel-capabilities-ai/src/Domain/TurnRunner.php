@@ -84,6 +84,11 @@ final class TurnRunner
                 : [];
             // Snapshot of what the model was shown; tool_calls outside it never reach the bus.
             $offeredNames = array_column($toolDefs, 'name');
+            // Fire-and-forget tools: a round of only these, all ok, with text, is the reply.
+            $terminalNames = array_column(
+                array_filter($toolDefs, static fn (array $tool): bool => ($tool['terminal'] ?? false) === true),
+                'name',
+            );
 
             $rounds = 0;
             // 1-based tool-call count across all rounds of this turn → core D-013 agent turn budget.
@@ -171,6 +176,7 @@ final class TurnRunner
                     'tool_calls' => $normalizedCalls,
                 ];
 
+                $roundEndsTurn = true;
                 foreach ($normalizedCalls as $call) {
                     // A cancel or reap that landed mid-round stops the next bus invoke.
                     if (! $this->claim->isRunning($turnUlid)) {
@@ -199,6 +205,7 @@ final class TurnRunner
                             "Tool {$name} was not offered for this turn",
                         );
                     }
+                    $roundEndsTurn = $roundEndsTurn && $result->ok && in_array($name, $terminalNames, true);
                     $toolContent = $this->encodeToolResult($name, $result);
                     $this->progress->append($turnUlid, [
                         'kind' => 'tool',
@@ -217,6 +224,15 @@ final class TurnRunner
                         'tool_call_id' => $toolCallId,
                         'id' => $toolCallId,
                     ];
+                }
+
+                // Terminal tools only, all ok: the text written alongside the calls is the reply.
+                $content = (string) ($response['content'] ?? '');
+                if ($roundEndsTurn && trim($content) !== '') {
+                    $this->store->createMessage($conversation, $this->ulid(), 'assistant', $content);
+                    $this->maybeCreateProposalsFromFence($conversation, $turn, $content);
+                    $replied = true;
+                    break;
                 }
             }
 
