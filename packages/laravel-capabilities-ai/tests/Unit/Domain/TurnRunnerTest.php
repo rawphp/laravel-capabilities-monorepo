@@ -1687,3 +1687,203 @@ it('makeTurnRunner budgets the turn against claim_ttl', function () {
     expect($llm->deadlineNs - $before)->toBeGreaterThanOrEqual(60_000_000_000)
         ->and($llm->deadlineNs - hrtime(true))->toBeLessThanOrEqual(60_000_000_000);
 });
+
+/**
+ * Run one turn against $toolDefs; the bus fails every tool named in $failing and records the rest.
+ *
+ * @param  list<array<string, mixed>>  $toolDefs
+ * @param  list<array<string, mixed>>  $responses
+ * @param  list<string>  $failing
+ * @return array{turn: Turn, llm: FakeLlmClient, events: list<array<string, mixed>>, invoked: ArrayObject<int, string>, replies: list<string>}
+ */
+function runTerminalTurn(array $toolDefs, array $responses, array $failing = []): array
+{
+    $turnUlid = enqueueTurnWithUser('play it')['turn_ulid'];
+    $invoked = new ArrayObject;
+    $bus = new class($invoked, $failing) implements CapabilityBus
+    {
+        /**
+         * @param  ArrayObject<int, string>  $invoked
+         * @param  list<string>  $failing
+         */
+        public function __construct(private ArrayObject $invoked, private array $failing) {}
+
+        public function invoke(string $nameOrAlias, array $input = [], array $options = []): CapabilityResult
+        {
+            $this->invoked->append($nameOrAlias);
+
+            return in_array($nameOrAlias, $this->failing, true)
+                ? CapabilityResult::failure('forbidden', 'nope')
+                : CapabilityResult::ok(['ok' => true]);
+        }
+
+        public function catalog(): CatalogPresenter
+        {
+            throw new RuntimeException('unused');
+        }
+    };
+    $context = new class implements ConversationContextProvider
+    {
+        public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['role' => 'user', 'content' => 'play it']];
+        }
+    };
+    $tools = new class($toolDefs) implements ToolCatalog
+    {
+        /** @param  list<array<string, mixed>>  $defs */
+        public function __construct(private array $defs) {}
+
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return $this->defs;
+        }
+    };
+    $llm = new FakeLlmClient($responses);
+    $progress = new ArrayProgressStore;
+    $turn = (new TurnRunner(
+        claim: turnClaim(),
+        store: turnStore(),
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        bus: $bus,
+        progress: $progress,
+        actors: turnActors(),
+    ))->run($turnUlid);
+
+    $conversation = turnStore()->turn($turnUlid)->conversation;
+    $replies = [];
+    foreach (turnStore()->messages($conversation) as $message) {
+        if ($message->role === 'assistant') {
+            $replies[] = (string) $message->content;
+        }
+    }
+
+    return [
+        'turn' => $turn,
+        'llm' => $llm,
+        'events' => $progress->since($turnUlid),
+        'invoked' => $invoked,
+        'replies' => $replies,
+    ];
+}
+
+it('completes in one round when the model writes text and calls one terminal tool that succeeds', function () {
+    $run = runTerminalTurn(
+        [['name' => 'session.seek', 'terminal' => true]],
+        [
+            ['content' => 'Jumping to 12:30.', 'tool_calls' => [['name' => 'session.seek', 'arguments' => ['at' => 750]]]],
+            ['content' => 'second round'],
+        ],
+    );
+
+    $kinds = array_column($run['events'], 'kind');
+    expect($run['turn']->status)->toBe(Turn::STATUS_COMPLETED)
+        ->and($run['llm']->callCount)->toBe(1)
+        ->and($run['replies'])->toBe(['Jumping to 12:30.'])
+        ->and($run['turn']->usage)->toHaveCount(1)
+        ->and($run['invoked']->getArrayCopy())->toBe(['session.seek'])
+        ->and($kinds)->toBe(['status', 'tool', 'terminal'])
+        ->and($run['events'][1]['data']['name'])->toBe('session.seek')
+        ->and($run['events'][1]['data']['ok'])->toBeTrue()
+        ->and($run['events'][2]['data'])->toBe(['status' => Turn::STATUS_COMPLETED]);
+});
+
+it('completes in one round when every tool in the round is terminal and succeeds', function () {
+    $run = runTerminalTurn(
+        [['name' => 'session.seek', 'terminal' => true], ['name' => 'session.resume', 'terminal' => true]],
+        [
+            ['content' => 'Back to it.', 'tool_calls' => [
+                ['name' => 'session.seek', 'arguments' => ['at' => 10]],
+                ['name' => 'session.resume', 'arguments' => []],
+            ]],
+            ['content' => 'second round'],
+        ],
+    );
+
+    $toolNames = array_map(
+        static fn (array $e): string => $e['data']['name'],
+        array_values(array_filter($run['events'], static fn (array $e): bool => $e['kind'] === 'tool')),
+    );
+    expect($run['turn']->status)->toBe(Turn::STATUS_COMPLETED)
+        ->and($run['llm']->callCount)->toBe(1)
+        ->and($run['replies'])->toBe(['Back to it.'])
+        ->and($run['invoked']->getArrayCopy())->toBe(['session.seek', 'session.resume'])
+        ->and(array_column($run['events'], 'kind'))->toBe(['status', 'tool', 'tool', 'terminal'])
+        ->and($toolNames)->toBe(['session.seek', 'session.resume']);
+});
+
+it('runs proposal fence extraction on a terminal round reply', function () {
+    $run = runTerminalTurn(
+        [['name' => 'session.note', 'terminal' => true]],
+        [
+            ['content' => "Noted.\n```proposal\n{\"type\":\"action\",\"payload\":{\"x\":1}}\n```", 'tool_calls' => [['name' => 'session.note', 'arguments' => []]]],
+            ['content' => 'second round'],
+        ],
+    );
+
+    $conversation = $run['turn']->conversation;
+    expect($run['llm']->callCount)->toBe(1)
+        ->and(turnStore()->proposals($conversation))->toHaveCount(1);
+});
+
+it('goes to another round when a terminal tool fails', function () {
+    $run = runTerminalTurn(
+        [['name' => 'session.seek', 'terminal' => true]],
+        [
+            ['content' => 'Jumping.', 'tool_calls' => [['name' => 'session.seek', 'arguments' => []]]],
+            ['content' => 'I could not seek.'],
+        ],
+        failing: ['session.seek'],
+    );
+
+    expect($run['turn']->status)->toBe(Turn::STATUS_COMPLETED)
+        ->and($run['llm']->callCount)->toBe(2)
+        ->and($run['replies'])->toBe(['I could not seek.'])
+        ->and($run['turn']->usage)->toHaveCount(2);
+});
+
+it('goes to another round when a terminal tool is called with empty text', function () {
+    $run = runTerminalTurn(
+        [['name' => 'session.seek', 'terminal' => true]],
+        [
+            ['content' => "  \n ", 'tool_calls' => [['name' => 'session.seek', 'arguments' => []]]],
+            ['content' => 'Done.'],
+        ],
+    );
+
+    expect($run['llm']->callCount)->toBe(2)
+        ->and($run['replies'])->toBe(['Done.']);
+});
+
+it('goes to another round when a terminal tool shares the round with a non-terminal tool', function () {
+    $run = runTerminalTurn(
+        [['name' => 'session.seek', 'terminal' => true], ['name' => 'session.lookup']],
+        [
+            ['content' => 'Checking.', 'tool_calls' => [
+                ['name' => 'session.seek', 'arguments' => []],
+                ['name' => 'session.lookup', 'arguments' => []],
+            ]],
+            ['content' => 'Here it is.'],
+        ],
+    );
+
+    expect($run['llm']->callCount)->toBe(2)
+        ->and($run['invoked']->getArrayCopy())->toBe(['session.seek', 'session.lookup'])
+        ->and($run['replies'])->toBe(['Here it is.']);
+});
+
+it('keeps the two-round behaviour when no tool definition sets terminal', function () {
+    $run = runTerminalTurn(
+        [['name' => 'session.seek']],
+        [
+            ['content' => 'Jumping.', 'tool_calls' => [['name' => 'session.seek', 'arguments' => []]]],
+            ['content' => 'Done.'],
+        ],
+    );
+
+    expect($run['llm']->callCount)->toBe(2)
+        ->and($run['replies'])->toBe(['Done.'])
+        ->and($run['turn']->usage)->toHaveCount(2);
+});
