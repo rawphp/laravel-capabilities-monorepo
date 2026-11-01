@@ -1694,9 +1694,9 @@ it('makeTurnRunner budgets the turn against claim_ttl', function () {
  * @param  list<array<string, mixed>>  $toolDefs
  * @param  list<array<string, mixed>>  $responses
  * @param  list<string>  $failing
- * @return array{turn: Turn, llm: FakeLlmClient, events: list<array<string, mixed>>, invoked: ArrayObject<int, string>, replies: list<string>}
+ * @return array{turn: Turn, llm: FakeLlmClient, events: list<array<string, mixed>>, invoked: ArrayObject<int, string>, replies: list<string>, toolsSeen: ArrayObject<int, list<array<string, mixed>>>}
  */
-function runTerminalTurn(array $toolDefs, array $responses, array $failing = []): array
+function runTerminalTurn(array $toolDefs, array $responses, array $failing = [], int $maxToolRounds = 8): array
 {
     $turnUlid = enqueueTurnWithUser('play it')['turn_ulid'];
     $invoked = new ArrayObject;
@@ -1740,15 +1740,35 @@ function runTerminalTurn(array $toolDefs, array $responses, array $failing = [])
         }
     };
     $llm = new FakeLlmClient($responses);
+    // The tool list each round hands the LlmClient.
+    $toolsSeen = new ArrayObject;
+    $recording = new class($llm, $toolsSeen) implements LlmClient
+    {
+        /** @param  ArrayObject<int, list<array<string, mixed>>>  $toolsSeen */
+        public function __construct(private FakeLlmClient $inner, private ArrayObject $toolsSeen) {}
+
+        public function supportsToolRounds(): bool
+        {
+            return true;
+        }
+
+        public function complete(array $messages, array $tools = []): array
+        {
+            $this->toolsSeen->append($tools);
+
+            return $this->inner->complete($messages, $tools);
+        }
+    };
     $progress = new ArrayProgressStore;
     $turn = (new TurnRunner(
         claim: turnClaim(),
         store: turnStore(),
-        llm: $llm,
+        llm: $recording,
         context: $context,
         tools: $tools,
         bus: $bus,
         progress: $progress,
+        maxToolRounds: $maxToolRounds,
         actors: turnActors(),
     ))->run($turnUlid);
 
@@ -1766,6 +1786,7 @@ function runTerminalTurn(array $toolDefs, array $responses, array $failing = [])
         'events' => $progress->since($turnUlid),
         'invoked' => $invoked,
         'replies' => $replies,
+        'toolsSeen' => $toolsSeen,
     ];
 }
 
@@ -1937,4 +1958,51 @@ it('goes to another round when a failed terminal tool comes before one that succ
 
     expect($run['llm']->callCount)->toBe(2)
         ->and($run['replies'])->toBe(['I could not save the note.']);
+});
+
+it('completes in a later round when that round is terminal after an earlier non-terminal round', function () {
+    $run = runTerminalTurn(
+        [['name' => 'session.lookup'], ['name' => 'session.seek', 'terminal' => true]],
+        [
+            ['content' => '', 'tool_calls' => [['name' => 'session.lookup', 'arguments' => []]]],
+            ['content' => 'Jumping.', 'tool_calls' => [['name' => 'session.seek', 'arguments' => ['at' => 750]]]],
+            ['content' => 'third round'],
+        ],
+    );
+
+    expect($run['turn']->status)->toBe(Turn::STATUS_COMPLETED)
+        ->and($run['llm']->callCount)->toBe(2)
+        ->and($run['replies'])->toBe(['Jumping.'])
+        ->and($run['turn']->usage)->toHaveCount(2)
+        ->and($run['invoked']->getArrayCopy())->toBe(['session.lookup', 'session.seek']);
+});
+
+it('completes when the terminal round is the last round max_tool_rounds allows', function () {
+    $run = runTerminalTurn(
+        [['name' => 'session.seek', 'terminal' => true]],
+        [
+            ['content' => 'Jumping.', 'tool_calls' => [['name' => 'session.seek', 'arguments' => []]]],
+            ['content' => 'second round'],
+        ],
+        maxToolRounds: 1,
+    );
+
+    expect($run['turn']->status)->toBe(Turn::STATUS_COMPLETED)
+        ->and($run['llm']->callCount)->toBe(1)
+        ->and($run['replies'])->toBe(['Jumping.']);
+});
+
+it('does not hand the terminal key to the LlmClient', function () {
+    $run = runTerminalTurn(
+        [
+            ['name' => 'session.seek', 'description' => 'Seek', 'parameters' => ['type' => 'object'], 'terminal' => true],
+            ['name' => 'session.lookup', 'terminal' => false],
+        ],
+        [['content' => 'Hello.']],
+    );
+
+    expect($run['toolsSeen']->getArrayCopy())->toBe([[
+        ['name' => 'session.seek', 'description' => 'Seek', 'parameters' => ['type' => 'object']],
+        ['name' => 'session.lookup'],
+    ]]);
 });

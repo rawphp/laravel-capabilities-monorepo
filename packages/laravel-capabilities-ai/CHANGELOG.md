@@ -18,8 +18,8 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   stores that text as the reply and completes the turn in that round, instead of asking
   the model again. A host whose tools are fire-and-forget (play, seek, note) saves a
   full LLM round per turn. Empty text, a non-terminal tool in the round, or a failed
-  result keeps today's behaviour. `AnthropicLlmClient` does not send the key to the
-  provider.
+  result keeps today's behaviour. `TurnRunner` removes the key before calling the
+  `LlmClient`, so no client sends it to the provider.
 
 ## [0.10.0] - 2026-10-18
 

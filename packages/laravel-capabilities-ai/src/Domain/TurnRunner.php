@@ -89,6 +89,8 @@ final class TurnRunner
                 array_filter($toolDefs, static fn (array $tool): bool => ($tool['terminal'] ?? false) === true),
                 'name',
             );
+            // `terminal` is TurnRunner's own key: no LlmClient ever sends it to a provider.
+            $toolDefs = array_map(static fn (array $tool): array => array_diff_key($tool, ['terminal' => true]), $toolDefs);
 
             $rounds = 0;
             // 1-based tool-call count across all rounds of this turn → core D-013 agent turn budget.
@@ -114,8 +116,7 @@ final class TurnRunner
 
                 if ($toolCalls === []) {
                     $content = (string) ($response['content'] ?? '');
-                    $this->store->createMessage($conversation, $this->ulid(), 'assistant', $content);
-                    $this->maybeCreateProposalsFromFence($conversation, $turn, $content);
+                    $this->storeReply($conversation, $turn, $content);
                     $replied = true;
                     break;
                 }
@@ -163,8 +164,7 @@ final class TurnRunner
                 if ($normalizedCalls === []) {
                     // tool_calls present but unusable — treat as text-only terminal content.
                     $content = (string) ($response['content'] ?? '');
-                    $this->store->createMessage($conversation, $this->ulid(), 'assistant', $content);
-                    $this->maybeCreateProposalsFromFence($conversation, $turn, $content);
+                    $this->storeReply($conversation, $turn, $content);
                     $replied = true;
                     break;
                 }
@@ -229,8 +229,7 @@ final class TurnRunner
                 // Terminal tools only, all ok: the text written alongside the calls is the reply.
                 $content = (string) ($response['content'] ?? '');
                 if ($roundEndsTurn && trim($content) !== '') {
-                    $this->store->createMessage($conversation, $this->ulid(), 'assistant', $content);
-                    $this->maybeCreateProposalsFromFence($conversation, $turn, $content);
+                    $this->storeReply($conversation, $turn, $content);
                     $replied = true;
                     break;
                 }
@@ -271,6 +270,15 @@ final class TurnRunner
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Store the turn's reply: the assistant message, then any proposal fence in it.
+     */
+    private function storeReply(Conversation $conversation, Turn $turn, string $content): void
+    {
+        $this->store->createMessage($conversation, $this->ulid(), 'assistant', $content);
+        $this->maybeCreateProposalsFromFence($conversation, $turn, $content);
     }
 
     /**
