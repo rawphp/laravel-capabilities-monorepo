@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Domain;
 
+use Illuminate\Database\UniqueConstraintViolationException;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
@@ -54,32 +55,54 @@ final class ConversationService
     }
 
     /**
+     * $clientMessageId (requires $userId) stores a client key, unique per owner across conversations.
+     * Check {@see replayClientMessage()} first: a key the owner already stored throws here.
+     *
      * @return array{conversation_ulid: string, message_ulid: string, turn_ulid: string}
      *
      * @throws TurnRateLimitedException when $userId is over turns_per_minute (nothing persisted)
      * @throws TurnCapacityExceededException when queued + running turns are at the ceiling (nothing persisted)
      * @throws ConversationClosedException when appending to a closed conversation (nothing persisted)
+     * @throws ClientMessageConflictException when $userId already stored $clientMessageId (nothing persisted)
      */
     public function createUserMessage(
         string $content,
         ?string $conversationUlid = null,
         ?string $userId = null,
         ?string $appId = null,
+        ?string $clientMessageId = null,
     ): array {
+        if ($clientMessageId !== null && $userId === null) {
+            throw new \InvalidArgumentException('clientMessageId needs a userId: the key is unique per owner');
+        }
+
         $this->assertTurnRate($userId);
         $this->assertTurnCapacity();
 
-        // A given $userId must own an existing conversation: the owner is the turn's bus actor.
-        $conversation = $conversationUlid
-            ? $this->store->ownedConversation($conversationUlid, $userId)
-            : $this->store->createConversation($this->ulid(), $appId, $userId);
+        try {
+            [$conversation, $message, $turn] = $this->store->transaction(function () use ($content, $conversationUlid, $userId, $appId, $clientMessageId): array {
+                // A given $userId must own an existing conversation: the owner is the turn's bus actor.
+                $conversation = $conversationUlid
+                    ? $this->store->ownedConversation($conversationUlid, $userId)
+                    : $this->store->createConversation($this->ulid(), $appId, $userId);
 
-        if ($conversation->status === 'closed') {
-            throw new ConversationClosedException($conversation->ulid);
+                if ($conversation->status === 'closed') {
+                    throw new ConversationClosedException($conversation->ulid);
+                }
+
+                $turnUlid = $this->ulid();
+                $message = $this->store->createMessage($conversation, $this->ulid(), 'user', $content, $clientMessageId, $turnUlid);
+                $turn = $this->store->createQueuedTurn($conversation, $turnUlid);
+
+                return [$conversation, $message, $turn];
+            });
+        } catch (UniqueConstraintViolationException $e) {
+            if ($clientMessageId === null) {
+                throw $e;
+            }
+
+            throw new ClientMessageConflictException($clientMessageId, $e);
         }
-
-        $message = $this->store->createMessage($conversation, $this->ulid(), 'user', $content);
-        $turn = $this->store->createQueuedTurn($conversation, $this->ulid());
 
         // Queued first: a sync driver or fast worker appends running/terminal inside dispatch.
         $this->progress->append($turn->ulid, [
@@ -95,6 +118,34 @@ final class ConversationService
             'conversation_ulid' => $conversation->ulid,
             'message_ulid' => $message->ulid,
             'turn_ulid' => $turn->ulid,
+        ];
+    }
+
+    /**
+     * The first send's ids when $ownerId already stored $clientMessageId with this $content; null when
+     * the key is new. Reads only: no rate limit, capacity check, row, progress event or job.
+     *
+     * @return array{conversation_ulid: string, message_ulid: string, turn_ulid: string}|null
+     *
+     * @throws ClientMessageMismatchException when the stored message has different content
+     */
+    public function replayClientMessage(string $ownerId, string $clientMessageId, string $content): ?array
+    {
+        $message = $this->store->clientMessage($ownerId, $clientMessageId);
+        if ($message === null) {
+            return null;
+        }
+        if ($message->content !== $content) {
+            throw new ClientMessageMismatchException($clientMessageId);
+        }
+
+        /** @var array{turn_ulid?: string}|null $meta */
+        $meta = $message->meta;
+
+        return [
+            'conversation_ulid' => (string) $message->conversation?->ulid,
+            'message_ulid' => $message->ulid,
+            'turn_ulid' => (string) ($meta['turn_ulid'] ?? ''),
         ];
     }
 

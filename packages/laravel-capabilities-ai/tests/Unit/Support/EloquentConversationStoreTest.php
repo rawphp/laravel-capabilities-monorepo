@@ -250,3 +250,14 @@ it('a second send with one key on the database leaves one conversation, message 
         ->and($jobs)->toBe(1)
         ->and($service->replayClientMessage('u1', 'k1', 'hi'))->toBe($first);
 });
+
+it('creates an unkeyed message on a messages table that predates the client key columns', function () {
+    $store = bootConversationStoreSqlite();
+    $migration = require dirname(__DIR__, 3).'/database/migrations/2026_11_04_000001_add_client_message_id_to_capabilities_ai_messages_table.php';
+    $migration->down();
+    $conversation = $store->createConversation('C1', null, 'u1');
+
+    $message = $store->createMessage($conversation, 'M1', 'user', 'hi');
+
+    expect(Message::query()->find($message->id)?->content)->toBe('hi');
+});

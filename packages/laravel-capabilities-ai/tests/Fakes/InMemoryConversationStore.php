@@ -4,14 +4,18 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Tests\Fakes;
 
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
+use PDOException;
 use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
 use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Message;
 use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
+use Throwable;
 
 /**
  * In-memory ConversationStore: unsaved model instances in arrays, no database.
@@ -64,14 +68,60 @@ class InMemoryConversationStore implements ConversationStore
         ]);
     }
 
-    public function createMessage(Conversation $conversation, string $ulid, string $role, string $content): Message
-    {
+    public function createMessage(
+        Conversation $conversation,
+        string $ulid,
+        string $role,
+        string $content,
+        ?string $clientMessageId = null,
+        ?string $turnUlid = null,
+    ): Message {
+        $owner = $clientMessageId === null ? null : $conversation->user_id;
+        if ($clientMessageId !== null && $owner !== null && $this->storedClientMessage($owner, $clientMessageId) !== null) {
+            throw new UniqueConstraintViolationException('memory', 'insert into messages', [], new PDOException('UNIQUE constraint failed'));
+        }
+
         return $this->messages[] = $this->row(new Message, [
             'conversation_id' => $conversation->id,
             'ulid' => $ulid,
             'role' => $role,
             'content' => $content,
+            'meta' => $clientMessageId === null ? null : ['turn_ulid' => $turnUlid],
+            'client_message_owner_id' => $owner,
+            'client_message_id' => $clientMessageId,
         ]);
+    }
+
+    public function clientMessage(string $ownerId, string $clientMessageId): ?Message
+    {
+        $message = $this->storedClientMessage($ownerId, $clientMessageId);
+
+        return $message?->setRelation('conversation', $this->conversationById($message->conversation_id));
+    }
+
+    /** The unique index's view: a subclass that hides a row from clientMessage() cannot hide it here. */
+    private function storedClientMessage(string $ownerId, string $clientMessageId): ?Message
+    {
+        foreach ($this->messages as $message) {
+            if ($message->client_message_owner_id === $ownerId && $message->client_message_id === $clientMessageId) {
+                return $message;
+            }
+        }
+
+        return null;
+    }
+
+    /** Restores every row list when $callback throws, like a rolled-back transaction. */
+    public function transaction(Closure $callback): mixed
+    {
+        $snapshot = [$this->conversations, $this->messages, $this->turns, $this->proposals];
+        try {
+            return $callback();
+        } catch (Throwable $e) {
+            [$this->conversations, $this->messages, $this->turns, $this->proposals] = $snapshot;
+
+            throw $e;
+        }
     }
 
     public function createQueuedTurn(Conversation $conversation, string $ulid): Turn

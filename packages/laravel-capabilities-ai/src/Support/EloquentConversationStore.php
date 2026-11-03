@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Support;
 
+use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
@@ -43,15 +44,44 @@ final class EloquentConversationStore implements ConversationStore
         ]);
     }
 
-    public function createMessage(Conversation $conversation, string $ulid, string $role, string $content): Message
-    {
-        return Message::query()->create([
+    public function createMessage(
+        Conversation $conversation,
+        string $ulid,
+        string $role,
+        string $content,
+        ?string $clientMessageId = null,
+        ?string $turnUlid = null,
+    ): Message {
+        $row = [
             'conversation_id' => $conversation->id,
             'ulid' => $ulid,
             'role' => $role,
             'content' => $content,
             'meta' => null,
-        ]);
+        ];
+
+        // Unkeyed inserts name no client columns, so they work before the host migrates.
+        if ($clientMessageId !== null) {
+            $row['meta'] = ['turn_ulid' => $turnUlid];
+            $row['client_message_owner_id'] = $conversation->user_id;
+            $row['client_message_id'] = $clientMessageId;
+        }
+
+        return Message::query()->create($row);
+    }
+
+    public function clientMessage(string $ownerId, string $clientMessageId): ?Message
+    {
+        return Message::query()
+            ->with('conversation')
+            ->where('client_message_owner_id', $ownerId)
+            ->where('client_message_id', $clientMessageId)
+            ->first();
+    }
+
+    public function transaction(Closure $callback): mixed
+    {
+        return (new Message)->getConnection()->transaction($callback);
     }
 
     public function createQueuedTurn(Conversation $conversation, string $ulid): Turn

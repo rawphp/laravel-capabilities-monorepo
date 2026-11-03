@@ -14,6 +14,7 @@ use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
 use Rawphp\CapabilitiesAi\Domain\TurnService;
 use Rawphp\CapabilitiesAi\Http\ChatController;
+use Rawphp\CapabilitiesAi\Models\Message;
 use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\AlwaysReadyIdempotency;
@@ -1047,7 +1048,7 @@ function racingClientKeyStore(int $misses): InMemoryConversationStore
     {
         public function __construct(private int $misses) {}
 
-        public function clientMessage(string $ownerId, string $clientMessageId): ?Rawphp\CapabilitiesAi\Models\Message
+        public function clientMessage(string $ownerId, string $clientMessageId): ?Message
         {
             if ($this->misses > 0) {
                 $this->misses--;

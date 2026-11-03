@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Contracts;
 
+use Closure;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Message;
 use Rawphp\CapabilitiesAi\Models\Proposal;
@@ -32,7 +34,35 @@ interface ConversationStore
 
     public function createConversation(string $ulid, ?string $appId, ?string $userId): Conversation;
 
-    public function createMessage(Conversation $conversation, string $ulid, string $role, string $content): Message;
+    /**
+     * A non-null $clientMessageId stores the key with the conversation's owner and records
+     * $turnUlid in `meta.turn_ulid`, so a repeat send can answer with the first send's ids.
+     *
+     * @throws UniqueConstraintViolationException when that owner already stored the key
+     */
+    public function createMessage(
+        Conversation $conversation,
+        string $ulid,
+        string $role,
+        string $content,
+        ?string $clientMessageId = null,
+        ?string $turnUlid = null,
+    ): Message;
+
+    /**
+     * The message $ownerId stored with this client key, its conversation loaded; null when none.
+     */
+    public function clientMessage(string $ownerId, string $clientMessageId): ?Message;
+
+    /**
+     * Run $callback so its writes land together or not at all; returns its result, rethrows its exception.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $callback
+     * @return T
+     */
+    public function transaction(Closure $callback): mixed;
 
     public function createQueuedTurn(Conversation $conversation, string $ulid): Turn;
 
