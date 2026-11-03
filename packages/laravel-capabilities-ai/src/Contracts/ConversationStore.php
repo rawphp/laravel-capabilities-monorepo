@@ -35,8 +35,8 @@ interface ConversationStore
     public function createConversation(string $ulid, ?string $appId, ?string $userId): Conversation;
 
     /**
-     * A non-null $clientMessageId stores the key with the conversation's owner and records
-     * $turnUlid in `meta.turn_ulid`, so a repeat send can answer with the first send's ids.
+     * A non-null $clientMessageId stores the key with the conversation's owner and sets `meta` to
+     * `{turn_ulid: $turnUlid, sent: false}`, so a repeat send can answer with the first send's ids.
      *
      * @throws UniqueConstraintViolationException when that owner already stored the key
      */
@@ -55,9 +55,17 @@ interface ConversationStore
     public function clientMessage(string $ownerId, string $clientMessageId): ?Message;
 
     /**
-     * Clear the message's client key and owner so the owner can store that key again; the message stays.
+     * Record in `meta.sent` that the keyed message's turn job was handed to the queue.
      */
-    public function releaseClientMessage(Message $message): void;
+    public function markClientMessageSent(Message $message): void;
+
+    /**
+     * Undo a keyed send whose job never reached the queue: delete $turn only while it is still
+     * queued, and with it $message (and the conversation when $withConversation), in one transaction.
+     *
+     * @return bool false when the turn already left queued (a job claimed it); nothing is deleted
+     */
+    public function discardUnsentClientMessage(Message $message, Turn $turn, bool $withConversation): bool;
 
     /**
      * Run $callback so its writes land together or not at all; returns its result, rethrows its exception.

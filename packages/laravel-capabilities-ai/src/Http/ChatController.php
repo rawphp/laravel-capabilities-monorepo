@@ -85,39 +85,27 @@ final class ChatController
         $clientMessageId = $request->input('client_message_id');
 
         try {
-            // A repeat of a stored key answers 200 with the first send's ids and starts nothing.
-            $ids = $clientMessageId === null ? null : $conversations->replayClientMessage($userId, $clientMessageId, $content);
-            if ($ids !== null) {
-                return new JsonResponse($ids, 200);
-            }
-
-            $ids = $conversations->createUserMessage(
+            $sent = $conversations->sendUserMessage(
                 content: $content,
                 conversationUlid: $request->input('conversation_ulid'),
                 userId: $userId,
                 appId: $request->input('app_id'),
                 clientMessageId: $clientMessageId,
             );
-        } catch (ClientMessageConflictException $e) {
-            // A concurrent send with this key stored first: answer with its ids once they are visible.
-            try {
-                $ids = $conversations->replayClientMessage($userId, (string) $clientMessageId, $content);
-            } catch (ClientMessageMismatchException $mismatch) {
-                return $this->clientMessageMismatch($mismatch);
-            }
-
-            return $ids === null ? $this->failure('conflict', $e->getMessage()) : new JsonResponse($ids, 200);
         } catch (ClientMessageMismatchException $e) {
-            return $this->clientMessageMismatch($e);
+            return $this->failure('validation_failed', 'The given data was invalid.', [
+                'violations' => [['field' => 'client_message_id', 'message' => $e->getMessage()]],
+            ]);
         } catch (TurnCapacityExceededException|TurnRateLimitedException $e) {
             return $this->failure('rate_limited', $e->getMessage());
         } catch (ModelNotFoundException) {
             return $this->failure('not_found', 'Conversation not found');
-        } catch (ConversationClosedException $e) {
+        } catch (ConversationClosedException|ClientMessageConflictException $e) {
             return $this->failure('conflict', $e->getMessage());
         }
 
-        return new JsonResponse($ids, 201);
+        // A replayed client_message_id answers 200 with the first send's ids; a new message 201.
+        return new JsonResponse($sent->ids, $sent->created ? 201 : 200);
     }
 
     /**
@@ -147,13 +135,6 @@ final class ChatController
         }
 
         return $violations;
-    }
-
-    private function clientMessageMismatch(ClientMessageMismatchException $e): JsonResponse
-    {
-        return $this->failure('validation_failed', 'The given data was invalid.', [
-            'violations' => [['field' => 'client_message_id', 'message' => $e->getMessage()]],
-        ]);
     }
 
     public function showTurn(Request $request, string $turnUlid, TurnService $turns): JsonResponse

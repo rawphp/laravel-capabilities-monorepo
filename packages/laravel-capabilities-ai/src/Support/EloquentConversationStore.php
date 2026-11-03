@@ -62,7 +62,7 @@ final class EloquentConversationStore implements ConversationStore
 
         // Unkeyed inserts name no client columns, so they work before the host migrates.
         if ($clientMessageId !== null) {
-            $row['meta'] = ['turn_ulid' => $turnUlid];
+            $row['meta'] = ['turn_ulid' => $turnUlid, 'sent' => false];
             $row['client_message_owner_id'] = $conversation->user_id;
             $row['client_message_id'] = $clientMessageId;
         }
@@ -79,9 +79,27 @@ final class EloquentConversationStore implements ConversationStore
             ->first();
     }
 
-    public function releaseClientMessage(Message $message): void
+    public function markClientMessageSent(Message $message): void
     {
-        $message->forceFill(['client_message_owner_id' => null, 'client_message_id' => null])->save();
+        $message->meta = array_merge((array) $message->meta, ['sent' => true]);
+        $message->save();
+    }
+
+    public function discardUnsentClientMessage(Message $message, Turn $turn, bool $withConversation): bool
+    {
+        return $this->transaction(static function () use ($message, $turn, $withConversation): bool {
+            $deleted = Turn::query()->whereKey($turn->id)->where('status', Turn::STATUS_QUEUED)->delete();
+            if ($deleted !== 1) {
+                return false;
+            }
+
+            Message::query()->whereKey($message->id)->delete();
+            if ($withConversation) {
+                Conversation::query()->whereKey($message->conversation_id)->delete();
+            }
+
+            return true;
+        });
     }
 
     public function transaction(Closure $callback): mixed

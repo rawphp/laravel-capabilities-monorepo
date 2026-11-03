@@ -86,7 +86,7 @@ class InMemoryConversationStore implements ConversationStore
             'ulid' => $ulid,
             'role' => $role,
             'content' => $content,
-            'meta' => $clientMessageId === null ? null : ['turn_ulid' => $turnUlid],
+            'meta' => $clientMessageId === null ? null : ['turn_ulid' => $turnUlid, 'sent' => false],
             'client_message_owner_id' => $owner,
             'client_message_id' => $clientMessageId,
         ]);
@@ -111,9 +111,27 @@ class InMemoryConversationStore implements ConversationStore
         return null;
     }
 
-    public function releaseClientMessage(Message $message): void
+    public function markClientMessageSent(Message $message): void
     {
-        $message->forceFill(['client_message_owner_id' => null, 'client_message_id' => null]);
+        $message->meta = array_merge((array) $message->meta, ['sent' => true]);
+    }
+
+    public function discardUnsentClientMessage(Message $message, Turn $turn, bool $withConversation): bool
+    {
+        if ($turn->status !== Turn::STATUS_QUEUED) {
+            return false;
+        }
+
+        $this->turns = array_values(array_filter($this->turns, static fn (Turn $t): bool => $t->id !== $turn->id));
+        $this->messages = array_values(array_filter($this->messages, static fn (Message $m): bool => $m->id !== $message->id));
+        if ($withConversation) {
+            $this->conversations = array_values(array_filter(
+                $this->conversations,
+                static fn (Conversation $c): bool => $c->id !== $message->conversation_id,
+            ));
+        }
+
+        return true;
     }
 
     /** Restores every row list when $callback throws, like a rolled-back transaction. */

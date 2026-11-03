@@ -29,11 +29,16 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   `max_concurrent_turns`; a new message still returns **201**. The same key with different
   `content` returns `validation_failed` on `client_message_id`. Of two concurrent sends with
   one key, one stores the message and turn; the other gets its ids, or a **409** `conflict`
-  if they are not visible yet. If the turn job cannot be dispatched, the send fails and the
-  key is released, so a retry with it sends again. Without the field, nothing changes.
-  `ConversationService::replayClientMessage()` and the new `clientMessageId` argument of
-  `createUserMessage()` give hosts the same dedupe outside the route. `createUserMessage()`
-  now writes the conversation, message and turn in one transaction.
+  while the first send is still being dispatched. A key stays pending, and a repeat gets
+  **409** `conflict`, until its turn job is handed to the queue. If writing the queued
+  progress event or dispatching the job throws while the turn is still queued, the send is
+  undone: its turn, its message and the conversation it created are deleted, so a retry with
+  the same key stores one message. If a job already claimed the turn (a sync queue runs it
+  inside dispatch), the rows stay and a retry replays that turn without running it again.
+  Without the field, nothing changes. `ConversationService::sendUserMessage()` runs the
+  route's whole flow (replay, create, race re-read) for hosts sending outside the route and
+  says whether it created or replayed. `createUserMessage()` now writes the conversation,
+  message and turn in one transaction.
 
 ### Breaking (upgrade for hosts)
 
@@ -44,9 +49,9 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   deploying; a send with `client_message_id` fails until the columns exist (sends without
   it do not touch them). The migration is idempotent.
 - **`ConversationStore`:** a host's own store must add `clientMessage()`,
-  `releaseClientMessage()` and `transaction()`. Its `createMessage()` takes optional
-  `$clientMessageId` and `$turnUlid` arguments: it must store the key with the
-  conversation's owner and the turn ulid in `meta.turn_ulid`, and throw
+  `markClientMessageSent()`, `discardUnsentClientMessage()` and `transaction()`. Its
+  `createMessage()` takes optional `$clientMessageId` and `$turnUlid` arguments: it must
+  store the key with the conversation's owner and `meta` as `{turn_ulid, sent: false}`, and throw
   `UniqueConstraintViolationException` when the owner already stored the key.
   `EloquentConversationStore` does all of this.
 
