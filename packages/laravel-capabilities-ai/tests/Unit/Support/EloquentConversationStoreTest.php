@@ -5,13 +5,17 @@ declare(strict_types=1);
 use Illuminate\Container\Container;
 use Illuminate\Database\Capsule\Manager as Capsule;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Events\Dispatcher as EventDispatcher;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Schema;
+use Rawphp\CapabilitiesAi\Domain\ClientMessageConflictException;
+use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Message;
 use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
+use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\EloquentConversationStore;
 
 /**
@@ -181,4 +185,68 @@ it('transitions a proposal only from the expected status', function () {
         ->and($store->transitionProposal('P1', Proposal::STATUS_ACCEPTING, ['status' => Proposal::STATUS_FAILED, 'last_error' => 'x: y']))->toBeTrue()
         ->and($store->transitionProposal('MISSING', Proposal::STATUS_PENDING, ['status' => Proposal::STATUS_ACCEPTING]))->toBeFalse()
         ->and($store->proposal('P1')->only(['status', 'last_error']))->toBe(['status' => Proposal::STATUS_FAILED, 'last_error' => 'x: y']);
+});
+
+it('stores a client message key with its owner and turn, and finds it only for that owner', function () {
+    $store = bootConversationStoreSqlite();
+    $conversation = $store->createConversation('C1', null, 'u1');
+    $store->createMessage($conversation, 'M0', 'user', 'plain');
+    $message = $store->createMessage($conversation, 'M1', 'user', 'hi', 'k1', 'T1');
+
+    $found = $store->clientMessage('u1', 'k1');
+
+    expect(Message::query()->find($message->id)?->only(['client_message_id', 'client_message_owner_id', 'meta']))
+        ->toBe(['client_message_id' => 'k1', 'client_message_owner_id' => 'u1', 'meta' => ['turn_ulid' => 'T1']])
+        ->and(Message::query()->where('ulid', 'M0')->first()?->only(['client_message_id', 'client_message_owner_id', 'meta']))
+        ->toBe(['client_message_id' => null, 'client_message_owner_id' => null, 'meta' => null])
+        ->and($found?->ulid)->toBe('M1')
+        ->and($found?->relationLoaded('conversation'))->toBeTrue()
+        ->and($found?->conversation?->ulid)->toBe('C1')
+        ->and($store->clientMessage('u2', 'k1'))->toBeNull()
+        ->and($store->clientMessage('u1', 'k2'))->toBeNull();
+});
+
+it('lets the unique index hold one key per owner across conversations, and any number of unkeyed messages', function () {
+    $store = bootConversationStoreSqlite();
+    $mine = $store->createConversation('C1', null, 'u1');
+    $alsoMine = $store->createConversation('C2', null, 'u1');
+    $theirs = $store->createConversation('C3', null, 'u2');
+    $store->createMessage($mine, 'M1', 'user', 'hi', 'k1', 'T1');
+    $store->createMessage($theirs, 'M2', 'user', 'hi', 'k1', 'T2');
+    $store->createMessage($mine, 'M3', 'user', 'a');
+    $store->createMessage($mine, 'M4', 'user', 'b');
+
+    expect(fn () => $store->createMessage($alsoMine, 'M5', 'user', 'hi', 'k1', 'T5'))
+        ->toThrow(UniqueConstraintViolationException::class)
+        ->and(Message::query()->count())->toBe(4);
+});
+
+it('rolls back every write in a failed transaction', function () {
+    $store = bootConversationStoreSqlite();
+
+    expect(fn () => $store->transaction(function () use ($store): never {
+        $conversation = $store->createConversation('C1', null, 'u1');
+        $store->createMessage($conversation, 'M1', 'user', 'hi');
+        throw new RuntimeException('boom');
+    }))->toThrow(RuntimeException::class, 'boom')
+        ->and(Conversation::query()->count())->toBe(0)
+        ->and(Message::query()->count())->toBe(0)
+        ->and($store->transaction(static fn (): string => 'done'))->toBe('done');
+});
+
+it('a second send with one key on the database leaves one conversation, message and turn', function () {
+    $store = bootConversationStoreSqlite();
+    $jobs = 0;
+    $service = new ConversationService(static function () use (&$jobs): void {
+        $jobs++;
+    }, new ArrayProgressStore, store: $store);
+    $first = $service->createUserMessage('hi', userId: 'u1', clientMessageId: 'k1');
+
+    expect(fn () => $service->createUserMessage('hi', userId: 'u1', clientMessageId: 'k1'))
+        ->toThrow(ClientMessageConflictException::class)
+        ->and(Conversation::query()->pluck('ulid')->all())->toBe([$first['conversation_ulid']])
+        ->and(Message::query()->pluck('ulid')->all())->toBe([$first['message_ulid']])
+        ->and(Turn::query()->pluck('ulid')->all())->toBe([$first['turn_ulid']])
+        ->and($jobs)->toBe(1)
+        ->and($service->replayClientMessage('u1', 'k1', 'hi'))->toBe($first);
 });

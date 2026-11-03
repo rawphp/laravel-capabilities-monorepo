@@ -899,3 +899,215 @@ it('storeMessage returns 409 conflict for a closed conversation and creates noth
         ->and($store->messages)->toHaveCount(1);
     expectChatErrorEnvelope($response->getData(true), 'conflict', "Conversation {$ids['conversation_ulid']} is closed");
 });
+
+it('storeMessage rejects an invalid client_message_id with 422 before creating rows or dispatching', function (mixed $key) {
+    $dispatched = 0;
+    [$conversations, $store] = httpConversations(static function () use (&$dispatched): void {
+        $dispatched++;
+    });
+
+    $response = (new ChatController)->storeMessage(
+        chatRequest('u1', 'POST', ['content' => 'hi', 'client_message_id' => $key]),
+        $conversations,
+    );
+
+    $body = $response->getData(true);
+    expect($response->getStatusCode())->toBe(422)
+        ->and($body['error']['code'])->toBe('validation_failed')
+        ->and(array_column($body['error']['violations'], 'field'))->toBe(['client_message_id'])
+        ->and($store->messages)->toBe([])
+        ->and($store->turns)->toBe([])
+        ->and($dispatched)->toBe(0);
+})->with([
+    'empty' => [''],
+    '192 characters' => [str_repeat('k', 192)],
+    'array' => [['k']],
+    'integer' => [7],
+]);
+
+it('storeMessage accepts a client_message_id of 1 and of 191 characters, counted in characters', function (string $key) {
+    [$conversations, $store] = httpConversations();
+
+    $response = (new ChatController)->storeMessage(
+        chatRequest('u1', 'POST', ['content' => 'hi', 'client_message_id' => $key]),
+        $conversations,
+    );
+
+    expect($response->getStatusCode())->toBe(201)
+        ->and($store->messages[0]->client_message_id)->toBe($key);
+})->with([
+    'one' => ['k'],
+    '191 ascii' => [str_repeat('k', 191)],
+    '191 multibyte' => [str_repeat('é', 191)],
+]);
+
+it('storeMessage answers a repeat of a stored client_message_id with 200 and the first send\'s ids, starting nothing', function () {
+    $dispatched = 0;
+    [$conversations, $store] = httpConversations(static function () use (&$dispatched): void {
+        $dispatched++;
+    });
+    $controller = new ChatController;
+    $send = static fn () => $controller->storeMessage(
+        chatRequest('u1', 'POST', ['content' => 'hi', 'client_message_id' => 'draft-1']),
+        $conversations,
+    );
+
+    $first = $send();
+    $repeat = $send();
+
+    expect($first->getStatusCode())->toBe(201)
+        ->and($repeat->getStatusCode())->toBe(200)
+        ->and($repeat->getData(true))->toBe($first->getData(true))
+        ->and(array_keys($repeat->getData(true)))->toBe(['conversation_ulid', 'message_ulid', 'turn_ulid'])
+        ->and($store->conversations)->toHaveCount(1)
+        ->and($store->messages)->toHaveCount(1)
+        ->and($store->turns)->toHaveCount(1)
+        ->and($dispatched)->toBe(1);
+});
+
+it('storeMessage finds the first send\'s conversation for a repeat that names a conversation', function () {
+    [$conversations, $store] = httpConversations();
+    $controller = new ChatController;
+    $first = $controller->storeMessage(chatRequest('u1', 'POST', ['content' => 'hi', 'client_message_id' => 'k']), $conversations)->getData(true);
+    $other = $conversations->createUserMessage('elsewhere', userId: 'u1');
+
+    $repeat = $controller->storeMessage(
+        chatRequest('u1', 'POST', ['content' => 'hi', 'client_message_id' => 'k', 'conversation_ulid' => $other['conversation_ulid']]),
+        $conversations,
+    );
+
+    expect($repeat->getStatusCode())->toBe(200)
+        ->and($repeat->getData(true))->toBe($first)
+        ->and($store->messages)->toHaveCount(2);
+});
+
+it('storeMessage rejects a repeat of a stored client_message_id with different content as validation_failed', function () {
+    [$conversations, $store] = httpConversations();
+    $controller = new ChatController;
+    $controller->storeMessage(chatRequest('u1', 'POST', ['content' => 'hi', 'client_message_id' => 'k']), $conversations);
+
+    $response = $controller->storeMessage(
+        chatRequest('u1', 'POST', ['content' => 'hello', 'client_message_id' => 'k']),
+        $conversations,
+    );
+
+    $body = $response->getData(true);
+    expect($response->getStatusCode())->toBe(422)
+        ->and($body['error']['code'])->toBe('validation_failed')
+        ->and(array_column($body['error']['violations'], 'field'))->toBe(['client_message_id'])
+        ->and($store->messages)->toHaveCount(1)
+        ->and($store->turns)->toHaveCount(1);
+});
+
+it('storeMessage does not count a repeat against turns_per_minute or the turn ceiling', function () {
+    $limiter = new InMemoryRateLimiter;
+    $store = httpWorld()->store;
+    $conversations = new ConversationService(
+        static fn ($j) => null,
+        new ArrayProgressStore,
+        maxConcurrentTurns: 1,
+        turnLimiter: $limiter,
+        turnsPerMinute: 1,
+        store: $store,
+    );
+    $controller = new ChatController;
+    $send = static fn (string $key) => $controller->storeMessage(
+        chatRequest('u1', 'POST', ['content' => 'hi', 'client_message_id' => $key]),
+        $conversations,
+    );
+
+    expect($send('k')->getStatusCode())->toBe(201)
+        ->and($send('k')->getStatusCode())->toBe(200)
+        ->and($send('k')->getStatusCode())->toBe(200)
+        ->and($limiter->attemptCount('rl:ai:user:u1'))->toBe(1)
+        ->and($send('other')->getStatusCode())->toBe(429)
+        ->and($store->turns)->toHaveCount(1);
+});
+
+it('storeMessage keeps a client_message_id per user: another user with the same key gets a new message', function () {
+    [$conversations, $store] = httpConversations();
+    $controller = new ChatController;
+    $mine = $controller->storeMessage(chatRequest('u1', 'POST', ['content' => 'hi', 'client_message_id' => 'k']), $conversations);
+
+    $theirs = $controller->storeMessage(chatRequest('u2', 'POST', ['content' => 'hi', 'client_message_id' => 'k']), $conversations);
+
+    expect($mine->getStatusCode())->toBe(201)
+        ->and($theirs->getStatusCode())->toBe(201)
+        ->and($theirs->getData(true)['conversation_ulid'])->not->toBe($mine->getData(true)['conversation_ulid'])
+        ->and($store->turns)->toHaveCount(2);
+});
+
+/**
+ * A store whose first client-key lookups miss, as when a concurrent send with the same key
+ * has not committed yet when this request checks; its insert then hits the unique index.
+ */
+function racingClientKeyStore(int $misses): InMemoryConversationStore
+{
+    return new class($misses) extends InMemoryConversationStore
+    {
+        public function __construct(private int $misses) {}
+
+        public function clientMessage(string $ownerId, string $clientMessageId): ?Rawphp\CapabilitiesAi\Models\Message
+        {
+            if ($this->misses > 0) {
+                $this->misses--;
+
+                return null;
+            }
+
+            return parent::clientMessage($ownerId, $clientMessageId);
+        }
+    };
+}
+
+it('storeMessage answers the loser of a race on one client_message_id with the winner\'s ids and no second turn', function () {
+    $store = racingClientKeyStore(misses: 1);
+    $dispatched = 0;
+    $conversations = new ConversationService(static function () use (&$dispatched): void {
+        $dispatched++;
+    }, new ArrayProgressStore, store: $store);
+    $winner = $conversations->createUserMessage('hi', userId: 'u1', clientMessageId: 'k');
+
+    $loser = (new ChatController)->storeMessage(
+        chatRequest('u1', 'POST', ['content' => 'hi', 'client_message_id' => 'k']),
+        $conversations,
+    );
+
+    expect($loser->getStatusCode())->toBe(200)
+        ->and($loser->getData(true))->toBe($winner)
+        ->and($store->conversations)->toHaveCount(1)
+        ->and($store->messages)->toHaveCount(1)
+        ->and($store->turns)->toHaveCount(1)
+        ->and($dispatched)->toBe(1);
+});
+
+it('storeMessage answers a race loser that still cannot see the winner with 409 conflict and no second turn', function () {
+    $store = racingClientKeyStore(misses: 2);
+    $conversations = new ConversationService(static fn ($j) => null, new ArrayProgressStore, store: $store);
+    $conversations->createUserMessage('hi', userId: 'u1', clientMessageId: 'k');
+
+    $loser = (new ChatController)->storeMessage(
+        chatRequest('u1', 'POST', ['content' => 'hi', 'client_message_id' => 'k']),
+        $conversations,
+    );
+
+    expect($loser->getStatusCode())->toBe(409)
+        ->and($loser->getData(true)['error']['code'])->toBe('conflict')
+        ->and($store->messages)->toHaveCount(1)
+        ->and($store->turns)->toHaveCount(1);
+});
+
+it('storeMessage answers a race loser with different content as validation_failed on client_message_id', function () {
+    $store = racingClientKeyStore(misses: 1);
+    $conversations = new ConversationService(static fn ($j) => null, new ArrayProgressStore, store: $store);
+    $conversations->createUserMessage('hi', userId: 'u1', clientMessageId: 'k');
+
+    $loser = (new ChatController)->storeMessage(
+        chatRequest('u1', 'POST', ['content' => 'hello', 'client_message_id' => 'k']),
+        $conversations,
+    );
+
+    expect($loser->getStatusCode())->toBe(422)
+        ->and(array_column($loser->getData(true)['error']['violations'], 'field'))->toBe(['client_message_id'])
+        ->and($store->messages)->toHaveCount(1);
+});

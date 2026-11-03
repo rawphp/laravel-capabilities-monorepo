@@ -205,3 +205,35 @@ it('models use prefix-aware package tables only', function () {
         ->and((new Turn)->getTable())->toBe(TableNames::turns())
         ->and((new Proposal)->getTable())->toBe(TableNames::proposals());
 });
+
+it('add client_message_id migration adds the keyed columns and owner-scoped unique index idempotently, and drops them on down', function () {
+    bootAiSqlite();
+    runAiMigrations();
+    $schema = Capsule::connection()->getSchemaBuilder();
+    $table = TableNames::messages();
+    $uniqueIndexes = static fn (): array => array_values(array_map(
+        static fn (array $index): array => $index['columns'],
+        array_filter($schema->getIndexes($table), static fn (array $index): bool => $index['unique'] && ! $index['primary']),
+    ));
+    expect($schema->hasColumns($table, ['client_message_id', 'client_message_owner_id']))->toBeTrue()
+        ->and($uniqueIndexes())->toContain(['client_message_owner_id', 'client_message_id']);
+
+    $migration = require dirname(__DIR__, 3).'/database/migrations/2026_11_04_000001_add_client_message_id_to_capabilities_ai_messages_table.php';
+    $migration->up();
+    expect($schema->hasColumn($table, 'client_message_id'))->toBeTrue();
+
+    $migration->down();
+    $migration->down();
+    expect($schema->hasColumn($table, 'client_message_id'))->toBeFalse()
+        ->and($schema->hasColumn($table, 'client_message_owner_id'))->toBeFalse()
+        ->and($uniqueIndexes())->not->toContain(['client_message_owner_id', 'client_message_id'])
+        ->and($schema->hasTable($table))->toBeTrue();
+
+    $migration->up();
+    expect($uniqueIndexes())->toContain(['client_message_owner_id', 'client_message_id']);
+
+    $schema->drop($table);
+    $migration->up();
+    $migration->down();
+    expect($schema->hasTable($table))->toBeFalse();
+});
