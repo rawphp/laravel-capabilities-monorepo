@@ -11,6 +11,8 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-04
+
 ### Added
 
 - **Terminal tools:** a `ToolCatalog` definition can set `terminal: true`. When a round's
