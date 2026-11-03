@@ -261,3 +261,16 @@ it('creates an unkeyed message on a messages table that predates the client key 
 
     expect(Message::query()->find($message->id)?->content)->toBe('hi');
 });
+
+it('releases a client message key so the owner can store it again', function () {
+    $store = bootConversationStoreSqlite();
+    $conversation = $store->createConversation('C1', null, 'u1');
+    $message = $store->createMessage($conversation, 'M1', 'user', 'hi', 'k1', 'T1');
+
+    $store->releaseClientMessage($message);
+
+    expect(Message::query()->find($message->id)?->only(['client_message_id', 'client_message_owner_id', 'content']))
+        ->toBe(['client_message_id' => null, 'client_message_owner_id' => null, 'content' => 'hi'])
+        ->and($store->clientMessage('u1', 'k1'))->toBeNull()
+        ->and($store->createMessage($conversation, 'M2', 'user', 'hi', 'k1', 'T2')->ulid)->toBe('M2');
+});

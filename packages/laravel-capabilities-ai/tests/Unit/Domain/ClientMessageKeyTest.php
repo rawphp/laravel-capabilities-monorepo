@@ -116,3 +116,27 @@ it('rejects a client message key without an owner', function () {
         ->toThrow(InvalidArgumentException::class)
         ->and($world->store->messages)->toBe([]);
 });
+
+it('releases the key when the turn cannot be dispatched, so a retry with that key sends again', function () {
+    $store = new InMemoryConversationStore;
+    $fail = true;
+    $jobs = 0;
+    $service = new ConversationService(static function () use (&$fail, &$jobs): void {
+        if ($fail) {
+            throw new RuntimeException('queue down');
+        }
+        $jobs++;
+    }, new ArrayProgressStore, store: $store);
+
+    expect(fn () => $service->createUserMessage('hi', userId: 'u1', clientMessageId: 'k1'))
+        ->toThrow(RuntimeException::class, 'queue down')
+        ->and($service->replayClientMessage('u1', 'k1', 'hi'))->toBeNull()
+        ->and($store->messages[0]->client_message_id)->toBeNull()
+        ->and($store->messages[0]->client_message_owner_id)->toBeNull();
+
+    $fail = false;
+    $retry = $service->createUserMessage('hi', userId: 'u1', clientMessageId: 'k1');
+
+    expect($service->replayClientMessage('u1', 'k1', 'hi'))->toBe($retry)
+        ->and($jobs)->toBe(1);
+});
