@@ -218,7 +218,12 @@ it('removes a keyed send whose queued progress event cannot be written, before a
 it('keeps the key on a turn the job already claimed when dispatch throws, so a retry replays and runs nothing', function () {
     // A sync queue runs the job inside dispatch: it claims the turn, fails it, and rethrows.
     $world = clientKeyDispatchWorld(static function (RunTurnJob $job, object $world): void {
-        $world->store->turn($job->turnUlid)->status = Turn::STATUS_FAILED;
+        // Like the claim's UPDATE query: the stored row moves on, the service's $turn copy stays queued.
+        foreach ($world->store->turns as $i => $turn) {
+            if ($turn->ulid === $job->turnUlid) {
+                $world->store->turns[$i] = (clone $turn)->forceFill(['status' => Turn::STATUS_FAILED]);
+            }
+        }
         throw new RuntimeException('provider error after a tool ran');
     });
 

@@ -295,3 +295,18 @@ it('discards an unsent client message, its queued turn and optionally its conver
         ->and(Turn::query()->pluck('ulid')->all())->toBe(['T3'])
         ->and($store->createMessage($kept, 'M4', 'user', 'hi', 'k1', 'T4')->ulid)->toBe('M4');
 });
+
+it('reads the turn status from the database when discarding, not from the stale model it is given', function () {
+    $store = bootConversationStoreSqlite();
+    $conversation = $store->createConversation('C1', null, 'u1');
+    $message = $store->createMessage($conversation, 'M1', 'user', 'hi', 'k1', 'T1');
+    $turn = $store->createQueuedTurn($conversation, 'T1');
+    // A job claimed it with a query (sync queue); the caller's $turn still says queued.
+    Turn::query()->whereKey($turn->id)->update(['status' => Turn::STATUS_RUNNING]);
+
+    expect($turn->status)->toBe(Turn::STATUS_QUEUED)
+        ->and($store->discardUnsentClientMessage($message, $turn, withConversation: true))->toBeFalse()
+        ->and(Conversation::query()->pluck('ulid')->all())->toBe(['C1'])
+        ->and(Message::query()->pluck('ulid')->all())->toBe(['M1'])
+        ->and(Turn::query()->pluck('status', 'ulid')->all())->toBe(['T1' => Turn::STATUS_RUNNING]);
+});
