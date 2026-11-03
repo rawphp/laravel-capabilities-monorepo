@@ -1112,3 +1112,20 @@ it('storeMessage answers a race loser with different content as validation_faile
         ->and(array_column($loser->getData(true)['error']['violations'], 'field'))->toBe(['client_message_id'])
         ->and($store->messages)->toHaveCount(1);
 });
+
+it('storeMessage answers a repeat with 409 conflict while the first send is still being dispatched', function () {
+    $controller = new ChatController;
+    $responses = [];
+    $store = httpWorld()->store;
+    $conversations = null;
+    $conversations = new ConversationService(static function () use (&$conversations, &$responses, $controller): void {
+        $responses[] = $controller->storeMessage(chatRequest('u1', 'POST', ['content' => 'hi', 'client_message_id' => 'k']), $conversations);
+    }, new ArrayProgressStore, store: $store);
+
+    $first = $controller->storeMessage(chatRequest('u1', 'POST', ['content' => 'hi', 'client_message_id' => 'k']), $conversations);
+
+    expect($first->getStatusCode())->toBe(201)
+        ->and($responses[0]->getStatusCode())->toBe(409)
+        ->and($responses[0]->getData(true)['error']['code'])->toBe('conflict')
+        ->and($store->turns)->toHaveCount(1);
+});

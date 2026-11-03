@@ -196,7 +196,7 @@ it('stores a client message key with its owner and turn, and finds it only for t
     $found = $store->clientMessage('u1', 'k1');
 
     expect(Message::query()->find($message->id)?->only(['client_message_id', 'client_message_owner_id', 'meta']))
-        ->toBe(['client_message_id' => 'k1', 'client_message_owner_id' => 'u1', 'meta' => ['turn_ulid' => 'T1']])
+        ->toBe(['client_message_id' => 'k1', 'client_message_owner_id' => 'u1', 'meta' => ['turn_ulid' => 'T1', 'sent' => false]])
         ->and(Message::query()->where('ulid', 'M0')->first()?->only(['client_message_id', 'client_message_owner_id', 'meta']))
         ->toBe(['client_message_id' => null, 'client_message_owner_id' => null, 'meta' => null])
         ->and($found?->ulid)->toBe('M1')
@@ -262,15 +262,36 @@ it('creates an unkeyed message on a messages table that predates the client key 
     expect(Message::query()->find($message->id)?->content)->toBe('hi');
 });
 
-it('releases a client message key so the owner can store it again', function () {
+it('marks a client message sent', function () {
     $store = bootConversationStoreSqlite();
     $conversation = $store->createConversation('C1', null, 'u1');
     $message = $store->createMessage($conversation, 'M1', 'user', 'hi', 'k1', 'T1');
 
-    $store->releaseClientMessage($message);
+    $store->markClientMessageSent($message);
 
-    expect(Message::query()->find($message->id)?->only(['client_message_id', 'client_message_owner_id', 'content']))
-        ->toBe(['client_message_id' => null, 'client_message_owner_id' => null, 'content' => 'hi'])
-        ->and($store->clientMessage('u1', 'k1'))->toBeNull()
-        ->and($store->createMessage($conversation, 'M2', 'user', 'hi', 'k1', 'T2')->ulid)->toBe('M2');
+    expect(Message::query()->find($message->id)?->meta)->toBe(['turn_ulid' => 'T1', 'sent' => true]);
+});
+
+it('discards an unsent client message, its queued turn and optionally its conversation, only while the turn is queued', function () {
+    $store = bootConversationStoreSqlite();
+    $kept = $store->createConversation('C1', null, 'u1');
+    $earlier = $store->createMessage($kept, 'M0', 'user', 'earlier');
+    $message = $store->createMessage($kept, 'M1', 'user', 'hi', 'k1', 'T1');
+    $turn = $store->createQueuedTurn($kept, 'T1');
+    $fresh = $store->createConversation('C2', null, 'u1');
+    $freshMessage = $store->createMessage($fresh, 'M2', 'user', 'hi', 'k2', 'T2');
+    $freshTurn = $store->createQueuedTurn($fresh, 'T2');
+    $claimed = $store->createConversation('C3', null, 'u1');
+    $claimedMessage = $store->createMessage($claimed, 'M3', 'user', 'hi', 'k3', 'T3');
+    $claimedTurn = $store->createQueuedTurn($claimed, 'T3');
+    $claimedTurn->status = Turn::STATUS_RUNNING;
+    $claimedTurn->save();
+
+    expect($store->discardUnsentClientMessage($message, $turn, withConversation: false))->toBeTrue()
+        ->and($store->discardUnsentClientMessage($freshMessage, $freshTurn, withConversation: true))->toBeTrue()
+        ->and($store->discardUnsentClientMessage($claimedMessage, $claimedTurn, withConversation: true))->toBeFalse()
+        ->and(Conversation::query()->orderBy('id')->pluck('ulid')->all())->toBe(['C1', 'C3'])
+        ->and(Message::query()->orderBy('id')->pluck('ulid')->all())->toBe([$earlier->ulid, 'M3'])
+        ->and(Turn::query()->pluck('ulid')->all())->toBe(['T3'])
+        ->and($store->createMessage($kept, 'M4', 'user', 'hi', 'k1', 'T4')->ulid)->toBe('M4');
 });
