@@ -207,7 +207,7 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 `storeMessage` accepts an optional `client_message_id` so a client can resend a message after a lost answer without storing it twice or starting a second turn. Rotate the key whenever the draft changes, so one key always means one content.
 
 - Must be a string of 1 to 191 characters, else **HTTP 422** `validation_failed` on `client_message_id`. Omit it (or send `null`) for today's behaviour.
-- Unique per conversation owner across all their conversations, so a retry of a first message sent without `conversation_ulid` finds the conversation the first send created. Another user's key never matches.
+- Unique per conversation owner across all their conversations, so a retry of a first message sent without `conversation_ulid` finds the conversation the first send created. A repeat that names a different `conversation_ulid` still gets the first send's ids; the stored conversation wins. Another user's key never matches.
 - A repeat with a stored key and the same `content` returns **HTTP 200** with the first send's `{ conversation_ulid, message_ulid, turn_ulid }` (a new message returns **201** with the same shape). It creates no message or turn, dispatches no job, and counts against neither `turns_per_minute` nor `max_concurrent_turns`.
 - A repeat with a stored key and different `content` returns **HTTP 422** `validation_failed` on `client_message_id`.
 - A key stays pending until its turn job is handed to the queue. A repeat in that window gets **409** `conflict`; resend the same key a moment later to get the ids.
@@ -229,7 +229,7 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 | `ModelNotFoundException` | **404** `not_found` | history, message create (unknown `conversation_ulid`), showTurn, cancelTurn, turnEvents, destroyConversation, proposal accept/reject |
 | `RuntimeException` (domain conflict) | **409** `conflict` | cancelTurn, destroyConversation, proposal reject |
 | `ConversationClosedException` (message to a closed conversation) | **409** `conflict` | storeMessage — nothing persisted or dispatched |
-| `TurnRateLimitedException` (user over `turns_per_minute`, D-013) | **429** `rate_limited` (`retryable: true`) | storeMessage — checked before any write (a send with `client_message_id` first runs a read-only key lookup, and a replayed key is answered without the limiter); nothing persisted or dispatched |
+| `TurnRateLimitedException` (user over `turns_per_minute`, D-013) | **429** `rate_limited` (`retryable: true`) | storeMessage — checked before any write (a send with `client_message_id` first runs a read-only key lookup, and a replayed key is answered without the limiter). A send that is then undone or loses a key race has still used its slot; nothing persisted or dispatched |
 | `TurnCapacityExceededException` (`max_concurrent_turns` reached) | **429** `rate_limited` (`retryable: true`) | storeMessage — nothing persisted or dispatched; resend later |
 | Success | **200** (message create **201**; a `client_message_id` repeat **200**) | real service payload — not an empty stub |
 
