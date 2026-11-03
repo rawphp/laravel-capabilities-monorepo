@@ -79,6 +79,11 @@ final class EloquentConversationStore implements ConversationStore
             ->first();
     }
 
+    public function releaseClientMessage(Message $message): void
+    {
+        $message->forceFill(['client_message_owner_id' => null, 'client_message_id' => null])->save();
+    }
+
     public function transaction(Closure $callback): mixed
     {
         return (new Message)->getConnection()->transaction($callback);

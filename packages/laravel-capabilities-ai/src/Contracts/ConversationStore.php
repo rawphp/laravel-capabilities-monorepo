@@ -55,6 +55,11 @@ interface ConversationStore
     public function clientMessage(string $ownerId, string $clientMessageId): ?Message;
 
     /**
+     * Clear the message's client key and owner so the owner can store that key again; the message stays.
+     */
+    public function releaseClientMessage(Message $message): void;
+
+    /**
      * Run $callback so its writes land together or not at all; returns its result, rethrows its exception.
      *
      * @template T

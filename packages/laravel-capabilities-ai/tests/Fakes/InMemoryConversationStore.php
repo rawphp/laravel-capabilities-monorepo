@@ -111,6 +111,11 @@ class InMemoryConversationStore implements ConversationStore
         return null;
     }
 
+    public function releaseClientMessage(Message $message): void
+    {
+        $message->forceFill(['client_message_owner_id' => null, 'client_message_id' => null]);
+    }
+
     /** Restores every row list when $callback throws, like a rolled-back transaction. */
     public function transaction(Closure $callback): mixed
     {

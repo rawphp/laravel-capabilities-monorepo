@@ -57,6 +57,7 @@ final class ConversationService
     /**
      * $clientMessageId (requires $userId) stores a client key, unique per owner across conversations.
      * Check {@see replayClientMessage()} first: a key the owner already stored throws here.
+     * If the progress append or job dispatch throws, the key is released before the rethrow.
      *
      * @return array{conversation_ulid: string, message_ulid: string, turn_ulid: string}
      *
@@ -64,6 +65,7 @@ final class ConversationService
      * @throws TurnCapacityExceededException when queued + running turns are at the ceiling (nothing persisted)
      * @throws ConversationClosedException when appending to a closed conversation (nothing persisted)
      * @throws ClientMessageConflictException when $userId already stored $clientMessageId (nothing persisted)
+     * @throws \InvalidArgumentException when $clientMessageId is given without $userId
      */
     public function createUserMessage(
         string $content,
@@ -104,15 +106,24 @@ final class ConversationService
             throw new ClientMessageConflictException($clientMessageId, $e);
         }
 
-        // Queued first: a sync driver or fast worker appends running/terminal inside dispatch.
-        $this->progress->append($turn->ulid, [
-            'kind' => 'status',
-            'data' => ['status' => Turn::STATUS_QUEUED],
-        ]);
+        try {
+            // Queued first: a sync driver or fast worker appends running/terminal inside dispatch.
+            $this->progress->append($turn->ulid, [
+                'kind' => 'status',
+                'data' => ['status' => Turn::STATUS_QUEUED],
+            ]);
 
-        $job = new RunTurnJob($turn->ulid);
-        $job->timeout = $this->claimTtl;
-        ($this->dispatch)($job);
+            $job = new RunTurnJob($turn->ulid);
+            $job->timeout = $this->claimTtl;
+            ($this->dispatch)($job);
+        } catch (\Throwable $e) {
+            // The turn never got a job: a retry with this key must send again, not replay it.
+            if ($clientMessageId !== null) {
+                $this->store->releaseClientMessage($message);
+            }
+
+            throw $e;
+        }
 
         return [
             'conversation_ulid' => $conversation->ulid,

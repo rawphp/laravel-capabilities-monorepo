@@ -31,7 +31,7 @@ The ALTER is idempotent (no-op if the column already exists). Greenfield install
 
 ### Upgrade: messages `client_message_id` column
 
-`2026_11_04_000001_add_client_message_id_to_capabilities_ai_messages_table` adds nullable `client_message_id` and `client_message_owner_id` columns to `capabilities_ai_messages`, with a unique index on the pair (see [Client message key](#client-message-key)). `ConversationService` writes both columns for a send with `client_message_id` (sends without it do not touch them), so run **`php artisan migrate`** before clients send the key. The migration is idempotent (`hasColumn` guard). A host that binds its own `ConversationStore` must add `clientMessage()` and `transaction()` and the new optional `createMessage()` arguments; see the interface docblocks.
+`2026_11_04_000001_add_client_message_id_to_capabilities_ai_messages_table` adds nullable `client_message_id` and `client_message_owner_id` columns to `capabilities_ai_messages`, with a unique index on the pair (see [Client message key](#client-message-key)). `ConversationService` writes both columns for a send with `client_message_id` (sends without it do not touch them), so run **`php artisan migrate`** before clients send the key. The migration is idempotent (`hasColumn` guard). A host that binds its own `ConversationStore` must add `clientMessage()`, `releaseClientMessage()` and `transaction()`, and store the new optional `createMessage()` arguments; see the interface docblocks.
 
 ## Host bindings
 
@@ -211,6 +211,8 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 - A repeat with a stored key and the same `content` returns **HTTP 200** with the first send's `{ conversation_ulid, message_ulid, turn_ulid }` (a new message returns **201** with the same shape). It creates no message or turn, dispatches no job, and counts against neither `turns_per_minute` nor `max_concurrent_turns`.
 - A repeat with a stored key and different `content` returns **HTTP 422** `validation_failed` on `client_message_id`.
 - Two concurrent sends with one key store one message and one turn. The other request gets the first one's ids with **200**, or **409** `conflict` if they are not visible to it yet; resend the same key to read them.
+- If the turn job cannot be dispatched, the send fails and the key is released, so a retry with the same key sends again.
+- Keys compare by the messages table's collation. On MySQL the default `*_ci` collations treat `k` and `K` as one key, so generate keys that differ in more than case (a UUID or ULID does).
 
 **Status mapping (controller):**
 
