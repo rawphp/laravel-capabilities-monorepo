@@ -20,6 +20,40 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   full LLM round per turn. Empty text, a non-terminal tool in the round, or a failed
   result keeps today's behaviour. `TurnRunner` removes the key before calling the
   `LlmClient`, so no client sends it to the provider.
+- **Client message key:** `POST chat/messages` accepts an optional `client_message_id`
+  (a string of 1 to 191 characters, else `validation_failed` on that field). The key is
+  unique per conversation owner across all their conversations. A repeat with a stored key
+  and the same `content` returns **200** with the first send's
+  `{ conversation_ulid, message_ulid, turn_ulid }` and creates no message or turn,
+  dispatches no job, and counts against neither `turns_per_minute` nor
+  `max_concurrent_turns`; a new message still returns **201**. The same key with different
+  `content` returns `validation_failed` on `client_message_id`. Of two concurrent sends with
+  one key, one stores the message and turn; the other gets its ids, or a **409** `conflict`
+  while the first send is still being dispatched. A key stays pending, and a repeat gets
+  **409** `conflict`, until its turn job is handed to the queue. If writing the queued
+  progress event or dispatching the job throws while the turn is still queued, the send is
+  undone: its turn, its message and the conversation it created are deleted, so a retry with
+  the same key stores one message. If a job already claimed the turn (a sync queue runs it
+  inside dispatch), the rows stay and a retry replays that turn without running it again.
+  Without the field, nothing changes. `ConversationService::sendUserMessage()` runs the
+  route's whole flow (replay, create, race re-read) for hosts sending outside the route and
+  says whether it created or replayed. `createUserMessage()` now writes the conversation,
+  message and turn in one transaction.
+
+### Breaking (upgrade for hosts)
+
+- **Migration:** `2026_11_04_000001_add_client_message_id_to_capabilities_ai_messages_table`
+  (tag `capabilities-ai-migrations`) adds nullable `client_message_id` and
+  `client_message_owner_id` columns to the messages table, with a unique index on
+  (`client_message_owner_id`, `client_message_id`). Run `php artisan migrate` before
+  deploying; a send with `client_message_id` fails until the columns exist (sends without
+  it do not touch them). The migration is idempotent.
+- **`ConversationStore`:** a host's own store must add `clientMessage()`,
+  `markClientMessageSent()`, `discardUnsentClientMessage()` and `transaction()`. Its
+  `createMessage()` takes optional `$clientMessageId` and `$turnUlid` arguments: it must
+  store the key with the conversation's owner and `meta` as `{turn_ulid, sent: false}`, and throw
+  `UniqueConstraintViolationException` when the owner already stored the key.
+  `EloquentConversationStore` does all of this.
 
 ## [0.10.0] - 2026-10-18
 

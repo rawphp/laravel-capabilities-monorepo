@@ -5,13 +5,17 @@ declare(strict_types=1);
 use Illuminate\Container\Container;
 use Illuminate\Database\Capsule\Manager as Capsule;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Events\Dispatcher as EventDispatcher;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Schema;
+use Rawphp\CapabilitiesAi\Domain\ClientMessageConflictException;
+use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Message;
 use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
+use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Support\EloquentConversationStore;
 
 /**
@@ -181,4 +185,128 @@ it('transitions a proposal only from the expected status', function () {
         ->and($store->transitionProposal('P1', Proposal::STATUS_ACCEPTING, ['status' => Proposal::STATUS_FAILED, 'last_error' => 'x: y']))->toBeTrue()
         ->and($store->transitionProposal('MISSING', Proposal::STATUS_PENDING, ['status' => Proposal::STATUS_ACCEPTING]))->toBeFalse()
         ->and($store->proposal('P1')->only(['status', 'last_error']))->toBe(['status' => Proposal::STATUS_FAILED, 'last_error' => 'x: y']);
+});
+
+it('stores a client message key with its owner and turn, and finds it only for that owner', function () {
+    $store = bootConversationStoreSqlite();
+    $conversation = $store->createConversation('C1', null, 'u1');
+    $store->createMessage($conversation, 'M0', 'user', 'plain');
+    $message = $store->createMessage($conversation, 'M1', 'user', 'hi', 'k1', 'T1');
+
+    $found = $store->clientMessage('u1', 'k1');
+
+    expect(Message::query()->find($message->id)?->only(['client_message_id', 'client_message_owner_id', 'meta']))
+        ->toBe(['client_message_id' => 'k1', 'client_message_owner_id' => 'u1', 'meta' => ['turn_ulid' => 'T1', 'sent' => false]])
+        ->and(Message::query()->where('ulid', 'M0')->first()?->only(['client_message_id', 'client_message_owner_id', 'meta']))
+        ->toBe(['client_message_id' => null, 'client_message_owner_id' => null, 'meta' => null])
+        ->and($found?->ulid)->toBe('M1')
+        ->and($found?->relationLoaded('conversation'))->toBeTrue()
+        ->and($found?->conversation?->ulid)->toBe('C1')
+        ->and($store->clientMessage('u2', 'k1'))->toBeNull()
+        ->and($store->clientMessage('u1', 'k2'))->toBeNull();
+});
+
+it('lets the unique index hold one key per owner across conversations, and any number of unkeyed messages', function () {
+    $store = bootConversationStoreSqlite();
+    $mine = $store->createConversation('C1', null, 'u1');
+    $alsoMine = $store->createConversation('C2', null, 'u1');
+    $theirs = $store->createConversation('C3', null, 'u2');
+    $store->createMessage($mine, 'M1', 'user', 'hi', 'k1', 'T1');
+    $store->createMessage($theirs, 'M2', 'user', 'hi', 'k1', 'T2');
+    $store->createMessage($mine, 'M3', 'user', 'a');
+    $store->createMessage($mine, 'M4', 'user', 'b');
+
+    expect(fn () => $store->createMessage($alsoMine, 'M5', 'user', 'hi', 'k1', 'T5'))
+        ->toThrow(UniqueConstraintViolationException::class)
+        ->and(Message::query()->count())->toBe(4);
+});
+
+it('rolls back every write in a failed transaction', function () {
+    $store = bootConversationStoreSqlite();
+
+    expect(fn () => $store->transaction(function () use ($store): never {
+        $conversation = $store->createConversation('C1', null, 'u1');
+        $store->createMessage($conversation, 'M1', 'user', 'hi');
+        throw new RuntimeException('boom');
+    }))->toThrow(RuntimeException::class, 'boom')
+        ->and(Conversation::query()->count())->toBe(0)
+        ->and(Message::query()->count())->toBe(0)
+        ->and($store->transaction(static fn (): string => 'done'))->toBe('done');
+});
+
+it('a second send with one key on the database leaves one conversation, message and turn', function () {
+    $store = bootConversationStoreSqlite();
+    $jobs = 0;
+    $service = new ConversationService(static function () use (&$jobs): void {
+        $jobs++;
+    }, new ArrayProgressStore, store: $store);
+    $first = $service->createUserMessage('hi', userId: 'u1', clientMessageId: 'k1');
+
+    expect(fn () => $service->createUserMessage('hi', userId: 'u1', clientMessageId: 'k1'))
+        ->toThrow(ClientMessageConflictException::class)
+        ->and(Conversation::query()->pluck('ulid')->all())->toBe([$first['conversation_ulid']])
+        ->and(Message::query()->pluck('ulid')->all())->toBe([$first['message_ulid']])
+        ->and(Turn::query()->pluck('ulid')->all())->toBe([$first['turn_ulid']])
+        ->and($jobs)->toBe(1)
+        ->and($service->replayClientMessage('u1', 'k1', 'hi'))->toBe($first);
+});
+
+it('creates an unkeyed message on a messages table that predates the client key columns', function () {
+    $store = bootConversationStoreSqlite();
+    $migration = require dirname(__DIR__, 3).'/database/migrations/2026_11_04_000001_add_client_message_id_to_capabilities_ai_messages_table.php';
+    $migration->down();
+    $conversation = $store->createConversation('C1', null, 'u1');
+
+    $message = $store->createMessage($conversation, 'M1', 'user', 'hi');
+
+    expect(Message::query()->find($message->id)?->content)->toBe('hi');
+});
+
+it('marks a client message sent', function () {
+    $store = bootConversationStoreSqlite();
+    $conversation = $store->createConversation('C1', null, 'u1');
+    $message = $store->createMessage($conversation, 'M1', 'user', 'hi', 'k1', 'T1');
+
+    $store->markClientMessageSent($message);
+
+    expect(Message::query()->find($message->id)?->meta)->toBe(['turn_ulid' => 'T1', 'sent' => true]);
+});
+
+it('discards an unsent client message, its queued turn and optionally its conversation, only while the turn is queued', function () {
+    $store = bootConversationStoreSqlite();
+    $kept = $store->createConversation('C1', null, 'u1');
+    $earlier = $store->createMessage($kept, 'M0', 'user', 'earlier');
+    $message = $store->createMessage($kept, 'M1', 'user', 'hi', 'k1', 'T1');
+    $turn = $store->createQueuedTurn($kept, 'T1');
+    $fresh = $store->createConversation('C2', null, 'u1');
+    $freshMessage = $store->createMessage($fresh, 'M2', 'user', 'hi', 'k2', 'T2');
+    $freshTurn = $store->createQueuedTurn($fresh, 'T2');
+    $claimed = $store->createConversation('C3', null, 'u1');
+    $claimedMessage = $store->createMessage($claimed, 'M3', 'user', 'hi', 'k3', 'T3');
+    $claimedTurn = $store->createQueuedTurn($claimed, 'T3');
+    $claimedTurn->status = Turn::STATUS_RUNNING;
+    $claimedTurn->save();
+
+    expect($store->discardUnsentClientMessage($message, $turn, withConversation: false))->toBeTrue()
+        ->and($store->discardUnsentClientMessage($freshMessage, $freshTurn, withConversation: true))->toBeTrue()
+        ->and($store->discardUnsentClientMessage($claimedMessage, $claimedTurn, withConversation: true))->toBeFalse()
+        ->and(Conversation::query()->orderBy('id')->pluck('ulid')->all())->toBe(['C1', 'C3'])
+        ->and(Message::query()->orderBy('id')->pluck('ulid')->all())->toBe([$earlier->ulid, 'M3'])
+        ->and(Turn::query()->pluck('ulid')->all())->toBe(['T3'])
+        ->and($store->createMessage($kept, 'M4', 'user', 'hi', 'k1', 'T4')->ulid)->toBe('M4');
+});
+
+it('reads the turn status from the database when discarding, not from the stale model it is given', function () {
+    $store = bootConversationStoreSqlite();
+    $conversation = $store->createConversation('C1', null, 'u1');
+    $message = $store->createMessage($conversation, 'M1', 'user', 'hi', 'k1', 'T1');
+    $turn = $store->createQueuedTurn($conversation, 'T1');
+    // A job claimed it with a query (sync queue); the caller's $turn still says queued.
+    Turn::query()->whereKey($turn->id)->update(['status' => Turn::STATUS_RUNNING]);
+
+    expect($turn->status)->toBe(Turn::STATUS_QUEUED)
+        ->and($store->discardUnsentClientMessage($message, $turn, withConversation: true))->toBeFalse()
+        ->and(Conversation::query()->pluck('ulid')->all())->toBe(['C1'])
+        ->and(Message::query()->pluck('ulid')->all())->toBe(['M1'])
+        ->and(Turn::query()->pluck('status', 'ulid')->all())->toBe(['T1' => Turn::STATUS_RUNNING]);
 });

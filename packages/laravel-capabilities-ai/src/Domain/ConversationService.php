@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Domain;
 
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Rawphp\Capabilities\Contracts\RateLimiter;
 use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
 use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
@@ -54,48 +56,194 @@ final class ConversationService
     }
 
     /**
+     * Send a user message, deduped on $clientMessageId: a stored key with the same content replays the
+     * first send's ids and creates nothing. A send that loses a race on the key replays the winner, or
+     * throws a conflict while the winner is still dispatching. This is the HTTP route's whole flow.
+     *
+     * @throws ClientMessageMismatchException when the stored key has different content
+     * @throws ClientMessageConflictException when the key's first send has not finished dispatching
+     * @throws TurnRateLimitedException|TurnCapacityExceededException|ConversationClosedException see createUserMessage()
+     */
+    public function sendUserMessage(
+        string $content,
+        ?string $conversationUlid,
+        string $userId,
+        ?string $appId = null,
+        ?string $clientMessageId = null,
+    ): SentUserMessage {
+        if ($clientMessageId === null) {
+            return new SentUserMessage($this->createUserMessage($content, $conversationUlid, $userId, $appId), true);
+        }
+
+        $ids = $this->replayClientMessage($userId, $clientMessageId, $content);
+        if ($ids !== null) {
+            return new SentUserMessage($ids, false);
+        }
+
+        try {
+            return new SentUserMessage($this->createUserMessage($content, $conversationUlid, $userId, $appId, $clientMessageId), true);
+        } catch (ClientMessageConflictException $e) {
+            // A concurrent send stored the key first: replay it once it is visible.
+            return new SentUserMessage($this->replayClientMessage($userId, $clientMessageId, $content) ?? throw $e, false);
+        }
+    }
+
+    /**
+     * $clientMessageId (requires $userId) stores a client key, unique per owner across conversations.
+     * The key stays pending (replay answers a conflict) until the turn job is handed to the queue.
+     * If the progress append or dispatch throws while the turn is still queued, the send's turn,
+     * message and new conversation are deleted, so a retry with the key sends once. A turn a job
+     * already claimed (sync queue) is kept and the key marked sent, so a retry replays it.
+     * Prefer {@see sendUserMessage()}: here a key the owner already stored throws.
+     *
      * @return array{conversation_ulid: string, message_ulid: string, turn_ulid: string}
      *
      * @throws TurnRateLimitedException when $userId is over turns_per_minute (nothing persisted)
      * @throws TurnCapacityExceededException when queued + running turns are at the ceiling (nothing persisted)
      * @throws ConversationClosedException when appending to a closed conversation (nothing persisted)
+     * @throws ClientMessageConflictException when $userId already stored $clientMessageId (nothing persisted)
+     * @throws \InvalidArgumentException when $clientMessageId is given without $userId
      */
     public function createUserMessage(
         string $content,
         ?string $conversationUlid = null,
         ?string $userId = null,
         ?string $appId = null,
+        ?string $clientMessageId = null,
     ): array {
+        if ($clientMessageId !== null && $userId === null) {
+            throw new \InvalidArgumentException('clientMessageId needs a userId: the key is unique per owner');
+        }
+
         $this->assertTurnRate($userId);
         $this->assertTurnCapacity();
 
-        // A given $userId must own an existing conversation: the owner is the turn's bus actor.
-        $conversation = $conversationUlid
-            ? $this->store->ownedConversation($conversationUlid, $userId)
-            : $this->store->createConversation($this->ulid(), $appId, $userId);
+        try {
+            [$conversation, $message, $turn] = $this->store->transaction(function () use ($content, $conversationUlid, $userId, $appId, $clientMessageId): array {
+                // A given $userId must own an existing conversation: the owner is the turn's bus actor.
+                $conversation = $conversationUlid
+                    ? $this->store->ownedConversation($conversationUlid, $userId)
+                    : $this->store->createConversation($this->ulid(), $appId, $userId);
 
-        if ($conversation->status === 'closed') {
-            throw new ConversationClosedException($conversation->ulid);
+                if ($conversation->status === 'closed') {
+                    throw new ConversationClosedException($conversation->ulid);
+                }
+
+                $turnUlid = $this->ulid();
+                $message = $this->store->createMessage($conversation, $this->ulid(), 'user', $content, $clientMessageId, $turnUlid);
+                $turn = $this->store->createQueuedTurn($conversation, $turnUlid);
+
+                return [$conversation, $message, $turn];
+            });
+        } catch (UniqueConstraintViolationException $e) {
+            if ($clientMessageId === null) {
+                throw $e;
+            }
+
+            throw new ClientMessageConflictException($clientMessageId, $e);
         }
 
-        $message = $this->store->createMessage($conversation, $this->ulid(), 'user', $content);
-        $turn = $this->store->createQueuedTurn($conversation, $this->ulid());
+        try {
+            // Queued first: a sync driver or fast worker appends running/terminal inside dispatch.
+            $this->progress->append($turn->ulid, [
+                'kind' => 'status',
+                'data' => ['status' => Turn::STATUS_QUEUED],
+            ]);
 
-        // Queued first: a sync driver or fast worker appends running/terminal inside dispatch.
-        $this->progress->append($turn->ulid, [
-            'kind' => 'status',
-            'data' => ['status' => Turn::STATUS_QUEUED],
-        ]);
+            $job = new RunTurnJob($turn->ulid);
+            $job->timeout = $this->claimTtl;
+            ($this->dispatch)($job);
+        } catch (\Throwable $e) {
+            if ($clientMessageId !== null) {
+                $this->settleUndispatched($message, $turn, $conversationUlid === null);
+            }
 
-        $job = new RunTurnJob($turn->ulid);
-        $job->timeout = $this->claimTtl;
-        ($this->dispatch)($job);
+            throw $e;
+        }
+
+        if ($clientMessageId !== null) {
+            $this->markSent($message);
+        }
 
         return [
             'conversation_ulid' => $conversation->ulid,
             'message_ulid' => $message->ulid,
             'turn_ulid' => $turn->ulid,
         ];
+    }
+
+    /**
+     * The first send's ids when $ownerId already stored $clientMessageId with this $content; null when
+     * the key is new. Reads only: no rate limit, capacity check, row, progress event or job.
+     *
+     * @return array{conversation_ulid: string, message_ulid: string, turn_ulid: string}|null
+     *
+     * @throws ClientMessageMismatchException when the stored message has different content
+     * @throws ClientMessageConflictException while the first send's turn is queued and not yet dispatched
+     */
+    public function replayClientMessage(string $ownerId, string $clientMessageId, string $content): ?array
+    {
+        $message = $this->store->clientMessage($ownerId, $clientMessageId);
+        if ($message === null) {
+            return null;
+        }
+        if ($message->content !== $content) {
+            throw new ClientMessageMismatchException($clientMessageId);
+        }
+
+        /** @var array{turn_ulid?: string, sent?: bool}|null $meta */
+        $meta = $message->meta;
+        $turnUlid = (string) ($meta['turn_ulid'] ?? '');
+
+        // Not marked sent: the first send is still dispatching (or died before it). Its turn is
+        // only worth a 200 once it has left queued, e.g. a job claimed it or the reaper failed it.
+        if (($meta['sent'] ?? false) !== true && $this->stillQueued($turnUlid)) {
+            throw new ClientMessageConflictException($clientMessageId);
+        }
+
+        return [
+            'conversation_ulid' => (string) $message->conversation?->ulid,
+            'message_ulid' => $message->ulid,
+            'turn_ulid' => $turnUlid,
+        ];
+    }
+
+    /**
+     * After a throw in append or dispatch: undo the send if its turn is still queued (no job got it);
+     * else a job already ran it, so keep it and mark the key sent. Never hides the original error:
+     * a key left pending answers a conflict until its turn leaves queued.
+     */
+    private function settleUndispatched(Message $message, Turn $turn, bool $createdConversation): void
+    {
+        try {
+            if (! $this->store->discardUnsentClientMessage($message, $turn, $createdConversation)) {
+                $this->store->markClientMessageSent($message);
+            }
+        } catch (\Throwable) {
+            // Keep the dispatch error.
+        }
+    }
+
+    /**
+     * The job is queued, so the send succeeded; a failed mark only delays replay until the turn leaves queued.
+     */
+    private function markSent(Message $message): void
+    {
+        try {
+            $this->store->markClientMessageSent($message);
+        } catch (\Throwable) {
+            // The send stands.
+        }
+    }
+
+    private function stillQueued(string $turnUlid): bool
+    {
+        try {
+            return $this->store->turn($turnUlid)->status === Turn::STATUS_QUEUED;
+        } catch (ModelNotFoundException) {
+            // Discarded between the key read and this one: the send is being undone.
+            return true;
+        }
     }
 
     /**
