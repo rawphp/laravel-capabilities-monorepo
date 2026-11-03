@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 use Illuminate\Database\UniqueConstraintViolationException;
 use Rawphp\Capabilities\Support\InMemoryRateLimiter;
+use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Domain\ClientMessageConflictException;
 use Rawphp\CapabilitiesAi\Domain\ClientMessageMismatchException;
-use Rawphp\CapabilitiesAi\Contracts\ProgressStore;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Jobs\RunTurnJob;
-use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Message;
+use Rawphp\CapabilitiesAi\Models\Turn;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Tests\Fakes\InMemoryConversationStore;
 
@@ -311,4 +311,56 @@ it('rethrows a unique violation on an unkeyed send as is, not as a client key co
 
     expect($thrown)->toBe($violation)
         ->and($store->conversations)->toBe([]);
+});
+
+/**
+ * A store whose discard and/or mark-sent writes throw, as when the database drops mid-send.
+ */
+function brokenClientKeyStore(bool $discardThrows, bool $markThrows): InMemoryConversationStore
+{
+    return new class($discardThrows, $markThrows) extends InMemoryConversationStore
+    {
+        public function __construct(private readonly bool $discardThrows, private readonly bool $markThrows) {}
+
+        public function discardUnsentClientMessage(Message $message, Turn $turn, bool $withConversation): bool
+        {
+            return $this->discardThrows ? throw new RuntimeException('db down on discard') : parent::discardUnsentClientMessage($message, $turn, $withConversation);
+        }
+
+        public function markClientMessageSent(Message $message): void
+        {
+            $this->markThrows ? throw new RuntimeException('db down on mark') : parent::markClientMessageSent($message);
+        }
+    };
+}
+
+it('keeps the dispatch error when undoing the send also fails, and leaves the key pending', function () {
+    $store = brokenClientKeyStore(discardThrows: true, markThrows: false);
+    $service = new ConversationService(static fn () => throw new RuntimeException('queue down'), new ArrayProgressStore, store: $store);
+
+    expect(fn () => $service->createUserMessage('hi', userId: 'u1', clientMessageId: 'k1'))
+        ->toThrow(RuntimeException::class, 'queue down')
+        ->and(fn () => $service->replayClientMessage('u1', 'k1', 'hi'))->toThrow(ClientMessageConflictException::class);
+});
+
+it('still answers a dispatched send when marking its key sent fails; replay waits for the turn to leave queued', function () {
+    $store = brokenClientKeyStore(discardThrows: false, markThrows: true);
+    $service = new ConversationService(static fn () => null, new ArrayProgressStore, store: $store);
+
+    $ids = $service->createUserMessage('hi', userId: 'u1', clientMessageId: 'k1');
+
+    expect(fn () => $service->replayClientMessage('u1', 'k1', 'hi'))->toThrow(ClientMessageConflictException::class);
+
+    $store->turn($ids['turn_ulid'])->status = Turn::STATUS_RUNNING;
+
+    expect($service->replayClientMessage('u1', 'k1', 'hi'))->toBe($ids);
+});
+
+it('answers a conflict when the pending key\'s turn is gone mid-replay (the send is being undone)', function () {
+    $world = clientKeyWorld();
+    $ids = $world->service->createUserMessage('hi', userId: 'u1', clientMessageId: 'k1');
+    $world->store->messages[0]->meta = ['turn_ulid' => $ids['turn_ulid'], 'sent' => false];
+    $world->store->turns = [];
+
+    expect(fn () => $world->service->replayClientMessage('u1', 'k1', 'hi'))->toThrow(ClientMessageConflictException::class);
 });
