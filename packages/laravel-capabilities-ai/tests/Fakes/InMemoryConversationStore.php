@@ -118,7 +118,14 @@ class InMemoryConversationStore implements ConversationStore
 
     public function discardUnsentClientMessage(Message $message, Turn $turn, bool $withConversation): bool
     {
-        if ($turn->status !== Turn::STATUS_QUEUED) {
+        // Like the Eloquent store's DELETE … WHERE status = queued: read the stored row, not the caller's copy.
+        $stored = null;
+        foreach ($this->turns as $candidate) {
+            if ($candidate->id === $turn->id) {
+                $stored = $candidate;
+            }
+        }
+        if ($stored?->status !== Turn::STATUS_QUEUED) {
             return false;
         }
 
