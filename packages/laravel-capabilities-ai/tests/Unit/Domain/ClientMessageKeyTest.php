@@ -2,10 +2,13 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\UniqueConstraintViolationException;
 use Rawphp\Capabilities\Support\InMemoryRateLimiter;
 use Rawphp\CapabilitiesAi\Domain\ClientMessageConflictException;
 use Rawphp\CapabilitiesAi\Domain\ClientMessageMismatchException;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
+use Rawphp\CapabilitiesAi\Models\Conversation;
+use Rawphp\CapabilitiesAi\Models\Message;
 use Rawphp\CapabilitiesAi\Support\ArrayProgressStore;
 use Rawphp\CapabilitiesAi\Tests\Fakes\InMemoryConversationStore;
 
@@ -139,4 +142,34 @@ it('releases the key when the turn cannot be dispatched, so a retry with that ke
 
     expect($service->replayClientMessage('u1', 'k1', 'hi'))->toBe($retry)
         ->and($jobs)->toBe(1);
+});
+
+it('rethrows a unique violation on an unkeyed send as is, not as a client key conflict', function () {
+    $violation = new UniqueConstraintViolationException('memory', 'insert', [], new PDOException('UNIQUE'));
+    $store = new class($violation) extends InMemoryConversationStore
+    {
+        public function __construct(private readonly Throwable $violation) {}
+
+        public function createMessage(
+            Conversation $conversation,
+            string $ulid,
+            string $role,
+            string $content,
+            ?string $clientMessageId = null,
+            ?string $turnUlid = null,
+        ): Message {
+            throw $this->violation;
+        }
+    };
+    $service = new ConversationService(static fn ($j) => null, new ArrayProgressStore, store: $store);
+
+    $thrown = null;
+    try {
+        $service->createUserMessage('hi', userId: 'u1');
+    } catch (Throwable $e) {
+        $thrown = $e;
+    }
+
+    expect($thrown)->toBe($violation)
+        ->and($store->conversations)->toBe([]);
 });
