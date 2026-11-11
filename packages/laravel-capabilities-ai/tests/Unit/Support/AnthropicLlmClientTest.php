@@ -1425,7 +1425,7 @@ it('ignores non-array content blocks in the Anthropic response', function () {
 
     $out = (new AnthropicLlmClient('test-key'))->complete([['role' => 'user', 'content' => 'hi']]);
 
-    expect($out)->toBe(['content' => 'kept']);
+    expect($out)->toBe(['content' => 'kept', 'raw_content' => ['stray', ['type' => 'text', 'text' => 'kept']]]);
 });
 
 it('LlmClientDefaults keeps host clients off multi-round tools unless they opt in', function () {
@@ -1628,7 +1628,7 @@ it('a searched two-round turn replays round one blocks unchanged and in order, t
                 'content' => '{"ok":true}',
             ]]],
         ])
-        ->and($sent[1]['tools'])->toBe($sent[0]['tools']);
+        ->and($sent[1]['tools'])->toEqual($sent[0]['tools']);
 });
 
 it('replays empty JSON objects in raw_content as objects, not arrays', function () {

@@ -13,6 +13,9 @@ use Rawphp\CapabilitiesAi\Contracts\LlmClient;
  * Each tool_calls[] entry is normalized to include a non-empty `id` (fixture
  * value preserved when present; otherwise a stable generated id) so TurnRunner
  * can attach matching tool_call_id on role=tool results.
+ *
+ * A scripted `raw_content` (provider blocks, e.g. an Anthropic tool search round) is
+ * returned unchanged, so hosts can test that TurnRunner carries it into the next round.
  */
 final class FakeLlmClient implements LlmClient
 {
@@ -20,11 +23,11 @@ final class FakeLlmClient implements LlmClient
 
     private int $toolCallSeq = 0;
 
-    /** @var list<array{content?: string, tool_calls?: list<array<string, mixed>>}> */
+    /** @var list<array{content?: string, tool_calls?: list<array<string, mixed>>, raw_content?: list<mixed>}> */
     private array $responses;
 
     /**
-     * @param  list<array{content?: string, tool_calls?: list<array<string, mixed>>}>  $responses
+     * @param  list<array{content?: string, tool_calls?: list<array<string, mixed>>, raw_content?: list<mixed>}>  $responses
      */
     public function __construct(array $responses = [])
     {

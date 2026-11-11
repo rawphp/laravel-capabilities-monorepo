@@ -160,6 +160,7 @@ final class ContainerBindings
             deadlineSeconds: $claimTtl,
             effort: isset($config['llm']['anthropic']['effort']) ? (string) $config['llm']['anthropic']['effort'] : null,
             cacheSystem: (bool) ($config['llm']['anthropic']['cache_system'] ?? true),
+            toolSearch: isset($config['llm']['anthropic']['tool_search']) ? (string) $config['llm']['anthropic']['tool_search'] : null,
         );
     }
 

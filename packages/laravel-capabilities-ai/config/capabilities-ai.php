@@ -68,6 +68,13 @@ return [
              */
             'effort' => $env('CAPABILITIES_AI_ANTHROPIC_EFFORT'),
             /**
+             * Anthropic tool search: bm25 | regex. Set, every request with tools also carries
+             * that server tool, and tools whose ToolCatalog def has `defer_loading: true` load
+             * only when the model finds them. Unset (or an empty env value) adds nothing. Any
+             * other value makes the anthropic LlmClient refuse to build.
+             */
+            'tool_search' => $env('CAPABILITIES_AI_ANTHROPIC_TOOL_SEARCH'),
+            /**
              * Send the system prompt as one cache_control (ephemeral) block, so a long
              * manifest is billed once per session instead of once per turn. Prompts under
              * Anthropic's minimum cacheable length are sent the same way and not cached.

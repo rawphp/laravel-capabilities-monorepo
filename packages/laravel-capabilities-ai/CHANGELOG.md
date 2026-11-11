@@ -11,6 +11,25 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+### Added
+
+- **Deferred tools:** a `ToolCatalog` definition can set `defer_loading: true`. The
+  Anthropic client sends it as Anthropic's `defer_loading`, so the tool stays out of the
+  model's context until the model finds it by searching. `TurnRunner` still treats the tool
+  as offered and runs calls to it. A request whose tools are all deferred is refused
+  before sending (`RuntimeException`), because the API rejects it.
+- **Anthropic tool search:** `llm.anthropic.tool_search` (env
+  `CAPABILITIES_AI_ANTHROPIC_TOOL_SEARCH`): unset (default), `bm25` or `regex`. When set,
+  every request with tools also carries Anthropic's tool search tool
+  (`tool_search_tool_bm25_20251119` or `tool_search_tool_regex_20251119`). Any other
+  value makes the client refuse to build.
+- **Raw content replay:** the Anthropic client returns each response's `content` blocks
+  unchanged as `raw_content`. `TurnRunner` keeps it on the assistant message for the next
+  round, and the client sends those blocks back as received (`server_tool_use`,
+  `tool_search_tool_result`, `thinking`, `tool_use`, in order). Messages without it are
+  rebuilt from `content` and `tool_calls` as before. `FakeLlmClient` returns a scripted
+  `raw_content` unchanged, so hosts can test a searched round.
+
 ## [0.11.0] - 2026-11-04
 
 ### Added

@@ -42,6 +42,13 @@ use Throwable;
  * The retry follows the same rule, measured from when it will start: it gets the
  * capped timeout, or is skipped when under MIN_REQUEST_SECONDS would be left. The
  * 429 then surfaces as a RetryableLlmException carrying its Retry-After.
+ *
+ * Tool search: a tool def with `defer_loading: true` goes out with that flag, and with
+ * $toolSearch (bm25 | regex) every request that has tools also carries Anthropic's tool
+ * search tool, so the model loads deferred tools by searching. A request whose tools are
+ * all deferred is refused before sending. Each response's `content` comes back unchanged
+ * as `raw_content`; an assistant message carrying it is replayed as is, so server tool
+ * blocks (server_tool_use, tool_search_tool_result) reach the next round in order.
  */
 final class AnthropicLlmClient implements DeadlineAwareLlmClient
 {
@@ -71,6 +78,12 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
     /** Values the API accepts for output_config.effort. */
     private const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 
+    /** Tool search variant → Anthropic's server tool for it. */
+    private const TOOL_SEARCH_TOOLS = [
+        'bm25' => ['type' => 'tool_search_tool_bm25_20251119', 'name' => 'tool_search_tool_bm25'],
+        'regex' => ['type' => 'tool_search_tool_regex_20251119', 'name' => 'tool_search_tool_regex'],
+    ];
+
     /** Absolute turn deadline (hrtime ns) from withDeadline(); null = per-call deadline only. */
     private ?int $turnDeadlineNs = null;
 
@@ -89,6 +102,8 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
         private readonly ?string $effort = null,
         /** Send the system prompt as one cache_control block; false sends the plain string. */
         private readonly bool $cacheSystem = true,
+        /** Tool search variant (bm25 | regex) added to every request with tools; null adds none. */
+        private readonly ?string $toolSearch = null,
     ) {
         if ($this->timeoutSeconds <= 0) {
             throw new InvalidArgumentException('Anthropic timeout must be a positive number of seconds');
@@ -96,6 +111,11 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
         if ($this->effort !== null && ! in_array($this->effort, self::EFFORTS, true)) {
             throw new InvalidArgumentException(
                 "Anthropic effort '{$this->effort}' is not one of: ".implode(', ', self::EFFORTS)
+            );
+        }
+        if ($this->toolSearch !== null && ! array_key_exists($this->toolSearch, self::TOOL_SEARCH_TOOLS)) {
+            throw new InvalidArgumentException(
+                "Anthropic tool_search '{$this->toolSearch}' is not one of: ".implode(', ', array_keys(self::TOOL_SEARCH_TOOLS))
             );
         }
     }
@@ -189,7 +209,17 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
         }
 
         if ($tools !== []) {
-            $payload['tools'] = $this->mapTools($tools);
+            $mapped = $this->mapTools($tools);
+            // The API answers 400 when no tool is loaded up front.
+            if ($mapped !== [] && array_filter($mapped, static fn (array $tool): bool => ! isset($tool['defer_loading'])) === []) {
+                throw new RuntimeException(
+                    'Anthropic request not sent: every tool has defer_loading set; keep at least one tool loaded up front'
+                );
+            }
+            if ($mapped !== [] && $this->toolSearch !== null) {
+                array_unshift($mapped, self::TOOL_SEARCH_TOOLS[$this->toolSearch]);
+            }
+            $payload['tools'] = $mapped;
         }
 
         if ($this->effort !== null) {
@@ -227,6 +257,7 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
 
         $json = $response->json();
         $text = '';
+        $rawContent = self::rawContent($response->body());
         $toolCalls = [];
         foreach ($json['content'] ?? [] as $block) {
             if (! is_array($block)) {
@@ -249,6 +280,7 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
         if ($toolCalls !== []) {
             $out['tool_calls'] = $toolCalls;
         }
+        $out['raw_content'] = $rawContent;
         if (is_array($json['usage'] ?? null)) {
             $out['usage'] = [
                 'input_tokens' => (int) ($json['usage']['input_tokens'] ?? 0),
@@ -424,10 +456,10 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
     }
 
     /**
-     * Map package tool defs ({name, description?, parameters?|input_schema?}) to Anthropic tools.
+     * Map package tool defs ({name, description?, parameters?|input_schema?, defer_loading?}) to Anthropic tools.
      *
      * @param  list<array<string, mixed>>  $tools
-     * @return list<array{name: string, description: string, input_schema: array<string, mixed>}>
+     * @return list<array{name: string, description: string, input_schema: array<string, mixed>, defer_loading?: true}>
      */
     private function mapTools(array $tools): array
     {
@@ -457,11 +489,15 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
                 $schema['properties'] = new stdClass;
             }
 
-            $mapped[] = [
+            $entry = [
                 'name' => self::encodeToolName($name),
                 'description' => (string) ($tool['description'] ?? ''),
                 'input_schema' => $schema,
             ];
+            if (($tool['defer_loading'] ?? false) === true) {
+                $entry['defer_loading'] = true;
+            }
+            $mapped[] = $entry;
         }
 
         return $mapped;
@@ -490,6 +526,11 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
      */
     private function assistantContentBlocks(array $message): array
     {
+        // A response's own blocks go back exactly as received (server tool blocks included).
+        if (is_array($message['raw_content'] ?? null) && $message['raw_content'] !== []) {
+            return array_values($message['raw_content']);
+        }
+
         $blocks = [];
         $text = $message['content'] ?? '';
         if (is_string($text) && $text !== '') {
@@ -526,6 +567,41 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
         }
 
         return $blocks;
+    }
+
+    /**
+     * The response's `content` array as received. Decoded so that JSON objects stay objects
+     * on re-encode: an empty or list-shaped object (`{}`, `{"0": …}`) is kept as stdClass,
+     * every other object becomes an associative array.
+     *
+     * @return list<mixed>
+     */
+    private static function rawContent(string $body): array
+    {
+        $decoded = json_decode($body, false);
+        $content = $decoded instanceof stdClass && is_array($decoded->content ?? null) ? $decoded->content : [];
+
+        return array_map(self::rawValue(...), array_values($content));
+    }
+
+    private static function rawValue(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            return array_map(self::rawValue(...), $value);
+        }
+        if (! $value instanceof stdClass) {
+            return $value;
+        }
+        $array = array_map(self::rawValue(...), get_object_vars($value));
+        if ($array === [] || array_is_list($array)) {
+            foreach ($array as $key => $item) {
+                $value->{$key} = $item;
+            }
+
+            return $value;
+        }
+
+        return $array;
     }
 
     /**
