@@ -504,3 +504,48 @@ it('max_message_chars: numeric values apply, 0 or negative disables, junk falls 
     'negative' => [-5, 0],
     'junk' => ['lots', 32000],
 ]);
+
+it('package config defaults llm.anthropic.tool_search to null', function () {
+    $anthropic = aiConfig()['llm']['anthropic'];
+
+    expect($anthropic)->toHaveKey('tool_search')
+        ->and($anthropic['tool_search'])->toBeNull();
+});
+
+it('package config reads llm.anthropic.tool_search from the environment', function () {
+    putenv('CAPABILITIES_AI_ANTHROPIC_TOOL_SEARCH=regex');
+    try {
+        expect(aiConfig()['llm']['anthropic']['tool_search'])->toBe('regex');
+    } finally {
+        putenv('CAPABILITIES_AI_ANTHROPIC_TOOL_SEARCH');
+    }
+});
+
+it('makeLlmClient wires anthropic tool_search from config into the tools payload', function () {
+    $app = new Container;
+    Facade::setFacadeApplication($app);
+    $app->singleton('http', fn () => new Factory);
+    Http::swap(new Factory);
+    Http::fake(['example.test/*' => Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200)]);
+
+    $client = ContainerBindings::makeLlmClient(aiConfig([
+        'llm' => [
+            'driver' => 'anthropic',
+            'anthropic' => ['api_key' => 'test-key', 'base_url' => 'https://example.test', 'tool_search' => 'bm25'],
+        ],
+    ]));
+
+    $client->complete([['role' => 'user', 'content' => 'hi']], [['name' => 'pane.list']]);
+
+    Http::assertSent(fn ($request) => in_array(
+        ['type' => 'tool_search_tool_bm25_20251119', 'name' => 'tool_search_tool_bm25'],
+        $request->data()['tools'],
+        true,
+    ));
+});
+
+it('makeLlmClient anthropic with an invalid tool_search fails at build', function () {
+    ContainerBindings::makeLlmClient(aiConfig([
+        'llm' => ['driver' => 'anthropic', 'anthropic' => ['api_key' => 'test-key', 'tool_search' => 'vector']],
+    ]));
+})->throws(InvalidArgumentException::class, "Anthropic tool_search 'vector' is not one of: bm25, regex");
