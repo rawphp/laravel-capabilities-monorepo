@@ -1,6 +1,6 @@
 # Laravel Capabilities — agent instructions
 
-Shared project instructions for all AI coding agents. **AGENTS.md is the source of truth**; vendor entry files (`CLAUDE.md`, …) only point here.
+Shared project instructions for all AI coding agents. This file is the source of truth. Do not add a `CLAUDE.md` that only points here.
 
 ## Product / Purpose
 
@@ -184,4 +184,4 @@ Do **not** put package behaviour tests under monorepo-root `tests/`. Each Compos
 ## Setup
 
 - Shared skills hub / fleet health: `agent-doctor` skill / `agent-doctor status`.
-- Vendor instruction files must **point at this file**; do not fork project policy into `CLAUDE.md` / `GEMINI.md` / etc.
+- Do not add a `CLAUDE.md` pointer. Claude Code reads this file when the repo has no `CLAUDE.md`. Do not fork project policy into another instruction file.
