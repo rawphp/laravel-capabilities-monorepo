@@ -4,14 +4,18 @@ declare(strict_types=1);
 
 namespace Rawphp\CapabilitiesAi\Tests\Fakes;
 
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
+use PDOException;
 use Rawphp\CapabilitiesAi\Contracts\ConversationStore;
 use Rawphp\CapabilitiesAi\Models\Conversation;
 use Rawphp\CapabilitiesAi\Models\Message;
 use Rawphp\CapabilitiesAi\Models\Proposal;
 use Rawphp\CapabilitiesAi\Models\Turn;
+use Throwable;
 
 /**
  * In-memory ConversationStore: unsaved model instances in arrays, no database.
@@ -64,14 +68,90 @@ class InMemoryConversationStore implements ConversationStore
         ]);
     }
 
-    public function createMessage(Conversation $conversation, string $ulid, string $role, string $content): Message
-    {
+    public function createMessage(
+        Conversation $conversation,
+        string $ulid,
+        string $role,
+        string $content,
+        ?string $clientMessageId = null,
+        ?string $turnUlid = null,
+    ): Message {
+        $owner = $clientMessageId === null ? null : $conversation->user_id;
+        if ($clientMessageId !== null && $owner !== null && $this->storedClientMessage($owner, $clientMessageId) !== null) {
+            throw new UniqueConstraintViolationException('memory', 'insert into messages', [], new PDOException('UNIQUE constraint failed'));
+        }
+
         return $this->messages[] = $this->row(new Message, [
             'conversation_id' => $conversation->id,
             'ulid' => $ulid,
             'role' => $role,
             'content' => $content,
+            'meta' => $clientMessageId === null ? null : ['turn_ulid' => $turnUlid, 'sent' => false],
+            'client_message_owner_id' => $owner,
+            'client_message_id' => $clientMessageId,
         ]);
+    }
+
+    public function clientMessage(string $ownerId, string $clientMessageId): ?Message
+    {
+        $message = $this->storedClientMessage($ownerId, $clientMessageId);
+
+        return $message?->setRelation('conversation', $this->conversationById($message->conversation_id));
+    }
+
+    /** The unique index's view: a subclass that hides a row from clientMessage() cannot hide it here. */
+    private function storedClientMessage(string $ownerId, string $clientMessageId): ?Message
+    {
+        foreach ($this->messages as $message) {
+            if ($message->client_message_owner_id === $ownerId && $message->client_message_id === $clientMessageId) {
+                return $message;
+            }
+        }
+
+        return null;
+    }
+
+    public function markClientMessageSent(Message $message): void
+    {
+        $message->meta = array_merge((array) $message->meta, ['sent' => true]);
+    }
+
+    public function discardUnsentClientMessage(Message $message, Turn $turn, bool $withConversation): bool
+    {
+        // Like the Eloquent store's DELETE … WHERE status = queued: read the stored row, not the caller's copy.
+        $stored = null;
+        foreach ($this->turns as $candidate) {
+            if ($candidate->id === $turn->id) {
+                $stored = $candidate;
+            }
+        }
+        if ($stored?->status !== Turn::STATUS_QUEUED) {
+            return false;
+        }
+
+        $this->turns = array_values(array_filter($this->turns, static fn (Turn $t): bool => $t->id !== $turn->id));
+        $this->messages = array_values(array_filter($this->messages, static fn (Message $m): bool => $m->id !== $message->id));
+        if ($withConversation) {
+            $this->conversations = array_values(array_filter(
+                $this->conversations,
+                static fn (Conversation $c): bool => $c->id !== $message->conversation_id,
+            ));
+        }
+
+        return true;
+    }
+
+    /** Restores every row list when $callback throws, like a rolled-back transaction. */
+    public function transaction(Closure $callback): mixed
+    {
+        $snapshot = [$this->conversations, $this->messages, $this->turns, $this->proposals];
+        try {
+            return $callback();
+        } catch (Throwable $e) {
+            [$this->conversations, $this->messages, $this->turns, $this->proposals] = $snapshot;
+
+            throw $e;
+        }
     }
 
     public function createQueuedTurn(Conversation $conversation, string $ulid): Turn

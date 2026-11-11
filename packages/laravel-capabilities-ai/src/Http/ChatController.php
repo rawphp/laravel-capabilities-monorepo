@@ -10,6 +10,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Rawphp\Capabilities\Support\CapabilityResult;
 use Rawphp\CapabilitiesAi\Domain\AcceptOutcome;
+use Rawphp\CapabilitiesAi\Domain\ClientMessageConflictException;
+use Rawphp\CapabilitiesAi\Domain\ClientMessageMismatchException;
 use Rawphp\CapabilitiesAi\Domain\ConversationClosedException;
 use Rawphp\CapabilitiesAi\Domain\ConversationService;
 use Rawphp\CapabilitiesAi\Domain\ProposalService;
@@ -36,6 +38,9 @@ final class ChatController
 
     /** capabilities-ai.max_message_chars default: longest accepted user message, in characters. */
     public const DEFAULT_MAX_MESSAGE_CHARS = 32000;
+
+    /** Longest accepted `client_message_id`, in characters (the column width). */
+    private const MAX_CLIENT_MESSAGE_ID_CHARS = 191;
 
     /**
      * @param  int  $maxMessageChars  longest accepted `content` in characters; 0 = no cap
@@ -74,22 +79,33 @@ final class ChatController
             return $this->failure('validation_failed', 'The given data was invalid.', ['violations' => $violations]);
         }
 
+        /** @var string $content */
+        $content = $request->input('content');
+        /** @var string|null $clientMessageId */
+        $clientMessageId = $request->input('client_message_id');
+
         try {
-            $ids = $conversations->createUserMessage(
-                content: $request->input('content'),
+            $sent = $conversations->sendUserMessage(
+                content: $content,
                 conversationUlid: $request->input('conversation_ulid'),
                 userId: $userId,
                 appId: $request->input('app_id'),
+                clientMessageId: $clientMessageId,
             );
+        } catch (ClientMessageMismatchException $e) {
+            return $this->failure('validation_failed', 'The given data was invalid.', [
+                'violations' => [['field' => 'client_message_id', 'message' => $e->getMessage()]],
+            ]);
         } catch (TurnCapacityExceededException|TurnRateLimitedException $e) {
             return $this->failure('rate_limited', $e->getMessage());
         } catch (ModelNotFoundException) {
             return $this->failure('not_found', 'Conversation not found');
-        } catch (ConversationClosedException $e) {
+        } catch (ConversationClosedException|ClientMessageConflictException $e) {
             return $this->failure('conflict', $e->getMessage());
         }
 
-        return new JsonResponse($ids, 201);
+        // A replayed client_message_id answers 200 with the first send's ids; a new message 201.
+        return new JsonResponse($sent->ids, $sent->created ? 201 : 200);
     }
 
     /**
@@ -110,6 +126,12 @@ final class ChatController
         if ($conversationUlid !== null
             && (! is_string($conversationUlid) || preg_match(self::ULID_PATTERN, $conversationUlid) !== 1)) {
             $violations[] = ['field' => 'conversation_ulid', 'message' => 'The conversation_ulid field must be a 26-character uppercase ULID.'];
+        }
+
+        $clientMessageId = $request->input('client_message_id');
+        if ($clientMessageId !== null
+            && (! is_string($clientMessageId) || $clientMessageId === '' || mb_strlen($clientMessageId) > self::MAX_CLIENT_MESSAGE_ID_CHARS)) {
+            $violations[] = ['field' => 'client_message_id', 'message' => 'The client_message_id field must be a string of 1 to '.self::MAX_CLIENT_MESSAGE_ID_CHARS.' characters.'];
         }
 
         return $violations;

@@ -550,6 +550,28 @@ it('maps package tool defs to Anthropic tools with input_schema and parses tool_
     });
 });
 
+it('maps a tool definition carrying terminal to the same Anthropic tool as one without it', function () {
+    bootAnthropicHttp();
+
+    Http::fake([
+        'api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200),
+    ]);
+
+    $tool = [
+        'name' => 'session.seek',
+        'description' => 'Seek the session',
+        'parameters' => ['type' => 'object', 'properties' => ['at' => ['type' => 'integer']]],
+    ];
+    $client = new AnthropicLlmClient('test-key');
+    $client->complete([['role' => 'user', 'content' => 'seek']], [$tool]);
+    $client->complete([['role' => 'user', 'content' => 'seek']], [$tool + ['terminal' => true]]);
+
+    $sent = Http::recorded()->map(fn (array $pair) => $pair[0]->data()['tools'] ?? null)->all();
+    expect($sent)->toHaveCount(2)
+        ->and($sent[1])->toBe($sent[0])
+        ->and(array_keys($sent[1][0]))->toBe(['name', 'description', 'input_schema']);
+});
+
 it('encodes dotted capability names for Anthropic wire and decodes tool_use back', function () {
     bootAnthropicHttp();
 
@@ -1395,15 +1417,16 @@ it('normalizes tool schemas to Anthropic objects and skips unnamed or malformed 
         ->and(substr_count($raw, '"properties":{}'))->toBe(3);
 });
 
-it('ignores non-array content blocks in the Anthropic response', function () {
+it('ignores non-object content blocks in the Anthropic response, and leaves them out of raw_content', function () {
     bootAnthropicHttp();
     Http::fake(['api.anthropic.com/*' => Http::response([
-        'content' => ['stray', ['type' => 'text', 'text' => 'kept']],
+        'content' => ['stray', ['a', 'b'], ['type' => 'text', 'text' => 'kept']],
     ], 200)]);
 
     $out = (new AnthropicLlmClient('test-key'))->complete([['role' => 'user', 'content' => 'hi']]);
 
-    expect($out)->toBe(['content' => 'kept']);
+    // raw_content is replayed next round, so it holds only what the parser read as blocks.
+    expect($out)->toBe(['content' => 'kept', 'raw_content' => [['type' => 'text', 'text' => 'kept']]]);
 });
 
 it('LlmClientDefaults keeps host clients off multi-round tools unless they opt in', function () {
@@ -1435,4 +1458,264 @@ it('makeLlmClient checks the timeout against the package default claim_ttl when 
     expect(fn () => ContainerBindings::makeLlmClient([
         'llm' => ['driver' => 'anthropic', 'anthropic' => ['api_key' => 'k', 'timeout' => Package::DEFAULT_CLAIM_TTL]],
     ]))->toThrow(InvalidArgumentException::class, 'must be below claim_ttl');
+});
+
+/**
+ * One searched round as the API answers it: the search call, its result, then a call to the
+ * discovered deferred tool. Block shapes from the tool search tool docs.
+ *
+ * @return list<array<string, mixed>>
+ */
+function searchedRoundBlocks(): array
+{
+    return [
+        [
+            'type' => 'server_tool_use',
+            'id' => 'srvtoolu_01ABC123',
+            'name' => 'tool_search_tool_bm25',
+            'input' => ['query' => 'weather'],
+        ],
+        [
+            'type' => 'tool_search_tool_result',
+            'tool_use_id' => 'srvtoolu_01ABC123',
+            'content' => [
+                'type' => 'tool_search_tool_search_result',
+                'tool_references' => [['type' => 'tool_reference', 'tool_name' => 'weather__get']],
+            ],
+        ],
+        [
+            'type' => 'tool_use',
+            'id' => 'toolu_01XYZ789',
+            'name' => 'weather__get',
+            'input' => ['location' => 'Brisbane'],
+        ],
+    ];
+}
+
+it('passes defer_loading through only for tools that set it true', function () {
+    bootAnthropicHttp();
+    Http::fake(['api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200)]);
+
+    (new AnthropicLlmClient('test-key', toolSearch: 'bm25'))->complete(
+        [['role' => 'user', 'content' => 'hi']],
+        [
+            ['name' => 'pane.list'],
+            ['name' => 'weather.get', 'defer_loading' => true],
+            ['name' => 'note.add', 'defer_loading' => false],
+            ['name' => 'note.list', 'defer_loading' => 1],
+        ],
+    );
+
+    Http::assertSent(function ($request) {
+        $byName = array_column($request->data()['tools'], null, 'name');
+
+        return array_keys($byName) === ['tool_search_tool_bm25', 'pane__list', 'weather__get', 'note__add', 'note__list']
+            && ! array_key_exists('defer_loading', $byName['pane__list'])
+            && $byName['weather__get']['defer_loading'] === true
+            && ! array_key_exists('defer_loading', $byName['note__add'])
+            && ! array_key_exists('defer_loading', $byName['note__list']);
+    });
+});
+
+it('adds no tool search tool when tool_search is not set', function () {
+    bootAnthropicHttp();
+    Http::fake(['api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200)]);
+
+    (new AnthropicLlmClient('test-key'))->complete(
+        [['role' => 'user', 'content' => 'hi']],
+        [['name' => 'pane.list'], ['name' => 'weather.get']],
+    );
+
+    Http::assertSent(fn ($request) => array_column($request->data()['tools'], 'type') === []
+        && count($request->data()['tools']) === 2);
+});
+
+it('refuses to send a deferred tool when tool_search is not set', function () {
+    bootAnthropicHttp();
+    Http::fake();
+
+    // With no search tool, nothing could ever load the deferred tool.
+    expect(fn () => (new AnthropicLlmClient('test-key'))->complete(
+        [['role' => 'user', 'content' => 'hi']],
+        [['name' => 'pane.list'], ['name' => 'weather.get', 'defer_loading' => true]],
+    ))->toThrow(RuntimeException::class, 'llm.anthropic.tool_search is not set, so nothing can load the deferred tools: weather.get');
+
+    Http::assertNothingSent();
+});
+
+it('adds the configured tool search tool, never deferred, when the request has tools', function (string $variant, array $searchTool) {
+    bootAnthropicHttp();
+    Http::fake(['api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200)]);
+
+    (new AnthropicLlmClient('test-key', toolSearch: $variant))->complete(
+        [['role' => 'user', 'content' => 'hi']],
+        [['name' => 'pane.list'], ['name' => 'weather.get', 'defer_loading' => true]],
+    );
+
+    Http::assertSent(function ($request) use ($searchTool) {
+        $tools = $request->data()['tools'];
+        $search = array_values(array_filter($tools, static fn (array $tool): bool => isset($tool['type'])));
+
+        return count($tools) === 3 && $search === [$searchTool];
+    });
+})->with([
+    'bm25' => ['bm25', ['type' => 'tool_search_tool_bm25_20251119', 'name' => 'tool_search_tool_bm25']],
+    'regex' => ['regex', ['type' => 'tool_search_tool_regex_20251119', 'name' => 'tool_search_tool_regex']],
+]);
+
+it('sends no tools at all when tool_search is set but the request has none', function () {
+    bootAnthropicHttp();
+    Http::fake(['api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200)]);
+
+    (new AnthropicLlmClient('test-key', toolSearch: 'bm25'))->complete([['role' => 'user', 'content' => 'hi']]);
+
+    Http::assertSent(fn ($request) => ! array_key_exists('tools', $request->data()));
+});
+
+it('refuses an unknown tool_search variant at build', function () {
+    new AnthropicLlmClient('test-key', toolSearch: 'vector');
+})->throws(InvalidArgumentException::class, "Anthropic tool_search 'vector' is not one of: bm25, regex");
+
+it('refuses to send when every mapped tool is deferred', function (?string $toolSearch) {
+    bootAnthropicHttp();
+    Http::fake();
+
+    expect(fn () => (new AnthropicLlmClient('test-key', toolSearch: $toolSearch))->complete(
+        [['role' => 'user', 'content' => 'hi']],
+        [['name' => 'pane.list', 'defer_loading' => true], ['name' => 'weather.get', 'defer_loading' => true]],
+    ))->toThrow(RuntimeException::class, 'every tool has defer_loading set');
+
+    Http::assertNothingSent();
+})->with([
+    'without tool search' => [null],
+    'with tool search' => ['bm25'],
+]);
+
+it('returns the response content blocks unchanged as raw_content', function () {
+    bootAnthropicHttp();
+    $blocks = [['type' => 'text', 'text' => 'Searching.'], ...searchedRoundBlocks()];
+    Http::fake(['api.anthropic.com/*' => Http::response(['content' => $blocks], 200)]);
+
+    $out = (new AnthropicLlmClient('test-key', toolSearch: 'bm25'))->complete(
+        [['role' => 'user', 'content' => 'weather?']],
+        [['name' => 'pane.list'], ['name' => 'weather.get', 'defer_loading' => true]],
+    );
+
+    expect($out['raw_content'])->toBe($blocks)
+        ->and($out['content'])->toBe('Searching.')
+        // The server-side search call is not a tool call for the host to run.
+        ->and($out['tool_calls'])->toBe([
+            ['id' => 'toolu_01XYZ789', 'name' => 'weather.get', 'arguments' => ['location' => 'Brisbane']],
+        ]);
+});
+
+it('a searched two-round turn replays round one blocks unchanged and in order, then the tool_result', function () {
+    bootAnthropicHttp();
+    $sent = [];
+    Http::fake(function ($request) use (&$sent) {
+        $sent[] = $request->data();
+
+        return count($sent) === 1
+            ? Http::response(['content' => searchedRoundBlocks(), 'stop_reason' => 'tool_use'], 200)
+            : Http::response(['content' => [['type' => 'text', 'text' => 'Sunny.']]], 200);
+    });
+    $client = new AnthropicLlmClient('test-key', toolSearch: 'bm25');
+    $tools = [['name' => 'pane.list'], ['name' => 'weather.get', 'defer_loading' => true]];
+    $messages = [['role' => 'user', 'content' => 'weather?']];
+
+    $round1 = $client->complete($messages, $tools);
+    // What TurnRunner appends for the next round.
+    $messages[] = [
+        'role' => 'assistant',
+        'content' => $round1['content'],
+        'tool_calls' => $round1['tool_calls'],
+        'raw_content' => $round1['raw_content'],
+    ];
+    $messages[] = ['role' => 'tool', 'content' => '{"ok":true}', 'tool_call_id' => 'toolu_01XYZ789', 'id' => 'toolu_01XYZ789'];
+    $round2 = $client->complete($messages, $tools);
+
+    expect($round2['content'])->toBe('Sunny.')
+        ->and($sent[1]['messages'])->toBe([
+            ['role' => 'user', 'content' => 'weather?'],
+            ['role' => 'assistant', 'content' => searchedRoundBlocks()],
+            ['role' => 'user', 'content' => [[
+                'type' => 'tool_result',
+                'tool_use_id' => 'toolu_01XYZ789',
+                'content' => '{"ok":true}',
+            ]]],
+        ])
+        ->and($sent[1]['tools'])->toEqual($sent[0]['tools']);
+});
+
+it('replays empty JSON objects in raw_content as objects, not arrays', function () {
+    bootAnthropicHttp();
+    $bodies = [];
+    $round = 0;
+    Http::fake(function ($request) use (&$bodies, &$round) {
+        $bodies[] = $request->body();
+
+        return ++$round === 1
+            ? Http::response('{"content":[{"type":"tool_use","id":"toolu_1","name":"pane__list","input":{}},{"type":"tool_use","id":"toolu_2","name":"pane__list","input":{"0":{"a":{}}}}]}', 200)
+            : Http::response(['content' => [['type' => 'text', 'text' => 'done']]], 200);
+    });
+    $client = new AnthropicLlmClient('test-key');
+    $tools = [['name' => 'pane.list']];
+    $messages = [['role' => 'user', 'content' => 'list']];
+
+    $round1 = $client->complete($messages, $tools);
+    $messages[] = ['role' => 'assistant', 'content' => '', 'tool_calls' => $round1['tool_calls'], 'raw_content' => $round1['raw_content']];
+    $messages[] = ['role' => 'tool', 'content' => '[]', 'tool_call_id' => 'toolu_1'];
+    $client->complete($messages, $tools);
+
+    // The bus gets plain arrays; only raw_content keeps the objects.
+    expect($round1['tool_calls'])->toBe([
+        ['id' => 'toolu_1', 'name' => 'pane.list', 'arguments' => []],
+        ['id' => 'toolu_2', 'name' => 'pane.list', 'arguments' => [0 => ['a' => []]]],
+    ])
+        ->and($bodies[1])->toContain('{"type":"tool_use","id":"toolu_1","name":"pane__list","input":{}}')
+        ->and($bodies[1])->toContain('{"type":"tool_use","id":"toolu_2","name":"pane__list","input":{"0":{"a":{}}}}');
+});
+
+it('rebuilds an assistant message without raw_content from content and tool_calls', function () {
+    bootAnthropicHttp();
+    Http::fake(['api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200)]);
+
+    (new AnthropicLlmClient('test-key'))->complete([
+        ['role' => 'user', 'content' => 'list'],
+        ['role' => 'assistant', 'content' => 'Listing.', 'tool_calls' => [['id' => 'toolu_1', 'name' => 'pane.list', 'arguments' => ['a' => 1]]]],
+        ['role' => 'tool', 'content' => '[]', 'tool_call_id' => 'toolu_1'],
+    ], [['name' => 'pane.list']]);
+
+    Http::assertSent(fn ($request) => $request->data()['messages'][1]['content'] === [
+        ['type' => 'text', 'text' => 'Listing.'],
+        ['type' => 'tool_use', 'id' => 'toolu_1', 'name' => 'pane__list', 'input' => ['a' => 1]],
+    ]);
+});
+
+it('sends an empty tools list and no search tool when no tool maps, without refusing', function () {
+    bootAnthropicHttp();
+    Http::fake(['api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200)]);
+
+    (new AnthropicLlmClient('test-key', toolSearch: 'bm25'))->complete(
+        [['role' => 'user', 'content' => 'hi']],
+        [['name' => '']],
+    );
+
+    Http::assertSent(fn ($request) => $request->data()['tools'] === []);
+});
+
+it('rebuilds an assistant message whose raw_content is empty', function () {
+    bootAnthropicHttp();
+    Http::fake(['api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200)]);
+
+    (new AnthropicLlmClient('test-key'))->complete([
+        ['role' => 'user', 'content' => 'list'],
+        ['role' => 'assistant', 'content' => 'Listing.', 'raw_content' => [], 'tool_calls' => [['id' => 'toolu_1', 'name' => 'pane.list', 'arguments' => ['a' => 1]]]],
+        ['role' => 'tool', 'content' => '[]', 'tool_call_id' => 'toolu_1'],
+    ], [['name' => 'pane.list']]);
+
+    Http::assertSent(fn ($request) => $request->data()['messages'][1]['content'] === [
+        ['type' => 'text', 'text' => 'Listing.'],
+        ['type' => 'tool_use', 'id' => 'toolu_1', 'name' => 'pane__list', 'input' => ['a' => 1]],
+    ]);
 });

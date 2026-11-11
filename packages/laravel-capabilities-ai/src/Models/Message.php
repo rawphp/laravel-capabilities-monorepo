@@ -19,6 +19,8 @@ class Message extends Model
         'role',
         'content',
         'meta',
+        'client_message_owner_id',
+        'client_message_id',
     ];
 
     protected $casts = [

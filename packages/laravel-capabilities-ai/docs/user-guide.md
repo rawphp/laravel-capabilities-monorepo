@@ -29,6 +29,10 @@ The ALTER is idempotent (no-op if the column already exists). Greenfield install
 
 `2026_09_24_000001_add_usage_to_capabilities_ai_turns_table` adds a nullable JSON `usage` column (per-round LLM usage, see [Progress](#progress)); `2026_09_25_000001_add_schema_hash_to_capabilities_ai_proposals_table` adds a nullable `schema_hash` column (accept refuses on tool schema drift, see [Accept](#accept)). `TurnRunner` writes both, so run **`php artisan migrate`** before upgrading workers. Both migrations are idempotent (`hasColumn` guards).
 
+### Upgrade: messages `client_message_id` column
+
+`2026_11_04_000001_add_client_message_id_to_capabilities_ai_messages_table` adds nullable `client_message_id` and `client_message_owner_id` columns to `capabilities_ai_messages`, with a unique index on the pair (see [Client message key](#client-message-key)). `ConversationService` writes both columns for a send with `client_message_id` (sends without it do not touch them), so run **`php artisan migrate`** before clients send the key. The migration is idempotent (`hasColumn` guard). A host that binds its own `ConversationStore` must add `clientMessage()`, `markClientMessageSent()`, `discardUnsentClientMessage()` and `transaction()`, and store the new optional `createMessage()` arguments; see the interface docblocks.
+
 ## Host bindings
 
 - `ConversationContextProvider` — messages for the model (`content` may be a **string** or a **list of provider content blocks** for multimodal / vision; hosts hydrate attachment bytes — this package does not store or fetch files)
@@ -198,19 +202,36 @@ When enabled, `ChatController` exposes history, message create, turn show/cancel
 | **destroyConversation** | Always **200** deleted stub | Real destroy; missing → **HTTP 404**; conflict (e.g. active turns) → **HTTP 409** `conflict` |
 | **storeMessage** | Any body accepted; unknown `conversation_ulid` → **500** | `content` must be a non-empty string of at most `max_message_chars` characters (default 32000) and `conversation_ulid` (optional) a 26-char uppercase ULID, else **HTTP 422** `validation_failed` (field errors in `error.violations`) with no rows or turn job; well-formed but unknown `conversation_ulid` → **HTTP 404** `not_found` |
 
+#### Client message key
+
+`storeMessage` accepts an optional `client_message_id` so a client can resend a message after a lost answer without storing it twice or starting a second turn. Rotate the key whenever the draft changes, so one key always means one content.
+
+- Must be a string of 1 to 191 characters, else **HTTP 422** `validation_failed` on `client_message_id`. Omit it (or send `null`) for today's behaviour.
+- Unique per conversation owner across all their conversations, so a retry of a first message sent without `conversation_ulid` finds the conversation the first send created. A repeat that names a different `conversation_ulid` still gets the first send's ids; the stored conversation wins. Another user's key never matches.
+- A repeat with a stored key and the same `content` returns **HTTP 200** with the first send's `{ conversation_ulid, message_ulid, turn_ulid }` (a new message returns **201** with the same shape). It creates no message or turn, dispatches no job, and counts against neither `turns_per_minute` nor `max_concurrent_turns`.
+- A repeat with a stored key and different `content` returns **HTTP 422** `validation_failed` on `client_message_id`.
+- A key stays pending until its turn job is handed to the queue. A repeat in that window gets **409** `conflict`; resend the same key a moment later to get the ids.
+- Two concurrent sends with one key store one message and one turn. The other request gets the first one's ids with **200**, or **409** `conflict` while the first is still pending.
+- If the send fails before its job reaches the queue (the queued progress event or the dispatch throws), the server undoes it: the turn, the message and any conversation that send created are deleted. A retry with the same key then stores the message once.
+- If the job already took the turn when the send fails (a sync queue runs the job inside the request), the message and its failed turn stay. A retry with the same key returns **200** with those ids and runs nothing again; read the turn's status to see the failure.
+- A send that died between storing and dispatching (process killed) leaves the key pending: repeats get **409** until the stale-turn reaper fails the queued turn, then **200** with its ids.
+- Keys compare by the messages table's collation. On MySQL the default `*_ci` collations treat `k` and `K` as one key, so generate keys that differ in more than case (a UUID or ULID does).
+
 **Status mapping (controller):**
 
 | Exception / case | HTTP | Typical routes |
 |------------------|------|----------------|
 | No authenticated user (`$request->user()`) | **401** `unauthenticated` | every chat route above + message create |
 | Invalid message body | **422** `validation_failed` + `error.violations[{field, message}]` | storeMessage |
+| `ClientMessageMismatchException` (stored `client_message_id`, different `content`) | **422** `validation_failed` on `client_message_id` | storeMessage — nothing persisted or dispatched |
+| `ClientMessageConflictException` (the key's first send is still pending, or a concurrent send stored it first) | **409** `conflict` (a race loser gets **200** with the winner's ids once it is sent) | storeMessage — nothing persisted or dispatched |
 | Another user's (or ownerless) conversation/turn | **404** `not_found` (same as missing) | history, message append, showTurn, cancelTurn, turnEvents, destroyConversation |
 | `ModelNotFoundException` | **404** `not_found` | history, message create (unknown `conversation_ulid`), showTurn, cancelTurn, turnEvents, destroyConversation, proposal accept/reject |
 | `RuntimeException` (domain conflict) | **409** `conflict` | cancelTurn, destroyConversation, proposal reject |
 | `ConversationClosedException` (message to a closed conversation) | **409** `conflict` | storeMessage — nothing persisted or dispatched |
-| `TurnRateLimitedException` (user over `turns_per_minute`, D-013) | **429** `rate_limited` (`retryable: true`) | storeMessage — checked before any query; nothing persisted or dispatched |
+| `TurnRateLimitedException` (user over `turns_per_minute`, D-013) | **429** `rate_limited` (`retryable: true`) | storeMessage — checked before any write (a send with `client_message_id` first runs a read-only key lookup, and a replayed key is answered without the limiter). A send that is then undone or loses a key race has still used its slot; nothing persisted or dispatched |
 | `TurnCapacityExceededException` (`max_concurrent_turns` reached) | **429** `rate_limited` (`retryable: true`) | storeMessage — nothing persisted or dispatched; resend later |
-| Success | **200** (message create **201**) | real service payload — not an empty stub |
+| Success | **200** (message create **201**; a `client_message_id` repeat **200**) | real service payload — not an empty stub |
 
 **Error body (breaking vs `{message}`):** every error branch (401 / 404 / 409 / 422 / 429) uses the same D-018 envelope as core capability invoke — `{ "ok": false, "error": { "code", "message", "violations", "approval_id", "request_id", "retryable", "http_status", "cli_exit" }, "meta": {} }`. The old top-level `message` key is gone; read `error.code` / `error.message`. Accept outcome bodies (`ulid` / `status` / `outcome`) are unchanged.
 
