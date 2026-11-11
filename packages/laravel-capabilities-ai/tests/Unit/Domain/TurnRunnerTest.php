@@ -2099,7 +2099,7 @@ it('a searched turn keeps raw_content for the next round, runs the offered defer
         ->and($captured['tools'][0])->toBe([['name' => 'pane.list'], ['name' => 'weather.get', 'defer_loading' => true]])
         ->and($assistant)->toHaveCount(1)
         ->and($assistant[0]['raw_content'])->toBe($raw)
-        // Only the offered deferred tool reaches the bus; the search call never does.
+        // The offered deferred tool runs; the unoffered one is refused (the parser test pins that server_tool_use is never a call).
         ->and($bus->invokes)->toBe(1)
         ->and($bus->lastName)->toBe('weather.get')
         ->and(array_column(array_column($toolEvents, 'data'), 'name'))->toBe(['weather.get', 'rogue.tool'])

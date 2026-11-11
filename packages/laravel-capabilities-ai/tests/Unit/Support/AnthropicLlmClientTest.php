@@ -1501,16 +1501,18 @@ it('passes defer_loading through only for tools that set it true', function () {
             ['name' => 'pane.list'],
             ['name' => 'weather.get', 'defer_loading' => true],
             ['name' => 'note.add', 'defer_loading' => false],
+            ['name' => 'note.list', 'defer_loading' => 1],
         ],
     );
 
     Http::assertSent(function ($request) {
         $byName = array_column($request->data()['tools'], null, 'name');
 
-        return array_keys($byName) === ['pane__list', 'weather__get', 'note__add']
+        return array_keys($byName) === ['pane__list', 'weather__get', 'note__add', 'note__list']
             && ! array_key_exists('defer_loading', $byName['pane__list'])
             && $byName['weather__get']['defer_loading'] === true
-            && ! array_key_exists('defer_loading', $byName['note__add']);
+            && ! array_key_exists('defer_loading', $byName['note__add'])
+            && ! array_key_exists('defer_loading', $byName['note__list']);
     });
 });
 
@@ -1639,7 +1641,7 @@ it('replays empty JSON objects in raw_content as objects, not arrays', function 
         $bodies[] = $request->body();
 
         return ++$round === 1
-            ? Http::response('{"content":[{"type":"tool_use","id":"toolu_1","name":"pane__list","input":{}}]}', 200)
+            ? Http::response('{"content":[{"type":"tool_use","id":"toolu_1","name":"pane__list","input":{}},{"type":"tool_use","id":"toolu_2","name":"pane__list","input":{"0":{"a":{}}}}]}', 200)
             : Http::response(['content' => [['type' => 'text', 'text' => 'done']]], 200);
     });
     $client = new AnthropicLlmClient('test-key');
@@ -1651,7 +1653,8 @@ it('replays empty JSON objects in raw_content as objects, not arrays', function 
     $messages[] = ['role' => 'tool', 'content' => '[]', 'tool_call_id' => 'toolu_1'];
     $client->complete($messages, $tools);
 
-    expect($bodies[1])->toContain('{"type":"tool_use","id":"toolu_1","name":"pane__list","input":{}}');
+    expect($bodies[1])->toContain('{"type":"tool_use","id":"toolu_1","name":"pane__list","input":{}}')
+        ->and($bodies[1])->toContain('{"type":"tool_use","id":"toolu_2","name":"pane__list","input":{"0":{"a":{}}}}');
 });
 
 it('rebuilds an assistant message without raw_content from content and tool_calls', function () {
@@ -1661,6 +1664,34 @@ it('rebuilds an assistant message without raw_content from content and tool_call
     (new AnthropicLlmClient('test-key'))->complete([
         ['role' => 'user', 'content' => 'list'],
         ['role' => 'assistant', 'content' => 'Listing.', 'tool_calls' => [['id' => 'toolu_1', 'name' => 'pane.list', 'arguments' => ['a' => 1]]]],
+        ['role' => 'tool', 'content' => '[]', 'tool_call_id' => 'toolu_1'],
+    ], [['name' => 'pane.list']]);
+
+    Http::assertSent(fn ($request) => $request->data()['messages'][1]['content'] === [
+        ['type' => 'text', 'text' => 'Listing.'],
+        ['type' => 'tool_use', 'id' => 'toolu_1', 'name' => 'pane__list', 'input' => ['a' => 1]],
+    ]);
+});
+
+it('sends neither tools nor the search tool when no tool maps, without refusing', function () {
+    bootAnthropicHttp();
+    Http::fake(['api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200)]);
+
+    (new AnthropicLlmClient('test-key', toolSearch: 'bm25'))->complete(
+        [['role' => 'user', 'content' => 'hi']],
+        [['name' => '']],
+    );
+
+    Http::assertSent(fn ($request) => $request->data()['tools'] === []);
+});
+
+it('rebuilds an assistant message whose raw_content is empty', function () {
+    bootAnthropicHttp();
+    Http::fake(['api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200)]);
+
+    (new AnthropicLlmClient('test-key'))->complete([
+        ['role' => 'user', 'content' => 'list'],
+        ['role' => 'assistant', 'content' => 'Listing.', 'raw_content' => [], 'tool_calls' => [['id' => 'toolu_1', 'name' => 'pane.list', 'arguments' => ['a' => 1]]]],
         ['role' => 'tool', 'content' => '[]', 'tool_call_id' => 'toolu_1'],
     ], [['name' => 'pane.list']]);
 
