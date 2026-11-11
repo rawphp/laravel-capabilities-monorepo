@@ -263,14 +263,14 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
             throw new RuntimeException($message);
         }
 
-        $json = $response->json();
+        // One decode: raw_content keeps JSON objects as objects for replay; the parser reads the same blocks as arrays.
+        $decoded = json_decode($response->body(), false);
+        $rawContent = self::rawContent($decoded);
+        $usage = $decoded instanceof stdClass ? self::plainValue($decoded->usage ?? null) : null;
         $text = '';
-        $rawContent = self::rawContent($response->body());
         $toolCalls = [];
-        foreach ($json['content'] ?? [] as $block) {
-            if (! is_array($block)) {
-                continue;
-            }
+        foreach ($rawContent as $block) {
+            $block = self::plainValue($block);
             if (($block['type'] ?? '') === 'text') {
                 $text .= (string) ($block['text'] ?? '');
             }
@@ -289,14 +289,14 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
             $out['tool_calls'] = $toolCalls;
         }
         $out['raw_content'] = $rawContent;
-        if (is_array($json['usage'] ?? null)) {
+        if (is_array($usage)) {
             $out['usage'] = [
-                'input_tokens' => (int) ($json['usage']['input_tokens'] ?? 0),
-                'output_tokens' => (int) ($json['usage']['output_tokens'] ?? 0),
+                'input_tokens' => (int) ($usage['input_tokens'] ?? 0),
+                'output_tokens' => (int) ($usage['output_tokens'] ?? 0),
             ];
             foreach (['cache_creation_input_tokens', 'cache_read_input_tokens'] as $key) {
-                if (isset($json['usage'][$key])) {
-                    $out['usage'][$key] = (int) $json['usage'][$key];
+                if (isset($usage[$key])) {
+                    $out['usage'][$key] = (int) $usage[$key];
                 }
             }
         }
@@ -578,18 +578,31 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
     }
 
     /**
-     * The response's `content` array as received. Decoded so that JSON objects stay objects
-     * on re-encode: an empty or list-shaped object (`{}`, `{"0": …}`) is kept as stdClass,
-     * every other object becomes an associative array.
+     * The response's `content` blocks as received, in order. Only JSON objects are blocks, so a
+     * stray scalar or list is left out (the parser skips it too). Values keep their JSON shape on
+     * re-encode: an empty or list-shaped object (`{}`, `{"0": …}`) is kept as stdClass, every
+     * other object becomes an associative array.
      *
      * @return list<mixed>
      */
-    private static function rawContent(string $body): array
+    private static function rawContent(mixed $decoded): array
     {
-        $decoded = json_decode($body, false);
         $content = $decoded instanceof stdClass && is_array($decoded->content ?? null) ? $decoded->content : [];
+        $blocks = array_filter($content, static fn (mixed $block): bool => $block instanceof stdClass);
 
-        return array_map(self::rawValue(...), array_values($content));
+        return array_map(self::rawValue(...), array_values($blocks));
+    }
+
+    /**
+     * A decoded value with every object as an associative array, as `json_decode($body, true)` gives.
+     */
+    private static function plainValue(mixed $value): mixed
+    {
+        if ($value instanceof stdClass) {
+            $value = get_object_vars($value);
+        }
+
+        return is_array($value) ? array_map(self::plainValue(...), $value) : $value;
     }
 
     private static function rawValue(mixed $value): mixed

@@ -1417,15 +1417,16 @@ it('normalizes tool schemas to Anthropic objects and skips unnamed or malformed 
         ->and(substr_count($raw, '"properties":{}'))->toBe(3);
 });
 
-it('ignores non-array content blocks in the Anthropic response', function () {
+it('ignores non-object content blocks in the Anthropic response, and leaves them out of raw_content', function () {
     bootAnthropicHttp();
     Http::fake(['api.anthropic.com/*' => Http::response([
-        'content' => ['stray', ['type' => 'text', 'text' => 'kept']],
+        'content' => ['stray', ['a', 'b'], ['type' => 'text', 'text' => 'kept']],
     ], 200)]);
 
     $out = (new AnthropicLlmClient('test-key'))->complete([['role' => 'user', 'content' => 'hi']]);
 
-    expect($out)->toBe(['content' => 'kept', 'raw_content' => ['stray', ['type' => 'text', 'text' => 'kept']]]);
+    // raw_content is replayed next round, so it holds only what the parser read as blocks.
+    expect($out)->toBe(['content' => 'kept', 'raw_content' => [['type' => 'text', 'text' => 'kept']]]);
 });
 
 it('LlmClientDefaults keeps host clients off multi-round tools unless they opt in', function () {
