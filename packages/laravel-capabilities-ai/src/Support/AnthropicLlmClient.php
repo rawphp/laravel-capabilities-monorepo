@@ -45,8 +45,8 @@ use Throwable;
  *
  * Tool search: a tool def with `defer_loading: true` goes out with that flag, and with
  * $toolSearch (bm25 | regex) every request that has tools also carries Anthropic's tool
- * search tool, so the model loads deferred tools by searching. A request whose tools are
- * all deferred is refused before sending. Each response's `content` comes back unchanged
+ * search tool, so the model loads deferred tools by searching. A request is refused before
+ * sending when its tools are all deferred, or when any is deferred and $toolSearch is null. Each response's `content` comes back unchanged
  * as `raw_content`; an assistant message carrying it is replayed as is, so server tool
  * blocks (server_tool_use, tool_search_tool_result) reach the next round in order.
  */
@@ -214,6 +214,14 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
             if ($mapped !== [] && array_filter($mapped, static fn (array $tool): bool => ! isset($tool['defer_loading'])) === []) {
                 throw new RuntimeException(
                     'Anthropic request not sent: every tool has defer_loading set; keep at least one tool loaded up front'
+                );
+            }
+            // Only the search tool loads a deferred tool; without it the tool is unreachable.
+            $deferred = array_filter($mapped, static fn (array $tool): bool => isset($tool['defer_loading']));
+            if ($deferred !== [] && $this->toolSearch === null) {
+                throw new RuntimeException(
+                    'Anthropic request not sent: llm.anthropic.tool_search is not set, so nothing can load the deferred tools: '
+                    .implode(', ', array_map(static fn (array $tool): string => self::decodeToolName($tool['name']), $deferred))
                 );
             }
             if ($mapped !== [] && $this->toolSearch !== null) {

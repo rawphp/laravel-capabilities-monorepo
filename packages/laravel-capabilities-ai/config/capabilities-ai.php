@@ -70,8 +70,9 @@ return [
             /**
              * Anthropic tool search: bm25 | regex. Set, every request with tools also carries
              * that server tool, and tools whose ToolCatalog def has `defer_loading: true` load
-             * only when the model finds them. Unset (or an empty env value) adds nothing. Any
-             * other value makes the anthropic LlmClient refuse to build.
+             * only when the model finds them. Unset (or an empty env value) adds nothing, and a
+             * request with a deferred tool is then refused. Any other value makes the anthropic
+             * LlmClient refuse to build.
              */
             'tool_search' => $env('CAPABILITIES_AI_ANTHROPIC_TOOL_SEARCH'),
             /**

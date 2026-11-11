@@ -1495,7 +1495,7 @@ it('passes defer_loading through only for tools that set it true', function () {
     bootAnthropicHttp();
     Http::fake(['api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200)]);
 
-    (new AnthropicLlmClient('test-key'))->complete(
+    (new AnthropicLlmClient('test-key', toolSearch: 'bm25'))->complete(
         [['role' => 'user', 'content' => 'hi']],
         [
             ['name' => 'pane.list'],
@@ -1508,7 +1508,7 @@ it('passes defer_loading through only for tools that set it true', function () {
     Http::assertSent(function ($request) {
         $byName = array_column($request->data()['tools'], null, 'name');
 
-        return array_keys($byName) === ['pane__list', 'weather__get', 'note__add', 'note__list']
+        return array_keys($byName) === ['tool_search_tool_bm25', 'pane__list', 'weather__get', 'note__add', 'note__list']
             && ! array_key_exists('defer_loading', $byName['pane__list'])
             && $byName['weather__get']['defer_loading'] === true
             && ! array_key_exists('defer_loading', $byName['note__add'])
@@ -1522,11 +1522,24 @@ it('adds no tool search tool when tool_search is not set', function () {
 
     (new AnthropicLlmClient('test-key'))->complete(
         [['role' => 'user', 'content' => 'hi']],
-        [['name' => 'pane.list'], ['name' => 'weather.get', 'defer_loading' => true]],
+        [['name' => 'pane.list'], ['name' => 'weather.get']],
     );
 
     Http::assertSent(fn ($request) => array_column($request->data()['tools'], 'type') === []
         && count($request->data()['tools']) === 2);
+});
+
+it('refuses to send a deferred tool when tool_search is not set', function () {
+    bootAnthropicHttp();
+    Http::fake();
+
+    // With no search tool, nothing could ever load the deferred tool.
+    expect(fn () => (new AnthropicLlmClient('test-key'))->complete(
+        [['role' => 'user', 'content' => 'hi']],
+        [['name' => 'pane.list'], ['name' => 'weather.get', 'defer_loading' => true]],
+    ))->toThrow(RuntimeException::class, 'llm.anthropic.tool_search is not set, so nothing can load the deferred tools: weather.get');
+
+    Http::assertNothingSent();
 });
 
 it('adds the configured tool search tool, never deferred, when the request has tools', function (string $variant, array $searchTool) {
