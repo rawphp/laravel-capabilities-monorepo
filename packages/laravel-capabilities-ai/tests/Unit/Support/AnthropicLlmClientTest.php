@@ -1667,7 +1667,12 @@ it('replays empty JSON objects in raw_content as objects, not arrays', function 
     $messages[] = ['role' => 'tool', 'content' => '[]', 'tool_call_id' => 'toolu_1'];
     $client->complete($messages, $tools);
 
-    expect($bodies[1])->toContain('{"type":"tool_use","id":"toolu_1","name":"pane__list","input":{}}')
+    // The bus gets plain arrays; only raw_content keeps the objects.
+    expect($round1['tool_calls'])->toBe([
+        ['id' => 'toolu_1', 'name' => 'pane.list', 'arguments' => []],
+        ['id' => 'toolu_2', 'name' => 'pane.list', 'arguments' => [0 => ['a' => []]]],
+    ])
+        ->and($bodies[1])->toContain('{"type":"tool_use","id":"toolu_1","name":"pane__list","input":{}}')
         ->and($bodies[1])->toContain('{"type":"tool_use","id":"toolu_2","name":"pane__list","input":{"0":{"a":{}}}}');
 });
 
