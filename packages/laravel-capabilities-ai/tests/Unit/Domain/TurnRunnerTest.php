@@ -2006,3 +2006,102 @@ it('does not hand the terminal key to the LlmClient', function () {
         ['name' => 'session.lookup'],
     ]]);
 });
+
+it('FakeLlmClient returns a scripted raw_content unchanged', function () {
+    $raw = [['type' => 'server_tool_use', 'id' => 'srvtoolu_1', 'name' => 'tool_search_tool_bm25', 'input' => ['query' => 'x']]];
+
+    $out = (new FakeLlmClient([['content' => '', 'raw_content' => $raw, 'tool_calls' => [['id' => 't1', 'name' => 'a.b']]]]))
+        ->complete([['role' => 'user', 'content' => 'hi']]);
+
+    expect($out['raw_content'])->toBe($raw);
+});
+
+it('a searched turn keeps raw_content for the next round, runs the offered deferred tool and refuses an unoffered one', function () {
+    $turnUlid = enqueueTurnWithUser('weather?')['turn_ulid'];
+    $raw = [
+        ['type' => 'text', 'text' => 'Searching.'],
+        ['type' => 'server_tool_use', 'id' => 'srvtoolu_1', 'name' => 'tool_search_tool_bm25', 'input' => ['query' => 'weather']],
+        ['type' => 'tool_search_tool_result', 'tool_use_id' => 'srvtoolu_1', 'content' => [
+            'type' => 'tool_search_tool_search_result',
+            'tool_references' => [['type' => 'tool_reference', 'tool_name' => 'weather__get']],
+        ]],
+        ['type' => 'tool_use', 'id' => 'toolu_weather', 'name' => 'weather__get', 'input' => ['location' => 'Brisbane']],
+        ['type' => 'tool_use', 'id' => 'toolu_rogue', 'name' => 'rogue__tool', 'input' => []],
+    ];
+    $inner = new FakeLlmClient([
+        [
+            'content' => 'Searching.',
+            'raw_content' => $raw,
+            'tool_calls' => [
+                ['id' => 'toolu_weather', 'name' => 'weather.get', 'arguments' => ['location' => 'Brisbane']],
+                ['id' => 'toolu_rogue', 'name' => 'rogue.tool', 'arguments' => []],
+            ],
+        ],
+        ['content' => 'Sunny.'],
+    ]);
+    $captured = ['messages' => [], 'tools' => []];
+    $llm = new class($inner, $captured) implements LlmClient
+    {
+        /** @param array{messages: list<mixed>, tools: list<mixed>} $captured */
+        public function __construct(private FakeLlmClient $inner, private array &$captured) {}
+
+        public function supportsToolRounds(): bool
+        {
+            return true;
+        }
+
+        public function complete(array $messages, array $tools = []): array
+        {
+            $this->captured['messages'][] = $messages;
+            $this->captured['tools'][] = $tools;
+
+            return $this->inner->complete($messages, $tools);
+        }
+    };
+    $context = new class implements ConversationContextProvider
+    {
+        public function messagesForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['role' => 'user', 'content' => 'weather?']];
+        }
+    };
+    $tools = new class implements ToolCatalog
+    {
+        public function toolsForTurn(string $conversationUlid, string $turnUlid): array
+        {
+            return [['name' => 'pane.list'], ['name' => 'weather.get', 'defer_loading' => true]];
+        }
+    };
+    $bus = recordingBus();
+    $progress = new ArrayProgressStore;
+
+    $turn = (new TurnRunner(
+        claim: turnClaim(),
+        store: turnStore(),
+        llm: $llm,
+        context: $context,
+        tools: $tools,
+        bus: $bus,
+        progress: $progress,
+        actors: turnActors(),
+    ))->run($turnUlid);
+
+    $assistant = array_values(array_filter(
+        $captured['messages'][1],
+        static fn (array $m): bool => ($m['role'] ?? null) === 'assistant',
+    ));
+    $toolEvents = array_values(array_filter(
+        $progress->since($turnUlid, 0),
+        static fn (array $e): bool => ($e['kind'] ?? null) === 'tool',
+    ));
+
+    expect($turn->status)->toBe(Turn::STATUS_COMPLETED)
+        ->and($captured['tools'][0])->toBe([['name' => 'pane.list'], ['name' => 'weather.get', 'defer_loading' => true]])
+        ->and($assistant)->toHaveCount(1)
+        ->and($assistant[0]['raw_content'])->toBe($raw)
+        // The offered deferred tool runs; the unoffered one is refused (the parser test pins that server_tool_use is never a call).
+        ->and($bus->invokes)->toBe(1)
+        ->and($bus->lastName)->toBe('weather.get')
+        ->and(array_column(array_column($toolEvents, 'data'), 'name'))->toBe(['weather.get', 'rogue.tool'])
+        ->and($toolEvents[1]['data']['error_code'])->toBe('capability_not_in_profile');
+});

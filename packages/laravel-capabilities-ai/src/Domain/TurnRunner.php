@@ -170,11 +170,16 @@ final class TurnRunner
                 }
 
                 // Providers (Anthropic tool_use / OpenAI tool_calls) need the assistant turn in the transcript.
-                $messages[] = [
+                $assistant = [
                     'role' => 'assistant',
                     'content' => (string) ($response['content'] ?? ''),
                     'tool_calls' => $normalizedCalls,
                 ];
+                // The provider's own blocks (e.g. Anthropic tool search) go back unchanged next round.
+                if (is_array($response['raw_content'] ?? null)) {
+                    $assistant['raw_content'] = $response['raw_content'];
+                }
+                $messages[] = $assistant;
 
                 $roundEndsTurn = true;
                 foreach ($normalizedCalls as $call) {
