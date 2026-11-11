@@ -210,7 +210,7 @@ final class AnthropicLlmClient implements DeadlineAwareLlmClient
 
         if ($tools !== []) {
             $mapped = $this->mapTools($tools);
-            // The API answers 400 when no tool is loaded up front.
+            // The API needs a tool loaded up front; the client asks for a host tool, even with tool search on.
             if ($mapped !== [] && array_filter($mapped, static fn (array $tool): bool => ! isset($tool['defer_loading'])) === []) {
                 throw new RuntimeException(
                     'Anthropic request not sent: every tool has defer_loading set; keep at least one tool loaded up front'

@@ -16,8 +16,8 @@ interface ToolCatalog
      * `defer_loading` (default false) keeps the tool out of the model's context until it finds
      * the tool by searching. The Anthropic client sends it as Anthropic's `defer_loading`; turn
      * on `llm.anthropic.tool_search` so the model can search, and leave at least one tool
-     * undeferred (a request whose tools are all deferred is refused). A deferred tool is still
-     * offered: TurnRunner runs a call to it like any other.
+     * undeferred (a request whose tools are all deferred is refused, with or without tool search).
+     * A deferred tool is still offered: TurnRunner runs a call to it like any other.
      *
      * @return list<array{name: string, description?: string, parameters?: array<string, mixed>, terminal?: bool, defer_loading?: bool}>
      */

@@ -17,7 +17,8 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
   Anthropic client sends it as Anthropic's `defer_loading`, so the tool stays out of the
   model's context until the model finds it by searching. `TurnRunner` still treats the tool
   as offered and runs calls to it. A request whose tools are all deferred is refused
-  before sending (`RuntimeException`), because the API rejects it.
+  before sending (`RuntimeException`), with or without tool search: keep at least one
+  host tool loaded up front.
 - **Anthropic tool search:** `llm.anthropic.tool_search` (env
   `CAPABILITIES_AI_ANTHROPIC_TOOL_SEARCH`): unset (default), `bm25` or `regex`. When set,
   every request with tools also carries Anthropic's tool search tool
