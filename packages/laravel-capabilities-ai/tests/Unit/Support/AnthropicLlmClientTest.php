@@ -1673,7 +1673,7 @@ it('rebuilds an assistant message without raw_content from content and tool_call
     ]);
 });
 
-it('sends neither tools nor the search tool when no tool maps, without refusing', function () {
+it('sends an empty tools list and no search tool when no tool maps, without refusing', function () {
     bootAnthropicHttp();
     Http::fake(['api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => 'ok']]], 200)]);
 
