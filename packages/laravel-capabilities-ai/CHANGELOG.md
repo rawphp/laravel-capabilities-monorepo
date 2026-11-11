@@ -11,6 +11,8 @@ https://github.com/rawphp/laravel-capabilities-monorepo/blob/main/docs/versionin
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-11
+
 ### Added
 
 - **Deferred tools:** a `ToolCatalog` definition can set `defer_loading: true`. The
